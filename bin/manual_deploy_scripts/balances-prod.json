@@ -1,7 +1,6 @@
 {
-  "tag": "branch-master",
   "project": "idseq",
-  "env": "staging",
+  "env": "prod",
   "name": "web",
   "region": "us-west-2",
   "cpu_web": 2048,

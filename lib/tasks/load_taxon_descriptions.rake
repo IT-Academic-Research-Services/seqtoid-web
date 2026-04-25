@@ -6,6 +6,7 @@
 
 desc "Loads taxon descriptions from S3 into database"
 task :load_taxon_descriptions, [:taxon_desc_s3_path] => :environment do |_t, args|
+  Rails.logger.info("running load_taxon_descriptions=#{args[:taxon_desc_s3_path]}")
   downloaded_json_path = PipelineRun.download_file_with_retries(args[:taxon_desc_s3_path],
                                                                 '/app/tmp/taxid2desc',
                                                                 3)
@@ -15,9 +16,9 @@ task :load_taxon_descriptions, [:taxon_desc_s3_path] => :environment do |_t, arg
   date = DateTime.now.in_time_zone
   ActiveRecord::Base.transaction do
     json_dict.each do |taxid, data|
-      description = data['description']
-      title = data['title'] || ''
-      summary = data['summary'] || ''
+      description = data['description'].encode('utf-8', 'binary', invalid: :replace, undef: :replace, replace: '')
+      title = (data['title'] || '').encode('utf-8', 'binary', invalid: :replace, undef: :replace, replace: '')
+      summary = (data['summary'] || '').encode('utf-8', 'binary', invalid: :replace, undef: :replace, replace: '')
       datum = [taxid.to_i, data['pageid'].to_i,
                description, title, summary, date, date,].map { |v| ActiveRecord::Base.connection.quote(v) }
       values_list << datum

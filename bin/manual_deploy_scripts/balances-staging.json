@@ -1,0 +1,10 @@
+{
+  "project": "idseq",
+  "env": "staging",
+  "name": "web",
+  "region": "us-west-2",
+  "cpu_web": 2048,
+  "mem_web": 6144,
+  "cpu_worker": 512,
+  "mem_worker": 1024
+}

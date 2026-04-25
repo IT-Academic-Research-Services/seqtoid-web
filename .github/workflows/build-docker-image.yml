@@ -3,18 +3,18 @@ name: Build and Push Docker Images
 #TODO - This should not push images to ECR on every branch push. Only main should be automatically pushed to ECR.
 # If feature branches need to be tested in a deployed environment, a separate workflow_dispatch should be run for those.
 on:
-  push:
-    branches:
-      - "**"
-    tags-ignore:
-      - "**"
-  # workflow_dispatch:
-  #   inputs:
-  #     environment:
-  #       description: 'The environment to which to deploy'
-  #       required: true
-  #       type: string
-  #       default: 'dev'
+#  push:
+#    branches:
+#      - "**"
+#    tags-ignore:
+#      - "**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'The environment to which to deploy'
+        required: true
+        type: string
+        default: 'dev'
 
 env:
   AWS_DEFAULT_OUTPUT: json

@@ -14,7 +14,7 @@
       "environment": [
         {
           "name": "RAILS_ENV",
-          "value": "{{ .Values.env }}"
+          "value": "{{ .Values.rails_env }}"
         },
         {
           "name": "ENVIRONMENT",
@@ -42,7 +42,7 @@
         },
         {
           "name": "SAMPLES_BUCKET_NAME",
-          "value": "idseq-samples-{{.Values.env }}"
+          "value": "idseq-samples-{{ .Values.env }}-{{ .Values.account_id }}"
         }
       ],
       "logConfiguration": {

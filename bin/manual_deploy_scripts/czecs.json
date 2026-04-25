@@ -7,6 +7,9 @@
       "cpu": {{ .Values.cpu_web }},
       "memoryReservation": {{ .Values.mem_web }},
       "essential": true,
+      "linuxParameters": {
+        "initProcessEnabled": true
+      },
       "portMappings": [
         {
           "containerPort": 3000,
@@ -16,7 +19,7 @@
       "environment": [
         {
           "name": "RAILS_ENV",
-          "value": "{{ .Values.env }}"
+          "value": "{{ .Values.rails_env }}"
         },
         {
           "name": "ENVIRONMENT",
@@ -33,6 +36,10 @@
         {
           "name": "AWS_DEFAULT_REGION",
           "value": "{{ .Values.region }}"
+        },
+        {
+          "name": "AWS_ACCOUNT_ID",
+          "value": "{{ .Values.account_id }}"
         }
       ],
       "logConfiguration": {

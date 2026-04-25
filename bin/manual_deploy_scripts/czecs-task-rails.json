@@ -6,7 +6,7 @@
         "name": "rails",
         "command": [
           "rails",
-          "db:seed"
+          "{{ .Values.rails_command }}"
         ]
       }
     ]

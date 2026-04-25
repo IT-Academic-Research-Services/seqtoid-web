@@ -8,9 +8,9 @@ class SfnLongReadMngsPipelineDispatchService
 
   WORKFLOW_NAME = WorkflowRun::WORKFLOW[:long_read_mngs]
 
-  ERCC_DIRECTORY_PATH = "s3://czid-public-references/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime".freeze
+  ERCC_DIRECTORY_PATH = "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime".freeze
   # CZID-8173: \/\/ Provided for old projects. See below comments for why it's here.
-  DEPRECATED_HUMAN_HG38_S3_MINIMAP2_INDEX_PATH = "s3://idseq-public-references/host_filter/human/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/hg38_phiX_rRNA_mito_ERCC.fasta".freeze
+  DEPRECATED_HUMAN_HG38_S3_MINIMAP2_INDEX_PATH = "s3://#{S3_DATABASE_BUCKET}/host_filter/human/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/hg38_phiX_rRNA_mito_ERCC.fasta".freeze
 
   class SfnArnMissingError < StandardError
     def initialize

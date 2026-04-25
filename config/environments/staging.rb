@@ -10,7 +10,7 @@ Rails.application.configure do
   # your application in memory, allowing both threaded web servers
   # and those relying on copy on write to perform better.
   # Rake tasks automatically ignore this option for performance.
-  config.eager_load = true
+  config.eager_load = false
 
   # Full error reports are disabled and caching is turned on.
   config.consider_all_requests_local       = false
@@ -71,24 +71,20 @@ Rails.application.configure do
   # config.active_job.queue_adapter     = :resque
   # config.active_job.queue_name_prefix = "idseq-#{Rails.env}"
 
-  config.action_mailer.default_url_options = { host: "#{Rails.env}.czid.org" }
+  config.action_mailer.default_url_options = { host: "#{Rails.env}.seqtoid.org" }
 
-  config.hosts << "staging.czid.org"
+  config.hosts << "#{Rails.env}.seqtoid.org"
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # We configure IDseq to use cloudfront CDN when available.
-  config.asset_host = ENV['CZID_CLOUDFRONT_ENDPOINT'] || "#{Rails.env}.czid.org"
+  config.asset_host = ENV['CZID_CLOUDFRONT_ENDPOINT'] || "#{Rails.env}.seqtoid.org"
   # Custom config for idseq to enable CORS headers by environment. See rack_cors.rb.
   config.allowed_cors_origins = [
-    "https://#{Rails.env}.idseq.net",
-    "https://www.#{Rails.env}.idseq.net",
-    "https://assets.#{Rails.env}.idseq.net",
-    "https://#{Rails.env}.czid.org",
-    "https://www.#{Rails.env}.czid.org",
-    "https://assets.#{Rails.env}.czid.org",
+    "https://#{Rails.env}.seqtoid.org",
+    "https://www.#{Rails.env}.seqtoid.org",
+    "https://assets.#{Rails.env}.seqtoid.org",
   ]
 
-  config.middleware.use Rack::HostRedirect, "www.#{Rails.env}.idseq.net" => "#{Rails.env}.idseq.net"
-  config.middleware.use Rack::HostRedirect, "www.#{Rails.env}.czid.org" => "#{Rails.env}.czid.org"
+  config.middleware.use Rack::HostRedirect, "www.#{Rails.env}.seqtoid.org" => "#{Rails.env}.seqtoid.org"
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).

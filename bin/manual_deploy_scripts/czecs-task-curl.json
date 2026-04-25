@@ -5,8 +5,12 @@
       {
         "name": "rails",
         "command": [
-          "rails",
-          "local_user_creation:admin[test.user@test.com,test]"
+          "curl",
+          "-ivL",
+          "--retry-connrefused",
+          "-X",
+          "{{ .Values.curl_http_method }}",
+          "{{ .Values.curl_url }}"
         ]
       }
     ]

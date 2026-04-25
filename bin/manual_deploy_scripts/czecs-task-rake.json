@@ -5,8 +5,10 @@
       {
         "name": "rails",
         "command": [
-          "rails",
-          "db:drop"
+          "rake",
+          "-t",
+          "-v",
+          "{{ .Values.rake_command }}"
         ]
       }
     ]

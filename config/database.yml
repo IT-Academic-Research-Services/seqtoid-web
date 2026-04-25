@@ -10,10 +10,6 @@ default: &default
   pool: <%= ENV['DB_CONNECTION_POOL'] || 5 %>
   ssl_mode: 'REQUIRED'
 
-development:
-  <<: *default
-  host: <%= ENV['DB_HOST'] || "db" %>
-
 test:
   <<: *default
   host: <%= ENV['DB_HOST'] || "db" %>
@@ -25,6 +21,15 @@ deployed: &deployed
   password: <%= ENV['DB_PASSWORD'] %>
   port: <%= ENV['DB_PORT'] %>
   username: <%= ENV['DB_USERNAME'] %>
+
+development:
+  <<: *deployed
+  database: idseq_dev
+
+# TODO: Which is used? development or dev?
+dev:
+  <<: *deployed
+  database: idseq_dev
 
 prod:
   <<: *deployed

@@ -21,6 +21,8 @@ aws_account_alias = iam_client.list_account_aliases().account_aliases[0]
 
 cluster = if env == "sandbox" or aws_account_alias == "idseq-prod"
             "idseq-#{env}-ecs"
+          elsif env == "dev" or env == "development"
+            "idseq-dev-ecs"
           else
             # TODO(2020-01-23): Rename staging clusters to new format (IDSEQ-2155).
             env

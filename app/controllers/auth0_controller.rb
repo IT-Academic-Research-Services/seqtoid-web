@@ -16,7 +16,7 @@ class Auth0Controller < ApplicationController
   MIN_TOKEN_REFRESH_IN_SECONDS = 60.seconds.to_i
   MAX_TOKEN_REFRESH_IN_SECONDS = (60.minutes / 1.second).to_i
 
-  AUTH0_CONNECTION_NAME = "Username-Password-Authentication"
+  AUTH0_CONNECTION_NAME = ENV["AUTH0_CONNECTION"] || "Username-Password-Authentication"
   AUTH0_UNAUTHORIZED = "unauthorized"
   AUTH0_LOGIN_REQUIRED = "login_required"
   # Whitelist descriptions to prevent phishing attempts.
@@ -100,7 +100,7 @@ class Auth0Controller < ApplicationController
       if current_user.nil?
         LogUtil.log_error("User logged in on Auth0 but entry is missing from database.")
         render(
-          json: "Your account does not exist on this server. Please contact help@czid.org for assistance.",
+          json: "\"Your account does not exist on this server. Please contact help@czid.org for assistance.\"",
           status: :bad_request
         ) and return
       end
