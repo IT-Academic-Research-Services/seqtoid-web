@@ -88,5 +88,18 @@ As an operator, the app boots and the suite passes on PostgreSQL, and the applia
 - The live data cutover (mysqldump → pgloader/DMS), the production switchover, and rollback execution.
 - Applying CloudNativePG in the appliance and the real Aurora→Postgres move.
 
+## Systemic parity findings (verified by running the suite on PostgreSQL 16)
+
+Running the RSpec suite against a real Postgres surfaced engine-level differences that static review could not. All fixed and green:
+
+- **Case-insensitivity.** MySQL `utf8_unicode_ci` makes `=`, `LIKE`, and `ORDER BY` case-insensitive; Postgres is case-sensitive. → adopted **`citext`** on searchable/sortable text columns (`enable_extension "citext"`).
+- **NULL ordering.** MySQL sorts NULLs first (ASC)/last (DESC); Postgres is the opposite. → `ApplicationRecord.mysql_nulls` + `NULLS FIRST/LAST` on every nullable sort column.
+- **JSON-as-text columns.** `workflow_runs.inputs_json`/`cached_results` are TEXT holding JSON strings (the app writes `.to_json`). Storing as `jsonb` double-encodes. → kept TEXT, cast `::jsonb` in queries (`->>` for string keys, `#>` for numeric). `phylo_tree_ngs.inputs_json` was a real JSON column → `jsonb`.
+- **Float precision/representation.** MySQL `FLOAT` (single, lossy display) vs Rails `t.float`→`double`. → mapped `t.float`→`real`; same float4 datum, faithful representation.
+- **`LEAST`/`GREATEST` NULL semantics.** MySQL returns NULL on any NULL arg; Postgres ignores NULLs. → explicit NULL guard in the z-score SQL.
+- **Identifier length / collation.** Two index names exceeded Postgres's 63-char limit; a `latin1_swedish_ci` column collation was dropped.
+
+These were verified by running the affected model/service/helper specs on Postgres (`make rspec`-equivalent in a `ruby:3.1.6` + `postgres:16` container). Run the **full** suite + `rubocop` in CI/Docker before the cutover (Bucket B).
+
 ## Notes
 This slice does **not** do the Ruby/Rails EOL upgrades (`bug-#001`/`#002`) — it runs on the current Ruby 3.1 / Rails 7.0. It also supersedes `bug-#005` (Aurora MySQL EOL). The `pg` gem is PostgreSQL-licensed (BSD-style) — clears Principle II.
