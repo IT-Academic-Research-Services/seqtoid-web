@@ -72,8 +72,10 @@ RSpec.describe TopTaxonsSqlService, "ranking parity (bug-#010)", type: :service 
   end
 
   it "no longer primes MySQL session variables" do
-    # The rewrite removed the `SET @rank := 0, @current_id := 0` priming.
+    # The rewrite removed the `connection.execute("SET @rank := 0, ...")` priming
+    # statement. (Match the executable form, not explanatory comments that may
+    # still mention the old SQL.)
     expect(File.read(Rails.root.join("app/services/top_taxons_sql_service.rb")))
-      .not_to match(/SET @rank/)
+      .not_to match(/execute\(["']\s*SET @rank/)
   end
 end

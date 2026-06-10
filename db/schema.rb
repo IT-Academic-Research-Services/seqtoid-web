@@ -19,8 +19,8 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.integer "num_contigs", null: false, comment: "Number of contigs for which this accession was the best match"
     t.integer "num_reads", null: false, comment: "Number of reads for which this accession was the best match"
     t.integer "score", null: false, comment: "max_contig_length + total_contig_length + num_reads, used to score top accessions"
-    t.float "coverage_breadth", null: false, comment: "The percentage of the accession that is covered by at least one read or contig"
-    t.float "coverage_depth", null: false, comment: "The average read depth of aligned contigs and reads over the length of the accession"
+    t.float "coverage_breadth", limit: 24, null: false, comment: "The percentage of the accession that is covered by at least one read or contig"
+    t.float "coverage_depth", limit: 24, null: false, comment: "The average read depth of aligned contigs and reads over the length of the accession"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["pipeline_run_id", "accession_id"], name: "index_accession_coverage_stats_on_pr_id_and_accession_id"
@@ -50,8 +50,8 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
   create_table "amr_counts", force: :cascade do |t|
     t.string "gene"
     t.string "allele"
-    t.float "coverage"
-    t.float "depth"
+    t.float "coverage", limit: 24
+    t.float "depth", limit: 24
     t.bigint "pipeline_run_id"
     t.string "drug_family"
     t.datetime "created_at", precision: nil, null: false
@@ -59,8 +59,8 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.string "annotation_gene"
     t.string "genbank_accession"
     t.integer "total_reads"
-    t.float "rpm"
-    t.float "dpm"
+    t.float "rpm", limit: 24
+    t.float "dpm", limit: 24
     t.index ["pipeline_run_id", "allele"], name: "index_amr_counts_on_pipeline_run_id_and_allele", unique: true
   end
 
@@ -108,7 +108,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.string "access_token"
-    t.float "progress"
+    t.float "progress", limit: 24
     t.string "ecs_task_arn", comment: "The ecs task arn for this bulk download if applicable"
     t.bigint "output_file_size", comment: "The file size of the generated output file. Can be nil while the file is being generated."
     t.text "description"
@@ -142,7 +142,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.bigint "citation_id", null: false
     t.bigint "pathogen_list_version_id", null: false
     t.index ["citation_id"], name: "index_citation_pathogen_list_version_on_citation_id"
-    t.index ["pathogen_list_version_id"], name: "index_citation_pathogen_list_version_on_pathogen_list_version_id"
+    t.index ["pathogen_list_version_id"], name: "index_citation_plv_on_pathogen_list_version_id"
   end
 
   create_table "contigs", force: :cascade do |t|
@@ -246,8 +246,8 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.integer "median_absolute_deviation", null: false
     t.integer "min", null: false
     t.integer "max", null: false
-    t.float "mean", null: false
-    t.float "standard_deviation", null: false
+    t.float "mean", limit: 24, null: false
+    t.float "standard_deviation", limit: 24, null: false
     t.integer "read_pairs", null: false
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
@@ -293,7 +293,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
   end
 
   create_table "metadata", force: :cascade do |t|
-    t.string "key", null: false, collation: "latin1_swedish_ci"
+    t.string "key", null: false
     t.string "raw_value"
     t.string "string_validated_value"
     t.decimal "number_validated_value", precision: 36, scale: 9
@@ -368,7 +368,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.bigint "pathogen_id", null: false
     t.bigint "pathogen_list_version_id", null: false
     t.index ["pathogen_id"], name: "index_pathogen_pathogen_list_version_on_pathogen_id"
-    t.index ["pathogen_list_version_id"], name: "index_pathogen_pathogen_list_version_on_pathogen_list_version_id"
+    t.index ["pathogen_list_version_id"], name: "index_pathogen_plv_on_pathogen_list_version_id"
   end
 
   create_table "pathogen_lists", force: :cascade do |t|
@@ -473,7 +473,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.string "command_status"
     t.text "job_description"
     t.string "job_log_id"
-    t.float "job_progress_pct"
+    t.float "job_progress_pct", limit: 24
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.string "job_command_func"
@@ -500,7 +500,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.integer "subsample"
     t.string "pipeline_branch"
     t.integer "total_ercc_reads"
-    t.float "fraction_subsampled"
+    t.float "fraction_subsampled", limit: 24
     t.string "pipeline_version"
     t.string "pipeline_commit"
     t.bigint "truncated"
@@ -520,14 +520,14 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.datetime "executed_at", precision: nil, comment: "When the pipeline run was actually dispatched for processing."
     t.integer "time_to_finalized", comment: "Seconds from executed_at to marked as finished with processing, not including results loading."
     t.integer "time_to_results_finalized", comment: "Seconds from executed_at to marked as finished with processing and results loading."
-    t.float "qc_percent"
-    t.float "compression_ratio"
+    t.float "qc_percent", limit: 24
+    t.float "compression_ratio", limit: 24
     t.boolean "deprecated", default: false, comment: "True/false if the pipeline run has been deprecated or not. Non deprecated pipeline runs are used in the normal flow of the web app."
     t.string "technology", default: "Illumina", null: false, comment: "Name of the technology used, e.g. illumina or ont."
     t.string "guppy_basecaller_setting", comment: "User-specified input used by ont pipeline runs. Null for illumina pipeline runs."
     t.bigint "total_bases"
     t.bigint "unmapped_bases"
-    t.float "fraction_subsampled_bases"
+    t.float "fraction_subsampled_bases", limit: 24
     t.bigint "truncated_bases"
     t.datetime "deleted_at", precision: nil, comment: "When the user triggered deletion of the pipeline run"
     t.bigint "mapped_reads"
@@ -681,9 +681,9 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.datetime "updated_at", precision: nil, null: false
     t.string "name"
     t.string "count_type"
-    t.float "percent_identity"
-    t.float "alignment_length"
-    t.float "e_value"
+    t.float "percent_identity", limit: 24
+    t.float "alignment_length", limit: 24
+    t.float "e_value", limit: 24
     t.integer "genus_taxid", default: -200, null: false
     t.integer "superkingdom_taxid", default: -700, null: false
     t.bigint "pipeline_run_id"
@@ -691,12 +691,12 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.integer "family_taxid", default: -300, null: false
     t.integer "is_phage", limit: 1, default: 0, null: false
     t.string "source_count_type", comment: "The count type which the merged_nt_nr value is derived from"
-    t.float "rpm", comment: "Number of reads aligning to the taxon in the NCBI NR/NT database, per million reads sequenced."
+    t.float "rpm", limit: 24, comment: "Number of reads aligning to the taxon in the NCBI NR/NT database, per million reads sequenced."
     t.decimal "percent_identity_decimal", precision: 9, scale: 2
     t.decimal "alignment_length_decimal", precision: 9, scale: 2
     t.decimal "rpm_decimal", precision: 9, scale: 2
     t.bigint "base_count", comment: "Number of bases aligning to the taxon in the NCBI NR/NT database"
-    t.float "bpm", comment: "Number of bases aligning to the taxon in the NCBI NR/NT database, per million bases sequenced"
+    t.float "bpm", limit: 24, comment: "Number of bases aligning to the taxon in the NCBI NR/NT database, per million bases sequenced"
     t.index ["pipeline_run_id", "tax_id", "count_type", "tax_level"], name: "index_pr_tax_hit_level_tc", unique: true
     t.index ["tax_id"], name: "index_taxon_counts_on_tax_id"
   end
@@ -762,13 +762,13 @@ ActiveRecord::Schema[7.0].define(version: 2025_03_14_221527) do
     t.integer "tax_id"
     t.string "count_type"
     t.integer "tax_level"
-    t.float "mean"
-    t.float "stdev"
+    t.float "mean", limit: 24
+    t.float "stdev", limit: 24
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.text "rpm_list"
-    t.float "mean_mass_normalized"
-    t.float "stdev_mass_normalized"
+    t.float "mean_mass_normalized", limit: 24
+    t.float "stdev_mass_normalized", limit: 24
     t.text "rel_abundance_list_mass_normalized"
     t.index ["background_id", "tax_id", "count_type", "tax_level"], name: "index_bg_tax_ct_level", unique: true
   end

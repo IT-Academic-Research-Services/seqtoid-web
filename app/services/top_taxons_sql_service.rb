@@ -224,10 +224,15 @@ class TopTaxonsSqlService
   def zscore_sql(count_per_million_sql)
     standard_z_score_sql = "(#{count_per_million_sql} - mean) / stdev"
     mass_normalized_zscore_sql = "((count/total_ercc_reads) - mean_mass_normalized) / stdev_mass_normalized"
+    raw_zscore_sql = "CASE WHEN mean_mass_normalized IS NULL THEN #{standard_z_score_sql} ELSE #{mass_normalized_zscore_sql} END"
+    # bug-#011 parity: MySQL's LEAST/GREATEST return NULL if any argument is NULL,
+    # but PostgreSQL ignores NULL arguments. Without the guard below, a taxon that
+    # is absent from the background (NULL mean/stdev -> NULL raw z-score) would clamp
+    # to ZSCORE_MAX on Postgres instead of falling through to ZSCORE_WHEN_ABSENT_FROM_
+    # BACKGROUND. The explicit NULL check restores the MySQL behavior on both engines.
     "COALESCE(
-      GREATEST(#{ReportHelper::ZSCORE_MIN}, LEAST(#{ReportHelper::ZSCORE_MAX},
-        CASE WHEN mean_mass_normalized IS NULL THEN #{standard_z_score_sql} ELSE #{mass_normalized_zscore_sql} END
-      )),
+      CASE WHEN (#{raw_zscore_sql}) IS NULL THEN NULL
+           ELSE GREATEST(#{ReportHelper::ZSCORE_MIN}, LEAST(#{ReportHelper::ZSCORE_MAX}, #{raw_zscore_sql})) END,
       #{ReportHelper::ZSCORE_WHEN_ABSENT_FROM_BACKGROUND})"
   end
 

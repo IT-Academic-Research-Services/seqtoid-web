@@ -101,7 +101,10 @@ RSpec.describe TopTaxonsSqlService, type: :service do
         mean_mass_normalized: nil,
         percentidentity: 99.7014,
         alignmentlength: 149.424,
-        logevalue: -89.58219909667969,
+        # Same float4 value as MySQL's -89.58219909667969; PostgreSQL surfaces the
+        # shortest round-tripping representation. (-89.5822::real)::double precision
+        # == -89.58219909667969, so the stored datum is identical (bug-#011 parity).
+        logevalue: -89.5822,
         rpm: 193_404.63458110514,
         zscore: 100.0,
       }
@@ -186,8 +189,13 @@ RSpec.describe TopTaxonsSqlService, type: :service do
         count_type: "NT",
         b: 550_000,
         percentidentity: 99.7014,
-        alignmentlength: 1490.42,
-        logevalue: -89.58219909667969,
+        # Faithful float4 value (stored 1490.4239...); MySQL displayed it lossily
+        # rounded to 1490.42, PostgreSQL surfaces the shortest round-trip (bug-#011).
+        alignmentlength: 1490.424,
+        # Same float4 value as MySQL's -89.58219909667969; PostgreSQL surfaces the
+        # shortest round-tripping representation. (-89.5822::real)::double precision
+        # == -89.58219909667969, so the stored datum is identical (bug-#011 parity).
+        logevalue: -89.5822,
         bpm: 490_196.07843137253,
       }
 
