@@ -3,7 +3,6 @@
   "license": "MIT",
   "repository": "https://github.com/chanzuckerberg/idseq-web",
   "scripts": {
-    "preinstall": "npm_config_yes=true npx npm-force-resolutions",
     "start": "npm install && webpack --config webpack.config.dev.js --watch",
     "build-img": "webpack --config webpack.config.prod.js",
     "lint": "npx eslint app/assets/src e2e --ext .js,.jsx,.ts,.tsx",
@@ -30,7 +29,11 @@
     ]
   },
   "engines": {
-    "npm": "8.5.5"
+    "node": ">=20 <21",
+    "npm": ">=10 <11"
+  },
+  "overrides": {
+    "csstype": "3.1.2"
   },
   "devDependencies": {
     "@babel/core": "^7.14.3",
@@ -170,9 +173,6 @@
     "text-width": "^1.2.0",
     "url-search-params-polyfill": "^3.0.0",
     "visjs-network": "^4.24.7"
-  },
-  "resolutions": {
-    "//": "Add forced resolutions here for temporary package workarounds."
   },
   "optionalDependencies": {
     "fsevents": "^2.1.3"

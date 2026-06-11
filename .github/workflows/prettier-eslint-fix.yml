@@ -25,7 +25,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 20
       - name: Cache Node Dependencies
         uses: actions/cache@v4
         with:
@@ -45,9 +45,8 @@ jobs:
         run: >
           git config --global url."https://github.com/".insteadOf
           ssh://git@github.com/
-      - name: Install older version of npm
-        # See: https://github.com/chanzuckerberg/czid-web-private/pull/2227
-        run: npm install -g npm@v8.5.5
+      - name: Pin npm (matches Dockerfile / engines)
+        run: npm install -g npm@10.9.0
       - name: Install Dependencies
         # Verifies that package.json and package-lock.json match.
         # See: https://docs.npmjs.com/cli/v7/commands/npm-ci
