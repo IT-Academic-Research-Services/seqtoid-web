@@ -1,4 +1,5 @@
-FROM ruby:3.1.6
+# bug-#001/#004: Ruby 3.1.6 (EOL) -> 3.3.6, pinned by multi-arch digest.
+FROM ruby:3.3.6@sha256:347edd0c70ee08d87de9f01b99de2f14a64cedb5d1bfb38457dfe8cd0bf113c5
 
 # Install apt based dependencies required to run Rails as
 # well as RubyGems. As the Ruby image itself is based on a
@@ -15,12 +16,12 @@ RUN apt-get update && \
 RUN curl -L https://github.com/samtools/samtools/releases/download/1.17/samtools-1.17.tar.bz2 | \
   tar xj && cd samtools-1.17/ && make && make install
 
-# Install node + npm
-RUN curl -sL https://deb.nodesource.com/setup_16.x | bash -
+# Install node + npm (bug-#003: Node 16 EOL -> 20 LTS)
+RUN curl -sL https://deb.nodesource.com/setup_20.x | bash -
 RUN apt-get install -y nodejs
 
-# Last version of NPM before legacy peer dependency issues
-RUN npm i -g npm@8.5.5
+# Node 20 ships npm 10; pin to a known-good npm 10 line for reproducibility.
+RUN npm i -g npm@10.9.0
 
 RUN pip3 config set global.break-system-packages true
 RUN pip3 install --upgrade pip
