@@ -107,7 +107,12 @@ class ProjectsController < ApplicationController
         else
           limited_projects = limited_projects
                              .includes(:creator, samples: [:host_genome, :user, { metadata: [:metadata_field, :location] }, :pipeline_runs, :workflow_runs])
-                             .group(:id)
+                             # Postgres requires every non-aggregated selected column to appear in
+                             # GROUP BY (MySQL relaxed this). Besides projects.id (the PK, which
+                             # functionally determines the other projects.* columns), this query
+                             # also selects the non-aggregated creator columns from the second
+                             # users join (aliased creators_projects), so they must be grouped too.
+                             .group("projects.id", "creators_projects.id", "creators_projects.name")
                              .references(:pipeline_runs, :samples, :workflow_runs)
           # aggregated lists of association values as strings. Portable string_agg
           # (Postgres/MySQL 8+); separator '::', and DISTINCT aggregates order by the
