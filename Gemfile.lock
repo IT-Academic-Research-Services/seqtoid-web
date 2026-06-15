@@ -2087,7 +2087,7 @@ GEM
       date
       stringio
     public_suffix (7.0.5)
-    puma (5.6.9)
+    puma (6.6.1)
       nio4r (~> 2.0)
     raabro (1.4.0)
     racc (1.8.1)
@@ -2372,7 +2372,7 @@ DEPENDENCIES
   ougai
   parallel (= 1.14.0)
   pluck_to_hash
-  puma (~> 5.6)
+  puma (~> 6.4)
   rack-cors
   rack-host-redirect
   rack-mini-profiler (~> 3.0)
