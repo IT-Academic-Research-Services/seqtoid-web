@@ -11,8 +11,7 @@ name: ci-test (postgres)
 
 on:
   pull_request:
-  push:
-    branches: [main, "improvement-#016-ci-pipeline"]
+  push: {}   # all branches while building the pipeline; scope to [main] once landed
   workflow_dispatch:
 
 jobs:
