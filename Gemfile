@@ -53,7 +53,7 @@ gem 'pg', '~> 1.5'
 gem 'oj'
 gem 'parallel', '1.14.0'
 # Use Puma as the app server
-gem 'puma', '~> 5.6'
+gem 'puma', '~> 6.4'
 # Use Redis adapter to run Action Cable in production
 gem 'redis', '~> 4.3'
 # Sprockets
