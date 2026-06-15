@@ -589,7 +589,7 @@ class PhyloTreeNgsController < ApplicationController
     # - the sample's coverage breadth for the taxon
     samples_projects = current_power.pipeline_runs.joins(sample: [:project, :host_genome]).joins(Arel.sql(coverage_stats_query)).joins(Arel.sql(sanitized_join_sql_statement)).where(
       id: pipeline_run_ids
-    ).group("id").order(id: :desc).limit(runs_limit).pluck(Arel.sql("
+    ).group("pipeline_runs.id, samples.id, host_genomes.id, projects.id").order(id: :desc).limit(runs_limit).pluck(Arel.sql("
       samples.name,
       samples.project_id,
       samples.created_at,
