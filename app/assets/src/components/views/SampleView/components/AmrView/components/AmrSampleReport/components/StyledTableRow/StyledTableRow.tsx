@@ -12,7 +12,7 @@ export const StyledTableRow = React.forwardRef<
       {...props}
       className={cs.styledTableRow}
       ref={ref}
-      rev={null}
+      rev={undefined}
     />
   );
 });

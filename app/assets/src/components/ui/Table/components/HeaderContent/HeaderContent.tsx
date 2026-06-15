@@ -42,7 +42,7 @@ export const HeaderContent = ({
       <TableRowComponent
         key={`header-depth-${childHeaders.depth}`}
         style={{ background: "white", width: "100%" }}
-        rev={null}
+        rev={undefined}
       >
         {childHeaders.headers.map(header =>
           flexRender(header.column.columnDef.header, header.getContext()),

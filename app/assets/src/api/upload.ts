@@ -106,14 +106,16 @@ export const initiateBulkUploadLocalWithMetadata = async ({
   // They contain information pertaining to the sample itself (metadata) as well as presigned S3 URL links
   // The sample files that need to be uploaded to S3 are in the samples argument passed into initiateBulkUploadLocalWithMetadata
   // So we need to fetch the files from samples argument and copy them over to response.samples where they're later uploaded to S3 via uploadSampleFilesToPresignedURL
-  response.samples.forEach(
-    createdSample => {
-      let filesToUpload = get("files", find({name: createdSample.name}, samples))
-      createdSample.input_files?.forEach(
-        inputFile => inputFile.file_to_upload = filesToUpload[inputFile.source]
-      )
-    }
-  );
+  response.samples.forEach(createdSample => {
+    let filesToUpload = get(
+      "files",
+      find({ name: createdSample.name }, samples),
+    );
+    createdSample.input_files?.forEach(
+      inputFile =>
+        (inputFile.file_to_upload = filesToUpload[inputFile.source!]),
+    );
+  });
   return response.samples;
 };
 

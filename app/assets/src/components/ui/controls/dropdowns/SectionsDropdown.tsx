@@ -172,7 +172,6 @@ const SectionsDropdown = ({
     if (!isNil(selectedValue)) {
       const value = selectedValue.toString();
       // If there is a mapping from the item's id to its name, lookup the name - otherwise use the value itself.
-      // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532
       text = !isEmpty(itemIdToName) ? itemIdToName[value] : value;
     } else if (nullLabel) {
       text = nullLabel;

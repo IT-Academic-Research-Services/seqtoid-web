@@ -20,6 +20,10 @@
 
 source 'https://rubygems.org'
 
+# Runtime pinned via .ruby-version (bug-#001: Ruby 3.1 EOL -> 3.3). Keep these
+# in lockstep; bundler enforces the version below from that file.
+ruby file: '.ruby-version'
+
 # -- AWS resources:
 # TODO: We want to replace 'aws-sdk' with only the service gems we use.
 gem 'aws-sdk'
@@ -56,9 +60,9 @@ gem 'redis', '~> 4.3'
 gem 'sprockets-rails'
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
-gem 'rails', '~>7.0.0'
+gem 'rails', '~>7.1.0' # bug-#002: Rails 7.0 EOL -> 7.1
 gem 'rails-controller-testing', '~> 1.0', '>= 1.0.5'
-gem 'railties', '~> 7.0'
+gem 'railties', '~> 7.1'
 gem 'rake'
 # Worker/Scheduler management
 gem 'resque', '~> 2.3'
@@ -138,7 +142,7 @@ group :development, :test do
   # Adds support for Capybara system testing and selenium driver
   gem 'capybara', '~> 2.17', '>= 2.17.0'
   gem 'guard', '~> 2.15'
-  gem 'rspec-rails', '~> 5.1'
+  gem 'rspec-rails', '~> 6.1' # bug-#002: rspec-rails 6.x is the Rails 7.1-compatible line
   gem 'rubocop', '~> 0.92'
   gem "rubocop-graphql", "~> 0.14.5"
   gem 'rubocop-performance'

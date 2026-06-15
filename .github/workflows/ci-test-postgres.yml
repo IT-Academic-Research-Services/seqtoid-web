@@ -18,7 +18,7 @@ jobs:
   ruby_test_postgres:
     name: Ruby Test (PostgreSQL)
     runs-on: ubuntu-latest
-    container: ruby:3.1.6
+    container: ruby:3.3.6
     env:
       # Dummy secret — test only.
       AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='

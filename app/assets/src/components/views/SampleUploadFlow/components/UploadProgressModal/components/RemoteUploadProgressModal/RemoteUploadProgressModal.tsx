@@ -11,6 +11,11 @@ import {
 import { TaxonOption } from "~/components/common/filters/types";
 import PrimaryButton from "~/components/ui/controls/buttons/PrimaryButton";
 import { logError } from "~/components/utils/logUtil";
+import {
+  BulkUploadWithMetadata,
+  PathToFile,
+  SampleForUpload,
+} from "~/components/views/SampleUploadFlow/components/UploadProgressModal/types";
 import { MetadataBasic, Project, SampleFromApi } from "~/interface/shared";
 import Modal from "~ui/containers/Modal";
 import { UploadWorkflows } from "../../../../constants";
@@ -22,11 +27,6 @@ import {
   redirectToProject,
 } from "../../upload_progress_utils";
 import { RemoteUploadModalHeader } from "./components/RemoteUploadModalHeader";
-import {
-  BulkUploadWithMetadata,
-  PathToFile,
-  SampleForUpload
-} from "~/components/views/SampleUploadFlow/components/UploadProgressModal/types";
 
 const BASESPACE_SAMPLE_FIELDS = [
   "name",
@@ -169,14 +169,16 @@ export const RemoteUploadProgressModal = ({
         // The samples created from the network response (response.samples) contain information about the sample itself (metadata),
         // but do not contain the files that need to be upload to S3.
         // We need to fetch the files from samplesWithFlags and copy them over to response.samples
-        response.samples.forEach(
-          createdSample => {
-            let filesToUpload = get("files", find({name: createdSample.name}, samplesWithFlags))
-            createdSample.input_files?.forEach(
-              inputFile => inputFile.file_to_upload = filesToUpload[inputFile.source]
-            )
-          }
-        );
+        response.samples.forEach(createdSample => {
+          let filesToUpload = get(
+            "files",
+            find({ name: createdSample.name }, samplesWithFlags),
+          );
+          createdSample.input_files?.forEach(
+            inputFile =>
+              (inputFile.file_to_upload = filesToUpload[inputFile.source!]),
+          );
+        });
         await uploadSamples(response.samples);
       }
     } catch (error) {
