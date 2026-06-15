@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Run the full CI test suite locally in Docker (mirrors ci-test-postgres.yml via
+# the shared bin/ci-test). Get this GREEN before pushing — CI is the final
+# confirmation gate, not the dev loop. (CZID-109.)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+exec docker compose -f docker-compose.ci.yml up \
+  --abort-on-container-exit --exit-code-from test --always-recreate-deps "$@"

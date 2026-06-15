@@ -1,0 +1,49 @@
+# Local CI harness (CZID-109): runs the same checks as GitHub Actions, locally.
+#   make ci-local   (or)   ./bin/ci-local
+# Get this green BEFORE pushing — CI is the final gate, not the dev loop.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: idseq_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis
+
+  test:
+    image: ruby:3.3.6
+    # Match CI's architecture (GitHub runners are amd64). Some Python wheels
+    # (e.g. biom-format) have no arm64 build, so on Apple Silicon we emulate
+    # amd64 to mirror CI faithfully. Slower under qemu, but it's the final check.
+    platform: linux/amd64
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='  # dummy, test-only
+      DB_USERNAME: test_user
+      DB_PASSWORD: test_password
+      DB_HOST: postgres
+      REDIS_URL: redis://redis:6379
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    working_dir: /app
+    volumes:
+      - .:/app
+      - bundle-cache:/app/vendor/bundle
+    command: ["bash", "bin/ci-test"]
+
+volumes:
+  bundle-cache:

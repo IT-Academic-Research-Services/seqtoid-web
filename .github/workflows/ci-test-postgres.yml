@@ -61,35 +61,8 @@ jobs:
           key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
-      - name: Install Ruby Dependencies
-        run: |
-          gem install bundler
-          bundle config path vendor/bundle
-          bundle install --jobs 4 --retry 3
-      - name: Cache Python Dependencies
-        uses: actions/cache@v4
-        with:
-          path: /root/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip
-      - name: Install Extra Dependencies
-        run: |
-          apt-get update && apt-get install -y python3-pip nodejs postgresql-client
-          pip3 config set global.break-system-packages true
-          pip3 install --upgrade pip
-          pip3 install --cache-dir /root/.cache/pip "cython<3.0.0"
-          pip3 install "pyyaml==5.4.1" --no-build-isolation
-          pip3 install --cache-dir /root/.cache/pip -r requirements.txt
-      - name: Setup Dummy Static Files
-        run: |
-          mkdir -p app/assets/dist
-          for f in main.bundle.min.css main.bundle.min.js vendors.bundle.min.css vendors.bundle.min.js; do echo foo > "app/assets/dist/$f"; done
-      - name: Load Postgres schema
-        # DB idseq_test is pre-created by the postgres service; load the schema
-        # (enable_extension citext etc. — test_user is superuser).
-        run: bundle exec bin/rails db:schema:load
-      - name: RSpec (incl. MySQL->Postgres parity specs)
-        run: bundle exec rspec
-        env:
-          SAMPLES_BUCKET_NAME: idseq-samples-development
+      - name: Run CI test suite
+        # SINGLE SOURCE OF TRUTH: bin/ci-test (deps + schema load + rspec) is the
+        # exact same script the local harness runs (bin/ci-local). Local and CI
+        # can't drift. (CZID-109.)
+        run: bash bin/ci-test

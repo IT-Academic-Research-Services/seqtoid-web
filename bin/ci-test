@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Canonical test steps for seqtoid-web on PostgreSQL. SINGLE SOURCE OF TRUTH:
+# run identically by the local harness (bin/ci-local, via docker-compose.ci.yml)
+# and by GitHub Actions (.github/workflows/ci-test-postgres.yml), so local and CI
+# can never drift. Expects: Ruby 3.3.6, a reachable Postgres (DB_HOST/DB_USERNAME/
+# DB_PASSWORD), Redis, RAILS_ENV=test, dummy AWS_* env.
+set -euo pipefail
+
+echo "::group::System deps"
+# python3-dev + build-essential are required to compile biom-format's C
+# extension (Python.h); without them the pip step fails. nodejs for asset bits,
+# postgresql-client for psql.
+apt-get update && apt-get install -y python3-pip python3-dev build-essential nodejs postgresql-client
+pip3 config set global.break-system-packages true
+echo "::endgroup::"
+
+echo "::group::Ruby deps"
+gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
+bundle config path vendor/bundle
+bundle install --jobs 4 --retry 3
+echo "::endgroup::"
+
+echo "::group::Python deps"
+pip3 install --upgrade pip
+pip3 install "cython<3.0.0"
+pip3 install "pyyaml==5.4.1" --no-build-isolation
+pip3 install -r requirements.txt
+echo "::endgroup::"
+
+echo "::group::Dummy static assets (ruby tests don't need real bundles)"
+mkdir -p app/assets/dist
+for f in main.bundle.min.css main.bundle.min.js vendors.bundle.min.css vendors.bundle.min.js; do echo foo > "app/assets/dist/$f"; done
+echo "::endgroup::"
+
+echo "::group::Load Postgres schema"
+bundle exec bin/rails db:schema:load
+echo "::endgroup::"
+
+echo "::group::RSpec"
+SAMPLES_BUCKET_NAME=idseq-samples-development bundle exec rspec
+echo "::endgroup::"

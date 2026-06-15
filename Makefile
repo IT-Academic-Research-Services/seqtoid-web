@@ -282,3 +282,7 @@ local-start-webapp: local-start ## Start docker containers & webpack server. Web
 local-setup-admin-user: .env.localdev ## Set up a user for local development; Usage: make local-setup-admin-user user_email="user_email_address" user_name="user name" user_password='password'
 	$(docker_compose) run --rm web sh -c 'bin/rails local_user_creation:admin["$(user_email)","$(user_name)"]'
 	make -C ./e2e set-local-credentials username='$(user_email)' password='$(user_password)'
+
+.PHONY: ci-local
+ci-local: ## Run the full CI test suite locally in Docker (Postgres) — green this before pushing
+	./bin/ci-local
