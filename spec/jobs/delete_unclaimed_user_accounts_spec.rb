@@ -113,7 +113,10 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
         expect { DeleteUnclaimedUserAccounts.perform }.to change(User, :count).by(-1)
 
         # did not delete user1, deleted user2
-        expect(User.all.map(&:email)).to eq(["user1@test.com", "user3@test.com"])
+        # match_array: the assertion checks which users remain, not their order.
+        # Postgres returns unordered rows for an unscoped query (MySQL implicitly
+        # returned PK order), so compare as a set.
+        expect(User.all.map(&:email)).to match_array(["user1@test.com", "user3@test.com"])
       end
 
       it "should log errors to cloudwatch" do
@@ -151,7 +154,10 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
         expect { DeleteUnclaimedUserAccounts.perform }.to change(User, :count).by(-1)
 
         # deletes user2 from MySQL
-        expect(User.all.map(&:email)).to eq(["user1@test.com", "user3@test.com"])
+        # match_array: the assertion checks which users remain, not their order.
+        # Postgres returns unordered rows for an unscoped query (MySQL implicitly
+        # returned PK order), so compare as a set.
+        expect(User.all.map(&:email)).to match_array(["user1@test.com", "user3@test.com"])
       end
 
       it "should log an error to cloudwatch" do
@@ -194,7 +200,10 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
         end.to change(User, :count).by(-1)
 
         # deletes user2 from MySQL
-        expect(User.all.map(&:email)).to eq(["user1@test.com", "user3@test.com"])
+        # match_array: the assertion checks which users remain, not their order.
+        # Postgres returns unordered rows for an unscoped query (MySQL implicitly
+        # returned PK order), so compare as a set.
+        expect(User.all.map(&:email)).to match_array(["user1@test.com", "user3@test.com"])
       end
 
       it "should log an error to cloudwatch" do

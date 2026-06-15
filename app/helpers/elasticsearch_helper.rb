@@ -93,9 +93,9 @@ module ElasticsearchHelper
   def filter_by_samples(taxon_ids, samples)
     return samples
            .joins(:pipeline_runs, pipeline_runs: :taxon_counts)
-           .where(pipeline_runs: { id: PipelineRun.joins(:sample).where(sample: samples, job_status: "CHECKED").group(:sample_id).select("MAX(`pipeline_runs`.id) AS id") })
+           .where(pipeline_runs: { id: PipelineRun.joins(:sample).where(sample: samples, job_status: "CHECKED").group(:sample_id).select("MAX(pipeline_runs.id) AS id") })
            .where(taxon_counts: { tax_id: taxon_ids, count_type: ["NT", "NR"] })
-           .where("`taxon_counts`.count > 0")
+           .where("taxon_counts.count > 0")
            .distinct(taxon_counts: :tax_id)
            .pluck(:tax_id)
   end

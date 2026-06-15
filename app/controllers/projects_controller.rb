@@ -121,7 +121,10 @@ class ProjectsController < ApplicationController
           group_concat_host = Arel.sql("string_agg(DISTINCT host_genomes.name, '::' ORDER BY host_genomes.name) AS hosts")
           group_concat_sample_type = Arel.sql("string_agg(DISTINCT CASE WHEN metadata_fields.name = 'sample_type' THEN metadata.string_validated_value ELSE NULL END, '::' ORDER BY CASE WHEN metadata_fields.name = 'sample_type' THEN metadata.string_validated_value ELSE NULL END) AS sample_types")
           group_concat_location = Arel.sql("string_agg(DISTINCT CASE WHEN metadata_fields.name = 'collection_location' THEN COALESCE(locations.name, metadata.string_validated_value) ELSE NULL END, '::') AS locations")
-          group_concat_users = Arel.sql("string_agg(DISTINCT CONCAT(users.name,'|',users.email), '::' ORDER BY CONCAT(users.name,'|',users.email)) AS users")
+          # Use || (not CONCAT): Postgres CONCAT ignores NULLs and would emit a
+          # partial "|email" for null-user rows, whereas MySQL CONCAT returns NULL
+          # (skipped by the aggregate). || preserves that NULL-if-any-NULL semantics.
+          group_concat_users = Arel.sql("string_agg(DISTINCT (users.name || '|' || users.email), '::' ORDER BY (users.name || '|' || users.email)) AS users")
           editable = Arel.sql("BIT_OR(CASE WHEN users.id=#{current_user.id} OR #{current_user.admin?} THEN 1 ELSE 0 END) AS editable")
           creator = Arel.sql("creators_projects.name AS creator")
           creator_id = Arel.sql("creators_projects.id AS creator_id")
@@ -239,7 +242,7 @@ class ProjectsController < ApplicationController
       span = (max_date - min_date + 1).to_i
       if span <= MAX_BINS
         # we group by day if the span is shorter than MAX_BINS days
-        bins_map = projects.group("DATE(`projects`.`created_at`)").count.map do |timestamp, count|
+        bins_map = projects.group("DATE(projects.created_at)").count.map do |timestamp, count|
           [timestamp.strftime("%Y-%m-%d"), count]
         end.to_h
         time_bins = (0...span).map do |offset|
@@ -256,7 +259,9 @@ class ProjectsController < ApplicationController
         bins_map = projects.group(
           ActiveRecord::Base.send(
             :sanitize_sql_array,
-            ["FLOOR(TIMESTAMPDIFF(DAY, :min_date, `projects`.`created_at`)/:step)", { min_date: min_date, step: step }]
+            # Postgres has no TIMESTAMPDIFF; date subtraction yields integer days.
+            # Cast to int so the GROUP BY key is an Integer matching bins_map[bucket].
+            ["FLOOR((projects.created_at::date - :min_date)::numeric / :step)::int", { min_date: min_date, step: step }]
           )
         ).count
         time_bins = (0...MAX_BINS).map do |bucket|

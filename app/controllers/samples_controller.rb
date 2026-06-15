@@ -269,7 +269,7 @@ class SamplesController < ApplicationController
       span = (max_date - min_date + 1).to_i
       if span <= MAX_BINS
         # we group by day if the span is shorter than MAX_BINS days
-        bins_map = samples.group("DATE(`samples`.`created_at`)").count.map do |timestamp, count|
+        bins_map = samples.group("DATE(samples.created_at)").count.map do |timestamp, count|
           [timestamp.strftime("%Y-%m-%d"), count]
         end.to_h
         time_bins = (0...span).map do |offset|
@@ -286,7 +286,9 @@ class SamplesController < ApplicationController
         bins_map = samples.group(
           ActiveRecord::Base.send(
             :sanitize_sql_array,
-            ["FLOOR(TIMESTAMPDIFF(DAY, :min_date, `samples`.`created_at`)/:step)", { min_date: min_date, step: step }]
+            # Postgres has no TIMESTAMPDIFF; date subtraction yields integer days.
+            # Cast to int so the GROUP BY key is an Integer matching bins_map[bucket].
+            ["FLOOR((samples.created_at::date - :min_date)::numeric / :step)::int", { min_date: min_date, step: step }]
           )
         ).count
         time_bins = (0...MAX_BINS).map do |bucket|
@@ -353,7 +355,7 @@ class SamplesController < ApplicationController
       avg_total_reads, avg_remaining_reads = PipelineRun
                                              .where(id: pipeline_run_ids)
                                              .non_deleted
-                                             .pick(Arel.sql("ROUND(AVG(`pipeline_runs`.`total_reads`)), ROUND(AVG(`pipeline_runs`.`adjusted_remaining_reads`))"))
+                                             .pick(Arel.sql("ROUND(AVG(pipeline_runs.total_reads)), ROUND(AVG(pipeline_runs.adjusted_remaining_reads))"))
                                              &.map(&:to_i)
     end
 

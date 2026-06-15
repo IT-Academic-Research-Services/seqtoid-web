@@ -508,24 +508,24 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
                             project: project,
                             host_genome_name: "Human",
                             metadata_fields: { collection_location_v2: "San Francisco, USA", sample_type: "CSF", nucleotide_type: "DNA", collection_date: "2021-04", water_control: "No", host_age: MetadataField::MAX_HUMAN_AGE.to_s })
-          @workflow_run1 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
-          @workflow_run2 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          @workflow_run1 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
+          @workflow_run2 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
 
           @sample2 = create(:sample,
                             name: "Test Sample 2",
                             project: project,
                             host_genome_name: "Mosquito",
                             metadata_fields: { collection_location_v2: "Los Angeles, USA", sample_type: "CSF", nucleotide_type: "DNA", collection_date: "2021-04", water_control: "No", host_age: MetadataField::MAX_HUMAN_AGE.to_s })
-          @workflow_run3 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
-          @workflow_run4 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          @workflow_run3 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
+          @workflow_run4 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
 
           @sample3 = create(:sample,
                             name: "Test Sample 3",
                             project: project,
                             host_genome_name: "Human",
                             metadata_fields: { collection_location_v2: "Indio, USA", sample_type: "CSF", nucleotide_type: "DNA", collection_date: "2021-04", water_control: "No", host_age: (MetadataField::MAX_HUMAN_AGE - 1).to_s })
-          @workflow_run5 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
-          @workflow_run6 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          @workflow_run5 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
+          @workflow_run6 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
 
           @samples = [@sample1, @sample2, @sample3]
           @sample_metadata_headers, @metadata_keys, @metadata_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: @samples)
@@ -571,7 +571,9 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
                            name: "Test Sample 1",
                            project: project,
                            metadata_fields: { collection_location_v2: "San Francisco, USA", sample_type: "Serum" })
-          @workflow_run = create(:workflow_run, sample: @sample, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          # reload so executed_at carries the DB-stored precision (Postgres truncates
+          # to microseconds); the expected row compares against the round-tripped value.
+          @workflow_run = create(:workflow_run, sample: @sample, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
           @sample_metadata_headers, @metadata_keys, @metadata_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: [@sample])
         end
 
@@ -657,24 +659,24 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
                             project: project,
                             host_genome_name: "Human",
                             metadata_fields: { collection_location_v2: "San Francisco, USA", sample_type: "CSF", nucleotide_type: "DNA", collection_date: "2021-04", water_control: "No", host_age: MetadataField::MAX_HUMAN_AGE.to_s })
-          @workflow_run1 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
-          @workflow_run2 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          @workflow_run1 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
+          @workflow_run2 = create(:workflow_run, sample: @sample1, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
 
           @sample2 = create(:sample,
                             name: "Test Sample 2",
                             project: project,
                             host_genome_name: "Mosquito",
                             metadata_fields: { collection_location_v2: "Los Angeles, USA", sample_type: "CSF", nucleotide_type: "DNA", collection_date: "2021-04", water_control: "No", host_age: MetadataField::MAX_HUMAN_AGE.to_s })
-          @workflow_run3 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
-          @workflow_run4 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          @workflow_run3 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
+          @workflow_run4 = create(:workflow_run, sample: @sample2, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
 
           @sample3 = create(:sample,
                             name: "Test Sample 3",
                             project: project,
                             host_genome_name: "Human",
                             metadata_fields: { collection_location_v2: "Indio, USA", sample_type: "CSF", nucleotide_type: "DNA", collection_date: "2021-04", water_control: "No", host_age: (MetadataField::MAX_HUMAN_AGE - 1).to_s })
-          @workflow_run5 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
-          @workflow_run6 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          @workflow_run5 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
+          @workflow_run6 = create(:workflow_run, sample: @sample3, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
 
           @samples = [@sample1, @sample2, @sample3]
           @sample_metadata_headers, @metadata_keys, @metadata_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: @samples)
@@ -723,7 +725,9 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
                            name: "Test Sample 1",
                            project: project,
                            metadata_fields: { collection_location_v2: "San Francisco, USA", sample_type: "Serum" })
-          @workflow_run = create(:workflow_run, sample: @sample, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current)
+          # reload so executed_at carries the DB-stored precision (Postgres truncates
+          # to microseconds); the expected row compares against the round-tripped value.
+          @workflow_run = create(:workflow_run, sample: @sample, cached_results: cached_results, inputs_json: inputs_json.to_json, executed_at: Time.current).reload
           @sample_metadata_headers, @metadata_keys, @metadata_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: [@sample])
         end
 

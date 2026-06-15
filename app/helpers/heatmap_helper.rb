@@ -280,11 +280,10 @@ module HeatmapHelper
         taxon_summaries.mean_mass_normalized  AS  mean_mass_normalized,
         taxon_counts.percent_identity         AS  percentidentity,
         taxon_counts.alignment_length         AS  alignmentlength,
-        IF(
-          taxon_counts.e_value IS NOT NULL,
-          taxon_counts.e_value,
-          #{ReportHelper::DEFAULT_SAMPLE_LOGEVALUE}
-        )                                     AS  logevalue
+        CASE WHEN taxon_counts.e_value IS NOT NULL
+          THEN taxon_counts.e_value
+          ELSE #{ReportHelper::DEFAULT_SAMPLE_LOGEVALUE}
+        END                                   AS  logevalue
       FROM taxon_counts
       JOIN taxon_lineages ON taxon_counts.tax_id = taxon_lineages.taxid
       LEFT OUTER JOIN taxon_summaries ON

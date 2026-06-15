@@ -8,10 +8,9 @@ class TaxonCountsDataService
   SELECT_CLAUSE_RPM = "count / ((total_reads - COALESCE(total_ercc_reads, 0)) * COALESCE(fraction_subsampled, 1.0)) * 1000 * 1000".freeze
   SELECT_CLAUSE_Z_SCORE = "COALESCE(
     GREATEST(#{Z_SCORE_MIN}, LEAST(#{Z_SCORE_MAX},
-      IF(
-        mean_mass_normalized IS NULL,
-        ((#{SELECT_CLAUSE_RPM}) - mean) / stdev,
-        ((count/total_ercc_reads) - mean_mass_normalized) / stdev_mass_normalized)
+      CASE WHEN mean_mass_normalized IS NULL
+        THEN ((#{SELECT_CLAUSE_RPM}) - mean) / stdev
+        ELSE ((count/total_ercc_reads) - mean_mass_normalized) / stdev_mass_normalized END
     )),
     #{Z_SCORE_WHEN_ABSENT_FROM_BACKGROUND})".freeze
 

@@ -578,7 +578,7 @@ module SamplesHelper
            .samples
            .where(id: sample_ids)
            .joins(:project)
-           .pluck("samples.id", Arel.sql("CASE WHEN projects.public_access = 1 OR samples.created_at + (projects.days_to_keep_sample_private || ' days')::interval < '#{Time.current.strftime('%Y-%m-%d')}' THEN true ELSE false END AS public"))]
+           .pluck("samples.id", Arel.sql("CASE WHEN projects.public_access = 1 OR samples.created_at + (projects.days_to_keep_sample_private || ' days')::interval < '#{Time.current.strftime('%Y-%m-%d')}' THEN 1 ELSE 0 END AS public"))]
   end
 
   def get_visibility_by_sample_id_and_current_power(sample_ids, current_power)
@@ -589,7 +589,7 @@ module SamplesHelper
            .samples
            .where(id: sample_ids)
            .joins(:project)
-           .pluck("samples.id", Arel.sql("CASE WHEN projects.public_access = 1 OR samples.created_at + (projects.days_to_keep_sample_private || ' days')::interval < '#{Time.current.strftime('%Y-%m-%d')}' THEN true ELSE false END AS public"))]
+           .pluck("samples.id", Arel.sql("CASE WHEN projects.public_access = 1 OR samples.created_at + (projects.days_to_keep_sample_private || ' days')::interval < '#{Time.current.strftime('%Y-%m-%d')}' THEN 1 ELSE 0 END AS public"))]
   end
 
   # Takes an array of samples and uploads metadata for those samples.
@@ -1115,9 +1115,9 @@ module SamplesHelper
       .where(id: samples
         .distinct(:id)
         .joins(:pipeline_runs, pipeline_runs: :taxon_counts)
-        .where(pipeline_runs: { id: PipelineRun.joins(:sample).where(sample: samples, job_status: "CHECKED").group(:sample_id).select("MAX(`pipeline_runs`.id) AS id") })
+        .where(pipeline_runs: { id: PipelineRun.joins(:sample).where(sample: samples, job_status: "CHECKED").group(:sample_id).select("MAX(pipeline_runs.id) AS id") })
         .where(taxon_counts: { tax_id: taxid, count_type: ["NT", "NR"] })
-        .where("`taxon_counts`.count > 0"))
+        .where("taxon_counts.count > 0"))
   end
 
   def filter_by_search_string(samples, search_string)

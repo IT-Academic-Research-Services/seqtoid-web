@@ -513,7 +513,8 @@ module BulkDownloadsHelper
     CSVSafe.generate(headers: true) do |csv|
       csv << csv_headers
 
-      workflow_runs.includes(:sample).each do |wr|
+      # order(:id): deterministic row order (Postgres has no implicit ordering).
+      workflow_runs.includes(:sample).order(:id).each do |wr|
         cg_metric_csv_values = BulkDownloadsHelper.prepare_workflow_run_metrics_csv_info(workflow_run: wr)
         csv_values = [wr.sample.name, wr.inputs&.[]("accession_name"), wr.inputs&.[]("accession_id")] + cg_metric_csv_values
 
@@ -540,7 +541,8 @@ module BulkDownloadsHelper
     end
 
     overview_arr << headers
-    workflow_runs.includes(:sample).each do |wr|
+    # order(:id): deterministic row order (Postgres has no implicit ordering).
+    workflow_runs.includes(:sample).order(:id).each do |wr|
       cg_metric_row_values = BulkDownloadsHelper.prepare_workflow_run_metrics_csv_info(workflow_run: wr)
       wr_row_values = [wr.sample.name, wr.inputs&.[]("accession_name"), wr.inputs&.[]("accession_id")] + cg_metric_row_values
 

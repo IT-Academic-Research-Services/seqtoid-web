@@ -123,7 +123,7 @@ class Sample < ApplicationRecord
     "
     # TODO(ihan): Investigate location metadata creation. I've implemented a workaround solution below,
     # but ideally, all location info should be stored by location_id.
-    order_statement = "(CASE WHEN ISNULL(metadata.location_id) THEN metadata.string_validated_value ELSE locations.name END) #{order_dir} #{mysql_nulls(order_dir)}, samples.#{TIEBREAKER_SORT_KEY} #{order_dir}"
+    order_statement = "(CASE WHEN metadata.location_id IS NULL THEN metadata.string_validated_value ELSE locations.name END) #{order_dir} #{mysql_nulls(order_dir)}, samples.#{TIEBREAKER_SORT_KEY} #{order_dir}"
     joins(joins_statement).order(Arel.sql(ActiveRecord::Base.sanitize_sql_array(order_statement)))
   }
 
@@ -1188,9 +1188,11 @@ class Sample < ApplicationRecord
 
     queries_by_count_type = threshold_filters_by_count_type.each_with_object({}) do |(count_type, filter_queries), queries|
       filter_statement = filter_queries.join(" AND ")
-      sanitized_filter_statement = ActiveRecord::Base.sanitize_sql_array(["(`taxon_counts`.`count_type` = '#{count_type}' AND #{filter_statement})"])
+      sanitized_filter_statement = ActiveRecord::Base.sanitize_sql_array(["(taxon_counts.count_type = '#{count_type}' AND #{filter_statement})"])
       # TODO: Test out creating new composite index (pipeline_run_id, count_type, tax_id)
-      left_join_statement = "LEFT OUTER JOIN `pipeline_runs` ON `pipeline_runs`.`sample_id` = `samples`.`id` LEFT OUTER JOIN `taxon_counts` FORCE INDEX FOR JOIN (`index_pr_tax_hit_level_tc`) ON `taxon_counts`.`pipeline_run_id` = `pipeline_runs`.`id`"
+      # NOTE: MySQL `FORCE INDEX FOR JOIN` hint dropped -- Postgres has no query-hint
+      # syntax; it was an optimizer hint with no effect on results.
+      left_join_statement = "LEFT OUTER JOIN pipeline_runs ON pipeline_runs.sample_id = samples.id LEFT OUTER JOIN taxon_counts ON taxon_counts.pipeline_run_id = pipeline_runs.id"
       queries[count_type] = joins(left_join_statement).where(
         pipeline_runs: {
           deprecated: false,

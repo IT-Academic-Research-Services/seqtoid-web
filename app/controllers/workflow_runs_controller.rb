@@ -247,7 +247,9 @@ class WorkflowRunsController < ApplicationController
   def consensus_genome_clade_export
     permitted_params = params.permit(:referenceTree, workflowRunIds: [])
     workflow_run_ids = permitted_params[:workflowRunIds]
-    workflow_runs = current_power.workflow_runs.where(id: workflow_run_ids).consensus_genomes.active
+    # order(:id): Postgres does not guarantee row order without ORDER BY (MySQL
+    # implicitly returned PK order); keep workflow_run_ids deterministic.
+    workflow_runs = current_power.workflow_runs.where(id: workflow_run_ids).consensus_genomes.active.order(:id)
 
     # Remove the line below if generalizing beyond SARS-CoV-2
     workflow_runs = workflow_runs.select { |wr| wr.get_input("accession_id") == ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_ID }

@@ -175,7 +175,9 @@ class BulkDeletionService
     unless deletable_rails_objects.empty?
       deletable_rails_objects.in_batches(of: HARD_DELETION_BATCH_SIZE) do |batch|
         # .transpose turns array [["run1", "sample1"], ["run2", "sample2"]] into [["run1", "run2"], ["sample1", "sample2"]]
-        ids = batch.pluck(:id, :sample_id).transpose
+        # order(:id): Postgres does not guarantee row order without ORDER BY, so
+        # batch contents would vary; order keeps the enqueued id batches deterministic.
+        ids = batch.order(:id).pluck(:id, :sample_id).transpose
         Resque.enqueue(HardDeleteObjects, ids[0], ids[1], workflow, user.id)
       end
     end
