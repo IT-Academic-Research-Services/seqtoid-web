@@ -14,6 +14,13 @@ on:
   push: {}   # all branches while building the pipeline; scope to [main] once landed
   workflow_dispatch:
 
+# Collapse the duplicate push + pull_request runs for the same commit: both events
+# resolve to the same head SHA, so the later one cancels the earlier in-progress run
+# instead of running the full suite twice. (CZID-101 CI hygiene.)
+concurrency:
+  group: ci-test-postgres-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   ruby_test_postgres:
     name: Ruby Test (PostgreSQL)
