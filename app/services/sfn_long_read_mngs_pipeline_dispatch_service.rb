@@ -8,9 +8,9 @@ class SfnLongReadMngsPipelineDispatchService
 
   WORKFLOW_NAME = WorkflowRun::WORKFLOW[:long_read_mngs]
 
-  ERCC_DIRECTORY_PATH = "s3://czid-public-references/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime".freeze
+  ERCC_DIRECTORY_PATH = "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime".freeze
   # CZID-8173: \/\/ Provided for old projects. See below comments for why it's here.
-  DEPRECATED_HUMAN_HG38_S3_MINIMAP2_INDEX_PATH = "s3://idseq-public-references/host_filter/human/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/hg38_phiX_rRNA_mito_ERCC.fasta".freeze
+  DEPRECATED_HUMAN_HG38_S3_MINIMAP2_INDEX_PATH = "s3://#{S3_DATABASE_BUCKET}/host_filter/human/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/hg38_phiX_rRNA_mito_ERCC.fasta".freeze
 
   class SfnArnMissingError < StandardError
     def initialize
@@ -106,7 +106,7 @@ class SfnLongReadMngsPipelineDispatchService
       RUN_WDL_URI: "s3://#{S3_WORKFLOWS_BUCKET}/#{@pipeline_run.workflow_version_tag}/run.wdl",
       Input: {
         Run: {
-          input_fastq: File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[0].name),
+          input_fastq: @sample.input_files.fastq[0].s3_path,
           library_type: library_type,
           guppy_basecaller_setting: @pipeline_run.guppy_basecaller_setting,
           minimap_host_db: minimap_host_path(library_type, host_genome),

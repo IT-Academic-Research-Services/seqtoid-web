@@ -782,7 +782,9 @@ module SamplesHelper
              !(sample_attributes[:basespace_dataset_id]) &&
              sample_attributes[:input_files_attributes].all? { |i| i[:source_type] == "local" }
         sample = Sample.new(sample_attributes)
-        sample.input_files.each { |f| f.name ||= File.basename(f.source) }
+        # NOTE: Input file names are now obfuscated, and no longer match the name of the uploaded files
+        input_file_salt = InputFile.generate_salt
+        sample.input_files.each { |f| f.name = InputFile.hash_name(File.basename(f.source), input_file_salt) }
 
         # Add these as temporary attributes to this sample object.
         if sample_attributes[:basespace_access_token]

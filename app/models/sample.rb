@@ -404,7 +404,7 @@ class Sample < ApplicationRecord
       try = 0
       while try < max_tries
         _stdout, stderr, status = Open3.capture3(
-          "aws", "s3", "cp", fastq, "#{sample_input_s3_path}/#{input_file.name}"
+          "aws", "s3", "cp", fastq, input_file.s3_path
         )
         if status.success?
           break
@@ -567,7 +567,7 @@ class Sample < ApplicationRecord
   end
 
   def sample_input_s3_path
-    "s3://#{ENV['SAMPLES_BUCKET_NAME']}/#{sample_path}/fastqs"
+    "s3://#{SAMPLES_BUCKET_NAME}/#{sample_path}/fastqs"
   end
 
   def skip_deutero_filter_flag
@@ -575,7 +575,7 @@ class Sample < ApplicationRecord
   end
 
   def sample_output_s3_path
-    "s3://#{ENV['SAMPLES_BUCKET_NAME']}/#{sample_path}/results"
+    "s3://#{SAMPLES_BUCKET_NAME}/#{sample_path}/results"
   end
 
   def subsample_suffix
@@ -584,14 +584,14 @@ class Sample < ApplicationRecord
   end
 
   def sample_postprocess_s3_path
-    "s3://#{ENV['SAMPLES_BUCKET_NAME']}/#{sample_path}/postprocess"
+    "s3://#{SAMPLES_BUCKET_NAME}/#{sample_path}/postprocess"
   end
 
   # This is for the "Experimental" pipeline run stage and path where results
   # for this stage are outputted. Currently, Antimicrobial Resistance
   # outputs are in this path.
   def sample_expt_s3_path
-    "s3://#{ENV['SAMPLES_BUCKET_NAME']}/#{sample_path}/expt"
+    "s3://#{SAMPLES_BUCKET_NAME}/#{sample_path}/expt"
   end
 
   def host_genome_name
@@ -632,12 +632,12 @@ class Sample < ApplicationRecord
         source_parts = []
         local_path = "#{LOCAL_INPUT_PART_PATH}/#{id}/#{f.id}"
         parts.each_with_index do |part, index|
-          source_part = File.join("s3://#{SAMPLES_BUCKET_NAME}", File.dirname(f.file_path), File.basename(part))
+          source_part = File.join(File.dirname(f.s3_path), File.basename(part))
           source_parts << source_part
           Syscall.run("aws", "s3", "cp", source_part, "#{local_path}/#{index}")
         end
         Syscall.run_in_dir(local_path, "cat * > complete_file")
-        Syscall.run_in_dir(local_path, "aws", "s3", "cp", "complete_file", "s3://#{SAMPLES_BUCKET_NAME}/#{f.file_path}")
+        Syscall.run_in_dir(local_path, "aws", "s3", "cp", "complete_file", f.s3_path)
         Syscall.run("rm", "-rf", local_path)
         source_parts.each do |source_part|
           Syscall.run("aws", "s3", "rm", source_part)
@@ -1119,7 +1119,7 @@ class Sample < ApplicationRecord
 
   def input_file_s3_paths(file_type = nil)
     files = file_type ? input_files.by_type(file_type) : input_files
-    files.map { |input_file| "s3://#{ENV['SAMPLES_BUCKET_NAME']}/#{input_file.file_path}" }
+    files.map(&:s3_path)
   end
 
   def self.search_by_name(query)

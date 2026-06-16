@@ -43,6 +43,47 @@ class InputFile < ApplicationRecord
   BULK_FILE_PAIRED_REGEX = /\A([A-Za-z0-9_][-.A-Za-z0-9_]{1,119})_R(\d)(_001)?\.(fastq.gz|fq.gz|fastq|fq|fasta.gz|fa.gz|fasta|fa)\z/.freeze
   BULK_FILE_SINGLE_REGEX = /\A([A-Za-z0-9_][-.A-Za-z0-9_]{1,119})\.(fastq.gz|fq.gz|fastq|fq|fasta.gz|fa.gz|fasta|fa)\z/.freeze
 
+  # Salt used for hashing filenames.
+  # Doesn't really need to overly secure, but should not be easily reversible either.
+  def self.generate_salt(size = 16)
+    Random.urandom(size)
+  end
+
+  # Split the filename, as we need to maintain the suffix after hashing.
+  def self.split_name(file_name)
+    matched_paired = InputFile::BULK_FILE_PAIRED_REGEX.match(file_name)
+    if matched_paired
+      return [
+        matched_paired[1],
+        "_R#{matched_paired[2]}#{matched_paired[3]}.#{matched_paired[4]}",
+      ]
+    end
+    matched_single = InputFile::BULK_FILE_SINGLE_REGEX.match(file_name)
+    if matched_single
+      return [
+        matched_single[1],
+        ".#{matched_single[2]}",
+      ]
+    end
+    # TODO: Should never reach here
+    Rails.logger.warn("InputFile.split_name.unknown_format=#{file_name}")
+    [
+      file_name.delete_suffix(file_extension),
+      file_extension,
+    ]
+  end
+
+  # Generate an obfuscated name based on an input file name.
+  # But we need to maintain the suffix after hashing.
+  # IE, the result should be like: <hash>_R1.fastq.gz
+  def self.hash_name(name, salt)
+    name_prefix, name_suffix = InputFile.split_name(name)
+    salted_name = "#{name_prefix}-#{salt}".downcase
+    binary_hash = Digest::SHA256.digest(salted_name)
+    encoded_prefix = Base64.strict_encode64(binary_hash).tr('=+/-', '').slice(0, 99)
+    "#{encoded_prefix}#{name_suffix}"
+  end
+
   def s3_source_check
     source.strip! if source.present?
     if source_type == SOURCE_TYPE_S3
@@ -68,7 +109,7 @@ class InputFile < ApplicationRecord
   end
 
   def multipart_upload_id
-    S3Util.latest_multipart_upload(ENV['SAMPLES_BUCKET_NAME'], file_path)
+    S3Util.latest_multipart_upload(SAMPLES_BUCKET_NAME, file_path)
   end
 
   def file_extension

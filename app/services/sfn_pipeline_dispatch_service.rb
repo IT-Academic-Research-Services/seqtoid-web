@@ -70,8 +70,8 @@ class SfnPipelineDispatchService
 
   def new_host_filtering_inputs(host_genome, human_host_genome)
     {
-      fastqs_0: File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[0].name),
-      fastqs_1: @sample.input_files.fastq[1] ? File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[1].name) : nil,
+      fastqs_0: @sample.input_files.fastq[0].s3_path,
+      fastqs_1: @sample.input_files.fastq[1] ? @sample.input_files.fastq[1].s3_path : nil,
       nucleotide_type: @sample.metadata.find_by(key: "nucleotide_type")&.string_validated_value || "",
 
       adapter_fasta: PipelineRun::ADAPTER_SEQUENCES[@sample.input_files.fastq[1] ? "paired-end" : "single-end"],
@@ -109,8 +109,8 @@ class SfnPipelineDispatchService
                       new_host_filtering_inputs(host_genome, human_host_genome)
                     else
                       {
-                        fastqs_0: File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[0].name),
-                        fastqs_1: @sample.input_files.fastq[1] ? File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[1].name) : nil,
+                        fastqs_0: @sample.input_files.fastq[0].s3_path,
+                        fastqs_1: @sample.input_files.fastq[1] ? @sample.input_files.fastq[1].s3_path : nil,
                         file_ext: @sample.fasta_input? ? "fasta" : "fastq",
                         nucleotide_type: @sample.metadata.find_by(key: "nucleotide_type")&.string_validated_value || "",
                         host_genome: host_genome.name.downcase,
@@ -141,8 +141,8 @@ class SfnPipelineDispatchService
                       use_deuterostome_filter: @sample.skip_deutero_filter_flag != 1,
                       deuterostome_db: @pipeline_run.alignment_config.s3_deuterostome_db_path,
                     }, Experimental: {
-                      fastqs_0: File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[0].name),
-                      fastqs_1: @sample.input_files.fastq[1] ? File.join(@sample.sample_input_s3_path, @sample.input_files.fastq[1].name) : nil,
+                      fastqs_0: @sample.input_files.fastq[0].s3_path,
+                      fastqs_1: @sample.input_files.fastq[1] ? @sample.input_files.fastq[1].s3_path : nil,
                       nt_db: @pipeline_run.alignment_config.s3_nt_db_path,
                       nt_loc_db: @pipeline_run.alignment_config.s3_nt_loc_db_path,
                       file_ext: @sample.fasta_input? ? "fasta" : "fastq",

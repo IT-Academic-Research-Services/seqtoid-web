@@ -22,6 +22,11 @@ import {
   redirectToProject,
 } from "../../upload_progress_utils";
 import { RemoteUploadModalHeader } from "./components/RemoteUploadModalHeader";
+import {
+  BulkUploadWithMetadata,
+  PathToFile,
+  SampleForUpload
+} from "~/components/views/SampleUploadFlow/components/UploadProgressModal/types";
 
 const BASESPACE_SAMPLE_FIELDS = [
   "name",
@@ -76,19 +81,19 @@ export const RemoteUploadProgressModal = ({
   const [samplesToUpload, setSamplesToUpload] = useState([]);
   const [failedSampleNames, setFailedSampleNames] = useState([]);
 
-  const uploadSamples = useCallback(async (samples: $TSFixMe) => {
+  const uploadSamples = useCallback(async (samples: SampleForUpload[]) => {
     // Note that unlike LocalUploadProgressModal, we don't track the progress of the uploads.
     await Promise.all(
-      samples.map(async (sample: $TSFixMe) => {
+      samples.map(async (sample: SampleForUpload) => {
         try {
           // Get the credentials for the sample
           const s3ClientForSample = await getS3Client(sample);
 
           await Promise.all(
-            sample.input_files.map(async (inputFile: $TSFixMe) => {
+            (sample?.input_files || []).map(async (inputFile: PathToFile) => {
               // Upload the additional input files to s3
               // The sample FASTQS from Basespace or S3 will be uploaded by the backend.
-              if (Object.keys(sample.filesToUpload).includes(inputFile.name)) {
+              if (inputFile.file_to_upload) {
                 await uploadInputFileToS3(sample, inputFile, s3ClientForSample);
               }
             }),
@@ -154,12 +159,7 @@ export const RemoteUploadProgressModal = ({
     // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
     setSamplesToUpload(samplesWithFlags);
 
-    let response: {
-      errored_sample_names: $TSFixMeUnknown[];
-      errors: $TSFixMeUnknown[];
-      sample_ids: $TSFixMeUnknown[];
-      samples: $TSFixMeUnknown[];
-    };
+    let response: BulkUploadWithMetadata;
     try {
       response = await bulkUploadFn({
         samples: samplesWithFlags,
@@ -170,11 +170,12 @@ export const RemoteUploadProgressModal = ({
         // but do not contain the files that need to be upload to S3.
         // We need to fetch the files from samplesWithFlags and copy them over to response.samples
         response.samples.forEach(
-          (createdSample: $TSFixMe) =>
-            (createdSample["filesToUpload"] = get(
-              "files",
-              find({ name: createdSample.name }, samplesWithFlags),
-            )),
+          createdSample => {
+            let filesToUpload = get("files", find({name: createdSample.name}, samplesWithFlags))
+            createdSample.input_files?.forEach(
+              inputFile => inputFile.file_to_upload = filesToUpload[inputFile.source]
+            )
+          }
         );
         await uploadSamples(response.samples);
       }
@@ -242,17 +243,16 @@ export const RemoteUploadProgressModal = ({
   };
 
   const uploadInputFileToS3 = async (
-    sample: $TSFixMe,
-    inputFile: $TSFixMe,
-    s3Client: $TSFixMe,
+    _sample: SampleForUpload,
+    inputFile: PathToFile,
+    s3Client: S3Client,
   ) => {
     const {
-      name: fileName,
+      file_to_upload: body,
       s3_bucket: s3Bucket,
       s3_file_path: s3Key,
     } = inputFile;
 
-    const body = sample.filesToUpload[fileName];
     const uploadParams = {
       Bucket: s3Bucket,
       Key: s3Key,
