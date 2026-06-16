@@ -1,0 +1,19 @@
+# gitleaks config for seqtoid-web (CZID-102). Extends the default ruleset and
+# allowlists known dev/test fixtures that are NOT real secrets.
+title = "seqtoid-web gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known dev/test fixtures (not real secrets)"
+paths = [
+  # Dev/test secret_key_base fixtures. Prod/staging read SECRET_KEY_BASE from
+  # the environment; migrating the real key off this file is tracked in CZID-128.
+  '''config/secrets\.yml''',
+]
+regexes = [
+  # Dummy, test-only AUTH_TOKEN_SECRET used in CI configs (ci-test-postgres.yml,
+  # docker-compose.ci.yml) — clearly marked as a throwaway test value.
+  '''GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=''',
+]

@@ -1,0 +1,46 @@
+name: idseq-web security-scan
+
+# App-appropriate security suite for seqtoid-web (CZID-102):
+#  - gitleaks: secret scan, gates NEW secrets introduced by a PR (hard-fail)
+#  - trivy (fs): dependency CVE scan, REPORT-ONLY for now (exit-code 0) because
+#    known CVEs (axios CZID-45, EOL base images CZID-44) would otherwise block
+#    every PR. Ratchet exit-code to '1' once those are cleared (CZID-65 ethos).
+# Note: tflint/checkov are IaC tools and don't apply here (no Terraform).
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history so gitleaks can scan the PR commit range
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # honors .gitleaks.toml at repo root (dev/test fixture allowlist)
+
+  trivy_fs:
+    name: Dependency CVE scan (trivy fs, report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: table
+          exit-code: '0' # report-only; ratchet to '1' after CZID-44/45 land
