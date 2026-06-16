@@ -24,7 +24,7 @@ class PipelineRun < ApplicationRecord
   # Default to step_number order: stages are always processed/displayed in
   # pipeline order. Postgres has no implicit row ordering (MySQL returned PK
   # order), so scope the association to keep every read deterministic.
-  has_many :pipeline_run_stages, -> { order(:step_number) }, dependent: :destroy
+  has_many :pipeline_run_stages, -> { order(:step_number) }, inverse_of: :pipeline_run, dependent: :destroy
   accepts_nested_attributes_for :pipeline_run_stages
   has_and_belongs_to_many :backgrounds
   has_and_belongs_to_many :phylo_trees

@@ -21,7 +21,12 @@ class Sample < ApplicationRecord
   belongs_to :host_genome, counter_cache: true # use .size for cache, use .count to force COUNT query
   has_many :pipeline_runs, -> { order(created_at: :desc) }, dependent: :destroy
   has_many :backgrounds, through: :pipeline_runs
-  has_many :input_files, dependent: :destroy
+  # Default to :id order so fastq R1/R2 (input_files.fastq[0]/[1]) and other
+  # input-file reads are deterministic. Postgres has no implicit row order
+  # (MySQL returned PK = insertion order, i.e. R1 before R2); restore that.
+  # inverse_of is required because the order(:id) scope disables Rails' automatic
+  # inverse detection; without it nested builds (factories) fail "sample must exist".
+  has_many :input_files, -> { order(:id) }, inverse_of: :sample, dependent: :destroy
   accepts_nested_attributes_for :input_files
   validates_associated :input_files
   has_many :metadata, dependent: :destroy
