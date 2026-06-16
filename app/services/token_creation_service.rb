@@ -19,14 +19,16 @@ class TokenCreationService
   private
 
   def generate_token(user_id, project_claims, service_identity, expires_after)
-    # Verify the user_id provided is valid before generating a token
-    user_id = user_id
-    cmd = "python3 #{IdentityController::TOKEN_AUTH_SERVICE} --create_token"
-    cmd += " --userid #{user_id}" if user_id.present?
-    cmd += " --project-claims '#{project_claims.to_json}'" if project_claims.present?
-    cmd += " --service-identity #{service_identity}" if service_identity.present?
-    cmd += " --expiration #{expires_after}" # takes in seconds
-    stdout, stderr, status = Open3.capture3(cmd)
+    # Build the command as an argument array (not a shell string) and exec it
+    # directly via Open3.capture3(*cmd). This prevents shell command injection:
+    # user_id / service_identity / project_claims are passed as literal argv
+    # entries, never interpreted by a shell. (CZID-36)
+    cmd = ["python3", IdentityController::TOKEN_AUTH_SERVICE, "--create_token"]
+    cmd += ["--userid", user_id.to_s] if user_id.present?
+    cmd += ["--project-claims", project_claims.to_json] if project_claims.present?
+    cmd += ["--service-identity", service_identity.to_s] if service_identity.present?
+    cmd += ["--expiration", expires_after.to_s] # takes in seconds
+    stdout, stderr, status = Open3.capture3(*cmd)
 
     unless status.success?
       LogUtil.log_error(IdentityController::TokenCreationError.new(stderr))
