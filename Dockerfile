@@ -59,7 +59,7 @@ RUN wget http://repo.mysql.com/apt/debian/pool/mysql-5.7/m/mysql-community/mysql
 
 # Generate the app's static resources using npm/webpack
 # Increase memory available to node to 6GB (from default 1.5GB). At this time, our self-hosted Github runner has ~16GB.
-ENV NODE_OPTIONS "--max_old_space_size=6144"
+ENV NODE_OPTIONS="--max_old_space_size=6144"
 
 # Only copy what is required so we don't need to rebuild when we are only updating the api
 COPY app/assets app/assets
@@ -83,7 +83,7 @@ RUN bundle install --jobs 20 --retry 5
 COPY . ./
 
 ARG GIT_COMMIT
-ENV GIT_VERSION ${GIT_COMMIT}
+ENV GIT_VERSION=${GIT_COMMIT}
 
 # Expose port 3000 to the Docker host, so we can access it
 # from the outside.

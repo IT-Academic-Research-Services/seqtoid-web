@@ -3,7 +3,7 @@
 export const SARS_COV_2_CONSENSUS_GENOME_DOC_LINK =
   "https://help.czid.org/hc/en-us/articles/360049787632";
 export const VIRAL_CONSENSUS_GENOME_DOC_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13619776085780-Consensus-Genome-Quality-Checks";
+  "https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/";
 export const NEXTCLADE_APP_LINK = "https://clades.nextstrain.org/";
 export const NEXTCLADE_DEFAULT_TREE_LINK =
   "https://docs.nextstrain.org/projects/nextclade/en/latest/user/datasets.html"; // Beware of link breaking
@@ -28,40 +28,38 @@ export const AMR_PIPELINE_GITHUB_LINK =
 export const PHYLO_TREE_LINK =
   "https://help.czid.org/hc/en-us/articles/4404223662228";
 export const PAIRWISE_DISTANCE_MATRIX_INSTEAD_OF_TREE_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13725914751380-Why-a-Pairwise-Distance-Matrix-Instead-of-a-Tree-";
+  "https://helpcenter.seqtoid.org/articles/why-a-pairwise-distance-matrix-instead-of-a-tree/";
 export const BACKGROUND_MODELS_LINK =
   "https://help.czid.org/hc/en-us/articles/360050883054-Background-Models";
 export const CG_QUALITY_CONTROL_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13623472033428-Download-Consensus-Genome-Data#intermediate-files";
+  "https://helpcenter.seqtoid.org/articles/viral-consensus-genomes-download-consensus-genome-data/#available-intermediate-files";
 export const NCBI_POLICIES_AND_DISCLAIMERS_LINK =
   "https://www.ncbi.nlm.nih.gov/home/about/policies/";
-export const BLAST_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/4429814631572-Confirm-hits-using-BLASTN";
+export const BLAST_HELP_LINK = "https://helpcenter.seqtoid.org/articles/blast/";
 export const BULK_DOWNLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360042575714-Initiate-a-Bulk-Download";
+  "https://helpcenter.seqtoid.org/articles/metagenomic-analysis-initiate-a-bulk-download/";
 export const AMR_BULK_DOWNLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15312677287316-Download-AMR-Results-Data#AMR-Results-bulk-download";
+  "https://helpcenter.seqtoid.org/articles/download-amr-results-data/#files-found-within-antimicrobial-resistance-results-download";
 export const AMR_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/categories/15001531592980-Antimicrobial-Resistance-Analysis";
+  "https://helpcenter.seqtoid.org/categories/antimicrobial-resistance-analysis/";
 export const AMR_EXISTING_SAMPLES_LINK =
   "https://docs.google.com/document/d/12a_0PQcTRbB-0JC1SMjhLvdQzhBF2Z0TZseFkoH-aRI/edit#bookmark=id.lqgywt4vgvg3";
 export const AMR_DEPRECATED_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15090471044372-Current-vs-Deprecated-AMR-Pipelines";
+  "https://helpcenter.seqtoid.org/articles/current-vs-deprecated-amr-pipelines/";
 export const AMR_DATABASE_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15091031482644#AMR-database";
+  "https://helpcenter.seqtoid.org/articles/amr-pipeline-workflow/#amr-database";
 export const GUPPY_BASECALLER_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13830756964372-Upload-Nanopore-Data-#guppy-basecaller";
+  "https://helpcenter.seqtoid.org/articles/upload-nanopore-data/#guppy-basecaller";
 export const CONCAT_FILES_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360051806072-How-to-concatenate-files";
+  "https://helpcenter.seqtoid.org/articles/concatenate-sequence-files/";
 export const CONCAT_FILES_HELP_LINK_ONT =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360051806072-Concatenate-Sequence-Files#automatic-concatenation-nanopore";
+  "https://helpcenter.seqtoid.org/articles/concatenate-sequence-files/#automatic-concatenation-of-nanopore-sequencing-files";
 export const PROJECT_SHARING_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360035296573-Upload-Data-through-the-Web-App#Project-Sharing";
+  "https://helpcenter.seqtoid.org/articles/upload-mngs-illumina-data-through-the-web-app/#project-sharing";
 export const AMR_PIPELINE_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15091031482644-AMR-Pipeline-Workflow";
+  "https://helpcenter.seqtoid.org/articles/amr-pipeline-workflow/";
 
-export const CONTACT_US_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/requests/new";
+export const CONTACT_US_LINK = "https://helpcenter.seqtoid.org/contact";
 
 export const WHITE_PAPER_LINK =
   "https://academic.oup.com/gigascience/article/9/10/giaa111/5918865";
@@ -71,12 +69,12 @@ export const WORKFLOWS_CHANGELOG_LINK =
 
 // Links for pipeline version indicator
 export const MNGS_ILLUMINA_UPLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360035296573-Upload-mNGS-Data-through-the-Web-App#project-selection";
+  "https://helpcenter.seqtoid.org/articles/upload-mngs-illumina-data-through-the-web-app/#project-selection";
 export const MNGS_NANOPORE_UPLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13830756964372-Upload-Nanopore-Data-#Upload-Data";
+  "https://helpcenter.seqtoid.org/articles/upload-nanopore-data/#upload-data";
 export const AMR_UPLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15312621892372-Upload-or-Select-Data-for-AMR-Analysis#upload-data";
+  "https://helpcenter.seqtoid.org/articles/upload-or-select-data-for-amr-analysis/#upload-data-for-amr-analysis";
 export const SARS_COV_2_UPLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360059656311-Upload-Data-and-Assemble-SARS-CoV-2-Genomes-Using-the-Web-App";
+  "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/";
 export const VIRAL_CONSENSUS_GENOME_UPLOAD_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/14783973727636-Upload-Viral-Genome-Data-through-the-Web-App#upload-samples";
+  "https://helpcenter.seqtoid.org/articles/upload-viral-genome-data-through-the-web-app/";

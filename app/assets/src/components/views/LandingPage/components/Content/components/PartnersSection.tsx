@@ -13,7 +13,7 @@ const PartnersSection = () => {
         <div className={cs.partnersSection__textBox}>
           <h2>We Work Closely with Trusted Partners</h2>
           <p>
-            CZ ID collaborates with trusted partners in the bioinformatics,
+            SeqtoID collaborates with trusted partners in the bioinformatics,
             infectious disease, and sequencing ecosystem.
           </p>
         </div>

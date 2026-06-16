@@ -32,11 +32,11 @@ export class BasespaceIntegration extends React.Component<BasespaceIntegrationPr
           {accessToken ? (
             <div>
               <div className={cs.message}>
-                You&apos;ve successfully authorized CZ ID to connect to
+                You&apos;ve successfully authorized SeqtoID to connect to
                 Basespace!
               </div>
               <div className={cs.smallMessage}>
-                You can now return to the CZ ID Upload page.
+                You can now return to the SeqtoID Upload page.
               </div>
             </div>
           ) : (

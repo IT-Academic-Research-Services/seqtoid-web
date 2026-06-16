@@ -21,19 +21,19 @@ export const PrivacyNotice = () => {
         &quot; us,&quot; or &quot;our&quot;) in collaboration with the Chan
         Zuckerberg Initiative Foundation (“CZIF”), a 501(c)(3) nonprofit private
         foundation, provides the Chan Zuckerberg ID platform
-        (&quot;Services&quot; or &quot;CZ ID&quot;) in partnership with the Chan
-        Zuckerberg Initiative, LLC (&quot;CZI&quot;). This Data Privacy Policy
-        (&quot;Privacy Policy&quot;) describes the types of information we
-        collect or that is uploaded by website visitors (&quot;Visitors&quot;)
-        and registered users (&quot;Users&quot;), and how we use, disclose, and
-        protect that information.
+        (&quot;Services&quot; or &quot;SeqtoID&quot;) in partnership with the
+        Chan Zuckerberg Initiative, LLC (&quot;CZI&quot;). This Data Privacy
+        Policy (&quot;Privacy Policy&quot;) describes the types of information
+        we collect or that is uploaded by website visitors
+        (&quot;Visitors&quot;) and registered users (&quot;Users&quot;), and how
+        we use, disclose, and protect that information.
       </p>
       <p>
         For ease of understanding, we’ve created the below Summary Table, which
         pulls out some key points. More details can be found in our{" "}
         <a href="/faqs">FAQ</a>, as well as the full Privacy Policy below and
         the <a href="/terms">Terms of Use</a> (“Terms”) that applies to your use
-        of CZ ID.
+        of SeqtoID.
       </p>
     </>
   );
@@ -51,7 +51,7 @@ export const PrivacyNotice = () => {
           </tr>
           <tr className={cs.sectionRow}>
             <td colSpan={5}>
-              <b>Data you upload to or create using CZ ID</b>
+              <b>Data you upload to or create using SeqtoID</b>
             </td>
           </tr>
           <tr className={cs.contentRow}>
@@ -66,17 +66,17 @@ export const PrivacyNotice = () => {
               all human genetic information, regardless of host. We use the
               remaining data, with Sample Metadata, to create Reports and
               Visualizations showing the microorganisms in your sample. These
-              Reports and Visualizations can be shared with other CZ ID users.
+              Reports and Visualizations can be shared with other SeqtoID users.
             </td>
             <td>
-              Raw Sample Data is not shared with any other CZ ID user, nor is it
-              ever accessed by anyone working on CZ ID unless specifically
+              Raw Sample Data is not shared with any other SeqtoID user, nor is
+              it ever accessed by anyone working on SeqtoID unless specifically
               requested by a User, such as to debug an issue. This data is
               disclosed to our service providers (ex: AWS) in order to operate
               and secure the service.
             </td>
             <td rowSpan={4}>
-              Users can request deletion of Raw Sample Data or their CZ ID
+              Users can request deletion of Raw Sample Data or their SeqtoID
               account data by contacting us at{" "}
               <a href="mailto:privacy@czid.org">privacy@czid.org</a> and we will
               fulfill the request within the timelines set forth under
@@ -97,18 +97,18 @@ export const PrivacyNotice = () => {
               <div>
                 <p>
                   Report Data and Visualizations that Users create can include
-                  Sample Metadata. CZ ID Users may choose to share that Report
+                  Sample Metadata. SeqtoID Users may choose to share that Report
                   Data and/or Visualizations (including Sample Metadata) with
-                  other CZ ID Users.
+                  other SeqtoID Users.
                 </p>
                 <br />
                 <p>
                   This data is also shared with technical partners (Chan
                   Zuckerberg Initiative, LLC - CZI LLC) and service providers
-                  (ex: AWS) that help operate, improve, and secure CZ ID. CZI
+                  (ex: AWS) that help operate, improve, and secure SeqtoID. CZI
                   LLC and service providers are limited by this Privacy Policy
                   and will not use any data shared with them for any purpose
-                  beyond operating, improving, and securing CZ ID.
+                  beyond operating, improving, and securing SeqtoID.
                 </p>
                 <br />
                 <p>
@@ -142,7 +142,7 @@ export const PrivacyNotice = () => {
           </tr>
           <tr className={cs.sectionRow}>
             <td colSpan={5}>
-              <b>Data CZ ID collects</b>
+              <b>Data SeqtoID collects</b>
             </td>
           </tr>
           <tr className={cs.contentRow}>
@@ -150,34 +150,34 @@ export const PrivacyNotice = () => {
               <b>User Data</b>
             </td>
             <td>
-              Data about researchers with CZ ID accounts such as name, email,
-              institution, basic information about how they are using CZ ID (ex:
-              search queries), and information provided through surveys, during
-              an in-person event, or for user support (ex: resolving support
-              requests).
+              Data about researchers with SeqtoID accounts such as name, email,
+              institution, basic information about how they are using SeqtoID
+              (ex: search queries), and information provided through surveys,
+              during an in-person event, or for user support (ex: resolving
+              support requests).
             </td>
             <td>
-              We use this data only to operate, secure, and improve the CZ ID
+              We use this data only to operate, secure, and improve the SeqtoID
               services.
             </td>
             <td>
               <div>
                 <p>
-                  Basic CZ ID account information such as name and institution
-                  may be visible to other CZ ID Users (ex: with collaborators on
-                  a shared project).
+                  Basic SeqtoID account information such as name and institution
+                  may be visible to other SeqtoID Users (ex: with collaborators
+                  on a shared project).
                 </p>
                 <br />
                 <p>
                   This data is also shared with technical partners (CZI LLC) and
                   service providers (ex: AWS) that help operate, improve, and
-                  secure CZ ID.
+                  secure SeqtoID.
                 </p>
                 <br />
                 <p>
                   CZI LLC and service providers are limited by this Privacy
                   Policy and will not use any data shared with them for any
-                  purpose beyond operating, improving, and securing CZ ID.
+                  purpose beyond operating, improving, and securing SeqtoID.
                 </p>
                 <br />
                 <p>
@@ -187,7 +187,7 @@ export const PrivacyNotice = () => {
               </div>
             </td>
             <td rowSpan={2}>
-              Users can request deletion of their CZ ID account data by
+              Users can request deletion of their SeqtoID account data by
               contacting us at{" "}
               <a href="mailto:privacy@czid.org">privacy@czid.org</a> and we will
               fulfill the request within the timelines set forth under
@@ -201,10 +201,11 @@ export const PrivacyNotice = () => {
             </td>
             <td>
               Device Data (ex: browser type, operating system, and IP address)
-              and Analytics Information (ex: links within CZ ID you click on and
-              how often you log into CZ ID) includes basic information about how
-              Users and Visitors are interacting with CZ ID and a general
-              location (i.e. country) of where they are accessing the Services.
+              and Analytics Information (ex: links within SeqtoID you click on
+              and how often you log into SeqtoID) includes basic information
+              about how Users and Visitors are interacting with SeqtoID and a
+              general location (i.e. country) of where they are accessing the
+              Services.
             </td>
             <td>See above.</td>
             <td>See above.</td>
@@ -214,7 +215,7 @@ export const PrivacyNotice = () => {
               <b>Visitor Data</b>
             </td>
             <td>
-              Data about visitors (non-Users) to CZ ID pages, such as czid.org
+              Data about visitors (non-Users) to SeqtoID pages, such as czid.org
               and includes basic analytics information (ex: links clicked).
             </td>
             <td>See above.</td>
@@ -228,23 +229,23 @@ export const PrivacyNotice = () => {
 
   const renderAboutCZID = () => (
     <>
-      <h3>About CZ ID</h3>
+      <h3>About SeqtoID</h3>
       <p>
-        CZ ID is an online platform designed to enable the research community to
-        research pathogens in metagenomic sequencing and to help further the
-        study of infectious diseases. To do this, CZ ID processes genetic data
+        SeqtoID is an online platform designed to enable the research community
+        to research pathogens in metagenomic sequencing and to help further the
+        study of infectious diseases. To do this, SeqtoID processes genetic data
         in order to identify pathogens contained within.
       </p>
       <p>
-        Here’s how CZ ID works: Users submit Upload Data (as described below).
+        Here’s how SeqtoID works: Users submit Upload Data (as described below).
         This data may contain human and non-human genetic sequences (“Raw Sample
         Data”; as further defined below), as well as information about those
         sequences, such as the date the sample was collected and the host
         species it was collected from (“Sample Metadata” as further defined
         below). For example, a researcher might upload genetic information from
         mosquitoes, which are often a source of infectious disease, or from
-        humans, who can be infected by such diseases. CZ ID then processes this
-        Upload Data in order to identify pathogens found within the genetic
+        humans, who can be infected by such diseases. SeqtoID then processes
+        this Upload Data in order to identify pathogens found within the genetic
         sequence (e.g., the mosquito may be carrying the chikungunya virus).
       </p>
       <p>
@@ -252,17 +253,17 @@ export const PrivacyNotice = () => {
         dashboard that helps researchers better understand pathogens.
       </p>
       <p>
-        CZ ID also collects information about Users in order to offer and
+        SeqtoID also collects information about Users in order to offer and
         improve the Service. Other than basic information required to create an
         account (e.g. email address, name), the User determines what information
-        they want to upload onto CZ ID. Please note: CZ ID is not designed for
-        or directed toward children under the age of sixteen and we do not have
-        actual knowledge that we have sold or shared the personal information of
-        users under 16 years of age. If we become aware that we have the
-        information of such children collected through CZ ID, we will promptly
-        delete it.
+        they want to upload onto SeqtoID. Please note: SeqtoID is not designed
+        for or directed toward children under the age of sixteen and we do not
+        have actual knowledge that we have sold or shared the personal
+        information of users under 16 years of age. If we become aware that we
+        have the information of such children collected through SeqtoID, we will
+        promptly delete it.
       </p>
-      <h2>Data CZ ID Collects</h2>
+      <h2>Data SeqtoID Collects</h2>
       <p>
         We will never share your personal information for behavioral advertising
         purposes nor will we ever sell your personal information. We do collect,
@@ -277,7 +278,7 @@ export const PrivacyNotice = () => {
         <span className={cs.number}>1.</span>Upload Data.
       </h2>
       <p>
-        “Upload Data” is data that Users upload to CZ ID (other than the
+        “Upload Data” is data that Users upload to SeqtoID (other than the
         information Users provide during registration to create an account). As
         explained below, Upload Data consists of genetic sequence information
         (human or non-human) and metadata about those genetic sequences (such as
@@ -331,7 +332,7 @@ export const PrivacyNotice = () => {
         listItems={[
           `To create Report Data (described below), including new reports for
         Users when we update our Data Pipeline.`,
-          `To improve the way CZ ID creates Report Data, including improving
+          `To improve the way SeqtoID creates Report Data, including improving
         our Data Pipeline.`,
           `To debug in the event you reach out to us with a specific issue related to your Upload Data. `,
         ]}
@@ -344,19 +345,19 @@ export const PrivacyNotice = () => {
         <div className={cs.underlineHeader}>How We Share Upload Data</div>
       </p>
       <p>
-        Raw Sample Data is <b>never</b> disclosed to any other CZ ID User other
-        than the User that uploaded the Sample, but it is disclosed to service
-        providers in order to provide the Services, such as AWS for data
-        storage. Even staff working on CZ ID cannot access this information
+        Raw Sample Data is <b>never</b> disclosed to any other SeqtoID User
+        other than the User that uploaded the Sample, but it is disclosed to
+        service providers in order to provide the Services, such as AWS for data
+        storage. Even staff working on SeqtoID cannot access this information
         except as specifically instructed by a User, such as to debug an issue.
       </p>
       <p>
-        In order to advance CZ ID&apos;s goal of creating a global pathogen
+        In order to advance SeqtoID&apos;s goal of creating a global pathogen
         dashboard for researchers, Users will have the option (at their
-        discretion) to share Report Data and Sample Metadata with all CZ ID
+        discretion) to share Report Data and Sample Metadata with all SeqtoID
         Users. Users can also choose to share their Report Data and Sample
         Metadata by creating Projects (groups of Reports) and sharing those
-        Projects with other CZ ID Users.
+        Projects with other SeqtoID Users.
       </p>
       <p>
         If you have questions about how this to share your Report Data and
@@ -388,22 +389,23 @@ export const PrivacyNotice = () => {
         <span className={cs.number}>2.</span>Report Data.
       </h2>
       <p>
-        Report Data is information CZ ID produced from Upload Data. We generate
-        Report Data by processing Upload Data through our Data Pipeline. The
-        “Data Pipeline” cleans (e.g., by removing duplicate nucleotides) and
-        analyzes (e.g., by matching Raw Sample Data nucleotide sequences with
-        known pathogen sequences) the Upload Data. Report Data may include, for
-        example, data about the pathogen sequences identified in the Raw Sample
-        Data and the frequency of such identification (“Pathogen Data”) or raw
-        numeric counts of non-personally identifying gene expression profiles
-        that were found in the Raw Sample Data (“Gene Counts”).
+        Report Data is information SeqtoID produced from Upload Data. We
+        generate Report Data by processing Upload Data through our Data
+        Pipeline. The “Data Pipeline” cleans (e.g., by removing duplicate
+        nucleotides) and analyzes (e.g., by matching Raw Sample Data nucleotide
+        sequences with known pathogen sequences) the Upload Data. Report Data
+        may include, for example, data about the pathogen sequences identified
+        in the Raw Sample Data and the frequency of such identification
+        (“Pathogen Data”) or raw numeric counts of non-personally identifying
+        gene expression profiles that were found in the Raw Sample Data (“Gene
+        Counts”).
       </p>
       <p>
         Once Raw Sample Data has been put through the Data Pipeline, the Report
         Data that is produced no longer includes any human genetic sequence
         data, and is not personal data, and does not, on its own, permit
         association with any specific individual. If you are able to find human
-        sequence data in any Reports in CZ ID, please let us know at{" "}
+        sequence data in any Reports in SeqtoID, please let us know at{" "}
         <a href="mailto:privacy@czid.org">privacy@czid.org</a> and we will
         address it.
       </p>
@@ -413,8 +415,8 @@ export const PrivacyNotice = () => {
       <p>
         As mentioned above in Section 1 (How We Disclose Upload Data), Users can
         choose to share their Report Data by creating Projects (groups of
-        Reports) and share those Projects with other CZ ID Users or Users can
-        decide to share it more broadly with all CZ ID Users by marking a
+        Reports) and share those Projects with other SeqtoID Users or Users can
+        decide to share it more broadly with all SeqtoID Users by marking a
         Project as “Public.” This <b>does not</b> include Raw Sample Data -
         those genetic sequence files are available only to the User that
         uploaded the Sample.
@@ -437,7 +439,7 @@ export const PrivacyNotice = () => {
       </h2>
       <p>
         Visitor and User Data is the information we collect from you and your
-        use of CZ ID.
+        use of SeqtoID.
       </p>
       <p>
         <div className={cs.underlineHeader}>What We Collect</div>
@@ -498,12 +500,12 @@ export const PrivacyNotice = () => {
       <List
         listItems={[
           `To identify you, create a profile for Users, and verify User’s
-          identity so you can log in to and use CZ ID.`,
+          identity so you can log in to and use SeqtoID.`,
           `To provide you with notices about your account and updates about
-          CZ ID.`,
+          SeqtoID.`,
           `To respond to your inquiries and requests.`,
-          `To learn about what Users find valuable with CZ ID, to analyze how Users are using CZ ID, and to learn the general location (i.e., country) of where Users are accessing the Service so we can optimize and improve it.`,
-          `To protect the security and integrity of CZ ID.`,
+          `To learn about what Users find valuable with SeqtoID, to analyze how Users are using SeqtoID, and to learn the general location (i.e., country) of where Users are accessing the Service so we can optimize and improve it.`,
+          `To protect the security and integrity of SeqtoID.`,
         ]}
       />
       <p>
@@ -520,7 +522,7 @@ export const PrivacyNotice = () => {
         listItems={[
           `We (along with CZIF and CZI LLC) have a legitimate interest in using personal
         data within Visitor Data and User Data in the ways described in this
-        Privacy Policy to operate, secure, and improve CZ ID. This allows us to
+        Privacy Policy to operate, secure, and improve SeqtoID. This allows us to
         improve the service that we provide to Users which, in turn, supports
         research regarding the study of infectious disease with the potential to
               benefit global public health.`,
@@ -538,13 +540,13 @@ export const PrivacyNotice = () => {
       <p>We retain your personal data as long as is reasonably necessary:</p>
       <List
         listItems={[
-          `Raw Sample Data, Sample Metadata, and Report Data is retained until Users delete it from CZ ID. Users may submit deletion requests by emailing privacy@czid.org and we will delete the requested Raw Sample Data and corresponding Report Data (including Sample Metadata) within the timelines set forth under applicable privacy laws.`,
-          `User Data is retained until Users close their CZ ID account as such data is required to manage the service. Users may submit a request for account closure by emailing privacy@czid.org. We will delete your data within 60 days following the close of your account.`,
+          `Raw Sample Data, Sample Metadata, and Report Data is retained until Users delete it from SeqtoID. Users may submit deletion requests by emailing privacy@czid.org and we will delete the requested Raw Sample Data and corresponding Report Data (including Sample Metadata) within the timelines set forth under applicable privacy laws.`,
+          `User Data is retained until Users close their SeqtoID account as such data is required to manage the service. Users may submit a request for account closure by emailing privacy@czid.org. We will delete your data within 60 days following the close of your account.`,
         ]}
       />
       <p>
         Please note that we do not control, and so cannot delete, personal data
-        that Users have copied outside of CZ ID.
+        that Users have copied outside of SeqtoID.
       </p>
     </>
   );
@@ -556,11 +558,11 @@ export const PrivacyNotice = () => {
       </h2>
       <p>
         CZ Biohub and CZIF collaborate closely in order to build, design, and
-        operate CZ ID so that it can be as useful as possible to researchers and
-        the public health community. CZI LLC is our primary technology partner,
-        focusing on CZ ID infrastructure, security, and compliance. The three
-        parties are all data controllers for data within CZ ID and will use data
-        only as described in this Privacy Policy.
+        operate SeqtoID so that it can be as useful as possible to researchers
+        and the public health community. CZI LLC is our primary technology
+        partner, focusing on SeqtoID infrastructure, security, and compliance.
+        The three parties are all data controllers for data within SeqtoID and
+        will use data only as described in this Privacy Policy.
       </p>
       <p>
         We also disclose Upload Data, Report Data, Visitor Data, and User Data
@@ -573,9 +575,9 @@ export const PrivacyNotice = () => {
         <a href="mailto:privacy@czid.org">privacy@czid.org</a>.
       </p>
       <p>
-        If we can no longer keep operating CZ ID or believe that its purpose is
-        better served by having another entity operating it, we will transfer CZ
-        ID and all data existing therein (Upload Data, Report Data, Visitor
+        If we can no longer keep operating SeqtoID or believe that its purpose
+        is better served by having another entity operating it, we will transfer
+        CZ ID and all data existing therein (Upload Data, Report Data, Visitor
         Data, and User Data) so that the Users can continue to be served. We
         will always let you know before this happens, and you will have the
         option to delete your account and any data you’ve uploaded prior to any
@@ -602,29 +604,30 @@ export const PrivacyNotice = () => {
       </h2>
       <p>
         We use industry standard security measures to ensure the
-        confidentiality, integrity and availability of data uploaded into CZ ID.
-        This includes practices like encrypting connections to CZ ID using TLS,
-        hosting CZ ID on leading cloud providers with robust physical security,
-        and ensuring that access to any personal data within CZ ID by staff
-        working on the tool is strictly limited. And as mentioned above, Raw
-        Sample Data is <b>not shared</b> with anyone other than the User that
-        uploaded the Sample or the service providers necessary to operate the
-        service. Even staff working on CZ ID cannot access this information
-        except as specifically instructed by a User, such as to debug an issue.
+        confidentiality, integrity and availability of data uploaded into
+        SeqtoID. This includes practices like encrypting connections to SeqtoID
+        using TLS, hosting SeqtoID on leading cloud providers with robust
+        physical security, and ensuring that access to any personal data within
+        SeqtoID by staff working on the tool is strictly limited. And as
+        mentioned above, Raw Sample Data is <b>not shared</b> with anyone other
+        than the User that uploaded the Sample or the service providers
+        necessary to operate the service. Even staff working on SeqtoID cannot
+        access this information except as specifically instructed by a User,
+        such as to debug an issue.
       </p>
       <p>
         Security takes ongoing work and we will continue to monitor and adjust
-        our security measures as CZ ID develops. For more information you can
+        our security measures as SeqtoID develops. For more information you can
         take a look at the{" "}
         <a href="https://czid.org/security_white_paper">
-          CZ ID Security White Paper
+          SeqtoID Security White Paper
         </a>{" "}
         which provides details regarding our infrastructure, application, and
         physical security, as well as our security governance and policies.
         Please notify us immediately at{" "}
         <a href="mailto:security@czid.org">security@czid.org</a> if you suspect
         your account has been compromised or are aware of any other security
-        issues relating to CZ ID.
+        issues relating to SeqtoID.
       </p>
     </>
   );
@@ -637,8 +640,8 @@ export const PrivacyNotice = () => {
       <p>If you are a User, you have the following choices and rights:</p>
       <List
         listItems={[
-          `Users are able to request the deletion of User Data that constitutes their personal data or Raw Sample Data that they submitted to CZ ID.`,
-          `Users are able to access and download Report Data relating to Upload Data they submitted within CZ ID.`,
+          `Users are able to request the deletion of User Data that constitutes their personal data or Raw Sample Data that they submitted to SeqtoID.`,
+          `Users are able to access and download Report Data relating to Upload Data they submitted within SeqtoID.`,
           <>
             Users may also object to the processing of User Data in certain
             circumstances by emailing{" "}
@@ -661,8 +664,8 @@ export const PrivacyNotice = () => {
       </p>
       <List
         listItems={[
-          `We require Users who submit Upload Data to ensure they have all necessary consents, permissions, and authorizations to do so. We are unable to relate Upload Data to identifiable individuals and so cannot directly process requests from persons whose personal sequencing data may be contained in Upload Data. As a result, CZ ID is able to receive access, restriction, rectification, objection, or deletion requests only from Users.`,
-          `If you believe your information has been uploaded to CZ ID, you should contact the researcher or User that uploaded this information to (i) request access to the information, (ii) object to the processing of the information, or (iii) seek deletion, restriction, or rectification of the information. Similarly, if you previously provided consent to a researcher or User, you may have the right to withdraw that consent. You should contact the researcher or User to make such a withdrawal or otherwise exercise your rights.`,
+          `We require Users who submit Upload Data to ensure they have all necessary consents, permissions, and authorizations to do so. We are unable to relate Upload Data to identifiable individuals and so cannot directly process requests from persons whose personal sequencing data may be contained in Upload Data. As a result, SeqtoID is able to receive access, restriction, rectification, objection, or deletion requests only from Users.`,
+          `If you believe your information has been uploaded to SeqtoID, you should contact the researcher or User that uploaded this information to (i) request access to the information, (ii) object to the processing of the information, or (iii) seek deletion, restriction, or rectification of the information. Similarly, if you previously provided consent to a researcher or User, you may have the right to withdraw that consent. You should contact the researcher or User to make such a withdrawal or otherwise exercise your rights.`,
         ]}
       />
       <p>
@@ -708,22 +711,22 @@ export const PrivacyNotice = () => {
         <span className={cs.number}>9.</span>Data Transfers.
       </h2>
       <p>
-        CZ ID is a global service. By using CZ ID, Users authorize us to
+        SeqtoID is a global service. By using SeqtoID, Users authorize us to
         transfer and store the uploaded data outside of your home country,
         including to the United States, for the purposes described in this
         Privacy Policy.
       </p>
       <p>
-        If you want to use CZ ID, you must first agree to our{" "}
-        <a href="/terms">Terms</a>, which set out the contract between CZ ID and
-        our Users. We operate in countries worldwide (including in the United
-        States) and use technical infrastructure in the United States to deliver
-        the Services to you. In accordance with the contract between us and our
-        Users, we need to transfer personal data to the United States and to
-        other jurisdictions as necessary to provide the Services. Such transfers
-        are necessary for important reasons of public interest, namely global
-        health and providing information which can be used by researchers to
-        better understand the spread of infectious diseases. Please note that
+        If you want to use SeqtoID, you must first agree to our{" "}
+        <a href="/terms">Terms</a>, which set out the contract between SeqtoID
+        and our Users. We operate in countries worldwide (including in the
+        United States) and use technical infrastructure in the United States to
+        deliver the Services to you. In accordance with the contract between us
+        and our Users, we need to transfer personal data to the United States
+        and to other jurisdictions as necessary to provide the Services. Such
+        transfers are necessary for important reasons of public interest, namely
+        global health and providing information which can be used by researchers
+        to better understand the spread of infectious diseases. Please note that
         the privacy protections and the rights of authorities to access your
         information in these countries may not be the same as in your home
         country.
@@ -777,7 +780,7 @@ export const PrivacyNotice = () => {
       <List
         listItems={[
           `The categories of personal information, if any, that have been sold, shared, or disclosed for a business purpose to third parties.`,
-          `"The categories of third parties to whom personal information was sold (if applicable), shared, or disclosed for a business purpose. Note: CZ ID does not share your personal information for behavioral advertising purposes nor will we ever sell your personal information.`,
+          `"The categories of third parties to whom personal information was sold (if applicable), shared, or disclosed for a business purpose. Note: SeqtoID does not share your personal information for behavioral advertising purposes nor will we ever sell your personal information.`,
         ]}
       />
       <p>
@@ -792,7 +795,7 @@ export const PrivacyNotice = () => {
         listItems={[
           <>
             <strong>Information we collect.</strong>{" "}
-            {`We have collected the following categories of personal information from consumers within the past 12 months: (1) identifiers; (2) professional or employment-related information, (3) internet or other electronic network activity within CZ ID; (4) geolocation data; (5) User uploaded genetic data; (6) inferences drawn from your internet or other electronic network activity within CZ ID; and (7) information provided within survey responses.`}
+            {`We have collected the following categories of personal information from consumers within the past 12 months: (1) identifiers; (2) professional or employment-related information, (3) internet or other electronic network activity within SeqtoID; (4) geolocation data; (5) User uploaded genetic data; (6) inferences drawn from your internet or other electronic network activity within SeqtoID; and (7) information provided within survey responses.`}
           </>,
           <>
             <strong>Sources of information.</strong>{" "}
@@ -811,7 +814,7 @@ export const PrivacyNotice = () => {
         listItems={[
           <>
             <strong>Information we disclose.</strong>{" "}
-            {`We have disclosed the following categories of personal information in order to provide the Service within the past 12 months: (1) identifiers; (2) professional or employment-related information, (3) internet or other electronic network activity within CZ ID; (4) geolocation data; (5) User uploaded genetic data; (6) inferences drawn from your internet or other electronic network activity within CZ ID; and (7) information provided within survey responses.`}
+            {`We have disclosed the following categories of personal information in order to provide the Service within the past 12 months: (1) identifiers; (2) professional or employment-related information, (3) internet or other electronic network activity within SeqtoID; (4) geolocation data; (5) User uploaded genetic data; (6) inferences drawn from your internet or other electronic network activity within SeqtoID; and (7) information provided within survey responses.`}
           </>,
           <>
             <strong>Third parties to whom we disclose.</strong>{" "}

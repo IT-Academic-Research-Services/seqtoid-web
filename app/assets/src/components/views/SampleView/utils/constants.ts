@@ -232,7 +232,7 @@ export const CATEGORIES = [
 const DOC_BASE_LINK =
   "https://help.czid.org/hc/en-us/articles/360034790574-Single-Sample-Report-Table";
 const ONT_HELP_LINK =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13832912199188-Analyze-Nanopore-Data#sample-report";
+  "https://helpcenter.seqtoid.org/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
 
 export const REPORT_TABLE_COLUMNS = {
   NT_aggregatescore: {

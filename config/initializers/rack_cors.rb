@@ -6,7 +6,7 @@ if defined? Rack::Cors
     allow do
       origins [
         # SERVER_DOMAIN should be set to the current env root web address
-        # such as https://staging.idseq.net/
+        # such as https://staging.seqtoid.org/
         ENV["SERVER_DOMAIN"],
         *Rails.application.config.allowed_cors_origins,
         # All other domains should be added in env config files such as prod.rb.

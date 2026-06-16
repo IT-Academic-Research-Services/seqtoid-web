@@ -23,7 +23,7 @@ export const SHARED_SAMPLE_TABLE_COLUMNS = {
   readsLost: {
     tooltip:
       "Reads Lost:Reads filtered during each step of the pipeline. The full length of the bar represents the Total Reads. Passed Filters represent the reads that passed quality control and filtering steps. Learn more.",
-    link: "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360053758913-Sample-QC#Reads-Lost",
+    link: "https://helpcenter.seqtoid.org/articles/sample-qc/#reads-lost",
   },
   sample_type: {
     tooltip: "User-supplied metadata field indicating the sample type.",

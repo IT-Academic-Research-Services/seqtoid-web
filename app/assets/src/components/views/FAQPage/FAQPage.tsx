@@ -15,39 +15,41 @@ export class FAQPage extends React.Component {
         </div>
         <Accordion
           className={cs.question}
-          header={<h3>Does CZ ID own any of the data I upload to the tool?</h3>}
+          header={
+            <h3>Does SeqtoID own any of the data I upload to the tool?</h3>
+          }
         >
           <p>
-            No. The data you upload into CZ ID is yours and so is any research
+            No. The data you upload into SeqtoID is yours and so is any research
             you create with it. We don’t own it and will never sell it. You do,
-            however, give us limited rights to use it for the CZ ID service.
+            however, give us limited rights to use it for the SeqtoID service.
           </p>
         </Accordion>
         <Accordion
           className={cs.question}
-          header={<h3>Does CZ ID sell the data I upload?</h3>}
+          header={<h3>Does SeqtoID sell the data I upload?</h3>}
         >
           <p>No.</p>
         </Accordion>
         <Accordion
           className={cs.question}
           header={
-            <h3>How does CZ ID share the data I upload with other users?</h3>
+            <h3>How does SeqtoID share the data I upload with other users?</h3>
           }
         >
           <List
             listItems={[
               <React.Fragment key={nanoid()}>
-                When you upload data to CZ ID, you control who the data is
-                shared with. CZ ID relies on three key categories of data, and
+                When you upload data to SeqtoID, you control who the data is
+                shared with. SeqtoID relies on three key categories of data, and
                 we want you to understand how each is treated.{" "}
                 <b>Upload Data</b> refers to the original fastq sequence files
-                you upload into CZ ID-- this data will only be available to you,
-                the uploader, no matter who you add to the project.{" "}
+                you upload into SeqtoID-- this data will only be available to
+                you, the uploader, no matter who you add to the project.{" "}
                 <b>Sample Metadata</b> includes details about the sample that
                 researchers manually enter, such as when and where a sample was
                 collected and its type (e.g. synovial fluid or cerebrospinal
-                fluid). <b>Report Data</b> includes the pathogen report CZ ID
+                fluid). <b>Report Data</b> includes the pathogen report SeqtoID
                 generates from the Upload Data, Sample Metadata, and other data
                 derived from the Upload, such as phylogenetic trees.
               </React.Fragment>,
@@ -57,10 +59,10 @@ export class FAQPage extends React.Component {
               </React.Fragment>,
               <React.Fragment key={nanoid()}>
                 You can decide to share your Report Data and associated Sample
-                Metadata with all CZ ID users but that is completely up to you.
-                You can choose to share your Report Data with a small group of
-                CZ ID users, by adding them to a Project, or with all other CZ
-                ID users by marking a Project as {'"Public"'}.
+                Metadata with all SeqtoID users but that is completely up to
+                you. You can choose to share your Report Data with a small group
+                of SeqtoID users, by adding them to a Project, or with all other
+                CZ ID users by marking a Project as {'"Public"'}.
               </React.Fragment>,
             ]}
           />
@@ -68,7 +70,7 @@ export class FAQPage extends React.Component {
         <Accordion
           className={cs.question}
           header={
-            <h3>Will CZ ID use my Upload Data to write research papers?</h3>
+            <h3>Will SeqtoID use my Upload Data to write research papers?</h3>
           }
         >
           <p>No, we will not.</p>
@@ -80,12 +82,12 @@ export class FAQPage extends React.Component {
           <List
             listItems={[
               <React.Fragment key={nanoid()}>
-                You should not be able to find any human sequence data in CZ ID
-                other than the original fastq files you yourself have uploaded.
-                This is because we have a multi-step process in place to filter
-                out and remove host sequence data in order to generate Reports.
-                If you are able to find human sequence data elsewhere in CZ ID,
-                please let us know at{" "}
+                You should not be able to find any human sequence data in
+                SeqtoID other than the original fastq files you yourself have
+                uploaded. This is because we have a multi-step process in place
+                to filter out and remove host sequence data in order to generate
+                Reports. If you are able to find human sequence data elsewhere
+                in SeqtoID, please let us know at{" "}
                 <a href="mailto:privacy@czid.org">privacy@czid.org</a>, and we
                 will remove it. The fastq files you uploaded are only available
                 to you, the uploader.
@@ -106,22 +108,22 @@ export class FAQPage extends React.Component {
         </Accordion>
         <Accordion
           className={cs.question}
-          header={<h3>Can I use CZ ID for clinical diagnostic purposes?</h3>}
+          header={<h3>Can I use SeqtoID for clinical diagnostic purposes?</h3>}
         >
           <p>
-            No. CZ ID is for research use only. It is not for diagnostic,
+            No. SeqtoID is for research use only. It is not for diagnostic,
             clinical or commercial use.
           </p>
         </Accordion>
         <Accordion
           className={cs.question}
           header={
-            <h3>What should I think about before uploading data to CZ ID?</h3>
+            <h3>What should I think about before uploading data to SeqtoID?</h3>
           }
         >
           <p>
             You should make sure you have any permissions or consents necessary
-            in order to upload and use the samples within CZ ID. Please check
+            in order to upload and use the samples within SeqtoID. Please check
             with your institution or organization if you have questions about
             meeting this responsibility.
           </p>
@@ -159,8 +161,8 @@ export class FAQPage extends React.Component {
                 maintain the anonymity of the uploaded data.
               </React.Fragment>,
               <React.Fragment key={nanoid()}>
-                Other metadata can be uploaded to CZ ID but is not required and
-                may be deleted at any point. We have put together a metadata
+                Other metadata can be uploaded to SeqtoID but is not required
+                and may be deleted at any point. We have put together a metadata
                 ontology that you can find{" "}
                 <RouterLink to="/metadata/dictionary">here </RouterLink>
                 that does not include any fields where Protected Health
@@ -173,13 +175,13 @@ export class FAQPage extends React.Component {
           className={cs.question}
           header={
             <h3 className={cs.multiLine}>
-              Under what circumstances would CZ ID transfer rights to the data?
-              Why, and what choices would I have?
+              Under what circumstances would SeqtoID transfer rights to the
+              data? Why, and what choices would I have?
             </h3>
           }
         >
           <p>
-            If we can no longer keep operating CZ ID (which we hope won’t
+            If we can no longer keep operating SeqtoID (which we hope won’t
             happen) or believe the community is better served by someone else
             operating it, we will transfer the project and all existing data in
             the tool so that the community can continue to be served. We will
@@ -215,11 +217,11 @@ export class FAQPage extends React.Component {
         </Accordion>
         <Accordion
           className={cs.question}
-          header={<h3>Do you use Cookies in CZ ID?</h3>}
+          header={<h3>Do you use Cookies in SeqtoID?</h3>}
         >
           <p>
             Yes, we use cookies and similar technologies to help improve the
-            website and provide a better experience while using the CZ ID
+            website and provide a better experience while using the SeqtoID
             service. We do not use cookies for advertising purposes.
           </p>
           <p>
@@ -235,17 +237,17 @@ export class FAQPage extends React.Component {
             listItems={[
               <React.Fragment key={nanoid()}>
                 <span className={cs.listItemLabel}>Session cookies</span> which
-                are specific to a particular visit you make to CZ ID and hold
+                are specific to a particular visit you make to SeqtoID and hold
                 certain information as you browse different pages so you don’t
                 have to re-enter information every time you change pages.
                 Session cookies expire and delete themselves automatically in a
-                short period of time like after you leave CZ ID or when you
+                short period of time like after you leave SeqtoID or when you
                 close your web browser.
               </React.Fragment>,
               <React.Fragment key={nanoid()}>
                 <span className={cs.listItemLabel}>Persistent cookies</span>{" "}
                 which remember certain information about your preferences for
-                viewing CZ ID and allow us to recognize you each time you
+                viewing SeqtoID and allow us to recognize you each time you
                 return. Persistent cookies are stored on your browser cache or
                 mobile device until you choose to delete them, and otherwise
                 delete themselves in a standard period of time.
@@ -374,17 +376,17 @@ export class FAQPage extends React.Component {
           className={cs.question}
           header={
             <h3>
-              Where can I learn more information about CZ ID’s commitment to
+              Where can I learn more information about SeqtoID’s commitment to
               security?
             </h3>
           }
         >
           <p>
-            The best place to start is CZ ID’s{" "}
+            The best place to start is SeqtoID’s{" "}
             <a href="/privacy">Privacy Policy</a> and{" "}
             <a href="/terms">Terms of Use</a>. More technical readers should
             take a look at the{" "}
-            <a href="/security_white_paper">CZ ID Security White Paper</a>. In
+            <a href="/security_white_paper">SeqtoID Security White Paper</a>. In
             this paper, you can find additional clarity on details regarding our
             infrastructure, application, and physical security, as well as our
             security governance and policies. If you have additional questions,

@@ -116,7 +116,7 @@ export class RemoteSampleFileUpload extends React.Component<RemoteSampleFileUplo
             <div className={cs.title}>S3 Bucket Instructions</div>
             <List
               listItems={[
-                `Please ensure that CZ ID has permissions to read/list your S3
+                `Please ensure that SeqtoID has permissions to read/list your S3
                 bucket. Contact us for help getting set up.`,
                 `Also convert links like
                 "https://s3-us-west-2.amazonaws.com/your_s3_bucket/rawdata/fastqs"

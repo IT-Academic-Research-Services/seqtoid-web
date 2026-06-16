@@ -3,7 +3,7 @@ import React from "react";
 import AnnouncementBanner from "~/components/common/AnnouncementBanner";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import ToastContainer from "~ui/containers/ToastContainer";
-import { CZIDLogoReversed } from "~ui/icons";
+import { SeqtoIDLogoReversed } from "~ui/icons";
 import { postToUrlWithCSRF } from "~utils/links";
 import cs from "./header.scss";
 import MainMenu from "./MainMenu";
@@ -37,7 +37,7 @@ const Header = ({
     return (
       <div className={cs.header}>
         <div className={cs.logo}>
-          <CZIDLogoReversed className={cs.icon} />
+          <SeqtoIDLogoReversed className={cs.icon} />
         </div>
       </div>
     );
@@ -46,7 +46,7 @@ const Header = ({
     return (
       <div className={cs.header}>
         <div className={cs.logo}>
-          <CZIDLogoReversed className={cs.icon} />
+          <SeqtoIDLogoReversed className={cs.icon} />
         </div>
         <div className={cs.fill} />
         <div className={cs.logout}>
@@ -88,7 +88,7 @@ const Header = ({
             }
             <ExternalLink
               className={cs.link}
-              href="https://chanzuckerberg.zendesk.com/hc/en-us/articles/33940279703828-FAQs-CZ-ID-s-Transfer-to-the-University-of-California-San-Francisco"
+              href="https://helpcenter.seqtoid.org/articles/faqs-czid-s-transfer-to-the-university-of-california-san-francisco/"
             >
               HERE
             </ExternalLink>
@@ -100,7 +100,7 @@ const Header = ({
       <div className={cs.header}>
         <div className={cs.logo}>
           <a href="/">
-            <CZIDLogoReversed className={cs.icon} />
+            <SeqtoIDLogoReversed className={cs.icon} />
           </a>
         </div>
         <div className={cs.fill} />

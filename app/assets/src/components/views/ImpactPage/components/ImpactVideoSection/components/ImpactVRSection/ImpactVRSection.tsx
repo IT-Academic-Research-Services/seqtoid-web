@@ -26,7 +26,7 @@ export const ImpactVRSection = () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                CZ ID video
+                SeqtoID video
               </a>
               .
             </li>
@@ -48,7 +48,7 @@ export const ImpactVRSection = () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                CZ ID video
+                SeqtoID video
               </a>
               .
             </li>

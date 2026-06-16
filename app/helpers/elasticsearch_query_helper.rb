@@ -3,7 +3,7 @@
 module ElasticsearchQueryHelper
   require 'ostruct'
 
-  LAMBDA_ENV = Rails.env.development? || Rails.env.test? ? "staging" : Rails.env
+  LAMBDA_ENV = ENV["LAMBDA_ENV"] || (Rails.env.development? || Rails.env.test? ? "dev" : Rails.env)
 
   config = { host: ENV["HEATMAP_ES_ADDRESS"], transport_options: { request: { timeout: 200 } } }
   ES_CLIENT = Elasticsearch::Client.new(config) unless Rails.env.test?

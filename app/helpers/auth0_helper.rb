@@ -8,7 +8,7 @@ module Auth0Helper
   AUTH_VALID = 'AUTH_VALID'
 
   # This is just a unique namespace for custom claims and it is not linked to any specific environment
-  CUSTOM_CLAIMS_NAMESPACE = "https://idseq.net"
+  CUSTOM_CLAIMS_NAMESPACE = "https://seqtoid.org"
   ROLES_CUSTOM_CLAIM = "#{CUSTOM_CLAIMS_NAMESPACE}/roles"
 
   def auth0_check_user_auth(current_user)
@@ -49,6 +49,13 @@ module Auth0Helper
       auth0_invalidate_application_session
       false
     end
+  end
+
+  def direct_login(user_id)
+    auth_user = User.find(user_id)
+    Rails.logger.info("direct_login: user_id: #{user_id}, auth_user: #{auth_user}")
+    warden.logout(:user)
+    warden.set_user(auth_user, scope: :auth0_user)
   end
 
   def auth0_decode_auth_token

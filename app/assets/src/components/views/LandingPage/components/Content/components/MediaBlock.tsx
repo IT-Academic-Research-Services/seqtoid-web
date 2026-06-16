@@ -125,8 +125,8 @@ const MediaBlock = () => {
       <div className={cs.mediaBlock__contentSection}>
         <h3>Engineered for Scientists</h3>
         <p>
-          CZ ID automates trusted pipelines, so that you can focus your time on
-          analysis and next steps.
+          SeqtoID automates trusted pipelines, so that you can focus your time
+          on analysis and next steps.
         </p>
         <div className={cs.mediaBlock__iconSection}>
           <div className={cs.mediaBlock__iconSection_item}>

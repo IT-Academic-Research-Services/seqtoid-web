@@ -1,7 +1,6 @@
 namespace :taxon_lineage_slice do
   CURRENT_VERSION = "2024-02-06".freeze
   SLICE_NAME = "taxon_lineages_2024_slice.csv".freeze
-  S3_BUCKET_NAME = ENV['S3_DATABASE_BUCKET']
   INDEXES_PREFIX = "ncbi-indexes-prod/#{CURRENT_VERSION}/index-generation-2".freeze
   TAXON_LINEAGE_FILE_KEY = "#{INDEXES_PREFIX}/#{SLICE_NAME}".freeze
 
@@ -13,15 +12,16 @@ namespace :taxon_lineage_slice do
       abort("Taxon Lineage data for #{CURRENT_VERSION} already exists")
     end
 
-    s3 = Aws::S3::Client.new(unsigned_operations: [:get_object])
-    response = s3.get_object(bucket: S3_BUCKET_NAME, key: TAXON_LINEAGE_FILE_KEY)
+    print "Connecting to Taxon Lineage S3 bucket [#{S3_DATABASE_BUCKET}] key [#{TAXON_LINEAGE_FILE_KEY}]"
+    s3 = Aws::S3::Client.new
+    response = s3.get_object(bucket: S3_DATABASE_BUCKET, key: TAXON_LINEAGE_FILE_KEY)
     print "Importing Taxon Lineage data from S3"
 
     chunk_size = 10_000
     rows = []
     counter = 0
 
-    csv_data = response.body.read  # Read the data once
+    csv_data = response.body.read # Read the data once
     total_rows = CSV.parse(csv_data, headers: true).count # Count rows for progress tracking
 
     # Process the CSV in chunks to avoid memory issues
@@ -54,9 +54,15 @@ namespace :taxon_lineage_slice do
   end
 
   task create_taxon_lineage_slice_es_index: :environment do
-    puts "Creating Elasticsearch index for #{CURRENT_VERSION} slice of taxon lineage data"
+    puts "Creating Elasticsearch index for #{CURRENT_VERSION} slice of TaxonLineage data"
     TaxonLineage.__elasticsearch__.create_index!(force: true)
     TaxonLineage.__elasticsearch__.import
     puts "Finished indexing TaxonLineage."
+  end
+
+  task remove_taxon_lineage_slice_es_index: :environment do
+    puts "Removing Elasticsearch index for #{CURRENT_VERSION} slice of TaxonLineage data"
+    TaxonLineage.__elasticsearch__.delete_index!
+    puts "Finished removing TaxonLineage index"
   end
 end

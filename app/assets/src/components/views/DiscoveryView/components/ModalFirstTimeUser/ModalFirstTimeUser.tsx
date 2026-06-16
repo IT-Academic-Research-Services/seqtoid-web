@@ -41,7 +41,7 @@ export const ModalFirstTimeUser = ({ onClose }: ModalFirstTimeUserProps) => {
             .
           </React.Fragment>
         }
-        title="Welcome to CZ ID!"
+        title="Welcome to SeqtoID!"
         titleClassName={cs.titleClassName}
         type="initial-modal"
       />

@@ -1,0 +1,56 @@
+{
+  "family": "{{ .Values.project }}-{{ .Values.env }}-{{ .Values.name }}",
+  "containerDefinitions": [
+    {
+      "name": "idseq-{{ .Values.name }}",
+      "image": "{{ .Values.account_id }}.dkr.ecr.{{ .Values.region }}.amazonaws.com/idseq-web:{{ .Values.tag }}",
+      "cpu": {{ .Values.cpu_worker }},
+      "memoryReservation": {{ .Values.mem_worker }},
+      "essential": true,
+      "command": ["shoryuken {{ .Values.entry_command }}"],
+      "environment": [
+        {
+          "name": "SKIP_TEST_DATABASE",
+          "value": "true"
+        },
+        {
+          "name": "RAILS_LOG_TO_STDOUT",
+          "value": "yes"
+        },
+        {
+          "name": "RAILS_ENV",
+          "value": "{{ .Values.rails_env }}"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "{{ .Values.env }}"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "{{ .Values.region }}"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "{{ .Values.region }}"
+        },
+        {
+          "name": "AWS_ACCOUNT_ID",
+          "value": "{{ .Values.account_id }}"
+        },
+        {
+          "name": "COUNT",
+          "value": "1"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "ecs-logs-{{ .Values.env }}",
+          "awslogs-region": "{{ .Values.region }}",
+          "awslogs-stream-prefix": "idseq-{{ .Values.name }}"
+        }
+      }
+    }
+  ],
+  "taskRoleArn": "{{ .Values.project }}-web-{{ .Values.env }}"
+}

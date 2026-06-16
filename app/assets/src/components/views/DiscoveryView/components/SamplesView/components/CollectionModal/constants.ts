@@ -23,14 +23,14 @@ export const SHARED_SAMPLE_TABLE_COLUMNS = {
   readsLost: {
     tooltip:
       "Reads filtered during each step of the pipeline. The full length of the bar represents the Total Reads. Passed Filters represent the reads that passed quality control and filtering steps.",
-    link: "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360053758913-Sample-QC#Reads-Lost",
+    link: "https://helpcenter.seqtoid.org/articles/sample-qc/#reads-lost",
   },
   sample_type: {
     tooltip: "User-supplied metadata field indicating the sample type.",
   },
   totalRuntime: {
-    tooltip: `Total time required by the CZ ID pipeline to process .fastq files into
-    CZ ID reports.`,
+    tooltip: `Total time required by the SeqtoID pipeline to process .fastq files into
+    SeqtoID reports.`,
   },
   water_control: {
     tooltip: "Whether a sample is water-only as a control.",

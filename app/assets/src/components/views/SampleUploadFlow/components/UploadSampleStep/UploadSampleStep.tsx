@@ -203,7 +203,7 @@ class UploadSampleStepCC extends React.Component<
 
   // *** Basespace-related functions ***
 
-  // Handle the message from the Basespace OAuth popup that authorizes CZ ID to read (i.e. download files) from user projects.
+  // Handle the message from the Basespace OAuth popup that authorizes SeqtoID to read (i.e. download files) from user projects.
   handleBasespaceOAuthMessageEvent = async (event: {
     source: unknown;
     origin: string;
@@ -1228,7 +1228,7 @@ class UploadSampleStepCC extends React.Component<
       return "Please select a sample to continue";
     }
     if (size(this.getSelectedSamples(currentTab)) > 500) {
-      return "CZ ID supports a max of 500 samples per upload. Remove some samples and try again.";
+      return "SeqtoID supports a max of 500 samples per upload. Remove some samples and try again.";
     }
   };
 
@@ -1628,7 +1628,7 @@ class UploadSampleStepCC extends React.Component<
         <div className={cs.controls}>
           {readyForBasespaceAuth && (
             <div className={cs.helpText}>
-              Please authorize CZ ID to fetch your selected samples from
+              Please authorize SeqtoID to fetch your selected samples from
               Basespace.
             </div>
           )}

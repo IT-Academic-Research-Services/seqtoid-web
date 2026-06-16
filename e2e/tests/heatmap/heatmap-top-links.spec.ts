@@ -107,41 +107,41 @@ test.describe("Heatmap top links", () => {
       {
         name: "Interpreting My Data in a Heatmap",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360043062653-Heatmap-Analysis",
+          "https://helpcenter.seqtoid.org/articles/heatmap-analysis/",
       },
       {
         name: "Filtering Data & Changing Heatmap View Settings",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360043062653-Heatmap-Analysis#view-settings-and-filters",
+          "https://helpcenter.seqtoid.org/articles/heatmap-analysis/#view--filter-settings",
       },
       {
         name: "Understanding Heatmap Clustering & Dendrograms",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360054006612-Heatmap-Clustering",
+          "https://helpcenter.seqtoid.org/articles/heatmap-clustering/",
       },
       {
         name: "Adding Metadata to My Heatmap",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360043062853-Metadata-in-the-Heatmap",
+          "https://helpcenter.seqtoid.org/articles/metadata-in-the-heatmap/",
       },
       {
         name: "Adding Taxa to My Heatmap",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360043062453-Creating-a-Heatmap#add-taxon",
+          "https://helpcenter.seqtoid.org/articles/creating-a-heatmap/#adding-taxa",
       },
       {
         name: "Saving My Heatmap",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360042578654-Saving-and-Downloading-a-Heatmap",
+          "https://helpcenter.seqtoid.org/articles/saving-and-downloading-a-heatmap/",
       },
       {
         name: "Downloading My Heatmap",
         expectedUrl:
-          "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360042578654-Saving-and-Downloading-a-Heatmap",
+          "https://helpcenter.seqtoid.org/articles/saving-and-downloading-a-heatmap/",
       },
       {
         name: "CZ ID Help Center",
-        expectedUrl: "https://chanzuckerberg.zendesk.com/hc/en-us",
+        expectedUrl: "https://helpcenter.seqtoid.org/",
       },
     ];
 

@@ -83,6 +83,10 @@ local-init: ## Set up a local dev environment
 local-migrate: .env.localdev ## Run database schema and data migrations
 	$(docker_compose) run --rm web bin/rails db:migrate:with_data RAILS_ENV=development
 
+.PHONY: local-bundle
+local-bundle: .env.localdev ## Run database schema and data migrations
+	$(docker_compose) run --rm web bin/rails bundle install
+
 .PHONY: local-migrate-down
 local-migrate-down: .env.localdev ## revert a migration; Usage: make local-migrate-down version=319487398
 	$(docker_compose) run --rm web sh -c 'bin/rails db:environment:set RAILS_ENV=development && rails db:migrate:down VERSION=$(version)'

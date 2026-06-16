@@ -1,0 +1,17 @@
+{
+  "cluster": "{{ .Values.cluster }}",
+  "overrides": {
+    "containerOverrides": [
+      {
+        "name": "rails",
+        "command": [
+          "rake",
+          "-t",
+          "-v",
+          "{{ .Values.rake_command }}"
+        ]
+      }
+    ]
+  },
+  "taskDefinition": "{{ .Values.taskDefinitionArn }}"
+}

@@ -133,6 +133,8 @@ gem 'factory_bot_rails'
 group :development, :test do
   # Call 'byebug' anywhere in the code to stop execution and get a debugger console
   gem 'byebug', platforms: [:mri, :mingw, :x64_mingw]
+  # Used for local VSCode debugging
+  gem 'debug'
   # Adds support for Capybara system testing and selenium driver
   gem 'capybara', '~> 2.17', '>= 2.17.0'
   gem 'guard', '~> 2.15'

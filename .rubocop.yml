@@ -173,6 +173,7 @@ Rails/UnknownEnv:
     - prod
     - staging
     - test
+    - sandbox
 
 # TODO: Add back after manual fixes
 Style/AccessModifierDeclarations:
