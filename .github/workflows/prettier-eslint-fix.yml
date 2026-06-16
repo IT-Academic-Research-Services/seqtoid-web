@@ -19,15 +19,15 @@ jobs:
         with:
           app_id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
           private_key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ steps.generate_token.outputs.token }}
           ref: ${{ github.event.pull_request.head.ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: Cache Node Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -55,7 +55,7 @@ jobs:
         run: npx prettier app/assets/src --ext .js,.jsx,.ts,.tsx --write
       - name: ESLint --fix
         run: npx eslint --fix app/assets/src --ext .js,.jsx,.ts,.tsx
-      - uses: EndBug/add-and-commit@v9
+      - uses: EndBug/add-and-commit@v10
         with:
           add: -A
           message: ci - prettier and eslint fixes 

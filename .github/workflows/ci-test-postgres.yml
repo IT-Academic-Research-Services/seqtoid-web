@@ -58,11 +58,11 @@ jobs:
           --health-retries 5
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Determine Kernel Version
         run: echo "KERNEL_VERSION=`uname -r`" >> $GITHUB_ENV
       - name: Cache Ruby Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: vendor/bundle
           key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
