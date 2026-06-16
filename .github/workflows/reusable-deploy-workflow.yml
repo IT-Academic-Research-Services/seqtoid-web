@@ -39,6 +39,11 @@ jobs:
     name: Deploy ${{ inputs.source }} to prod
     if: ${{ inputs.destination == 'prod' }}
     runs-on: ubuntu-latest
+    # Bind the prod deploy to the protected `prod` GitHub Environment so its
+    # required-reviewer approval gate fires before this job runs. Referencing the
+    # environment is the authorable hook; the protection rules attach to it once
+    # they exist (CZID-81). Until then this is a no-op, so it's safe to land now.
+    environment: prod
     permissions: # these permissions must be set for AWS auth to work!
       id-token: write
       contents: read
@@ -77,6 +82,9 @@ jobs:
     name: Deploy ${{ inputs.source }} to ${{ inputs.destination }}
     if: ${{ inputs.destination != 'prod' }}
     runs-on: ubuntu-latest
+    # Scope dev/staging/sandbox deploys to their matching GitHub Environment so
+    # env-specific secrets/vars and any protection rules resolve per-tier (CZID-81).
+    environment: ${{ inputs.destination }}
     permissions: # these permissions must be set for AWS auth to work!
       id-token: write
       contents: read

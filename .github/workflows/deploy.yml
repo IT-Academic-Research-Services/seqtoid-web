@@ -23,8 +23,22 @@ env:
 run-name: Deploy ${{ github.event.inputs.source }} to ${{ github.event.inputs.destination }}
 
 jobs:
+  guard_no_direct_prod:
+    # Enforce "no direct-to-prod" (CZID-101): this manual workflow may deploy
+    # dev/staging/sandbox, but prod is only reachable through the promotion chain
+    # in deploy-promote.yml, which gates prod on successful dev + staging deploys.
+    name: Block direct-to-prod
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject prod as a destination
+        if: ${{ github.event.inputs.destination == 'prod' }}
+        run: |
+          echo "::error::Direct deploys to prod are not allowed. Use the 'deploy — promote (dev -> staging -> prod)' workflow (deploy-promote.yml), which gates prod on successful dev then staging deploys (CZID-101)."
+          exit 1
+
   run_deployment:
     name: Deploy ${{ github.event.inputs.source }} to ${{ github.event.inputs.destination }}
+    needs: guard_no_direct_prod
     uses: ./.github/workflows/reusable-deploy-workflow.yml
     with:
       source: ${{ github.event.inputs.source }}
