@@ -3,7 +3,10 @@ export interface PathToFile {
   name: string;
   s3_bucket: string;
   s3_file_path: string;
+  source?: string;
+  file_to_upload?: File;
 }
+
 export interface BulkUploadWithMetadata {
   samples: SampleForUpload[];
   sampleIds: number[];
@@ -12,7 +15,6 @@ export interface BulkUploadWithMetadata {
 }
 
 export interface SampleForUpload {
-  filesToUpload: Array<File>;
   id: number;
   name: string;
   input_files?: PathToFile[];

@@ -282,7 +282,7 @@ export const LocalUploadProgressModal = ({
     s3Client: S3Client,
   ) => {
     const {
-      name: fileName,
+      file_to_upload: body,
       s3_bucket: s3Bucket,
       s3_file_path: s3Key,
     } = inputFile;
@@ -291,7 +291,6 @@ export const LocalUploadProgressModal = ({
       return;
     }
 
-    const body = sample.filesToUpload[fileName];
     const uploadParams = {
       Bucket: s3Bucket,
       Key: s3Key,
@@ -302,7 +301,7 @@ export const LocalUploadProgressModal = ({
     updateSampleFilePercentage({
       sampleName: sample.name,
       s3Key,
-      fileSize: body.size,
+      fileSize: body?.size,
     });
 
     const fileUpload = new Upload({
@@ -420,7 +419,7 @@ export const LocalUploadProgressModal = ({
 
   const handleSampleUploadError = (sample: SampleForUpload, error = null) => {
     const message =
-      "UploadProgressModal: Local sample upload error to S3 occured";
+      "UploadProgressModal: Local sample upload error to S3 occurred";
 
     updateSampleUploadStatus(sample.name, ERROR_STATUS);
 

@@ -61,7 +61,7 @@ class SampleFileEntityLinkCreationService
       protocol: "s3",
       file_path: input_fastqs[0].file_path,
       file_type: input_fastqs[0].file_type,
-      namespace: ENV["SAMPLES_BUCKET_NAME"]
+      namespace: SAMPLES_BUCKET_NAME
     )
 
     if input_fastqs.length > 1
@@ -72,7 +72,7 @@ class SampleFileEntityLinkCreationService
         protocol: "s3",
         file_path: input_fastqs[1].file_path,
         file_type: input_fastqs[1].file_type,
-        namespace: ENV["SAMPLES_BUCKET_NAME"]
+        namespace: SAMPLES_BUCKET_NAME
       )
     end
 
@@ -98,7 +98,7 @@ class SampleFileEntityLinkCreationService
         protocol: "s3",
         file_path: primer_bed.file_path,
         file_type: NEXT_GEN_FILE_FORMAT_MAP[primer_bed.file_type],
-        namespace: ENV["SAMPLES_BUCKET_NAME"]
+        namespace: SAMPLES_BUCKET_NAME
       )
 
       # Link GenomicRange to SequencingRead
@@ -124,7 +124,7 @@ class SampleFileEntityLinkCreationService
         protocol: "s3",
         file_path: reference_sequence.file_path,
         file_type: "fastq",
-        namespace: ENV["SAMPLES_BUCKET_NAME"]
+        namespace: SAMPLES_BUCKET_NAME
       )
     end
 
