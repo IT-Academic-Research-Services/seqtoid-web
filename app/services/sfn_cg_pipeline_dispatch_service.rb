@@ -260,8 +260,8 @@ class SfnCgPipelineDispatchService
 
     run_inputs = {
       docker_image_id: retrieve_docker_image_id,
-      fastqs_0: File.join(@sample.sample_input_s3_path, input_fastqs[0].name),
-      fastqs_1: input_fastqs[1] ? File.join(@sample.sample_input_s3_path, input_fastqs[1].name) : nil,
+      fastqs_0: input_fastqs[0].s3_path,
+      fastqs_1: input_fastqs[1] ? input_fastqs[1].s3_path : nil,
       sample: @sample.name.tr(" ", "_"),
       ref_host: "s3://#{S3_DATABASE_BUCKET}/consensus-genome/hg38.fa.gz",
       kraken2_db_tar_gz: "s3://#{S3_DATABASE_BUCKET}/consensus-genome/kraken_coronavirus_db_only.tar.gz",
