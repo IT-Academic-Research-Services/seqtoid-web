@@ -65,5 +65,4 @@ namespace :taxon_lineage_slice do
     TaxonLineage.__elasticsearch__.delete_index!
     puts "Finished removing TaxonLineage index"
   end
-
 end
