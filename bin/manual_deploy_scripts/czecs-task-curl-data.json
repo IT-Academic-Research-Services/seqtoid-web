@@ -1,0 +1,23 @@
+{
+  "cluster": "{{ .Values.cluster }}",
+  "overrides": {
+    "containerOverrides": [
+      {
+        "name": "rails",
+        "command": [
+          "curl",
+          "-ivL",
+          "--retry-connrefused",
+          "-X",
+          "{{ .Values.curl_http_method }}",
+          "-H",
+          "Content-Type: {{ .Values.curl_content_type }}",
+          "{{ .Values.curl_url }}",
+          "-d",
+          "{{ .Values.curl_data }}"
+        ]
+      }
+    ]
+  },
+  "taskDefinition": "{{ .Values.taskDefinitionArn }}"
+}

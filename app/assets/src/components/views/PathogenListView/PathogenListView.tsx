@@ -44,9 +44,9 @@ export const PathogenListView = () => {
     <div className={cs.pathogenListViewContainer}>
       <NarrowContainer size="small">
         <div className={cs.title}>
-          <h1>CZ ID Pathogen List</h1>
+          <h1>SeqtoID Pathogen List</h1>
           <h4 className={cs.subtitle}>
-            Last Updated: {pathogenData.updatedAt}. CZ ID Pathogen List v
+            Last Updated: {pathogenData.updatedAt}. SeqtoID Pathogen List v
             {pathogenData.version}.
           </h4>
         </div>

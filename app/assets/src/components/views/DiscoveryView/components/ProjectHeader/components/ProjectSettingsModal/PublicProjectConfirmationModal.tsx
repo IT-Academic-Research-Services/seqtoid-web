@@ -54,10 +54,10 @@ class PublicProjectConfirmationModal extends React.Component<
             </div>
             <div className={cs.text}>
               <p>
-                By making this project public, anyone who has access to CZ ID
+                By making this project public, anyone who has access to SeqtoID
                 will be able to see your project and the included samples. When
                 you upload a new sample to this project, it will automatically
-                be available for all CZ ID users. This action is{" "}
+                be available for all SeqtoID users. This action is{" "}
                 <span className={cs.highlight}>not reversible</span>.
               </p>
               <p>

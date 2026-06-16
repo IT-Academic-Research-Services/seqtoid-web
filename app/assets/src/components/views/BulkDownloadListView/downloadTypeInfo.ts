@@ -39,7 +39,7 @@ export const BULK_DOWNLOAD_TYPE_INFO = {
   [ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE]: {
     type: ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE,
     displayName: "Original Input Files",
-    description: "Original files you submitted to CZ ID",
+    description: "Original files you submitted to SeqtoID",
   },
   // Short Read mNGS Download Types
   [SAMPLE_OVERVIEW_BULK_DOWNLOAD_TYPE]: {

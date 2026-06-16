@@ -1,0 +1,15 @@
+{
+  "cluster": "{{ .Values.cluster }}",
+  "overrides": {
+    "containerOverrides": [
+      {
+        "name": "rails",
+        "command": [
+          "rails",
+          "local_user_creation:admin[test.user@test.com,test]"
+        ]
+      }
+    ]
+  },
+  "taskDefinition": "{{ .Values.taskDefinitionArn }}"
+}

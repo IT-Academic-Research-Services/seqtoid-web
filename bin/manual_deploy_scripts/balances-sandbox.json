@@ -1,0 +1,11 @@
+{
+  "project": "idseq",
+  "env": "sandbox",
+  "rails_env": "sandbox",
+  "name": "web",
+  "region": "us-west-2",
+  "cpu_web": 1024,
+  "mem_web": 2048,
+  "cpu_worker": 256,
+  "mem_worker": 512
+}

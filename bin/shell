@@ -28,7 +28,7 @@ if !env
   puts 'Usage: ./bin/shell [--service-name <SERVICE_NAME>] [--keep-alive] <env> [command]'
   puts
   puts 'positional arguments:'
-  puts '  env       Environment (prod | staging | public | sandbox)'
+  puts '  env       Environment (prod | staging | public | sandbox | dev | development)'
   puts '  command   Command to be executed on the container. Default is "rails console"'
   puts
   puts 'optional arguments:'
@@ -49,6 +49,8 @@ aws_account_alias = iam_client.list_account_aliases().account_aliases[0]
 # Custom settings depending on environment
 cluster = if env == "sandbox" or aws_account_alias == "idseq-prod"
             "idseq-#{env}-ecs"
+          elsif env == "dev" or env == "development"
+            "idseq-dev-ecs"
           else
             # TODO(2020-01-23): Rename staging clusters to new format (IDSEQ-2155).
             env
@@ -56,12 +58,16 @@ cluster = if env == "sandbox" or aws_account_alias == "idseq-prod"
 
 service = if env == "sandbox"
             "czid-sandbox-web"
+          elsif env == "dev" or env == "development"
+            "czid-dev-web"
           else
             service
           end
 
 service_ecs = if env == "sandbox"
                 "idseq-sandbox-web"
+              elsif env == "dev" or env == "development"
+                "idseq-dev-web"
               elsif env == "staging"
                 "idseq-staging-web"
               else

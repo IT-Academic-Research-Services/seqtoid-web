@@ -29,7 +29,7 @@ class ConsolidateMigrationsPriorTo20240326 < ActiveRecord::Migration[6.1]
       t.datetime "created_at", null: false
       t.datetime "updated_at", null: false
       t.text "s3_nt_info_db_path"
-      t.string "s3_taxon_blacklist_path", default: "s3://idseq-public-references/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/taxon_blacklist.txt", null: false
+      t.string "s3_taxon_blacklist_path", default: "s3://#{S3_DATABASE_BUCKET}/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/taxon_blacklist.txt", null: false
       t.integer "lineage_version_old", limit: 2
       t.string "lineage_version", limit: 10, null: false
       t.string "minimap2_long_db_path", comment: "The S3 path prefix to the minimap2 index for short reads"
@@ -161,7 +161,7 @@ class ConsolidateMigrationsPriorTo20240326 < ActiveRecord::Migration[6.1]
       t.index ["pipeline_run_id", "species_taxid_nt"], name: "index_contigs_on_pipeline_run_id_and_species_taxid_nt"
     end
 
-    create_table "data_migrations", primary_key: "version", id: :string, charset: "utf8", collation: "utf8_unicode_ci" do |t|
+    create_table "data_migrations", primary_key: "version", id: :string, charset: "utf8", collation: "utf8_unicode_ci", if_not_exists: true do |t|
     end
 
     create_table "deletion_logs", charset: "utf8", collation: "utf8_unicode_ci" do |t|
@@ -187,8 +187,8 @@ class ConsolidateMigrationsPriorTo20240326 < ActiveRecord::Migration[6.1]
 
     create_table "host_genomes", charset: "utf8", collation: "utf8_unicode_ci" do |t|
       t.string "name", null: false, comment: "Friendly name of host genome. May be common name or scientific name of species. Must be unique and start with a capital letter."
-      t.string "s3_star_index_path", default: "s3://idseq-public-references/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/STAR_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by star for host filtering."
-      t.string "s3_bowtie2_index_path", default: "s3://idseq-public-references/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/bowtie2_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by bowtie for host filtering."
+      t.string "s3_star_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/STAR_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by star for host filtering."
+      t.string "s3_bowtie2_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/bowtie2_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by bowtie for host filtering."
       t.bigint "default_background_id"
       t.datetime "created_at", null: false
       t.datetime "updated_at", null: false
@@ -198,9 +198,9 @@ class ConsolidateMigrationsPriorTo20240326 < ActiveRecord::Migration[6.1]
       t.bigint "user_id", comment: "The user that created the host genome. Values previous to 2020-02 may be NULL."
       t.string "s3_minimap2_dna_index_path", comment: "The path to the index file to be used in the pipeline by minimap2 for host filtering DNA samples"
       t.string "s3_minimap2_rna_index_path", comment: "The path to the index file to be used in the pipeline by minimap2 for host filtering RNA samples"
-      t.string "s3_hisat2_index_path", default: "s3://czid-public-references/host_filter/ercc/20221031/hisat2_index_tar/ercc.hisat2.tar", comment: "The path to the index file to be used in the pipeline by hisat2 for host filtering."
-      t.string "s3_kallisto_index_path", default: "s3://czid-public-references/host_filter/ercc/20221031/kallisto_idx/ercc.kallisto.idx", comment: "The path to the index file to be used in the pipeline by kallisto for host filtering."
-      t.string "s3_bowtie2_index_path_v2", default: "s3://czid-public-references/host_filter/ercc/20221031/bowtie2_index_tar/ercc.bowtie2.tar", comment: "The path to the index file to be used in the pipeline by bowtie2 for host filtering."
+      t.string "s3_hisat2_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/20221031/hisat2_index_tar/ercc.hisat2.tar", comment: "The path to the index file to be used in the pipeline by hisat2 for host filtering."
+      t.string "s3_kallisto_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/20221031/kallisto_idx/ercc.kallisto.idx", comment: "The path to the index file to be used in the pipeline by kallisto for host filtering."
+      t.string "s3_bowtie2_index_path_v2", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/20221031/bowtie2_index_tar/ercc.bowtie2.tar", comment: "The path to the index file to be used in the pipeline by bowtie2 for host filtering."
       t.string "s3_original_transcripts_gtf_index_path", comment: "The path to the index file to be used in the pipeline by kallisto for host filtering. Used to generate host gene counts"
       t.string "deprecation_status", comment: "Non-deprecated HostGenomes must be NULL. If deprecated, provide a brief message about deprecation, eg, 'deprecated on Nov 29 2023'."
       t.integer "version", default: 1, null: false, comment: "Version of this host's genome data, 1-indexed. Allows us to track multiple revisions of a certain host organism. Still, most hosts only have one version."

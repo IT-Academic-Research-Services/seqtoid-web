@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import AnnouncementBanner from "~/components/common/AnnouncementBanner";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import IconMobileNavClose from "~/components/ui/icons/IconMobileNavClose";
-import { CZIDLogoReversed } from "~ui/icons";
+import { SeqtoIDLogoReversed } from "~ui/icons";
 import cs from "./LandingHeader.scss";
 
 interface LandingHeaderProps {
@@ -43,7 +43,7 @@ export const LandingHeader = ({
             }
             <ExternalLink
               className={cs.link}
-              href="https://chanzuckerberg.zendesk.com/hc/en-us/articles/33940279703828-FAQs-CZ-ID-s-Transfer-to-the-University-of-California-San-Francisco"
+              href="https://helpcenter.seqtoid.org/articles/faqs-czid-s-transfer-to-the-university-of-california-san-francisco/"
             >
               HERE
             </ExternalLink>
@@ -53,8 +53,8 @@ export const LandingHeader = ({
       />
 
       <div className={cs.header} data-testid="home-top-nav-bar">
-        <a aria-label="Go to the CZ ID homepage" href="/">
-          <CZIDLogoReversed className={cs.headerLogo} />
+        <a aria-label="Go to the SeqtoID homepage" href="/">
+          <SeqtoIDLogoReversed className={cs.headerLogo} />
         </a>
         <nav className={cs.nav} data-test-id="home-top-nav">
           <span className={cs.hideMobile}>
@@ -63,7 +63,7 @@ export const LandingHeader = ({
                 impactPage ? cs.textLinkActive : null
               }`}
               href="/impact"
-              aria-label="View the CZ ID impact page"
+              aria-label="View the SeqtoID impact page"
               data-testid="home-top-nav-impact"
             >
               Case Studies
@@ -73,7 +73,7 @@ export const LandingHeader = ({
               href="http://help.czid.org"
               target="_blank"
               rel="noreferrer"
-              aria-label="View the CZ ID help page (opens in new window)"
+              aria-label="View the SeqtoID help page (opens in new window)"
               data-testid="home-top-nav-resources"
             >
               Resources
@@ -121,7 +121,7 @@ export const LandingHeader = ({
                 style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
                 target="_blank"
                 rel="noreferrer"
-                aria-label="View the CZ ID impact page (opens in new window)"
+                aria-label="View the SeqtoID impact page (opens in new window)"
                 data-testid="home-mobile-menu-impact"
               >
                 Case Studies
@@ -132,7 +132,7 @@ export const LandingHeader = ({
                 style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
                 target="_blank"
                 rel="noreferrer"
-                aria-label="View the CZ ID help page (opens in new window)"
+                aria-label="View the SeqtoID help page (opens in new window)"
                 data-testid="home-mobile-menu-resources"
               >
                 Resources

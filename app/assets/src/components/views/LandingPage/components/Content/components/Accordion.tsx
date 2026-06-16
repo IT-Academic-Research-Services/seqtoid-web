@@ -29,15 +29,15 @@ const Accordion = () => {
         }}
         isOpen={openAccordion === 0}
         accordionTitle="How much data can I upload?"
-        accordionText="There is no limit on the amount of data that you can upload to CZ ID."
+        accordionText="There is no limit on the amount of data that you can upload to SeqtoID."
       />
       <AccordionItem
         onClick={() => {
           clickHandler(1);
         }}
         isOpen={openAccordion === 1}
-        accordionTitle="Will CZ ID remain free to use?"
-        accordionText="Yes, CZ ID is committed to remaining a free tool."
+        accordionTitle="Will SeqtoID remain free to use?"
+        accordionText="Yes, SeqtoID is committed to remaining a free tool."
       />
       <AccordionItem
         onClick={() => {
@@ -48,12 +48,12 @@ const Accordion = () => {
         accordionText={
           <>
             Raw sample data (genetic sequence files (ex: FASTA/FASTQ)) is not
-            shared with any other CZ ID user, nor is it ever accessed by anyone
-            working on CZ ID unless specifically requested by a user, such as to
-            debug an issue. Read more in CZ ID’s{" "}
+            shared with any other SeqtoID user, nor is it ever accessed by
+            anyone working on SeqtoID unless specifically requested by a user,
+            such as to debug an issue. Read more in SeqtoID’s{" "}
             <a
               href="https://czid.org/privacy"
-              aria-label="View the CZ ID privacy notice (opens in new window)"
+              aria-label="View the SeqtoID privacy notice (opens in new window)"
               target="_blank"
               rel="noreferrer"
             >
@@ -75,10 +75,10 @@ const Accordion = () => {
             FASTA/FASTQ)) is processed through our data pipeline and all host
             (ex: human, mosquito) genetic information is filtered out. We always
             filter out all human genetic information, regardless of host. Read
-            more in CZ ID’s{" "}
+            more in SeqtoID’s{" "}
             <a
               href="https://czid.org/privacy"
-              aria-label="View the CZ ID privacy notice (opens in new window)"
+              aria-label="View the SeqtoID privacy notice (opens in new window)"
               target="_blank"
               rel="noreferrer"
             >
@@ -99,7 +99,7 @@ const Accordion = () => {
             Once created, your account will be maintained in accordance with our{" "}
             <a
               href="https://czid.org/terms"
-              aria-label="View the CZ ID terms of use (opens in new window)"
+              aria-label="View the SeqtoID terms of use (opens in new window)"
               target="_blank"
               rel="noreferrer"
             >

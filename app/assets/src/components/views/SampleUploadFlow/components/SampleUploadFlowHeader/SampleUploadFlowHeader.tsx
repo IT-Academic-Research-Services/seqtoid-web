@@ -73,7 +73,7 @@ export class SampleUploadFlowHeader extends React.Component<SampleUploadFlowHead
               {currentStep === UploadStepType.MetadataStep && (
                 <div className={cs.subtitle}>
                   This metadata will provide context around your samples and
-                  results in CZ ID.
+                  results in SeqtoID.
                 </div>
               )}
               {currentStep === UploadStepType.ReviewStep && (

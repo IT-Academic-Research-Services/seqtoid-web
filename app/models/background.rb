@@ -4,7 +4,7 @@
 # samples.
 #
 # See also:
-# https://chanzuckerberg.zendesk.com/hc/en-us/articles/360050883054-Background-Models
+# https://helpcenter.seqtoid.org/articles/background-models/
 #
 # Background models are generated from specific PipelineRuns and the taxa in those runs.
 class Background < ApplicationRecord

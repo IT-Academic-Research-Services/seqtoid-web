@@ -9,7 +9,7 @@ const DeleteSampleModalText = ({
 }) => (
   <div>
     <div>
-      Deleting your runs will remove the following from CZ ID for
+      Deleting your runs will remove the following from SeqtoID for
       <span className={cs.semibold}> you and any collaborators </span>
       with access:
     </div>

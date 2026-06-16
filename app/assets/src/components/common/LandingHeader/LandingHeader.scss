@@ -11,17 +11,16 @@
   align-items: center;
 
   @media (max-width: 768px) {
-    padding: 17px $sds-spaces-xl;
+    padding: 15px $sds-spaces-xl;
   }
 }
 
 .headerLogo {
-  width: 140px;
+  display: block;
   height: 40px;
 
   @media (max-width: 768px) {
-    width: 92px;
-    height: 26px;
+    height: 32px;
   }
 }
 

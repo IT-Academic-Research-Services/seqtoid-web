@@ -44,12 +44,12 @@ const BlastRedirectionModal = ({
     <Modal open={open} narrowest>
       <div className={cs.blastRedirectionModal}>
         <Image className={cs.logo} src="/assets/LogoNCBI.png" />
-        <div className={cs.title}>You are now leaving CZ ID.</div>
+        <div className={cs.title}>You are now leaving SeqtoID.</div>
         <div className={cs.text}>
           By clicking {'"'}Continue{'"'} you agree to send a copy of your
           sequencing data to NCBI{"'"}s BLAST service, and that you understand
           this may make the data accessible to others. NCBI is a separate
-          service from CZ ID. Your data will be subject to their{" "}
+          service from SeqtoID. Your data will be subject to their{" "}
           <ExternalLink href={NCBI_POLICIES_AND_DISCLAIMERS_LINK}>
             Policies and Disclaimers
           </ExternalLink>

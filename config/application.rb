@@ -33,7 +33,7 @@ module Czid
     config.action_mailer.smtp_settings = {
       address: "email-smtp.us-west-2.amazonaws.com",
       authentication: :login,
-      domain: "idseq.net",
+      domain: "seqtoid.org",
       enable_starttls_auto: true,
       password: ENV["SMTP_PASSWORD"],
       port: 587,
@@ -47,11 +47,12 @@ module Czid
     config.middleware.use ResqueMiddleware
 
     # This is an allowlist that protects against Host header spoofing. Only
-    # idseq.net or subdomains are allowed. Test with a command such as:
+    # seqtoid.org or subdomains are allowed. Test with a command such as:
     # curl -i -H $'Host: www.google.com' 'localhost:3000/auth0/login'
-    config.hosts << '.idseq.net'
-    config.hosts << '.czid.org'
-    config.hosts << 'czid.org'
+    config.hosts << 'seqtoid.org'
+    config.hosts << '.seqtoid.org'
+    # TODO: Is this necessary? Might not work if this is removed.
+    config.hosts << '.us-west-2.elb.amazonaws.com'
     # Exclude health_check so that load balancer checks are allowed:
     config.host_authorization = { exclude: ->(request) { request.path =~ /health_check/ } }
     config.x.constants.default_background = 26

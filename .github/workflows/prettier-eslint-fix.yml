@@ -1,11 +1,12 @@
 on:
-  pull_request:
-    paths:
-      - .github/**
-      - app/assets/src/**
-      # This action also syncs package.json + package-lock.json (npm ci).
-      - package.json
-      - package-lock.json
+#  pull_request:
+#    paths:
+#      - .github/**
+#      - app/assets/src/**
+#      # This action also syncs package.json + package-lock.json (npm ci).
+#      - package.json
+#      - package-lock.json
+  workflow_dispatch:
 
 name: lint-bot
 jobs:

@@ -32,6 +32,7 @@ Rails.application.routes.draw do
     post :logout
     get :failure
   end
+  get 'direct_user_login', to: 'auth0#direct_user_login'
   get 'users/password/new' => 'users#password_new'
   get 'users/register', to: 'users#register'
 

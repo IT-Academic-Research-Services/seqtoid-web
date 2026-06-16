@@ -62,7 +62,7 @@ const errorMap = {
     "Please verify the sequencing quality of this sample.",
   "The file.+contain reads longer than the 500 bp limit for the Illumina-supported pipeline":
     "Please verify the sequencing platform during sample upload.",
-  "The CZ ID pipeline expects a single input file.+":
+  "The SeqtoID pipeline expects a single input file.+":
     "Please check your input file and try again.",
   "There was an error parsing the input file.+":
     "Please check that the file is not corrupted and is in the .fastq format.",

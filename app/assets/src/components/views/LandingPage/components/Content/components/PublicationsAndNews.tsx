@@ -5,7 +5,7 @@ import cs from "./PublicationsAndNews.scss";
 const Publications = () => {
   return (
     <div className={cs.publications}>
-      <h2>See how RESEARCHERS are using CZ ID</h2>
+      <h2>See how RESEARCHERS are using SeqtoID</h2>
       <ul>
         <li className={`${cs.publication} ${cs.marker}`}>
           <div className={cs.liMarker}></div>

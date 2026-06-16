@@ -438,7 +438,7 @@ export const TermsChanges = () => {
   const termsUpdateForJanuary2023 = () => (
     <>
       <div className={cs.title}>
-        <h1>CZ ID Terms and Privacy Notice Update for January 2023</h1>
+        <h1>SeqtoID Terms and Privacy Notice Update for January 2023</h1>
       </div>
       <p className={cx(cs.large, cs.last)}>
         Effective January 1, 2023, we have updated our{" "}
@@ -450,9 +450,9 @@ export const TermsChanges = () => {
         <a href="/privacy">Privacy Policy</a> to help ensure that we are
         providing useful information regarding how we collect, use, and protect
         personal data and so our Users can understand their responsibilities and
-        rights when they use CZ ID. We have summarized key updates below:
+        rights when they use SeqtoID. We have summarized key updates below:
       </p>
-      <h2>CZ ID Terms of Use</h2>
+      <h2>SeqtoID Terms of Use</h2>
       <List
         listItems={[
           <React.Fragment key={nanoid()}>
@@ -461,13 +461,13 @@ export const TermsChanges = () => {
           </React.Fragment>,
         ]}
       />
-      <h2>CZ ID Privacy Policy</h2>
+      <h2>SeqtoID Privacy Policy</h2>
       <List
         listItems={[
           <>
             To give you more control over your data, we have removed the
             automatic sharing of your Report Data and Sample Metadata after the
-            1-year anniversary of the Raw Sample Data being uploaded to CZ ID.
+            1-year anniversary of the Raw Sample Data being uploaded to SeqtoID.
             Users will still have the option to share their Report Data and
             Sample Metadata with other Users at their discretion.
           </>,

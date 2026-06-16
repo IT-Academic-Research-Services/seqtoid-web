@@ -50,7 +50,7 @@ export class HostOrganismMessage extends React.Component<HostOrganismMessageProp
   renderLearnMoreLink() {
     return (
       <ExternalLink
-        href="https://chanzuckerberg.zendesk.com/hc/en-us/articles/360035296573-Upload-on-the-Web#reviewing-data"
+        href="https://helpcenter.seqtoid.org/articles/upload-mngs-illumina-data-through-the-web-app/#reviewing-data"
         analyticsEventName="HostOrganismMessage_learn-more-link_clicked"
         coloredBackground={true}
       >

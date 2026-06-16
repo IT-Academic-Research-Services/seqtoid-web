@@ -127,7 +127,7 @@ const ProjectCreationModal = ({
             <div className={cs.optionText}>
               <div className={cs.title}>Public Project</div>
               <div className={cs.description}>
-                This project is viewable and searchable by anyone in CZ ID.
+                This project is viewable and searchable by anyone in SeqtoID.
                 They’ll be able to perform read-only actions like create
                 heatmaps and download results, but will not have access to your
                 raw data.{" "}

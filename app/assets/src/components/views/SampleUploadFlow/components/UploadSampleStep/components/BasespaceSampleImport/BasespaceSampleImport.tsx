@@ -183,8 +183,8 @@ export class BasespaceSampleImport extends React.Component<BasespaceSampleImport
     return (
       <React.Fragment>
         <div className={cs.helpText}>
-          Please connect to Basespace and authorize CZ ID to view your projects
-          and samples.
+          Please connect to Basespace and authorize SeqtoID to view your
+          projects and samples.
         </div>
         <PrimaryButton
           text="Connect to Basespace"

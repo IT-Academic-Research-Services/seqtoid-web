@@ -14,7 +14,7 @@ export const BlastNotification = ({ onClose }: { onClose?: () => void }) => {
     <div className={cs.label}>
       <div className={cs.message}>
         Your sequences were successfuly sent to NCBI. If you encounter issues
-        once the sequences have left CZ ID, please check out the{" "}
+        once the sequences have left SeqtoID, please check out the{" "}
         <ExternalLink coloredBackground href={NCBI_SUPPORT_CENTER_LINK}>
           NCBI Support Center
         </ExternalLink>
