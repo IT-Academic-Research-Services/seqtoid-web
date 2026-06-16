@@ -59,7 +59,7 @@ jobs:
     steps:
       - name: Generate Summary
         run: |
-          echo "branch-image=${{ needs.build-image.outputs.branch }}"
+          echo "branch-image=${{ needs.build-image.outputs.branch-image }}"
           echo "sha-image=${{ needs.build-image.outputs.sha-image }}"
           echo "| Type | Image |" >> "$GITHUB_STEP_SUMMARY"
           echo "| ---- | ----- |" >> "$GITHUB_STEP_SUMMARY"

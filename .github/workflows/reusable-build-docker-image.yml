@@ -20,10 +20,10 @@ on:
         type: string
         required: true
     outputs:
-      sha-image:
+      branch-image:
         description: "The Docker Image with TAG 'branch-<cleaned-branch-name>'"
         value: ${{ jobs.build-and-push.outputs.branch-image }}
-      branch-image:
+      sha-image:
         description: "The Docker Image with TAG 'sha-<shortened-commit-sha>'"
         value: ${{ jobs.build-and-push.outputs.sha-image }}
 
@@ -45,8 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     outputs:
-      sha-image: ${{ steps.image-names.outputs.branch-image }}
-      branch-image: ${{ steps.image-names.outputs.sha-image }}
+      sha-image: ${{ steps.image-names.outputs.sha-image }}
+      branch-image: ${{ steps.image-names.outputs.branch-image }}
     steps:
       - name: Calculate short SHA
         id: short-sha
