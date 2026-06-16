@@ -11,15 +11,13 @@ import WDL
 
 from scripts import parse_wdl_workflow
 
-
 # Test cases
 
 
 class TestReadAndParseInput(unittest.TestCase):
     def test_read_stdin_result_type(self):
         with patch("sys.stdin", StringIO(test_wdl)):
-            loop = asyncio.get_event_loop()
-            result = loop.run_until_complete(parse_wdl_workflow.read_stdin("stdin", "", ""))
+            result = asyncio.run(parse_wdl_workflow.read_stdin("stdin", "", ""))
             self.assertIsInstance(result, WDL.ReadSourceResult)
             self.assertEqual(result.source_text, test_wdl)
             self.assertEqual(result.abspath, "stdin")

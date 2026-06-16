@@ -136,7 +136,7 @@ def read_declaration_task(declaration):
     decl["inputs"] = []
     decl["type"] = type(declaration)
     expression = declaration.expr
-    if type(expression) == WDL.Expr.IfThenElse:
+    if isinstance(expression, WDL.Expr.IfThenElse):
         decl["inputs"].extend(parse_input_item(expression.consequent))
         decl["inputs"].extend(parse_input_item(expression.alternative))
     return [decl]
