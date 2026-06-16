@@ -181,7 +181,7 @@ export function UserProfileForm() {
       <form>
         <div className={cs.formTitle}>Finish Setting Up Your Account</div>
         <div className={cs.formSubtitle}>
-          Set up your profile so you can start using CZ ID!
+          Set up your profile so you can start using SeqtoID!
         </div>
         <NameField setFirstName={setFirstName} setLastName={setLastName} />
         <CountryFormField

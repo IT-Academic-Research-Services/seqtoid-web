@@ -1,11 +1,11 @@
 export const CONTIGS_COLUMN_GROUP = "contigs-column-group";
 
 const GENES_COLUMN_GROUP_TOOLTIP_LINK_HREF =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15072078210708-AMR-Report-Metrics#gene-information";
+  "https://helpcenter.seqtoid.org/articles/amr-sample-report-metrics-and-analysis/#amr-gene-information";
 const READS_COLUMN_GROUP_TOOLTIP_LINK_HREF =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15072078210708-AMR-Report-Metrics#read-metrics";
+  "https://helpcenter.seqtoid.org/articles/amr-sample-report-metrics-and-analysis/#read-metrics";
 const CONTIGS_COLUMN_GROUP_TOOLTIP_LINK_HREF =
-  "https://chanzuckerberg.zendesk.com/hc/en-us/articles/15072078210708-AMR-Report-Metrics#contig-metrics";
+  "https://helpcenter.seqtoid.org/articles/amr-sample-report-metrics-and-analysis/#contig-metrics";
 
 const TOOLTIP_LINK_TEXT = "Learn More.";
 

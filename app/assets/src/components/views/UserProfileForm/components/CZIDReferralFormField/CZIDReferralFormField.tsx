@@ -40,7 +40,9 @@ export function CZIDReferralFormField({
   return (
     <div className={cs.main}>
       <div className={cs.titleSection}>
-        <span className={cs.titleMainText}>How did you learn about CZ ID?</span>
+        <span className={cs.titleMainText}>
+          How did you learn about SeqtoID?
+        </span>
         <span className={cs.titleSubText}> (select all that apply)</span>
         <span className={cs.titleOptionalText}> — optional</span>
       </div>

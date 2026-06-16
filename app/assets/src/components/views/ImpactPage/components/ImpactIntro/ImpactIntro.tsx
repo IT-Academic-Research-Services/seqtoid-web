@@ -16,7 +16,7 @@ export const ImpactIntro = (props: ImpactIntroProps) => {
   return (
     <div className={cs.introContainer}>
       <div className={cs.introTextWrap}>
-        <h2>CZ ID Around the World</h2>
+        <h2>SeqtoID Around the World</h2>
         <p>
           Together with the Bill & Melinda Gates Foundation through its Global
           Grand Challenges initiative, the{" "}

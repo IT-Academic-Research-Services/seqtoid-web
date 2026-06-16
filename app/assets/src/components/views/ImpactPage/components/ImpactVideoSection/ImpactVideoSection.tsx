@@ -76,10 +76,10 @@ export const ImpactVideoSection = () => {
             <p>
               Watch our video or take a 360° VR video tour to see how a local
               researcher quickly detects the source of a meningitis outbreak in
-              Dhaka, Bangladesh, using Chan Zuckerberg ID (CZ ID), an
-              open-source, no-code, metagenomics analysis platform that empowers
-              researchers to rapidly identify new and emerging infectious
-              diseases from sequencing data.
+              Dhaka, Bangladesh, using SeqtoID, an open-source, no-code,
+              metagenomics analysis platform that empowers researchers to
+              rapidly identify new and emerging infectious diseases from
+              sequencing data.
             </p>
           </div>
         )}

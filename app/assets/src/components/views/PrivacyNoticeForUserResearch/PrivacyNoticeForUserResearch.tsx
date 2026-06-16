@@ -14,8 +14,8 @@ export const PrivacyNoticeForUserResearch = () => {
         This Privacy Notice describes the data that CZI, LLC and CZIF
         (collectively, “Chan Zuckerberg Initiative” or “CZI”) collects from
         individuals participating in research with the Chan Zuckerberg
-        Initiative. For more information about CZ ID specific privacy practices,
-        please see our <a href="/privacy">Privacy Notice</a>.
+        Initiative. For more information about SeqtoID specific privacy
+        practices, please see our <a href="/privacy">Privacy Notice</a>.
       </p>
     </>
   );
@@ -26,8 +26,8 @@ export const PrivacyNoticeForUserResearch = () => {
       <p>
         The Chan Zuckerberg Initiative (“CZI,” which includes the Chan
         Zuckerberg Initiative Foundation (a 501(c)(3) non-profit and the Chan
-        Zuckerberg Initiative, LLC) is conducting a survey to improve the CZ ID
-        experience.
+        Zuckerberg Initiative, LLC) is conducting a survey to improve the
+        SeqtoID experience.
       </p>
       <p>
         By responding to this survey, you consent to participate in this
@@ -107,7 +107,7 @@ export const PrivacyNoticeForUserResearch = () => {
       <p>
         <div className={cs.italics}>
           Note: Any output resulting from this research does not include data
-          you uploaded or created in CZ ID, such as raw sample data, sample
+          you uploaded or created in SeqtoID, such as raw sample data, sample
           metadata, or report data.
         </div>
       </p>

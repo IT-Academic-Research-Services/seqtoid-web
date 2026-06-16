@@ -60,9 +60,9 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     linkedPage = await uploadPage.clickIlluminaLearnMoreLink();
 
     // - Learn More link opens Help Center new tab:
-    // https://chanzuckerberg.zendesk.com/hc/en-us/articles/360059656311-Upload-Data-and-Assemble-SARS-CoV-2-Genomes-Using-the-Web-App
+    // https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/
     expect(await linkedPage.url()).toEqual(
-      "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360059656311-Upload-Data-and-Assemble-SARS-CoV-2-Genomes-Using-the-Web-App",
+      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
     );
     await linkedPage.close();
     // #endregion 7. Click on Learn More LINK
@@ -94,9 +94,9 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     linkedPage = await uploadPage.clickNanoporeLearnMoreLink();
 
     // - Learn More link opens Help Center new tab:
-    // https://chanzuckerberg.zendesk.com/hc/en-us/articles/360059656311-Upload-Data-and-Assemble-SARS-CoV-2-Genomes-Using-the-Web-App
+    // https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/
     expect(await linkedPage.url()).toEqual(
-      "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360059656311-Upload-Data-and-Assemble-SARS-CoV-2-Genomes-Using-the-Web-App",
+      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
     );
     await linkedPage.close();
     // #endregion 11. Click on Learn More LINK
@@ -134,7 +134,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn more link opens ClearLabs new tab:
     linkedPage = await uploadPage.clickMedakaModelHereLink();
     expect(await linkedPage.url()).toEqual(
-      "https://chanzuckerberg.zendesk.com/hc/en-us/articles/360059656311-Upload-Data-and-Assemble-SARS-CoV-2-Genomes-Using-the-Web-App",
+      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
     );
     // #endregion 13. Hover over ""Medaka Model:"" information icon and click on Learn More LINK
   });

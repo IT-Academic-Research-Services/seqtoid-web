@@ -24,7 +24,7 @@ export const PageNotFound = ({
           icon={<ImgMicrobeSecondary />}
           link={{
             href: "/",
-            text: "Go to CZ ID home",
+            text: "Go to SeqtoID home",
           }}
           message="This link might be broken or permissions might have been changed."
           title="Oh no! This page isn't available."

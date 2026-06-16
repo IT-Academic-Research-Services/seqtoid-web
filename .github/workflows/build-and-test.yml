@@ -1,8 +1,9 @@
 name: idseq-web build-and-test
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  workflow_dispatch:
+#  pull_request:
+#    types: [opened, synchronize]
 
 env:
   AWS_DEFAULT_OUTPUT: json

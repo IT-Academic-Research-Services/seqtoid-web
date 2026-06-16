@@ -193,10 +193,10 @@ test.describe("Viral CG (WGS) - Sample report: Functional: P-2", () => {
     let articlesPage = await samplesPage.clickTooltipLearnMore();
 
     const expectedArticleUrl =
-      "https://chanzuckerberg.zendesk.com/hc/en-us/articles/13619776085780-Consensus-Genome-Quality-Checks";
+      "https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/";
     // - ""Learn more"" and ""Learn more about consensus genomes"" links open in new browser tab
     // - Consensus Genome Quality Checks article page is displayed
-    // (https://chanzuckerberg.zendesk.com/hc/en-us/articles/13619776085780-Consensus-Genome-Quality-Checks)"
+    // (https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/)"
     let articleUrl = await articlesPage.url();
     expect(articleUrl).toEqual(expectedArticleUrl);
 
@@ -212,7 +212,7 @@ test.describe("Viral CG (WGS) - Sample report: Functional: P-2", () => {
 
     // - ""Learn more"" and ""Learn more about consensus genomes"" links open in new browser tab
     // - Consensus Genome Quality Checks article page is displayed
-    // (https://chanzuckerberg.zendesk.com/hc/en-us/articles/13619776085780-Consensus-Genome-Quality-Checks)"
+    // (https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/)"
     articleUrl = await articlesPage.url();
     expect(articleUrl).toEqual(expectedArticleUrl);
 
@@ -224,7 +224,7 @@ test.describe("Viral CG (WGS) - Sample report: Functional: P-2", () => {
 
     // - ""Learn more"" and ""Learn more about consensus genomes"" links open in new browser tab
     // - Consensus Genome Quality Checks article page is displayed
-    // (https://chanzuckerberg.zendesk.com/hc/en-us/articles/13619776085780-Consensus-Genome-Quality-Checks)"
+    // (https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/)"
     articleUrl = await articlesPage.url();
     expect(articleUrl).toEqual(expectedArticleUrl);
 

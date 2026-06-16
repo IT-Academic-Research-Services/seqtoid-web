@@ -99,7 +99,7 @@ const ProjectSettingsModal = ({
                           trigger={
                             <ColumnHeaderTooltip
                               trigger={<span>Change to public</span>}
-                              content="Changing this project to Public will allow anyone signed into CZ ID to view and use your samples."
+                              content="Changing this project to Public will allow anyone signed into SeqtoID to view and use your samples."
                             />
                           }
                         />

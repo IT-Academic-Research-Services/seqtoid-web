@@ -1,7 +1,7 @@
 import React from "react";
 import { TransparentButton } from "~ui/controls/buttons";
 import ExternalLink from "~ui/controls/ExternalLink";
-import { CZIDLogoReversed } from "~ui/icons";
+import { SeqtoIDLogoReversed } from "~ui/icons";
 import cs from "./landing.scss";
 
 interface LandingHeaderV1Props {
@@ -21,7 +21,7 @@ export const LandingHeaderV1 = ({ browserInfo }: LandingHeaderV1Props) => {
         <div className={cs.brandDetails}>
           <a href="/" data-testid="logo">
             <span className={cs.logoIcon}>
-              <CZIDLogoReversed />
+              <SeqtoIDLogoReversed />
             </span>
           </a>
         </div>

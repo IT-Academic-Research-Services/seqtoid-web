@@ -46,7 +46,9 @@ export function CZIDUsecaseFormField({
   return (
     <div className={cs.main}>
       <div className={cs.titleSection}>
-        <span className={cs.titleMainText}>How do you plan to use CZ ID?</span>
+        <span className={cs.titleMainText}>
+          How do you plan to use SeqtoID?
+        </span>
         <span className={cs.titleSubText}>
           {" "}
           (select up to {MAX_SELECTIONS})

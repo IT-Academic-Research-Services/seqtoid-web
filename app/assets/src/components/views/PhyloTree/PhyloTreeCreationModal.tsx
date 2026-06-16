@@ -924,7 +924,7 @@ class PhyloTreeCreationModal extends React.Component<
         <Wizard.Page
           key="wizard__page_4"
           // @ts-expect-error ts-migrate(2322) FIXME: Type '{ children: Element[]; key: string; title: s... Remove this comment to see the full error message
-          title={`Add additional samples from CZ ID that contain ${this.state.taxonName}?`}
+          title={`Add additional samples from SeqtoID that contain ${this.state.taxonName}?`}
         >
           <div className="wizard__page-4__subtitle" />
           <div className="wizard__page-4__searchbar">
@@ -935,7 +935,7 @@ class PhyloTreeCreationModal extends React.Component<
               {this.state.selectedProjectPipelineRuns.size} Project Samples
             </div>
             <div className="wizard__page-4__searchbar__container">
-              {this.state.selectedOtherPipelineRuns.size} CZ ID Samples
+              {this.state.selectedOtherPipelineRuns.size} SeqtoID Samples
             </div>
             <div className="wizard__page-4__searchbar__container">
               {this.getTotalPageRendering()}

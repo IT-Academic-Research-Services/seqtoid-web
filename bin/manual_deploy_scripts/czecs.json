@@ -1,0 +1,56 @@
+{
+  "family": "{{ .Values.project }}-{{ .Values.env }}-{{ .Values.name }}",
+  "containerDefinitions": [
+    {
+      "name": "rails",
+      "image": "{{ .Values.account_id }}.dkr.ecr.{{ .Values.region }}.amazonaws.com/idseq-web:{{ .Values.tag }}",
+      "cpu": {{ .Values.cpu_web }},
+      "memoryReservation": {{ .Values.mem_web }},
+      "essential": true,
+      "linuxParameters": {
+        "initProcessEnabled": true
+      },
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 0
+        }
+      ],
+      "environment": [
+        {
+          "name": "RAILS_ENV",
+          "value": "{{ .Values.rails_env }}"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "{{ .Values.env }}"
+        },
+        {
+          "name": "RAILS_LOG_TO_STDOUT",
+          "value": "yes"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "{{ .Values.region }}"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "{{ .Values.region }}"
+        },
+        {
+          "name": "AWS_ACCOUNT_ID",
+          "value": "{{ .Values.account_id }}"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "ecs-logs-{{ .Values.env }}",
+          "awslogs-region": "{{ .Values.region }}",
+          "awslogs-stream-prefix": "rails"
+        }
+      }
+    }
+  ],
+  "taskRoleArn": "{{ .Values.project }}-web-{{ .Values.env }}"
+}

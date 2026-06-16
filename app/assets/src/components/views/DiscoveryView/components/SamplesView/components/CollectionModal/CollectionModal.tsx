@@ -315,7 +315,7 @@ class CollectionModal extends React.Component<
               </span>
             }
             content="Applied Correction Method is the method used when comparing a chosen set of samples against a background model."
-            link="https://chanzuckerberg.zendesk.com/hc/en-us/articles/360050883054#h_01ECWXA46KAHRF7N61D7SE1M1F"
+            link="https://helpcenter.seqtoid.org/articles/background-models/#how-are-standard-and-mass-normalized-background-models-different"
           />
         </div>
         <SubtextDropdown
@@ -396,7 +396,7 @@ class CollectionModal extends React.Component<
               much a sample deviates from the mean of that background.{" "}
               <ExternalLink
                 className={cs.link}
-                href="https://chanzuckerberg.zendesk.com/hc/en-us/articles/360050883054-Background-Models"
+                href="https://helpcenter.seqtoid.org/articles/background-models/"
               >
                 Learn More
               </ExternalLink>

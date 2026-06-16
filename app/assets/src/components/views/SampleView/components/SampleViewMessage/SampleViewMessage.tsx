@@ -42,9 +42,9 @@ export const SampleViewMessage = ({
   // but after the switch to SFN are now sent as part of the sample's information.
   // Try to extract the error messages from the sample if possible, then try the
   // reportMetadata for older samples.
-  const errorMessage = sample?.error_message || reportMetadata?.errorMessage;
-  const knownUserError =
-    sample?.known_user_error || reportMetadata?.knownUserError;
+  // const errorMessage = sample?.error_message || reportMetadata?.errorMessage;
+  // const knownUserError =
+  //   sample?.known_user_error || reportMetadata?.knownUserError;
 
   // If the data is still loading from the backend, show a loading message.
   if (loadingReport) {
@@ -85,8 +85,11 @@ export const SampleViewMessage = ({
       // If an upload error occurred, the pipeline run might not exist so
       // only try to set these fields if the pipeline run started.
       if (pipelineRun) {
-        pipelineRun.known_user_error = knownUserError;
-        pipelineRun.error_message = errorMessage;
+        // TODO: pipelineRun is sealed/readonly, so we have to hack around it being modified.
+        //  NOTE: structuredClone() doesn't exist until Node 18, and we are still in 16
+        // pipelineRun = structuredClone(pipelineRun);
+        // pipelineRun.known_user_error = knownUserError;
+        // pipelineRun.error_message = errorMessage;
       }
       ({ status, message, subtitle, linkText, type, link } = sampleErrorInfo({
         sampleId: sample.id,

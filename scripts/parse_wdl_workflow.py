@@ -60,7 +60,7 @@ def insert_declarations(task_inputs, decls):
         for task in task_inputs.keys():
             if f"WorkflowInput.{decl}" in task_inputs[task]:
                 task_inputs[task].remove(f"WorkflowInput.{decl}")
-                task_inputs[task].extend(inputs)
+                task_inputs[task].extend(map(lambda input: f"WorkflowInput.{input}", inputs))
     return task_inputs
 
 
@@ -97,12 +97,15 @@ def parse_workflow_task(task):
     elif isinstance(task, WDL.Tree.Decl):
         return read_declaration_task(task)
 
+    raise Exception(f"Unsupported task [{task}] type [{type(task)}]")
 
-def read_call_task(call):
-    task = {}
-    task["name"] = call.name
-    task["inputs"] = []
-    task["type"] = type(call)
+
+def read_call_task(call) -> list[dict]:
+    task = {
+        "name": call.name,
+        "inputs": [],
+        "type": type(call)
+    }
     for short_name, reference in call.inputs.items():
         reference_strings = parse_input_item(reference)
         for reference_string in reference_strings:
@@ -123,18 +126,19 @@ def read_call_task(call):
     return [task]
 
 
-def read_conditional_task(conditional):
+def read_conditional_task(conditional) -> list[dict]:
     tasks = []
     for item in conditional.body:
         tasks.extend(parse_workflow_task(item))
     return tasks
 
 
-def read_declaration_task(declaration):
-    decl = {}
-    decl["name"] = declaration.name
-    decl["inputs"] = []
-    decl["type"] = type(declaration)
+def read_declaration_task(declaration) -> list[dict]:
+    decl = {
+        "name": declaration.name,
+        "inputs": [],
+        "type": type(declaration)
+    }
     expression = declaration.expr
     if type(expression) == WDL.Expr.IfThenElse:
         decl["inputs"].extend(parse_input_item(expression.consequent))
@@ -149,16 +153,18 @@ def parse_input_item(reference):
         return parse_apply_expression(reference)
     elif isinstance(reference, WDL.Expr.Array):
         return parse_array_expression(reference)
-    elif isinstance(reference, (WDL.Expr.String, WDL.Expr.Int, WDL.Expr.Float, WDL.Expr.Boolean)):
+    elif isinstance(reference, (WDL.Expr.String, WDL.Expr.Int, WDL.Expr.Float, WDL.Expr.Boolean, WDL.Expr.Null)):
         return []  # ignore hard-coded constants
 
-    raise Exception(f"Unsupported reference: {reference}")
+    raise Exception(f"Unsupported reference [{reference}] type [{type(reference)}]")
 
 
 def parse_get_expression(get_exp):
     expression = get_exp.expr
     if isinstance(expression, WDL.Expr.Ident):
         return [str(expression.name)]
+
+    raise Exception(f"Unsupported expression [{expression}] for get_exp [{get_exp}] type [{type(expression)}]")
 
 
 def parse_apply_expression(apply_exp):
@@ -167,6 +173,8 @@ def parse_apply_expression(apply_exp):
         return parse_array_expression(apply_exp.arguments[0])
     elif function_name == DEFINED:
         return []
+
+    raise Exception(f"Unsupported function_name [{function_name}] for apply_exp [{apply_exp}]")
 
 
 def parse_array_expression(array_exp):
@@ -214,13 +222,13 @@ def main():
     if not doc.workflow:
         raise NoWorkflowError("No valid WDL workflow found.")
     # collect stage inputs
-    workflow_inputs = get_workflow_input_information(doc.workflow.inputs)
+    workflow_inputs = get_workflow_input_information(doc.workflow.inputs or [])
     # collect task names and inputs
     task_inputs, task_names, declarations = get_task_information(doc.workflow.body)
     # insert declarations into task inputs
     task_inputs = insert_declarations(task_inputs, declarations)
     file_basenames = get_file_basenames(doc.tasks)
-    outputs = get_output_aliases(doc.workflow.outputs)
+    outputs = get_output_aliases(doc.workflow.outputs or [])
     parsed = {
         "inputs": workflow_inputs,
         "task_names": task_names,

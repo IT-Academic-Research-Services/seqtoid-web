@@ -38,7 +38,8 @@ get-pip.py
 .DS_Store
 
 # Ignore Jetbrain Idea directory
-.idea/
+/.idea/
+*.iml
 
 # Ignore VS Code
 .vscode/

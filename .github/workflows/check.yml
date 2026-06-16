@@ -1,7 +1,8 @@
 name: idseq-web check
 
 on:
-  push
+#  push
+  workflow_dispatch:
 
 jobs:
   ruby_test:
@@ -27,7 +28,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       db:
-        image: bitnami/mysql:5.7
+        image: bitnamilegacy/mysql:5.7
         options: >-
           --health-cmd "mysqladmin ping -h localhost"
           --health-interval 10s

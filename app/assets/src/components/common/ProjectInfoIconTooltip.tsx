@@ -13,7 +13,7 @@ const ProjectInfoIconTooltip = (props: ProjectInfoIconTooltipProps) => {
   const { isPublic, ...rest } = props;
 
   const description = isPublic
-    ? "This project is viewable and searchable by anyone in CZ ID. "
+    ? "This project is viewable and searchable by anyone in SeqtoID. "
     : "Samples added to this project will be private by default, visible only to you and other project members. You can change your project from private to public at anytime.";
 
   const content = (

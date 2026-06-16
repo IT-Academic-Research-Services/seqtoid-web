@@ -193,8 +193,8 @@ class BulkDownload < ApplicationRecord
   # Returned as an array of strings
   def aegea_ecs_submit_command(
     executable_file_path: nil,
-    task_role: "czi-infectious-disease-downloads-#{Rails.env}",
-    ecs_cluster: "idseq-fargate-tasks-#{Rails.env}",
+    task_role: "czi-infectious-disease-downloads-#{Rails.env}", # TODO: Fix Rails.env
+    ecs_cluster: "idseq-fargate-tasks-#{Rails.env}", # TODO: Fix Rails.env
     executable_s3_bucket: S3_AEGEA_ECS_EXECUTE_BUCKET,
     ecr_image: "idseq-s3-tar-writer:latest",
     fargate_cpu: "4096",
@@ -206,10 +206,11 @@ class BulkDownload < ApplicationRecord
     end
 
     # Use the staging ecs cluster and executable s3 bucket for development.
-    if Rails.env.development?
-      ecs_cluster = "idseq-fargate-tasks-staging"
-      executable_s3_bucket = "aegea-ecs-execute-staging"
-    end
+    # TODO Fix this, and use "dev" instead of "development" here, and in the Infra project
+    # if Rails.env.development?
+    #  ecs_cluster = "idseq-fargate-tasks-dev"
+    #  executable_s3_bucket = "aegea-ecs-execute-dev"
+    # end
 
     command_flag = "--execute=#{executable_file_path}"
 

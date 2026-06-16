@@ -71,7 +71,7 @@ export const HeroEmailForm = () => {
           }}
         />
         <button
-          aria-label="Register for a CZ ID account with your email address"
+          aria-label="Register for a SeqtoID account with your email address"
           type="submit"
           disabled={isMutationInFlight}
           className={isMutationInFlight ? cs.disabled : ""}

@@ -85,7 +85,7 @@ export const Content = () => {
         <CtaButton
           text="View All Questions"
           linkUrl="https://czid.org/faqs"
-          aria-label="View the CZ ID FAQ page (opens in new window)"
+          aria-label="View the SeqtoID FAQ page (opens in new window)"
         />
       </section>
 
