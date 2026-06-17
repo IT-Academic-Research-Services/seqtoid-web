@@ -7,7 +7,7 @@
       "check_name": "FileAccess",
       "message": "Model attribute used in file name",
       "file": "app/models/pipeline_run.rb",
-      "line": 748,
+      "line": 720,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
       "code": "File.read(PipelineRun.download_file_with_retries(s3_file_for(\"contig_bases\"), \"/tmp/results_json\", 3))",
       "render_path": null,
@@ -21,7 +21,7 @@
       "cwe_id": [
         22
       ],
-      "note": ""
+      "note": "False positive (re-triaged CZID-48, 2026-06-17). download_file_with_retries fetches the S3 object to the fixed local dir /tmp/results_json and returns that local path; File.read reads the system-controlled local temp file, not a user-supplied path. The S3 key (s3_file_for) is derived server-side from the pipeline run, and the local filename uses the integer pipeline-run id, so no path traversal is possible."
     },
     {
       "warning_type": "File Access",
@@ -30,7 +30,7 @@
       "check_name": "FileAccess",
       "message": "Model attribute used in file name",
       "file": "app/models/pipeline_run.rb",
-      "line": 741,
+      "line": 713,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
       "code": "File.read(PipelineRun.download_file_with_retries(s3_file_for(\"contigs\"), \"/tmp/results_json\", 3))",
       "render_path": null,
@@ -44,7 +44,7 @@
       "cwe_id": [
         22
       ],
-      "note": ""
+      "note": "False positive (re-triaged CZID-48, 2026-06-17). Same pattern as the contig_bases read: download_file_with_retries fetches the S3 object to the fixed local dir /tmp/results_json and returns that local path; File.read reads the system-controlled local temp file. The S3 key is derived server-side and the local filename uses the integer pipeline-run id, so no path traversal is possible."
     },
     {
       "warning_type": "Mass Assignment",
@@ -53,7 +53,7 @@
       "check_name": "PermitAttributes",
       "message": "Potentially dangerous key allowed for mass assignment",
       "file": "app/controllers/users_controller.rb",
-      "line": 194,
+      "line": 198,
       "link": "https://brakemanscanner.org/docs/warning_types/mass_assignment/",
       "code": "params.require(:user).permit(:role, :email, :institution, :name, :send_activation, :segments, :archetypes, :profile_form_version, :project_ids => ([]))",
       "render_path": null,
@@ -67,32 +67,9 @@
       "cwe_id": [
         915
       ],
-      "note": "role is filtered out if current_user is nonadmin"
-    },
-    {
-      "warning_type": "Mass Assignment",
-      "warning_code": 105,
-      "fingerprint": "db65d2bccba89c9d3aed06645479b515031f4dd50969619e5c522c9b8fe54b83",
-      "check_name": "PermitAttributes",
-      "message": "Potentially dangerous key allowed for mass assignment",
-      "file": "app/controllers/users_controller.rb",
-      "line": 95,
-      "link": "https://brakemanscanner.org/docs/warning_types/mass_assignment/",
-      "code": "params.require(:user).permit(:role, :email, :institution, :name, :send_activation, :segments, :archetypes, :project_ids => ([]))",
-      "render_path": null,
-      "location": {
-        "type": "method",
-        "class": "UsersController",
-        "method": "user_params"
-      },
-      "user_input": ":role",
-      "confidence": "Medium",
-      "cwe_id": [
-        915
-      ],
-      "note": ""
+      "note": "Safe (re-triaged CZID-48, 2026-06-17). user_params (which permits :role) is only called by #create and #update, both gated by `before_action :admin_required` (they are not in the action's `except:` list). Non-admin self-service (#update_user_data) uses user_params_for_nonadmin, which does NOT permit :role. So :role cannot be mass-assigned by a non-admin."
     }
   ],
-  "updated": "2024-01-30 11:47:55 -0800",
-  "brakeman_version": "5.4.0"
+  "updated": "2026-06-17 00:00:00 -0800",
+  "brakeman_version": "6.1.2"
 }
