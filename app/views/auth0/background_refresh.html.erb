@@ -6,7 +6,7 @@
   <pre><%=@refresh_values.to_yaml%></pre>
   <% if @refresh_values[:active] %>
     <script language="javascript">(function () {
-      var rv = <%=raw @refresh_values.to_json%>;
+      var rv = JSON.parse('<%= raw escape_json(@refresh_values) %>');
       var reload_wait_ms = rv.reload_wait_seconds * 1000;
       if (rv.should_refresh) {
         var now = new Date().getTime();
