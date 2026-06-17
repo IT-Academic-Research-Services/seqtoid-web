@@ -1,10 +1,16 @@
-# [Chan Zuckerberg ID](https://czid.org/) &middot; [![GitHub license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://github.com/chanzuckerberg/czid-web/blob/master/LICENSE) ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
+# [seqtoid](https://czid.org/) &middot; [![GitHub license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://github.com/chanzuckerberg/czid-web/blob/master/LICENSE) ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
 <img src="app/assets/images/CZID_Logo_White.png#gh-dark-mode-only" width="150" height="50" />
 <img src="app/assets/images/CZID_Logo_Black.png#gh-light-mode-only" width="150" height="50" />
 
+> **Naming:** the platform is being renamed to **seqtoid**. This repository uses
+> the seqtoid name; **functional/external** references are intentionally kept —
+> the live product site (`czid.org`), the upstream `github.com/chanzuckerberg/czid-*`
+> repos, the logo assets, and AWS resource names still use the legacy names until
+> a coordinated cutover.
+
 #### Infectious Disease Sequencing Platform
-CZ ID is a hypothesis-free global software platform that helps scientists identify pathogens in metagenomic sequencing data.
+seqtoid is a hypothesis-free global software platform that helps scientists identify pathogens in metagenomic sequencing data.
 
 - **Discover** - Identify the pathogen landscape
 - **Detect** - Monitor and review potential outbreaks
@@ -18,4 +24,4 @@ Check out our repositories:
 - [czid-cli](https://github.com/chanzuckerberg/czid-cli) - Command line upload interface
 - [czid-bench](https://github.com/chanzuckerberg/czid-bench) - Pipeline benchmarking tools
 
-Check out our [wiki](https://github.com/chanzuckerberg/czid-web/wiki) for getting started with development in this repository and in CZ ID in general.
+Check out our [wiki](https://github.com/chanzuckerberg/czid-web/wiki) for getting started with development in this repository and in seqtoid in general.
