@@ -23,8 +23,12 @@ module ApplicationHelper
   end
 
   def escape_json(hash)
-    # using json_escape to prevent XSS vulnerability
-    str = json_escape(hash.to_json) unless hash.class == 'String'
+    # json_escape (ERB::Util) neutralizes </script>, <, >, & and U+2028/U+2029
+    # so the JSON is safe to embed in an inline <script>. The previous
+    # `unless hash.class == 'String'` guard compared a Class to the String
+    # literal "String" and was therefore always true (dead code) - we always
+    # serialize via to_json, which is what every caller relies on. (CZID-52.)
+    str = json_escape(hash.to_json)
     str = str.gsub!("\\", "\\\\\\") if str.include? "\\"
     str = str.gsub("'", "\\\\'")
     str
