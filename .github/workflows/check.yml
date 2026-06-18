@@ -206,9 +206,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
     - name: Flake8
-      # Modernized fork of julianwachholz/flake8-action (upstream is node16/EOL).
-      # SSOT: pinned by immutable commit SHA (tag v2-node24). See CZID-204 / CZID-89.
-      uses: thorvath-slower/flake8-action@5339669b2632410de09f39205e4fc81f67ecf2f4 # v2-node24
+      # Our modernized flake8-action (upstream julianwachholz is node16/EOL).
+      # SSOT: the `v2` moving tag in thorvath-slower/flake8-action is the single
+      # source of truth for the version — move that tag to roll out a new version
+      # to every consumer at once. See CZID-204.
+      uses: thorvath-slower/flake8-action@v2
       with:
         checkName: "Python Lint"
       env:
