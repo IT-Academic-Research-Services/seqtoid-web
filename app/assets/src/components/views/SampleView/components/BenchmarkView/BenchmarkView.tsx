@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import React, { useEffect, useState } from "react";
 import { getWorkflowRunResults } from "~/api";
 import { camelize, IdMap } from "~/components/utils/objectUtil";
@@ -55,9 +56,10 @@ export const BenchmarkView = ({ sample, workflowRun }: BenchmarkViewProps) => {
       <div>
         {additionalInfo && <BenchmarkSampleReportInfo info={additionalInfo} />}
         <div
-          // HTML is outputted by Jupyter in benchmarking WDL and is safe to render
+          // HTML is outputted by Jupyter in the benchmarking WDL. Sanitize it with
+          // DOMPurify before rendering as a defense-in-depth XSS guard (CZID-47).
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: htmlReport }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(htmlReport) }}
         />
       </div>
     </SampleReportContent>
