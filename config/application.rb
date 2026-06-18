@@ -14,7 +14,10 @@ module Czid
     # resetting the cache and locking in to Rails 7 that should be done after
     # Rails 7 is stable in production.
     config.load_defaults 6.1
-    config.active_support.disable_to_s_conversion = true
+    # Note: `config.active_support.disable_to_s_conversion` was removed here — it is
+    # deprecated in Rails 7.1 and a no-op (the implicit Array/Hash #to_s conversion
+    # was already removed in Rails 7.0), so the setting did nothing but emit a
+    # deprecation warning. The `load_defaults 6.1 -> 7.x` advance is separate (CZID-127).
 
     # Configuration for the application, engines, and railties goes here.
     # These settings can be overridden in specific environments using the files
