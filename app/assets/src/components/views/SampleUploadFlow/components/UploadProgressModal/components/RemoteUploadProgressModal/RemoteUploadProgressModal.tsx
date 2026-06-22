@@ -171,9 +171,9 @@ export const RemoteUploadProgressModal = ({
         // We need to fetch the files from samplesWithFlags and copy them over to response.samples
         response.samples.forEach(
           createdSample => {
-            let filesToUpload = get("files", find({name: createdSample.name}, samplesWithFlags))
+            const filesToUpload = get("files", find({name: createdSample.name}, samplesWithFlags))
             createdSample.input_files?.forEach(
-              inputFile => inputFile.file_to_upload = filesToUpload[inputFile.source]
+              inputFile => { inputFile.file_to_upload = filesToUpload[inputFile.source!] }
             )
           }
         );

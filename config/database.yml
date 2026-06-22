@@ -10,6 +10,18 @@ default: &default
   pool: <%= ENV['DB_CONNECTION_POOL'] || 5 %>
   ssl_mode: 'REQUIRED'
 
+test:
+  <<: *default
+  # Use 127.0.0.1 for host-to-container OR the service name for container-to-container
+  #host: 127.0.0.1
+  host: <%= ENV['DB_HOST'] || "db" %>
+  database: idseq_test
+  #adapter: mysql2
+  #encoding: utf8mb4
+  #username: root
+  #password: pw
+  #port: 3306
+
 deployed: &deployed
   <<: *default
   host: <%= ENV['RDS_ADDRESS'] %>
@@ -29,9 +41,3 @@ staging:
 
 sandbox:
   <<: *deployed
-
-# TODO: Renamed db to local_db to try and avoid weird "Database 'db' does not exist" errors when running the rails db:create task in a remote/AWS DB
-test:
-  <<: *default
-  host: <%= ENV['DB_HOST'] || "local_db" %>
-  database: idseq_test

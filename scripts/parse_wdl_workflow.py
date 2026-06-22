@@ -140,7 +140,7 @@ def read_declaration_task(declaration) -> list[dict]:
         "type": type(declaration)
     }
     expression = declaration.expr
-    if type(expression) == WDL.Expr.IfThenElse:
+    if expression is WDL.Expr.IfThenElse:
         decl["inputs"].extend(parse_input_item(expression.consequent))
         decl["inputs"].extend(parse_input_item(expression.alternative))
     return [decl]
@@ -210,7 +210,7 @@ def get_output_aliases(outputs):
     aliases = {}
     for output in outputs:
         # add parsing for arrays
-        if type(output.type) in [WDL.Type.File, WDL.Type.Array]:
+        if isinstance(output.type, (WDL.Type.File, WDL.Type.Array)):
             alias = output.expr.expr.name
             aliases[output.name] = alias
     return aliases

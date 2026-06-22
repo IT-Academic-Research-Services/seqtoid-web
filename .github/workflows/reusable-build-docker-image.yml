@@ -1,7 +1,31 @@
-name: Reusable Build and Push Docker Images
+name: Reusable Build and Push Docker Image
 
 on:
   workflow_call:
+    inputs:
+      environment:
+        description: Both Github Environment and AWS Environment
+        type: string
+        required: true
+      push-image:
+        description: Push Image to ECR
+        type: boolean
+        required: true
+      branch-name:
+        description: Branch Name
+        type: string
+        required: true
+      commit-sha:
+        description: Commit SHA
+        type: string
+        required: true
+    outputs:
+      branch-image:
+        description: "The Docker Image with TAG 'branch-<cleaned-branch-name>'"
+        value: ${{ jobs.build-and-push.outputs.branch-image }}
+      sha-image:
+        description: "The Docker Image with TAG 'sha-<shortened-commit-sha>'"
+        value: ${{ jobs.build-and-push.outputs.sha-image }}
 
 env:
   AWS_DEFAULT_OUTPUT: json
@@ -9,78 +33,105 @@ env:
   DEBIAN_FRONTEND: noninteractive
   LC_ALL: C.UTF-8
   LANG: C.UTF-8
-  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+permissions: # these permissions must be set for AWS auth to work!
+  id-token: write
+  contents: read
 
 jobs:
-  cancel_outdated_builds:
+  build-and-push:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    # This will cancel the whole workflow for non-current pushes on your branch
+    environment: ${{ inputs.environment }}
+    outputs:
+      sha-image: ${{ steps.image-names.outputs.sha-image }}
+      branch-image: ${{ steps.image-names.outputs.branch-image }}
     steps:
-      - name: Cancel Outdated Builds
-        uses: styfle/cancel-workflow-action@0.8.0
+      - name: Calculate short SHA
+        id: short-sha
+        uses: hudsonm62/short-sha@v1
         with:
-          access_token: ${{ github.token }}
-  
-  build_dev_docker_image:
-    runs-on: ubuntu-latest
-    permissions: # these permissions must be set for AWS auth to work!
-      id-token: write
-      contents: read
-    steps:
+          commit-sha: '${{ inputs.commit-sha }}'
+          length: 8
+      - name: Calculate Image Names
+        id: image-names
+        run: |
+          echo 'vars.AWS_ACCOUNT_ID=${{ vars.AWS_ACCOUNT_ID }}'
+          echo 'inputs.push-image=${{ inputs.push-image }}'
+          echo "branch-name=${{ inputs.branch-name }}"
+          echo "short-sha=${{ steps.short-sha.outputs.sha }}"
+          branch_cleaned=$(echo '${{ inputs.branch-name }}' | sed 's/[^a-zA-Z0-9\._-]/-/g')
+          echo "branch-cleaned=$branch_cleaned"
+          branch_image="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/idseq-web:branch-$branch_cleaned"
+          echo "branch-image=${branch_image::128}"
+          echo "branch-image=${branch_image::128}" >> "$GITHUB_OUTPUT"
+          sha_image="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/idseq-web:sha-${{ steps.short-sha.outputs.sha }}"
+          echo "sha-image=${sha_image::128}"
+          echo "sha-image=${sha_image::128}" >> "$GITHUB_OUTPUT"
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/cache@v4
         with:
           path: ~/.cache
           key: ${{runner.os}}-cache
-      - name: Configure AWS Credentials
-        id: configure_aws_credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        if: ${{ !env.ACT }}
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
-          aws-region: us-west-2
-          role-to-assume: ${{ secrets.DEV_AWS_ROLE }}
-          role-session-name: build-push-docker-img
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/czid-${{ inputs.environment }}-gh-actions-executor
+          #output-credentials: true
+          #output-env-credentials: true
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ env.AWS_REGION }}
+          #aws-profile: idseq-${{ inputs.environment }}
+      - name: Configure AWS credentials for local execution using nektos act
+        if: ${{ env.ACT }}
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: czid-${{ inputs.environment }}-gh-actions-executor
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          #output-credentials: true
+          #output-env-credentials: true
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ env.AWS_REGION }}
+          #aws-profile: idseq-${{ inputs.environment }}
       - name: Login to ECR
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
-          registry: ${{ secrets.DEV_ECR_REPO }}
-      - name: Export variables
+          registry: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Validate build configuration
+        uses: docker/build-push-action@v7
+        with:
+          call: check
+      - name: Build Docker Image and push to ECR
+        id: docker-build-push
+        uses: docker/build-push-action@v7
+        with:
+          # platforms: linux/amd64,linux/arm64
+          context: "{{ defaultContext }}"
+          #context: .
+          push: ${{ inputs.push-image }}
+          build-args: GIT_COMMIT=${{ inputs.commit-sha }}
+          tags: |
+            "${{ steps.image-names.outputs.branch-image }}"
+            "${{ steps.image-names.outputs.sha-image }}"
+      - name: Print Outputs
+        id: print-outputs
+        # image.name is a comma separated list of fully-qualified Docker images
         run: |
-          AWS_ACCOUNT_ID=${{ steps.configure_aws_credentials.outputs.aws-account-id }}
-          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
-      - name: Build docker image
-        run: bin/build-docker $(basename $GITHUB_REF) ${GITHUB_SHA::8}
-      - name: Push docker image
-        run: bin/push-docker $(basename $GITHUB_REF) ${GITHUB_SHA::8}
-
-  build_prod_docker_image:
-    runs-on: ubuntu-latest
-    permissions: # these permissions must be set for AWS auth to work!
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache
-          key: ${{runner.os}}-cache
-      - name: Configure AWS Credentials
-        id: configure_aws_credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: us-west-2
-          role-to-assume: ${{ secrets.PROD_AWS_ROLE }}
-          role-session-name: build-push-docker-img
-      - name: Login to ECR
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ secrets.PROD_ECR_REPO }}
-      - name: Export variables
-        run: |
-          AWS_ACCOUNT_ID=${{ steps.configure_aws_credentials.outputs.aws-account-id }}
-          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
-      - name: Build docker image
-        run: bin/build-docker $(basename $GITHUB_REF) ${GITHUB_SHA::8}
-      - name: Push docker image
-        run: bin/push-docker $(basename $GITHUB_REF) ${GITHUB_SHA::8}
+          set -x
+          echo "steps.docker-build-push.outputs=${{ steps.docker-build-push.outputs }}"
+          echo "image-name=${{ steps.docker-build-push.outputs.image-name }}"
+          echo "imageid=${{ steps.docker-build-push.outputs.imageid }}"
+          echo "digest=${{ steps.docker-build-push.outputs.digest}}"
+          jq . <<< '${{ steps.docker-build-push.outputs.metadata }}'
+          jq -r '.["image.name"]' <<< '${{ steps.docker-build-push.outputs.metadata }}'
