@@ -25,6 +25,7 @@ module Types
     include Queries::FedWorkflowRunsAggregateTotalCountQuery
     include Queries::FedBulkDownloadsQuery
     include Queries::FedWorkflowRunsAggregateQuery
+    include Queries::SampleForReportQuery
 
     # Add root-level fields here.
     # They will be entry points for queries on your schema.
