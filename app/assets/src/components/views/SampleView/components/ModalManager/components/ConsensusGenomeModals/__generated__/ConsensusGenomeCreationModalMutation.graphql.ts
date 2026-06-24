@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<46eb1245abb74e95c2d2fab89cc328a4>>
+ * @generated SignedSource<<0a3390b159c0c7eb5418995c9b24464e>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -58,7 +58,7 @@ export type ConsensusGenomeCreationModalMutation$data = {
     readonly status: string | null | undefined;
     readonly wdl_version: string | null | undefined;
     readonly workflow: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
 };
 export type ConsensusGenomeCreationModalMutation = {
   response: ConsensusGenomeCreationModalMutation$data;

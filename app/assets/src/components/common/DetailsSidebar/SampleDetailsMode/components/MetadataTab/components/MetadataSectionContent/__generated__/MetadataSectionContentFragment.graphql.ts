@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<03907386ad28cf1d28b2749583e26458>>
+ * @generated SignedSource<<0a54b39214413146dd34470b0a4706fb>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -28,7 +28,7 @@ export type MetadataSectionContentFragment$data = {
     readonly sample_id: number | null | undefined;
     readonly string_validated_value: string | null | undefined;
     readonly updated_at: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
   readonly " $fragmentType": "MetadataSectionContentFragment";
 };
 export type MetadataSectionContentFragment$key = {

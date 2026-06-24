@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<13dfcd72dcdb4188f32943cbc158ab36>>
+ * @generated SignedSource<<075c9825ad57150520e0c47604ac4029>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,7 +16,7 @@ export type ConsensusGenomeReportQuery$variables = {
 export type ConsensusGenomeReportQuery$data = {
   readonly fedConsensusGenomes: ReadonlyArray<{
     readonly " $fragmentSpreads": FragmentRefs<"ConsensusGenomeCoverageViewFragment" | "ConsensusGenomeHistogramFragment" | "ConsensusGenomeMetricsTableFragment">;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
 };
 export type ConsensusGenomeReportQuery = {
   response: ConsensusGenomeReportQuery$data;

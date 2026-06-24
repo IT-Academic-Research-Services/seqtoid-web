@@ -8,8 +8,8 @@ module Types
     graphql_name "mutationInput_CreateBulkDownload_input_Input"
 
     argument :download_type, String, required: false
-    argument :workflow_run_ids, [Int], required: false
-    argument :workflow_run_ids_strings, [String], required: false
+    argument :workflow_run_ids, [Int, { null: true }], required: false
+    argument :workflow_run_ids_strings, [String, { null: true }], required: false
     argument :workflow, String, required: false
     argument :download_format, String, required: false
     argument :authenticity_token, String, required: false

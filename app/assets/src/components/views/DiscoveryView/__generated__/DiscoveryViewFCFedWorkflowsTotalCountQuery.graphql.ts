@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<481d7c6ff987b8a56132306ebe344b51>>
+ * @generated SignedSource<<92893bc889e71511dfee1f2edee1acbe>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -13,29 +13,29 @@ export type queryInput_fedWorkflowRunsAggregateTotalCount_input_Input = {
   todoRemove?: queryInput_fedWorkflowRunsAggregateTotalCount_input_todoRemove_Input | null | undefined;
   where?: queryInput_fedWorkflowRunsAggregateTotalCount_input_where_Input | null | undefined;
 };
+export type queryInput_fedWorkflowRunsAggregateTotalCount_input_todoRemove_Input = {
+  domain?: string | null | undefined;
+  projectId?: string | null | undefined;
+};
 export type queryInput_fedWorkflowRunsAggregateTotalCount_input_where_Input = {
-  collectionId?: queryInput_fedWorkflowRunsAggregateTotalCount_input_where_collectionId_Input | null | undefined;
-  deprecatedById?: queryInput_fedWorkflowRunsAggregateTotalCount_input_where_deprecatedById_Input | null | undefined;
+  collectionId?: IntListInFilter | null | undefined;
+  deprecatedById?: NullCheckFilter | null | undefined;
   workflowVersion?: queryInput_fedWorkflowRunsAggregateTotalCount_input_where_workflowVersion_Input | null | undefined;
 };
-export type queryInput_fedWorkflowRunsAggregateTotalCount_input_where_collectionId_Input = {
+export type IntListInFilter = {
   _in?: ReadonlyArray<number | null | undefined> | null | undefined;
+};
+export type NullCheckFilter = {
+  _is_null?: boolean | null | undefined;
 };
 export type queryInput_fedWorkflowRunsAggregateTotalCount_input_where_workflowVersion_Input = {
   workflow?: queryInput_fedWorkflowRunsAggregateTotalCount_input_where_workflowVersion_workflow_Input | null | undefined;
 };
 export type queryInput_fedWorkflowRunsAggregateTotalCount_input_where_workflowVersion_workflow_Input = {
-  name?: queryInput_fedWorkflowRunsAggregateTotalCount_input_where_workflowVersion_workflow_name_Input | null | undefined;
+  name?: StringListInFilter | null | undefined;
 };
-export type queryInput_fedWorkflowRunsAggregateTotalCount_input_where_workflowVersion_workflow_name_Input = {
+export type StringListInFilter = {
   _in?: ReadonlyArray<string | null | undefined> | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregateTotalCount_input_where_deprecatedById_Input = {
-  _is_null?: boolean | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregateTotalCount_input_todoRemove_Input = {
-  domain?: string | null | undefined;
-  projectId?: string | null | undefined;
 };
 export type DiscoveryViewFCFedWorkflowsTotalCountQuery$variables = {
   input?: queryInput_fedWorkflowRunsAggregateTotalCount_input_Input | null | undefined;
@@ -43,15 +43,15 @@ export type DiscoveryViewFCFedWorkflowsTotalCountQuery$variables = {
 export type DiscoveryViewFCFedWorkflowsTotalCountQuery$data = {
   readonly fedWorkflowRunsAggregateTotalCount: {
     readonly aggregate: ReadonlyArray<{
-      readonly count: number;
+      readonly count: number | null | undefined;
       readonly groupBy: {
         readonly workflowVersion: {
           readonly workflow: {
-            readonly name: string;
-          };
-        };
-      };
-    } | null | undefined> | null | undefined;
+            readonly name: string | null | undefined;
+          } | null | undefined;
+        } | null | undefined;
+      } | null | undefined;
+    }> | null | undefined;
   } | null | undefined;
 };
 export type DiscoveryViewFCFedWorkflowsTotalCountQuery = {

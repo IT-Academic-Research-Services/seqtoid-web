@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<94f17a4fb848ad5332c5daeb4a5b1e03>>
+ * @generated SignedSource<<60f8eb175f627a2eed46d211cd63ca14>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -20,7 +20,7 @@ export type BulkDownloadDetailsModeFragment$data = ReadonlyArray<{
     readonly displayName: string | null | undefined;
     readonly paramType: string | null | undefined;
     readonly value: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
   readonly status: string | null | undefined;
   readonly url: string | null | undefined;
   readonly " $fragmentType": "BulkDownloadDetailsModeFragment";

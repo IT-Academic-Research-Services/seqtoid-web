@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5c860682e4c3790e7aa5b648f692a1d1>>
+ * @generated SignedSource<<1b12bd062c417a7ccf71aa6fe827f393>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,7 +18,7 @@ export type BulkDownloadModalMutation$variables = {
 };
 export type BulkDownloadModalMutation$data = {
   readonly createAsyncBulkDownload: {
-    readonly id: string;
+    readonly id: string | null | undefined;
   } | null | undefined;
 };
 export type BulkDownloadModalMutation = {

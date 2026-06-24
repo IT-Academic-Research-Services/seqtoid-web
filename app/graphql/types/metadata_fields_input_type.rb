@@ -1,6 +1,9 @@
 module Types
   class MetadataFieldsInputType < Types::BaseInputObject
-    graphql_name "MetadataFieldsInput"
+    # CZID-305: must match the federation/frontend input type name exactly — the
+    # SampleDetailsMode MetadataFields query declares
+    # $input: queryInput_MetadataFields_input_Input.
+    graphql_name "queryInput_MetadataFields_input_Input"
 
     # [String]! — non-null list, nullable inner — to match the federation input.
     argument :sample_ids, [String, { null: true }], required: true

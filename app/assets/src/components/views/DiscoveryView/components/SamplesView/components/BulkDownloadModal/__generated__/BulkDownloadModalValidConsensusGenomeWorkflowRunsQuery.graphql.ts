@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9b510301ef4c8fcc31caf64ab9b4982f>>
+ * @generated SignedSource<<7f89a46a5cda5b8b034b9bebd79ec1cd>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,7 +18,7 @@ export type BulkDownloadModalValidConsensusGenomeWorkflowRunsQuery$data = {
     readonly id: string;
     readonly ownerUserId: number;
     readonly status: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
 };
 export type BulkDownloadModalValidConsensusGenomeWorkflowRunsQuery = {
   response: BulkDownloadModalValidConsensusGenomeWorkflowRunsQuery$data;

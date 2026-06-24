@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<673f3cc2d4e02a361b2944111fc821c4>>
+ * @generated SignedSource<<eea1fa393672d67a17f1f7ab0f95a80f>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -13,43 +13,22 @@ export type queryInput_fedWorkflowRunsAggregate_input_Input = {
   todoRemove?: queryInput_fedWorkflowRunsAggregate_input_todoRemove_Input | null | undefined;
   where?: queryInput_fedWorkflowRunsAggregate_input_where_Input | null | undefined;
 };
-export type queryInput_fedWorkflowRunsAggregate_input_where_Input = {
-  collectionId?: queryInput_fedWorkflowRunsAggregate_input_where_collectionId_Input | null | undefined;
-  deprecatedById?: queryInput_fedWorkflowRunsAggregate_input_where_deprecatedById_Input | null | undefined;
-  id?: queryInput_fedWorkflowRunsAggregate_input_where_id_Input | null | undefined;
-  workflowVersion?: queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_Input | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregate_input_where_id_Input = {
-  _in?: ReadonlyArray<string | null | undefined> | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregate_input_where_collectionId_Input = {
-  _in?: ReadonlyArray<number | null | undefined> | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_Input = {
-  workflow?: queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_workflow_Input | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_workflow_Input = {
-  name?: queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_workflow_name_Input | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_workflow_name_Input = {
-  _in?: ReadonlyArray<string | null | undefined> | null | undefined;
-};
-export type queryInput_fedWorkflowRunsAggregate_input_where_deprecatedById_Input = {
-  _is_null?: boolean | null | undefined;
-};
 export type queryInput_fedWorkflowRunsAggregate_input_todoRemove_Input = {
-  annotations?: ReadonlyArray<queryInput_fedWorkflowRunsAggregate_input_todoRemove_annotations_items_Input | null | undefined> | null | undefined;
+  annotations?: ReadonlyArray<queryInput_fedWorkflowRunsAggregate_input_todoRemove_annotations_items_Input> | null | undefined;
   domain?: string | null | undefined;
-  host?: ReadonlyArray<number | null | undefined> | null | undefined;
-  locationV2?: ReadonlyArray<string | null | undefined> | null | undefined;
+  host?: ReadonlyArray<number> | null | undefined;
+  locationV2?: ReadonlyArray<string> | null | undefined;
   projectId?: string | null | undefined;
   search?: string | null | undefined;
-  taxaLevels?: ReadonlyArray<string | null | undefined> | null | undefined;
-  taxon?: ReadonlyArray<number | null | undefined> | null | undefined;
-  taxonThresholds?: ReadonlyArray<queryInput_fedWorkflowRunsAggregate_input_todoRemove_taxonThresholds_items_Input | null | undefined> | null | undefined;
-  time?: ReadonlyArray<string | null | undefined> | null | undefined;
-  tissue?: ReadonlyArray<string | null | undefined> | null | undefined;
+  taxaLevels?: ReadonlyArray<string> | null | undefined;
+  taxon?: ReadonlyArray<number> | null | undefined;
+  taxonThresholds?: ReadonlyArray<queryInput_fedWorkflowRunsAggregate_input_todoRemove_taxonThresholds_items_Input> | null | undefined;
+  time?: ReadonlyArray<string> | null | undefined;
+  tissue?: ReadonlyArray<string> | null | undefined;
   visibility?: string | null | undefined;
+};
+export type queryInput_fedWorkflowRunsAggregate_input_todoRemove_annotations_items_Input = {
+  name?: string | null | undefined;
 };
 export type queryInput_fedWorkflowRunsAggregate_input_todoRemove_taxonThresholds_items_Input = {
   count_type?: string | null | undefined;
@@ -57,8 +36,26 @@ export type queryInput_fedWorkflowRunsAggregate_input_todoRemove_taxonThresholds
   operator?: string | null | undefined;
   value?: string | null | undefined;
 };
-export type queryInput_fedWorkflowRunsAggregate_input_todoRemove_annotations_items_Input = {
-  name?: string | null | undefined;
+export type queryInput_fedWorkflowRunsAggregate_input_where_Input = {
+  collectionId?: IntListInFilter | null | undefined;
+  deprecatedById?: NullCheckFilter | null | undefined;
+  id?: StringListInFilter | null | undefined;
+  workflowVersion?: queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_Input | null | undefined;
+};
+export type IntListInFilter = {
+  _in?: ReadonlyArray<number | null | undefined> | null | undefined;
+};
+export type NullCheckFilter = {
+  _is_null?: boolean | null | undefined;
+};
+export type StringListInFilter = {
+  _in?: ReadonlyArray<string | null | undefined> | null | undefined;
+};
+export type queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_Input = {
+  workflow?: queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_workflow_Input | null | undefined;
+};
+export type queryInput_fedWorkflowRunsAggregate_input_where_workflowVersion_workflow_Input = {
+  name?: StringListInFilter | null | undefined;
 };
 export type DiscoveryViewFCFedWorkflowRunsAggregateQuery$variables = {
   input?: queryInput_fedWorkflowRunsAggregate_input_Input | null | undefined;
@@ -66,16 +63,16 @@ export type DiscoveryViewFCFedWorkflowRunsAggregateQuery$variables = {
 export type DiscoveryViewFCFedWorkflowRunsAggregateQuery$data = {
   readonly fedWorkflowRunsAggregate: {
     readonly aggregate: ReadonlyArray<{
-      readonly count: number;
+      readonly count: number | null | undefined;
       readonly groupBy: {
-        readonly collectionId: number;
+        readonly collectionId: number | null | undefined;
         readonly workflowVersion: {
           readonly workflow: {
-            readonly name: string;
-          };
-        };
-      };
-    } | null | undefined> | null | undefined;
+            readonly name: string | null | undefined;
+          } | null | undefined;
+        } | null | undefined;
+      } | null | undefined;
+    }> | null | undefined;
   } | null | undefined;
 };
 export type DiscoveryViewFCFedWorkflowRunsAggregateQuery = {

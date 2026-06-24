@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3908a623cb29e3dcd91f1fd4ed727166>>
+ * @generated SignedSource<<1dab76934ca243ff742e5ae045232f2f>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,14 +15,14 @@ export type SampleViewSampleQuery$variables = {
 };
 export type SampleViewSampleQuery$data = {
   readonly SampleForReport: {
-    readonly created_at: string;
+    readonly created_at: string | null | undefined;
     readonly default_background_id: number | null | undefined;
     readonly default_pipeline_run_id: string | null | undefined;
-    readonly editable: boolean;
+    readonly editable: boolean | null | undefined;
     readonly host_genome_id: number | null | undefined;
-    readonly id: string;
-    readonly initial_workflow: string;
-    readonly name: string;
+    readonly id: string | null | undefined;
+    readonly initial_workflow: string | null | undefined;
+    readonly name: string | null | undefined;
     readonly pipeline_runs: ReadonlyArray<{
       readonly adjusted_remaining_reads: number | null | undefined;
       readonly alignment_config_name: string | null | undefined;
@@ -33,22 +33,22 @@ export type SampleViewSampleQuery$data = {
       readonly run_finalized: boolean | null | undefined;
       readonly total_ercc_reads: number | null | undefined;
       readonly wdl_version: string | null | undefined;
-    } | null | undefined> | null | undefined;
+    }> | null | undefined;
     readonly project: {
       readonly id: string | null | undefined;
       readonly name: string | null | undefined;
       readonly pinned_alignment_config: string | null | undefined;
-    };
-    readonly project_id: number;
+    } | null | undefined;
+    readonly project_id: number | null | undefined;
     readonly railsSampleId: string | null | undefined;
-    readonly status: string;
-    readonly updated_at: string;
+    readonly status: string | null | undefined;
+    readonly updated_at: string | null | undefined;
     readonly upload_error: string | null | undefined;
-    readonly user_id: number;
+    readonly user_id: number | null | undefined;
     readonly workflow_runs: ReadonlyArray<{
       readonly deprecated: boolean | null | undefined;
-      readonly executed_at: string;
-      readonly id: string;
+      readonly executed_at: string | null | undefined;
+      readonly id: string | null | undefined;
       readonly input_error: {
         readonly label: string | null | undefined;
         readonly message: string | null | undefined;
@@ -63,7 +63,7 @@ export type SampleViewSampleQuery$data = {
         readonly taxon_name: string | null | undefined;
         readonly technology: string | null | undefined;
         readonly wildcard_version: string | null | undefined;
-      };
+      } | null | undefined;
       readonly parsed_cached_results: {
         readonly quality_metrics: {
           readonly adjusted_remaining_reads: number | null | undefined;
@@ -76,11 +76,11 @@ export type SampleViewSampleQuery$data = {
           readonly total_reads: number | null | undefined;
         } | null | undefined;
       } | null | undefined;
-      readonly run_finalized: boolean;
+      readonly run_finalized: boolean | null | undefined;
       readonly status: string | null | undefined;
       readonly wdl_version: string | null | undefined;
       readonly workflow: string | null | undefined;
-    } | null | undefined> | null | undefined;
+    }> | null | undefined;
   } | null | undefined;
 };
 export type SampleViewSampleQuery = {

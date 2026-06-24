@@ -4,6 +4,6 @@ module Types
   class IntListInFilterType < Types::BaseInputObject
     graphql_name "IntListInFilter"
 
-    argument :_in, [Int], required: false, camelize: false
+    argument :_in, [Int, { null: true }], required: false, camelize: false
   end
 end

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1e6cf5a943a3f144fec147838c2ebed3>>
+ * @generated SignedSource<<990f2021e1e6d79b56b8abfa81affdd3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,7 +18,7 @@ export type BulkDeleteModalMutation$variables = {
 export type BulkDeleteModalMutation$data = {
   readonly DeleteSamples: {
     readonly error: string | null | undefined;
-  } | null | undefined;
+  };
 };
 export type BulkDeleteModalMutation = {
   response: BulkDeleteModalMutation$data;
@@ -77,7 +77,7 @@ v4 = [
         "name": "input"
       }
     ],
-    "concreteType": "DeleteSamples",
+    "concreteType": "DeleteSamplesPayload",
     "kind": "LinkedField",
     "name": "DeleteSamples",
     "plural": false,

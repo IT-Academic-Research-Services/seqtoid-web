@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3610bf36b345e98d97cc663e0c439b75>>
+ * @generated SignedSource<<dc2c0795bcc5c35207e26b2ad42038a4>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,8 +12,8 @@ import { Fragment, ReaderFragment } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type ConsensusGenomeHistogramFragment$data = ReadonlyArray<{
   readonly accession: {
-    readonly accessionId: string;
-    readonly accessionName: string;
+    readonly accessionId: string | null | undefined;
+    readonly accessionName: string | null | undefined;
   } | null | undefined;
   readonly metrics: {
     readonly coverageBinSize: number;
@@ -21,7 +21,7 @@ export type ConsensusGenomeHistogramFragment$data = ReadonlyArray<{
     readonly coverageViz: ReadonlyArray<ReadonlyArray<number | null | undefined> | null | undefined>;
   } | null | undefined;
   readonly taxon: {
-    readonly name: string;
+    readonly name: string | null | undefined;
   } | null | undefined;
   readonly " $fragmentType": "ConsensusGenomeHistogramFragment";
 }>;

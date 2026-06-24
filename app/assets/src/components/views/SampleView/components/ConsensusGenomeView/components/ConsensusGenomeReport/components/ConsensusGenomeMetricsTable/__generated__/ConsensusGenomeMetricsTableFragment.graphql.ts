@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d89a944efc2517eb9f348ac64a8b6bd6>>
+ * @generated SignedSource<<1698cb5a1760baf53204b944a3bf52eb>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -22,7 +22,7 @@ export type ConsensusGenomeMetricsTableFragment$data = ReadonlyArray<{
     readonly refSnps: number | null | undefined;
   } | null | undefined;
   readonly taxon: {
-    readonly name: string;
+    readonly name: string | null | undefined;
   } | null | undefined;
   readonly " $fragmentType": "ConsensusGenomeMetricsTableFragment";
 }>;

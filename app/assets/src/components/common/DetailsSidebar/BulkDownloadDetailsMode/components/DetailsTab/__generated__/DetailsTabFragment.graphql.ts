@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9b3ac5141390b88ef491a8eb27524ae4>>
+ * @generated SignedSource<<95056eea9f83b16194e30e1ce659301d>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,13 +15,13 @@ export type DetailsTabFragment$data = ReadonlyArray<{
   readonly entityInputs: ReadonlyArray<{
     readonly id: string | null | undefined;
     readonly name: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
   readonly id: string | null | undefined;
   readonly params: ReadonlyArray<{
     readonly displayName: string | null | undefined;
     readonly paramType: string | null | undefined;
     readonly value: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
   readonly " $fragmentType": "DetailsTabFragment";
 }>;
 export type DetailsTabFragment$key = ReadonlyArray<{

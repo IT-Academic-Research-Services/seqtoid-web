@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<688e5aa4f6c4e152db0aa025a256c75d>>
+ * @generated SignedSource<<49a96d66a12171335e283fb9c14503c4>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,7 +16,7 @@ export type DownloadAllButtonQuery$data = {
   readonly ZipLink: {
     readonly error: string | null | undefined;
     readonly url: string | null | undefined;
-  } | null | undefined;
+  };
 };
 export type DownloadAllButtonQuery = {
   response: DownloadAllButtonQuery$data;

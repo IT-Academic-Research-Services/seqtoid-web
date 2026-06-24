@@ -1,5 +1,6 @@
 import type { FetchFunction, IEnvironment } from "relay-runtime";
 import { Environment, Network, RecordSource, Store } from "relay-runtime";
+import { getCsrfToken } from "~/api/utils";
 import { logError } from "~/components/utils/logUtil";
 import { getValidIdentity } from "./identify";
 
@@ -13,11 +14,15 @@ const QUERY_NAME_REGEX = /(?:query|mutation)\s+(\S+)\s*\(/;
 const generateFetchFn = (): FetchFunction => {
   return async (params, variables) => {
     await getValidIdentity();
-    const response = await fetch("/graphqlfed", {
+    // CZID-305: cut over from the federation server (/graphqlfed) to the Rails-native
+    // GraphQL endpoint (/graphql). GraphqlController uses protect_from_forgery with
+    // :null_session, so the Rails CSRF token must be sent for the session (current_user)
+    // to be honored — the federation-specific yoga CSRF header is no longer used.
+    const response = await fetch("/graphql", {
       method: "POST",
       headers: [
         ["Content-Type", "application/json"],
-        ["x-graphql-yoga-csrf", "graphql-yoga-csrf-prevention"],
+        ["X-CSRF-Token", getCsrfToken()],
       ],
       body: JSON.stringify({
         query: params.text,

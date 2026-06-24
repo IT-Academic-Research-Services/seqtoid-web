@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ceba0df964fd9489f748878d934a69c4>>
+ * @generated SignedSource<<ad384ac140949ae1aa0bc5f6d3fb8024>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,20 +12,9 @@ import { ConcreteRequest, Query } from 'relay-runtime';
 export type queryInput_fedConsensusGenomes_input_Input = {
   limit?: number | null | undefined;
   offset?: number | null | undefined;
-  orderBy?: ReadonlyArray<queryInput_fedConsensusGenomes_input_orderBy_items_Input | null | undefined> | null | undefined;
+  orderBy?: ReadonlyArray<queryInput_fedConsensusGenomes_input_orderBy_items_Input> | null | undefined;
   todoRemove?: queryInput_fedConsensusGenomes_input_todoRemove_Input | null | undefined;
   where?: queryInput_fedConsensusGenomes_input_where_Input | null | undefined;
-};
-export type queryInput_fedConsensusGenomes_input_where_Input = {
-  collectionId?: queryInput_fedConsensusGenomes_input_where_collectionId_Input | null | undefined;
-  producingRunId?: queryInput_fedConsensusGenomes_input_where_producingRunId_Input | null | undefined;
-};
-export type queryInput_fedConsensusGenomes_input_where_collectionId_Input = {
-  _in?: ReadonlyArray<number | null | undefined> | null | undefined;
-};
-export type queryInput_fedConsensusGenomes_input_where_producingRunId_Input = {
-  _eq?: string | null | undefined;
-  _in?: ReadonlyArray<string | null | undefined> | null | undefined;
 };
 export type queryInput_fedConsensusGenomes_input_orderBy_items_Input = {
   accession?: queryInput_fedConsensusGenomes_input_orderBy_items_accession_Input | null | undefined;
@@ -48,20 +37,31 @@ export type queryInput_fedConsensusGenomes_input_orderBy_items_metrics_Input = {
 };
 export type queryInput_fedConsensusGenomes_input_todoRemove_Input = {
   domain?: string | null | undefined;
-  host?: ReadonlyArray<number | null | undefined> | null | undefined;
-  locationV2?: ReadonlyArray<string | null | undefined> | null | undefined;
+  host?: ReadonlyArray<number> | null | undefined;
+  locationV2?: ReadonlyArray<string> | null | undefined;
   orderBy?: string | null | undefined;
   orderDir?: string | null | undefined;
   projectId?: string | null | undefined;
-  sampleIds?: ReadonlyArray<number | null | undefined> | null | undefined;
+  sampleIds?: ReadonlyArray<number> | null | undefined;
   search?: string | null | undefined;
-  taxaLevels?: ReadonlyArray<string | null | undefined> | null | undefined;
-  taxons?: ReadonlyArray<number | null | undefined> | null | undefined;
-  time?: ReadonlyArray<string | null | undefined> | null | undefined;
-  tissue?: ReadonlyArray<string | null | undefined> | null | undefined;
+  taxaLevels?: ReadonlyArray<string> | null | undefined;
+  taxons?: ReadonlyArray<number> | null | undefined;
+  time?: ReadonlyArray<string> | null | undefined;
+  tissue?: ReadonlyArray<string> | null | undefined;
   visibility?: string | null | undefined;
   workflow?: string | null | undefined;
-  workflowRunIds?: ReadonlyArray<number | null | undefined> | null | undefined;
+  workflowRunIds?: ReadonlyArray<number> | null | undefined;
+};
+export type queryInput_fedConsensusGenomes_input_where_Input = {
+  collectionId?: IntListInFilter | null | undefined;
+  producingRunId?: StringInEqFilter | null | undefined;
+};
+export type IntListInFilter = {
+  _in?: ReadonlyArray<number | null | undefined> | null | undefined;
+};
+export type StringInEqFilter = {
+  _eq?: string | null | undefined;
+  _in?: ReadonlyArray<string> | null | undefined;
 };
 export type DiscoveryViewFCConsensusGenomeIdsQuery$variables = {
   input?: queryInput_fedConsensusGenomes_input_Input | null | undefined;
@@ -69,7 +69,7 @@ export type DiscoveryViewFCConsensusGenomeIdsQuery$variables = {
 export type DiscoveryViewFCConsensusGenomeIdsQuery$data = {
   readonly fedConsensusGenomes: ReadonlyArray<{
     readonly producingRunId: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
 };
 export type DiscoveryViewFCConsensusGenomeIdsQuery = {
   response: DiscoveryViewFCConsensusGenomeIdsQuery$data;

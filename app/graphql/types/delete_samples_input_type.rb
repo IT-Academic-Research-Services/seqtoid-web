@@ -5,8 +5,8 @@ module Types
   class DeleteSamplesInputType < Types::BaseInputObject
     graphql_name "mutationInput_DeleteSamples_input_Input"
 
-    argument :ids, [Int], required: false, camelize: false
-    argument :ids_strings, [String], required: false
+    argument :ids, [Int, { null: true }], required: false, camelize: false
+    argument :ids_strings, [String, { null: true }], required: false
     argument :workflow, String, required: false, camelize: false
     argument :authenticity_token, String, required: false
   end

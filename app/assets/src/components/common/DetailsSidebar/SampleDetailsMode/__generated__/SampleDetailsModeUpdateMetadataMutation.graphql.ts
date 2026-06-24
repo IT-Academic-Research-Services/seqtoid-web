@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a8ebd2d765ff4ca5a35d9ffe69db5a9b>>
+ * @generated SignedSource<<7ca4b6c409fe5c5f4f3ff3498b6eec5d>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,7 +10,7 @@
 
 import { ConcreteRequest, Mutation } from 'relay-runtime';
 export type mutationInput_UpdateMetadata_input_Input = {
-  authenticityToken: string;
+  authenticityToken?: string | null | undefined;
   field: string;
   value: mutationInput_UpdateMetadata_input_value_Input;
 };
@@ -52,7 +52,7 @@ export type SampleDetailsModeUpdateMetadataMutation$data = {
   readonly UpdateMetadata: {
     readonly message: string | null | undefined;
     readonly status: string | null | undefined;
-  } | null | undefined;
+  };
 };
 export type SampleDetailsModeUpdateMetadataMutation = {
   response: SampleDetailsModeUpdateMetadataMutation$data;
@@ -85,7 +85,7 @@ v2 = [
         "variableName": "sampleId"
       }
     ],
-    "concreteType": "UpdateMetadataReponse",
+    "concreteType": "UpdateMetadataPayload",
     "kind": "LinkedField",
     "name": "UpdateMetadata",
     "plural": false,

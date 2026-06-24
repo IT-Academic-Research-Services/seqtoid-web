@@ -6,6 +6,6 @@ module Types
   class StringListInFilterType < Types::BaseInputObject
     graphql_name "StringListInFilter"
 
-    argument :_in, [String], required: false, camelize: false
+    argument :_in, [String, { null: true }], required: false, camelize: false
   end
 end

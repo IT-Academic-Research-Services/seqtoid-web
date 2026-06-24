@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c5de8fc2054c00b8d98b379ebcdf8d1e>>
+ * @generated SignedSource<<54bb3cef1252de53af5d7eb9c398ac30>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,7 +18,7 @@ export type AdvancedDownloadTabFragment$data = ReadonlyArray<{
     readonly displayName: string | null | undefined;
     readonly paramType: string | null | undefined;
     readonly value: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
   readonly status: string | null | undefined;
   readonly url: string | null | undefined;
   readonly " $fragmentType": "AdvancedDownloadTabFragment";

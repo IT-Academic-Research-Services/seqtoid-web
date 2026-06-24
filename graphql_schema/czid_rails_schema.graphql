@@ -134,7 +134,7 @@ type InputFile {
 }
 
 input IntListInFilter {
-  _in: [Int!]
+  _in: [Int]
 }
 
 scalar JSON
@@ -149,11 +149,6 @@ type MetadataField {
   key: String
   name: String
   options: [String!]
-}
-
-input MetadataFieldsInput {
-  authenticityToken: String
-  sampleIds: [String]!
 }
 
 type MngsRunInfo {
@@ -254,7 +249,8 @@ type Project {
 
 type Query {
   BulkDownloadCGOverview(input: BulkDownloadCGOverviewInput!): BulkDownloadCGOverview!
-  MetadataFields(input: MetadataFieldsInput, snapshotLinkId: String): [MetadataField!]
+  MetadataFields(input: queryInput_MetadataFields_input_Input, snapshotLinkId: String): [MetadataField!]
+  SampleForReport(railsSampleId: String, snapshotLinkId: String): SampleForReport
   SampleMetadata(input: queryInput_SampleMetadata_input_Input, sampleId: String, snapshotLinkId: String): SampleMetadata
   ValidateUserCanDeleteObjects(input: ValidateUserCanDeleteObjectsInput!): ValidateUserCanDeleteObjects!
   ZipLink(workflowRunId: String): ZipLink!
@@ -319,6 +315,26 @@ type SampleDetails {
   mngsRunInfo: MngsRunInfo
   uploader: SampleUploader!
   workflowRunsCountByWorkflow: String
+}
+
+type SampleForReport {
+  created_at: String
+  default_background_id: Int
+  default_pipeline_run_id: String
+  editable: Boolean
+  host_genome_id: Int
+  id: String
+  initial_workflow: String
+  name: String
+  pipeline_runs: [query_SampleForReport_pipeline_runs_items!]
+  project: query_SampleForReport_project
+  project_id: Int
+  railsSampleId: String
+  status: String
+  updated_at: String
+  upload_error: String
+  user_id: Int
+  workflow_runs: [query_SampleForReport_workflow_runs_items!]
 }
 
 type SampleList {
@@ -392,7 +408,7 @@ input StringIregexFilter {
 }
 
 input StringListInFilter {
-  _in: [String!]
+  _in: [String]
 }
 
 """
@@ -485,14 +501,14 @@ input mutationInput_CreateBulkDownload_input_Input {
   downloadFormat: String
   downloadType: String
   workflow: String
-  workflowRunIds: [Int!]
-  workflowRunIdsStrings: [String!]
+  workflowRunIds: [Int]
+  workflowRunIdsStrings: [String]
 }
 
 input mutationInput_DeleteSamples_input_Input {
   authenticityToken: String
-  ids: [Int!]
-  idsStrings: [String!]
+  ids: [Int]
+  idsStrings: [String]
   workflow: String
 }
 
@@ -564,6 +580,11 @@ type mutation_KickoffWGSWorkflow_items_parsed_cached_results_quality_metrics {
   qc_percent: Float
   total_ercc_reads: Int
   total_reads: Int
+}
+
+input queryInput_MetadataFields_input_Input {
+  authenticityToken: String
+  sampleIds: [String]!
 }
 
 input queryInput_SampleMetadata_input_Input {
@@ -850,6 +871,70 @@ input queryInput_fedWorkflowRuns_input_where_workflowVersion_Input {
 
 input queryInput_fedWorkflowRuns_input_where_workflowVersion_workflow_Input {
   name: StringListInFilter
+}
+
+type query_SampleForReport_pipeline_runs_items {
+  adjusted_remaining_reads: Int
+  alignment_config_name: String
+  assembled: Int
+  created_at: String
+  id: String
+  pipeline_version: String
+  run_finalized: Boolean
+  total_ercc_reads: Int
+  wdl_version: String
+}
+
+type query_SampleForReport_project {
+  id: String
+  name: String
+  pinned_alignment_config: String
+}
+
+type query_SampleForReport_workflow_runs_items {
+  deprecated: Boolean
+  executed_at: String
+  id: String
+  input_error: query_SampleForReport_workflow_runs_items_input_error
+  inputs: query_SampleForReport_workflow_runs_items_inputs
+  parsed_cached_results: query_SampleForReport_workflow_runs_items_parsed_cached_results
+  rails_workflow_run_id: String
+  run_finalized: Boolean
+  status: String
+  wdl_version: String
+  workflow: String
+}
+
+type query_SampleForReport_workflow_runs_items_input_error {
+  label: String
+  message: String
+}
+
+type query_SampleForReport_workflow_runs_items_inputs {
+  accession_id: String
+  accession_name: String
+  card_version: String
+  creation_source: String
+  ref_fasta: String
+  taxon_id: String
+  taxon_name: String
+  technology: String
+  wildcard_version: String
+}
+
+type query_SampleForReport_workflow_runs_items_parsed_cached_results {
+  quality_metrics: query_SampleForReport_workflow_runs_items_parsed_cached_results_quality_metrics
+}
+
+type query_SampleForReport_workflow_runs_items_parsed_cached_results_quality_metrics {
+  adjusted_remaining_reads: Int
+  compression_ratio: Float
+  insert_size_mean: Float
+  insert_size_standard_deviation: Float
+  percent_remaining: Float
+  qc_percent: Float
+  total_ercc_reads: Int
+  total_reads: Int
 }
 
 type query_SampleMetadata_additional_info {

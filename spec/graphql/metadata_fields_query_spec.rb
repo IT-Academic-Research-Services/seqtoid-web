@@ -4,7 +4,7 @@ RSpec.describe GraphqlController, type: :request do
   create_users
 
   query = <<GQL
-  query SampleDetailsModeSampleMetadataFieldsQuery($snapshotLinkId: String, $input: MetadataFieldsInput!) {
+  query SampleDetailsModeSampleMetadataFieldsQuery($snapshotLinkId: String, $input: queryInput_MetadataFields_input_Input!) {
     MetadataFields(snapshotLinkId: $snapshotLinkId, input: $input) {
       key
       dataType

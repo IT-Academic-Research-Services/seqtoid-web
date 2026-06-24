@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4e18c5897fda9fc6da663b7ae034c144>>
+ * @generated SignedSource<<41c396a095cbe2f9a8b13b43535eb8ae>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,7 +15,7 @@ export type PipelineTabFragment$data = {
     readonly actual: number | null | undefined;
     readonly expected: any | null | undefined;
     readonly name: string | null | undefined;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
   readonly pipeline_run: {
     readonly adjusted_remaining_reads: number | null | undefined;
     readonly alert_sent: number | null | undefined;

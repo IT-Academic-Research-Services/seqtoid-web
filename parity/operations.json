@@ -1,0 +1,40 @@
+[
+  {
+    "name": "ZipLink",
+    "field": "ZipLink",
+    "variables": { "workflowRunId": "${PARITY_WORKFLOW_RUN_ID}" },
+    "query": "query DownloadAllButtonQuery($workflowRunId: String) { ZipLink(workflowRunId: $workflowRunId) { error url } }"
+  },
+  {
+    "name": "ValidateUserCanDeleteObjects",
+    "field": "ValidateUserCanDeleteObjects",
+    "variables": {
+      "selectedIdsStrings": ["${PARITY_WORKFLOW_RUN_ID}"],
+      "workflow": "${PARITY_WORKFLOW}",
+      "authenticityToken": "parity"
+    },
+    "query": "query BulkDeleteModalQuery($selectedIds: [Int], $selectedIdsStrings: [String], $workflow: String!, $authenticityToken: String!) { ValidateUserCanDeleteObjects(input: {selectedIds: $selectedIds, selectedIdsStrings: $selectedIdsStrings, workflow: $workflow, authenticityToken: $authenticityToken}) { validIdsStrings invalidSampleNames error } }"
+  },
+  {
+    "name": "MetadataFields",
+    "field": "MetadataFields",
+    "variables": {
+      "snapshotLinkId": null,
+      "sampleIds": ["${PARITY_SAMPLE_ID}"],
+      "authenticityToken": "parity"
+    },
+    "query": "query MetadataFieldsQuery($snapshotLinkId: String, $sampleIds: [String]!, $authenticityToken: String!) { MetadataFields(snapshotLinkId: $snapshotLinkId, input: {sampleIds: $sampleIds, authenticityToken: $authenticityToken}) { key dataType name options host_genome_ids description is_required isBoolean group } }"
+  },
+  {
+    "name": "BulkDownloadCGOverview",
+    "field": "BulkDownloadCGOverview",
+    "variables": {
+      "workflowRunIdsStrings": ["${PARITY_WORKFLOW_RUN_ID}"],
+      "includeMetadata": false,
+      "downloadType": "${PARITY_CG_DOWNLOAD_TYPE}",
+      "workflow": "consensus-genome",
+      "authenticityToken": "parity"
+    },
+    "query": "query BulkDownloadModalQuery($workflowRunIdsStrings: [String], $includeMetadata: Boolean!, $downloadType: String!, $workflow: String!, $authenticityToken: String!) { BulkDownloadCGOverview(input: {workflowRunIdsStrings: $workflowRunIdsStrings, includeMetadata: $includeMetadata, downloadType: $downloadType, workflow: $workflow, authenticityToken: $authenticityToken}) { cgOverviewRows } }"
+  }
+]

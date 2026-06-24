@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8ad8703bac64c522497123856dd2d74d>>
+ * @generated SignedSource<<9e8c341d7f23b73955084d6d1c13afc9>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,7 +10,7 @@
 
 import { ConcreteRequest, Query } from 'relay-runtime';
 export type queryInput_MetadataFields_input_Input = {
-  authenticityToken: string;
+  authenticityToken?: string | null | undefined;
   sampleIds: ReadonlyArray<string | null | undefined>;
 };
 export type SampleDetailsModeSampleMetadataFieldsQuery$variables = {
@@ -22,13 +22,13 @@ export type SampleDetailsModeSampleMetadataFieldsQuery$data = {
     readonly dataType: string | null | undefined;
     readonly description: string | null | undefined;
     readonly group: string | null | undefined;
-    readonly host_genome_ids: ReadonlyArray<number | null | undefined> | null | undefined;
+    readonly host_genome_ids: ReadonlyArray<number> | null | undefined;
     readonly isBoolean: boolean | null | undefined;
     readonly is_required: number | null | undefined;
     readonly key: string | null | undefined;
     readonly name: string | null | undefined;
-    readonly options: any | null | undefined;
-  } | null | undefined> | null | undefined;
+    readonly options: ReadonlyArray<string> | null | undefined;
+  }> | null | undefined;
 };
 export type SampleDetailsModeSampleMetadataFieldsQuery = {
   response: SampleDetailsModeSampleMetadataFieldsQuery$data;
@@ -61,7 +61,7 @@ v2 = [
         "variableName": "snapshotLinkId"
       }
     ],
-    "concreteType": "query_MetadataFields_items",
+    "concreteType": "MetadataField",
     "kind": "LinkedField",
     "name": "MetadataFields",
     "plural": true,

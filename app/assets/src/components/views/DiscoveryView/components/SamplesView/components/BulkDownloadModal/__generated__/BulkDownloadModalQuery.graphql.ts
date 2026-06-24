@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<cbfb8c6999980ba8a93bab60e3efa47b>>
+ * @generated SignedSource<<8457d39a05eba3187ae0bca37f06ff1b>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,8 +18,8 @@ export type BulkDownloadModalQuery$variables = {
 };
 export type BulkDownloadModalQuery$data = {
   readonly BulkDownloadCGOverview: {
-    readonly cgOverviewRows: ReadonlyArray<ReadonlyArray<string | null | undefined> | null | undefined>;
-  } | null | undefined;
+    readonly cgOverviewRows: ReadonlyArray<ReadonlyArray<string | null | undefined> | null | undefined> | null | undefined;
+  };
 };
 export type BulkDownloadModalQuery = {
   response: BulkDownloadModalQuery$data;
@@ -88,7 +88,7 @@ v5 = [
         "name": "input"
       }
     ],
-    "concreteType": "ConsensusGenomeOverviewRows",
+    "concreteType": "BulkDownloadCGOverview",
     "kind": "LinkedField",
     "name": "BulkDownloadCGOverview",
     "plural": false,

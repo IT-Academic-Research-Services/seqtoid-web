@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<51f29686e32d5efd93ac5d41ed35982d>>
+ * @generated SignedSource<<4fb957b0f580bcd79467934583355dd2>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,7 +18,7 @@ export type BulkDownloadListQuery$data = {
     readonly entityInputFileType: string | null | undefined;
     readonly entityInputs: ReadonlyArray<{
       readonly id: string | null | undefined;
-    } | null | undefined> | null | undefined;
+    }> | null | undefined;
     readonly fileSize: number | null | undefined;
     readonly id: string | null | undefined;
     readonly ownerUserId: number | null | undefined;
@@ -26,7 +26,7 @@ export type BulkDownloadListQuery$data = {
     readonly status: string | null | undefined;
     readonly url: string | null | undefined;
     readonly " $fragmentSpreads": FragmentRefs<"AdvancedDownloadTabFragment" | "BulkDownloadDetailsModeFragment" | "DetailsTabFragment">;
-  } | null | undefined> | null | undefined;
+  }> | null | undefined;
 };
 export type BulkDownloadListQuery = {
   response: BulkDownloadListQuery$data;

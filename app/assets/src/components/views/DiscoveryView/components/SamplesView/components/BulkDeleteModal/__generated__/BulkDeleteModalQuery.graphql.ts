@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8871bf3e9ab3d2f7dc7ede3ee4e3bd62>>
+ * @generated SignedSource<<30d0459e649dcd2da17e0219f1c149e3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,9 +18,9 @@ export type BulkDeleteModalQuery$variables = {
 export type BulkDeleteModalQuery$data = {
   readonly ValidateUserCanDeleteObjects: {
     readonly error: string | null | undefined;
-    readonly invalidSampleNames: ReadonlyArray<string | null | undefined>;
-    readonly validIdsStrings: ReadonlyArray<string | null | undefined>;
-  } | null | undefined;
+    readonly invalidSampleNames: ReadonlyArray<string> | null | undefined;
+    readonly validIdsStrings: ReadonlyArray<string> | null | undefined;
+  };
 };
 export type BulkDeleteModalQuery = {
   response: BulkDeleteModalQuery$data;
