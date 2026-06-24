@@ -13,8 +13,7 @@ class BulkDeletionService
       Rails.logger.warn("BulkDeletionService called with object_ids = nil")
       @object_ids = []
     else
-      # Expect to get either array of integers (read from Rails) or array of UUID strings (read from NextGen).
-      # Only convert to integers if we receive Rails IDs, not UUIDs.
+      # Expect to get an array of integer Rails IDs.
       @object_ids = if ArrayUtil.all_integers?(object_ids)
                       object_ids.map(&:to_i)
                     else
@@ -68,23 +67,11 @@ class BulkDeletionService
 
     # If mngs, get pipeline runs from sample ids and clean up visualizations.
     # If workflow runs, get workflow run objects from workflow run ids.
-    nextgen_ids = {}
     if WorkflowRun::MNGS_WORKFLOWS.include?(workflow)
       technology = WorkflowRun::MNGS_WORKFLOW_TO_TECHNOLOGY[workflow]
       deletable_rails_objects = current_power.deletable_pipeline_runs.where(sample_id: object_ids, technology: technology)
       sample_ids = object_ids
       handle_visualizations(sample_ids, delete_timestamp)
-    elsif workflow == WorkflowRun::WORKFLOW[:consensus_genome] && AppConfigHelper.get_app_config(AppConfig::NEXTGEN_SERVICES_ENABLED) == "1"
-      # NEXTGEN: get Rails objects to delete and NextGen objects to delete
-      # Only go into this service if Nextgen services are available
-      rails_ids, nextgen_ids = BulkDeletionServiceNextgen.call(
-        user: user,
-        object_ids: object_ids,
-        workflow: workflow,
-        delete_timestamp: delete_timestamp
-      ).values_at(:rails_ids, :nextgen_ids)
-      deletable_rails_ids, sample_ids = rails_ids.values_at(:workflow_run_ids, :sample_ids)
-      deletable_rails_objects = current_power.deletable_workflow_runs.where(id: deletable_rails_ids).by_workflow(workflow).non_deprecated
     else
       # Flow for Rails-only CG and AMR
       deletable_rails_objects = current_power.deletable_workflow_runs.where(id: object_ids).by_workflow(workflow).non_deprecated
@@ -158,14 +145,9 @@ class BulkDeletionService
       )
     end
 
-    # This job won't be enqueued unless create_next_gen_entities flag is on
-    unless nextgen_ids.empty?
-      Resque.enqueue(HardDeleteNextgenObjects, user.id, nextgen_ids[:cg_ids], nextgen_ids[:sample_ids], nextgen_ids[:workflow_run_ids], nextgen_ids[:deprecated_workflow_run_ids], nextgen_ids[:bulk_download_workflow_run_ids], nextgen_ids[:bulk_download_entity_ids])
-    end
-
     # First enqueue deletion of samples without workflow runs
-    # This happens for short read mNGS uploads and for CG runs in NextGen,
-    # since the workflow run lives in NextGen and the sample is duplicated in Rails
+    # This happens for short read mNGS uploads,
+    # since the sample has no associated workflow run in Rails.
     sample_ids_without_wrs = sample_ids - deletable_rails_objects.pluck(:sample_id)
     unless sample_ids_without_wrs.empty?
       Resque.enqueue(HardDeleteObjects, [], sample_ids_without_wrs, workflow, user.id)
@@ -191,10 +173,9 @@ class BulkDeletionService
                           workflow_deleted: workflow)
     end
 
-    should_read_from_nextgen = user.allowed_feature?("should_read_from_nextgen") && workflow == WorkflowRun::WORKFLOW[:consensus_genome]
-    # Workflow run ids and sample ids in either system. This is unused by the frontend.
-    deleted_run_ids = should_read_from_nextgen ? nextgen_ids[:workflow_run_ids] : deletable_rails_objects.pluck(:id)
-    deleted_sample_ids = should_read_from_nextgen ? nextgen_ids[:sample_ids] : soft_deleted_sample_ids
+    # Workflow run ids and sample ids. This is unused by the frontend.
+    deleted_run_ids = deletable_rails_objects.pluck(:id)
+    deleted_sample_ids = soft_deleted_sample_ids
 
     return {
       deleted_run_ids: deleted_run_ids,
@@ -221,20 +202,12 @@ class BulkDeletionService
       technology: PipelineRun::TECHNOLOGY_INPUT[:nanopore]
     ).pluck(:sample_id).to_set
 
-    counts["consensus-genome"] = if user.allowed_feature?("should_read_from_nextgen")
-                                   BulkDeletionServiceNextgen.get_rails_samples_with_nextgen_workflow(
-                                     user.id,
-                                     sample_ids,
-                                     WorkflowRun::WORKFLOW[:consensus_genome]
-                                   )
-                                 else
-                                   WorkflowRun.where(
-                                     sample_id: sample_ids,
-                                     deleted_at: nil,
-                                     deprecated: false,
-                                     workflow: WorkflowRun::WORKFLOW[:consensus_genome]
-                                   ).pluck(:sample_id).to_set
-                                 end
+    counts["consensus-genome"] = WorkflowRun.where(
+      sample_id: sample_ids,
+      deleted_at: nil,
+      deprecated: false,
+      workflow: WorkflowRun::WORKFLOW[:consensus_genome]
+    ).pluck(:sample_id).to_set
 
     counts["amr"] = WorkflowRun.where(
       sample_id: sample_ids,

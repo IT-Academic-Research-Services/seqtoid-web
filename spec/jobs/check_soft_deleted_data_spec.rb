@@ -7,10 +7,6 @@ RSpec.describe CheckSoftDeletedData, type: :job do
   let(:illumina) { PipelineRun::TECHNOLOGY_INPUT[:illumina] }
   let(:admin_user_id) { 123 }
 
-  def stub_nextgen_call
-    allow(CheckSoftDeletedData).to receive(:check_for_soft_deleted_data_nextgen)
-  end
-
   it "logs error and raises exception if unexpected error occurs" do
     allow(CheckSoftDeletedData).to receive(:check_for_soft_deleted_data_rails).and_raise(StandardError)
     expect(LogUtil).to receive(:log_error).with("Unexpected error encountered while checking database for soft deleted data", exception: StandardError).exactly(1).times
@@ -42,7 +38,6 @@ RSpec.describe CheckSoftDeletedData, type: :job do
       expect(LogUtil).to receive(:log_error).with("Soft deleted pipeline runs found in database", exception: CheckSoftDeletedData::SoftDeletedDataError.new, pipeline_run_ids: [@pr1.id]).exactly(1).times
       expect(LogUtil).to receive(:log_error).with("Soft deleted workflow runs found in database", exception: CheckSoftDeletedData::SoftDeletedDataError.new, workflow_run_ids: [@wr1.id]).exactly(1).times
       expect(LogUtil).to receive(:log_error).with("Soft deleted samples found in database", exception: CheckSoftDeletedData::SoftDeletedDataError.new, sample_ids: [@sample1.id]).exactly(1).times
-      stub_nextgen_call
       CheckSoftDeletedData.perform
     end
   end
@@ -66,7 +61,6 @@ RSpec.describe CheckSoftDeletedData, type: :job do
     end
 
     it "does not log errors to cloudwatch" do
-      stub_nextgen_call
       expect(LogUtil).not_to receive(:log_error)
       CheckSoftDeletedData.perform
     end
@@ -89,7 +83,6 @@ RSpec.describe CheckSoftDeletedData, type: :job do
     end
 
     it "does not log errors to cloudwatch" do
-      stub_nextgen_call
       expect(LogUtil).not_to receive(:log_error)
       CheckSoftDeletedData.perform
     end

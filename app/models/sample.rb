@@ -441,12 +441,6 @@ class Sample < ApplicationRecord
 
     raise stderr_array.join(" ") unless stderr_array.empty?
 
-    if user.allowed_feature?("create_next_gen_entities")
-      # Link uploaded files and kickoff workflow in workflows service
-      if workflow_runs.any? { |wr| wr.workflow == WorkflowRun::WORKFLOW[:consensus_genome] }
-        SampleFileEntityLinkCreationService.call(user.id, self)
-      end
-    end
     self.status = STATUS_UPLOADED
     save! # this triggers pipeline command
   rescue StandardError => e
@@ -537,13 +531,6 @@ class Sample < ApplicationRecord
       )
 
       input_files << input_file
-    end
-
-    if user.allowed_feature?("create_next_gen_entities")
-      # Link uploaded files and kickoff workflow in workflows service
-      if workflow_runs.any? { |wr| wr.workflow == WorkflowRun::WORKFLOW[:consensus_genome] }
-        SampleFileEntityLinkCreationService.call(user_id, self)
-      end
     end
 
     self.status = STATUS_UPLOADED

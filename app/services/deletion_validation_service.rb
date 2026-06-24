@@ -20,8 +20,7 @@ class DeletionValidationService
       Rails.logger.warn("DeletionValidationService called with query_ids = nil")
       @query_ids = []
     else
-      # Expect to get either array of integers (read from Rails) or array of UUID strings (read from NextGen).
-      # Only convert to integers if we receive Rails IDs, not UUIDs.
+      # Expect to get an array of integer Rails IDs.
       @query_ids = if ArrayUtil.all_integers?(query_ids)
                      query_ids.map(&:to_i)
                    else
@@ -101,21 +100,7 @@ class DeletionValidationService
   def validate_workflow_runs_for_deletion(user:, workflow_run_ids:, workflow:)
     current_power = Power.new(user)
 
-    # Handle case where `workflow_run_ids` is an array of CG UUIDs from NextGen
-    # This will only happen if the should_read_from_nextgen flag is on.
-    if BulkDeletionServiceNextgen.nextgen_workflow?(workflow, workflow_run_ids)
-      result = CzidGraphqlFederation.query_with_token(user.id, BulkDeletionServiceNextgen::GetWorkflowRuns, variables: { run_ids: workflow_run_ids })
-      valid_ids = result.data.workflow_runs.select { |run| run.owner_user_id == user.id }.map(&:id)
-      invalid_ids = workflow_run_ids.reject { |id| valid_ids.include?(id) }
-      invalid_sample_ids = result.data.workflow_run_entity_inputs.filter { |input| invalid_ids.include?(input.workflow_run.id) }.map(&:input_entity_id)
-
-      return {
-        valid_ids: valid_ids,
-        invalid_sample_ids: invalid_sample_ids,
-      }
-    end
-
-    # Otherwise, workflow_run_ids is an array of integers from Rails
+    # workflow_run_ids is an array of integers from Rails
     deletable_workflow_run_ids = current_power.deletable_workflow_runs
                                               .where(id: workflow_run_ids)
                                               .by_workflow(workflow)

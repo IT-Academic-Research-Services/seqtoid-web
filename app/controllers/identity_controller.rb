@@ -102,7 +102,7 @@ class IdentityController < ApplicationController
     # Valid for 20 minutes
     enriched_token = TokenCreationService.call(user_id: user_id, should_include_project_claims: true, expires_after: 1200)["token"]
     if include_headers
-      enriched_token = "{\"x-should-read-from-nextgen\": true, \"Authorization\": \"Bearer #{enriched_token}\"}"
+      enriched_token = "{\"Authorization\": \"Bearer #{enriched_token}\"}"
     end
     render json: {
       token: enriched_token,

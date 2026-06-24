@@ -1,4 +1,4 @@
-# Use the TokenCreationService to generate a token to communicate with GraphQL Fed Server & NextGen services
+# Use the TokenCreationService to generate a token to communicate with GraphQL Fed Server
 class TokenCreationService
   include Callable
 

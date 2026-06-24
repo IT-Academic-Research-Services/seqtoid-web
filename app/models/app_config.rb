@@ -65,8 +65,6 @@ class AppConfig < ApplicationRecord
   DEFAULT_ALIGNMENT_CONFIG_NAME = "default_alignment_config_name".freeze
   # When this is "1", automatically delete old BulkDownloads via scheduled job.
   AUTO_DELETE_OLD_BULK_DOWNLOADS = "auto_delete_old_bulk_downloads".freeze
-  # When this is "1", the Nextgen services are available for read/write
-  NEXTGEN_SERVICES_ENABLED = "nextgen_services_enabled".freeze
   # When this is "1", the user profile form will be saved locally
   LOCAL_USER_PROFILE = "local_user_profile".freeze
 

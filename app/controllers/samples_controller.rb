@@ -559,17 +559,7 @@ class SamplesController < ApplicationController
     error = validated_objects[:error]
 
     if error.nil? && !invalid_sample_ids.empty?
-      # Handle case where `invalid_sample_ids` is an array of CG UUIDs from NextGen.
-      invalid_sample_ids_rails = []
-      if !BulkDeletionServiceNextgen.nextgen_workflow?(workflow, invalid_sample_ids)
-        invalid_sample_ids_rails = invalid_sample_ids
-      else
-        result = BulkDeletionServiceNextgen.get_invalid_samples(current_user.id, invalid_sample_ids)
-        invalid_sample_ids_rails += result[:invalid_sample_ids_rails]
-        invalid_sample_names += result[:invalid_sample_names] # sample names from nextgen
-      end
-      invalid_sample_names += current_power.samples.where(id: invalid_sample_ids_rails).pluck(:name)
-
+      invalid_sample_names += current_power.samples.where(id: invalid_sample_ids).pluck(:name)
     end
 
     render json: {
@@ -802,26 +792,6 @@ class SamplesController < ApplicationController
         }
       end
       resp = { samples: v2_samples, errors: errors }
-    end
-
-    # Create entities in nextGen for WGS samples
-    if current_user.allowed_feature?("create_next_gen_entities")
-      all_sample_ids = samples.pluck(:id)
-      cg_sample_ids = Sample
-                      .where(id: all_sample_ids)
-                      .joins(:workflow_runs)
-                      .where(
-                        workflow_runs: {
-                          workflow: WorkflowRun::WORKFLOW[:consensus_genome],
-                          deprecated: false,
-                        }
-                      )
-                      .pluck(:id)
-                      .uniq
-      cg_samples = samples.select { |sample| cg_sample_ids.include?(sample.id) }
-      cg_samples.each do |sample|
-        SampleEntityCreationService.call(current_user.id, sample, sample.workflow_runs.last)
-      end
     end
 
     samples.each do |sample|
@@ -1398,13 +1368,6 @@ class SamplesController < ApplicationController
 
     respond_to do |format|
       if @sample.update(sample_params)
-        if current_user.allowed_feature?("create_next_gen_entities")
-          # Call service object to create file entity and link to sequencing read for WGS samples
-          if @sample.workflow_runs.any? { |wr| wr.workflow == WorkflowRun::WORKFLOW[:consensus_genome] }
-            SampleFileEntityLinkCreationService.call(current_user.id, @sample)
-          end
-        end
-
         format.html { redirect_to @sample, notice: 'Sample was successfully updated.' }
         format.json { render :show, status: :ok, location: @sample }
       else
@@ -1474,12 +1437,7 @@ class SamplesController < ApplicationController
   def kickoff_workflow
     workflow = collection_params[:workflow]
     inputs_json = collection_params[:inputs_json].to_json
-    workflow_run = @sample.create_and_dispatch_workflow_run(workflow, current_user.id, inputs_json: inputs_json)
-    if current_user.allowed_feature?("create_next_gen_entities")
-      # Create the entities/workflowRun under the sample owner
-      SampleEntityCreationService.call(@sample.user_id, workflow_run.sample, workflow_run)
-      SampleFileEntityLinkCreationService.call(@sample.user_id, workflow_run.sample)
-    end
+    @sample.create_and_dispatch_workflow_run(workflow, current_user.id, inputs_json: inputs_json)
     render json: @sample.workflow_runs_info
   end
 
