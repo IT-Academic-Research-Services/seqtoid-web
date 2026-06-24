@@ -9,5 +9,6 @@ module Types
     field :UpdateSampleName, mutation: ::Mutations::UpdateSampleName, camelize: false
     field :UpdateSampleNotes, mutation: ::Mutations::UpdateSampleNotes, camelize: false
     field :UpdateMetadata, mutation: ::Mutations::UpdateMetadata, camelize: false
+    field :DeleteSamples, mutation: ::Mutations::DeleteSamples, camelize: false
   end
 end
