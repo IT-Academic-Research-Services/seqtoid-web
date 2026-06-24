@@ -10,7 +10,7 @@ import { getValidIdentity } from "./identify";
  */
 const QUERY_NAME_REGEX = /(?:query|mutation)\s+(\S+)\s*\(/;
 
-const generateFetchFn = (shouldReadFromNextGen: boolean): FetchFunction => {
+const generateFetchFn = (): FetchFunction => {
   return async (params, variables) => {
     await getValidIdentity();
     const response = await fetch("/graphqlfed", {
@@ -18,7 +18,6 @@ const generateFetchFn = (shouldReadFromNextGen: boolean): FetchFunction => {
       headers: [
         ["Content-Type", "application/json"],
         ["x-graphql-yoga-csrf", "graphql-yoga-csrf-prevention"],
-        ["x-should-read-from-nextgen", shouldReadFromNextGen.toString()],
       ],
       body: JSON.stringify({
         query: params.text,
@@ -44,10 +43,8 @@ const generateFetchFn = (shouldReadFromNextGen: boolean): FetchFunction => {
   };
 };
 
-export function createEnvironment(
-  shouldReadFromNextGen: boolean,
-): IEnvironment {
-  const network = Network.create(generateFetchFn(shouldReadFromNextGen));
+export function createEnvironment(): IEnvironment {
+  const network = Network.create(generateFetchFn());
   const store = new Store(new RecordSource());
   return new Environment({ store, network });
 }

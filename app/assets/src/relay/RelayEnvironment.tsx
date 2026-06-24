@@ -5,14 +5,12 @@ import { createEnvironment } from "./environment";
 
 export default function RelayEnvironment({
   children,
-  shouldReadFromNextGen,
 }: {
   children: React.ReactNode;
-  shouldReadFromNextGen: boolean;
 }): React.ReactElement {
   const environment = useMemo(() => {
-    return createEnvironment(shouldReadFromNextGen);
-  }, [shouldReadFromNextGen]);
+    return createEnvironment();
+  }, []);
 
   return (
     <RelayEnvironmentProvider environment={environment}>

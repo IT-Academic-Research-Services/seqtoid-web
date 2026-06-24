@@ -9,7 +9,6 @@ import { BrowserRouter } from "react-router-dom";
 import "semantic-ui-css/semantic.min.css";
 import "url-search-params-polyfill";
 import { UserContext } from "~/components/common/UserContext";
-import { SHOULD_READ_FROM_NEXTGEN } from "./components/utils/features";
 import { initialGlobalContextState } from "./globalContext/initialState";
 import { GlobalContext, globalContextReducer } from "./globalContext/reducer";
 import UserContextType from "./interface/allowedFeatures";
@@ -68,13 +67,10 @@ const ReactComponentWithGlobalContext = ({
     globalContextReducer,
     initialGlobalContextState,
   );
-  const shouldReadFromNextGen = userContext?.allowedFeatures?.includes(
-    SHOULD_READ_FROM_NEXTGEN,
-  );
   return (
     <Sentry.ErrorBoundary fallback={"An error has occured"}>
       <BrowserRouter>
-        <RelayEnvironment shouldReadFromNextGen={shouldReadFromNextGen}>
+        <RelayEnvironment>
           <UserContext.Provider value={userContext}>
             <GlobalContext.Provider
               value={{ globalContextState, globalContextDispatch }}
