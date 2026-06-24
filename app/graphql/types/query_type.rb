@@ -20,6 +20,7 @@ module Types
     include WorkflowRunsFetching
     include Queries::FedWorkflowRunsQuery
     include Queries::FedConsensusGenomesQuery
+    include Queries::FedSequencingReadsQuery
 
     # Add root-level fields here.
     # They will be entry points for queries on your schema.
