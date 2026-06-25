@@ -6,6 +6,10 @@ module Queries
   module BulkDownloadCgOverviewQuery
     extend ActiveSupport::Concern
     include BulkDownloadsHelper
+    # validate_bulk_download_create_params → validate_num_objects calls get_app_config, which
+    # lives in AppConfigHelper. Controllers auto-include all helpers; the GraphQL QueryType does
+    # not, so include it explicitly or the resolver raises NoMethodError. (CZID-307 parity)
+    include AppConfigHelper
 
     included do
       field :BulkDownloadCGOverview,

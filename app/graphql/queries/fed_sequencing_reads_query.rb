@@ -122,7 +122,10 @@ module Queries
         hostOrganism: info["host_genome_name"] ? { name: info["host_genome_name"] } : nil,
         collection: {
           name: sample["project_name"],
-          public: !info["public"].nil? && info["public"] != false,
+          # Federation: `public: Boolean(sampleInfo?.public)`. JS Boolean() treats 0 / "" / null /
+          # false as falsy; Ruby treats 0 and "" as truthy, so a private project (public_access 0)
+          # wrongly became `true`. Coerce with JS semantics to match exactly. (CZID-307 parity)
+          public: ![nil, false, 0, 0.0, ""].include?(info["public"]),
         },
         ownerUserId: sample.dig("uploader", "id"),
         ownerUserName: run.dig("runner", "name") || sample.dig("uploader", "name"),

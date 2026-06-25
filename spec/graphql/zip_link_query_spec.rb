@@ -32,7 +32,10 @@ GQL
       expect(data["error"]).to be_nil
     end
 
-    it "returns Output not available when there is no zip link" do
+    # CZID-307 parity: WorkflowRunsController#zip_link renders HTTP 404 when there is no output,
+    # and the federation Ziplink resolver returns `res.statusText` ("Not Found") — not the JSON
+    # body. Both the no-output and the not-accessible cases are 404s → "Not Found".
+    it "returns Not Found when there is no zip link" do
       project = create(:project, users: [@joe])
       sample = create(:sample, project: project, user: @joe)
       workflow_run = create(:workflow_run, sample: sample, user: @joe)
@@ -46,10 +49,10 @@ GQL
       expect(response).to have_http_status(:success)
       data = JSON.parse(response.body).dig("data", "ZipLink")
       expect(data["url"]).to be_nil
-      expect(data["error"]).to eq("Output not available")
+      expect(data["error"]).to eq("Not Found")
     end
 
-    it "returns an error when the workflow run is not accessible" do
+    it "returns Not Found when the workflow run is not accessible" do
       post "/graphql", headers: { "Content-Type" => "application/json" }, params: {
         query: query,
         variables: { workflowRunId: "0" },
@@ -58,7 +61,7 @@ GQL
       expect(response).to have_http_status(:success)
       data = JSON.parse(response.body).dig("data", "ZipLink")
       expect(data["url"]).to be_nil
-      expect(data["error"]).to eq("Workflow Run not found")
+      expect(data["error"]).to eq("Not Found")
     end
   end
 end

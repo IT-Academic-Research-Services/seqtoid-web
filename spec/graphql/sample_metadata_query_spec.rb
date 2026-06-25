@@ -119,7 +119,9 @@ GQL
         "name" => sample.name,
         "editable" => true,
         "project_id" => project.id,
-        "project_name" => project.name
+        "project_name" => project.name,
+        # CZID-307 parity: federation passes the Rails REST JSON value (ISO8601 w/ ms), not Time#to_s.
+        "upload_date" => sample.created_at.as_json
       )
       expect(info["pipeline_run"]).to be_nil
       expect(info["summary_stats"]).to be_nil

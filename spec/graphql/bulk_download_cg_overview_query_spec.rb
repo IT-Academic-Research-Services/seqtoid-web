@@ -11,21 +11,28 @@ RSpec.describe GraphqlController, type: :request do
   }
 GQL
 
-  context "Joe" do
-    before { sign_in @joe }
+  context "Admin" do
+    before { sign_in @admin }
 
+    # CZID-307 parity: exercise the REAL validate_bulk_download_create_params chain — which calls
+    # get_app_config via AppConfigHelper — instead of stubbing it. The previous spec stubbed that
+    # method, hiding a `NoMethodError: undefined method get_app_config for Types::QueryType` that
+    # the federation-vs-Rails parity diff caught (AppConfigHelper wasn't included). Only
+    # generate_cg_overview_data (which reads workflow outputs from S3) is stubbed here.
     it "returns the CG overview rows for viewable workflow runs" do
+      AppConfig.find_or_initialize_by(key: AppConfig::MAX_OBJECTS_BULK_DOWNLOAD).update!(value: "100")
+      project = create(:project, users: [@admin])
+      sample = create(:sample, project: project, user: @admin)
+      wr1 = create(:workflow_run, sample: sample, user: @admin, workflow: WorkflowRun::WORKFLOW[:consensus_genome])
+      wr2 = create(:workflow_run, sample: sample, user: @admin, workflow: WorkflowRun::WORKFLOW[:consensus_genome])
+
       rows = [["Sample Name", "Coverage Depth"], ["sampleA", "100"]]
-      viewable = double("viewable_objects")
-      allow(viewable).to receive(:active).and_return(double(pluck: [11, 22]))
-      allow_any_instance_of(Types::QueryType)
-        .to receive(:validate_bulk_download_create_params).and_return(viewable)
       allow(BulkDownloadsHelper).to receive(:generate_cg_overview_data).and_return(rows)
 
       post "/graphql", headers: { "Content-Type" => "application/json" }, params: {
         query: query,
         variables: {
-          workflowRunIdsStrings: ["11", "22"],
+          workflowRunIdsStrings: [wr1.id.to_s, wr2.id.to_s],
           includeMetadata: false,
           downloadType: "consensus_genome_intermediate_output_files",
           workflow: "consensus-genome",

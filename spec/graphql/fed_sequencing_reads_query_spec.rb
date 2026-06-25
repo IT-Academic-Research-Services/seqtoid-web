@@ -89,7 +89,7 @@ GQL
   end
 
   # A with_sample_info-shaped run as format_workflow_runs would produce it.
-  def cg_run(id:, accession_id:)
+  def cg_run(id:, accession_id:, is_public: true)
     {
       id: id,
       workflow: "consensus-genome",
@@ -113,7 +113,7 @@ GQL
       sample: {
         info: {
           id: 55, name: "Sample A", sample_notes: "a note",
-          host_genome_name: "Human", public: true
+          host_genome_name: "Human", public: is_public
         },
         metadata: {
           "nucleotide_type" => "DNA", "collection_location_v2" => "San Francisco",
@@ -178,6 +178,23 @@ GQL
         "coverageDepth" => 12.5, "totalReads" => 1000, "gcPercent" => 38.0,
         "refSnps" => 2, "nActg" => 29_900, "referenceGenomeLength" => 29_903.0
       )
+    end
+
+    # CZID-307 parity: the federation maps `public: Boolean(sampleInfo?.public)`; JS Boolean(0) is
+    # false. A bare Ruby truthiness check treats 0 as true, so a private project (public_access 0)
+    # wrongly reported public. Lock the JS-Boolean coercion.
+    it "coerces a non-public collection (public_access 0) to false like the federation" do
+      allow_any_instance_of(Types::QueryType).to receive(:discovery_workflow_runs).and_return(
+        workflow_runs: [cg_run(id: 201, accession_id: "MN908947.3", is_public: 0)]
+      )
+
+      post_query(FULL_QUERY, input: { todoRemove: { domain: "my_data", workflow: "consensus-genome" } })
+
+      expect(response).to have_http_status(:success)
+      parsed = JSON.parse(response.body)
+      expect(parsed["errors"]).to(be_nil, "GraphQL errors: #{parsed['errors']}")
+      collection = parsed.dig("data", "fedSequencingReads", 0, "sample", "collection")
+      expect(collection["public"]).to be(false)
     end
 
     it "returns unique sample ids in ids-only mode" do

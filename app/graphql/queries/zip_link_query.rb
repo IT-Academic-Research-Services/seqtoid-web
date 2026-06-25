@@ -20,10 +20,14 @@ module Queries
       if path
         { url: path, error: nil }
       else
-        { url: nil, error: "Output not available" }
+        # Parity (CZID-307): WorkflowRunsController#zip_link renders HTTP 404 when there is no
+        # output, and the federation Ziplink resolver returns `res.statusText` (the HTTP reason
+        # phrase, "Not Found") — NOT the JSON body ("Output not available"). Mirror that exactly.
+        { url: nil, error: "Not Found" }
       end
     rescue ActiveRecord::RecordNotFound
-      { url: nil, error: "Workflow Run not found" }
+      # A non-viewable / missing run is likewise a 404 → statusText "Not Found" via the federation.
+      { url: nil, error: "Not Found" }
     end
   end
 end

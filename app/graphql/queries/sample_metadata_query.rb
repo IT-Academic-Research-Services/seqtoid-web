@@ -53,7 +53,10 @@ module Queries
           editable: editable,
           host_genome_name: sample.host_genome_name,
           host_genome_taxa_category: sample.host_genome.taxa_category,
-          upload_date: sample.created_at,
+          # Federation passes the Rails REST JSON value, where ActiveSupport encodes Time as
+          # ISO8601 with ms ("2026-06-24T15:45:04.000-07:00"). A bare Time serializes via #to_s
+          # ("2026-06-24 15:45:04 -0700") instead, so match the wire format. (CZID-307 parity)
+          upload_date: sample.created_at.as_json,
           project_name: sample.project.name,
           project_id: sample.project_id,
           notes: sample.sample_notes,
