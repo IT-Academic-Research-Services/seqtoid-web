@@ -1,0 +1,75 @@
+name: ci-test (mysql 8)
+
+# PR test gate for seqtoid-web running the Rails suite against MySQL 8 — the chosen
+# forward database (CZID-281). Runs bin/ci-test, the exact same SSOT script the local
+# harness runs (bin/ci-local), so local and CI cannot drift (CZID-109). Self-contained
+# (dummy AWS creds + service containers), so it runs in the fork with no cloud access.
+# Replaces the former Postgres gate (the Postgres direction was superseded by MySQL 8;
+# Postgres lives on in the V1/V3 variants).
+
+on:
+  pull_request:
+  push:
+    branches: [main]   # gate main post-merge; PR branches are gated via pull_request (avoids a duplicate, concurrency-cancelled run on every PR)
+  workflow_dispatch:
+
+concurrency:
+  group: ci-test-mysql8-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  ruby_test_mysql8:
+    name: Ruby Test (MySQL 8)
+    runs-on: ubuntu-latest
+    container: ruby:3.3.6
+    env:
+      # Dummy secret — test only.
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='
+      # Connect as root/empty-password — matches the local CI harness
+      # (docker-compose.ci.yml) so privileges (db:drop/create/load) and behavior align.
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_HOST: db
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      db:
+        image: bitnamilegacy/mysql:8.0
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: idseq_test
+          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
+          # Match the local harness's mysqld flags (docker-compose.ci.yml command:),
+          # which GitHub service containers can't pass as a command override.
+          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Determine Kernel Version
+        run: echo "KERNEL_VERSION=`uname -r`" >> $GITHUB_ENV
+      - name: Cache Ruby Dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
+      - name: Run CI test suite
+        # SINGLE SOURCE OF TRUTH: bin/ci-test (deps + schema load + rspec) is the exact
+        # same script the local harness runs (bin/ci-local). Local and CI can't drift. (CZID-109.)
+        run: bash bin/ci-test
