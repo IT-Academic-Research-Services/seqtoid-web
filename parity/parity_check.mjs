@@ -27,6 +27,11 @@ const RAILS_URL = process.env.RAILS_GRAPHQL_URL || "http://localhost:3000/graphq
 const FED_URL = process.env.FED_GRAPHQL_URL || "http://localhost:3000/graphqlfed";
 const COOKIE = process.env.PARITY_COOKIE || "";
 const CSRF = "graphql-yoga-csrf-prevention";
+// Post-CZID-305, Rails GraphqlController uses protect_from_forgery with :null_session, so the
+// Rails /graphql side must send a real Rails CSRF token (matching _czid_session in PARITY_COOKIE)
+// or current_user is nullified and the response comes back unauthenticated — which would make the
+// diff compare federation-authenticated vs Rails-anonymous. The federation side ignores it.
+const RAILS_CSRF = process.env.PARITY_CSRF || "";
 
 if (!COOKIE) {
   console.error(
@@ -55,13 +60,14 @@ function resolveVars(value) {
   return value;
 }
 
-async function post(url, query, variables) {
+async function post(url, query, variables, extraHeaders = {}) {
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-graphql-yoga-csrf": CSRF,
       ...(COOKIE ? { Cookie: COOKIE } : {}),
+      ...extraHeaders,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -127,7 +133,7 @@ for (const op of selected) {
   ran++;
   const [fedResp, railsResp] = await Promise.all([
     post(FED_URL, op.fedQuery || op.query, variables),
-    post(RAILS_URL, op.railsQuery || op.query, variables),
+    post(RAILS_URL, op.railsQuery || op.query, variables, RAILS_CSRF ? { "X-CSRF-Token": RAILS_CSRF } : {}),
   ]);
 
   const errSide = [];
