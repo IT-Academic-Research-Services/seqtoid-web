@@ -83,7 +83,6 @@ e.g. bin/bundle, bin/rails, bin/rake, stay at root, bin/local-scripts for local 
 `BASESPACE_OAUTH_REDIRECT_URI`: The BaseSpace OAuth redirect URI used to authenticate API requests.  
 `CLI_UPLOAD_ROLE_ARN`: The ARN of the AWS IAM role which is assumed in order to upload samples to S3.  
 `GIT_RELEASE_SHA`: The SHA of the current git release, used to identify the release in Sentry for analytics purposes. Set [here](../app/views/layouts/_sentry_monitoring.html.erb#L6) and ingested [here](../app/assets/src/index.tsx#L25).  
-`GRAPHQL_FEDERATION_SERVICE_URL`: The URL of the GraphQL federation service to which to establish the GraphQL client. See [czid_graphql_federation.rb](../config/initializers/czid_graphql_federation.rb).  
 `ID_SEQ_ENVS_THAT_CAN_SCALE`: **Appears to be unused.** _Recommend removing references to this._  
 `LOCATION_IQ_API_KEY`: API key used to interact with [LocationIQ](https://locationiq.com/) for geographic data/search. Config applied [here](../app/models/location.rb#L55).  
 `MAPTILER_API_KEY`: API key used to interact with [MapTiler](https://www.maptiler.com/) for rendering maps.  
@@ -97,7 +96,7 @@ e.g. bin/bundle, bin/rails, bin/rake, stay at root, bin/local-scripts for local 
 `SERVER_DOMAIN`: The Rails web app domain, used to set callback URLs for ECS bulk downloads so that they can send status updates back to the web app. (e.g. "czid.org")  
 `SMTP_PASSWORD`: The password for the SMTP user, set [here](../config/application.rb#L38). Configures Rails ActionMailer to send emails via SMTP using Amazon SES.  
 `SMTP_USER`: The username for the SMTP user, set [here](../config/application.rb#L40). Configures Rails ActionMailer to send emails via SMTP using Amazon SES.  
-`SYSTEM_ADMIN_USER_ID`: Admin user ID for interacting with the GraphQL federation service, mainly for identifying soft-deleted data and deleting old bulk downloads.  
+`SYSTEM_ADMIN_USER_ID`: **Appears to be unused** since the GraphQL federation server was collapsed into Rails-native GraphQL (CZID-285). Was an admin user ID for interacting with the federation service.  
 `SYSTEM_ADMIN_PROJECT_ID`: **Appears to be unused.** _Recommend removing references to this._  
 `HEATMAP_ES_ADDRESS`: The URL of the ElasticSearch endpoint used for generating heatmap data, set [here](../app/helpers/elasticsearch_query_helper.rb#L8).  
 `INDEXING_LAMBDA_MODE`: Specifies whether local endpoints are used in lieu of AWS Lambda functions for initiating taxon indexing requests. Used [here](../app/helpers/elasticsearch_query_helper.rb#L774).  

@@ -17,7 +17,6 @@ x-web-variables: &web-variables
   ? BASESPACE_OAUTH_REDIRECT_URI
   ? CLI_UPLOAD_ROLE_ARN
   ? GIT_RELEASE_SHA
-  ? GRAPHQL_FEDERATION_SERVICE_URL
   ? ID_SEQ_ENVS_THAT_CAN_SCALE
   ? LOCATION_IQ_API_KEY
   ? MAPTILER_API_KEY
@@ -142,7 +141,6 @@ services:
       - web.env
     environment:
       <<: [*web-variables, *aws-variables, *auth0-variables, *env-variables]
-      GRAPHQL_FEDERATION_SERVICE_URL: http://web-proxy:3000/graphqlfed
       RUBY_DEBUG_SKIP_BP: true
       ALLOW_DIRECT_USER_LOGIN: true
       DB_HOST: db
@@ -167,7 +165,6 @@ services:
       - web.env
     environment:
       <<: [*web-variables, *aws-variables, *env-variables]
-      GRAPHQL_FEDERATION_SERVICE_URL: http://web-proxy:3000/graphqlfed
     command: bundle exec "COUNT=2 rake resque:workers"
   resque-scheduler:
     # See config/resque_schedule.yml for usages.

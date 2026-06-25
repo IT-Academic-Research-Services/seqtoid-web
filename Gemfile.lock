@@ -1934,9 +1934,6 @@ GEM
       base64
       fiber-storage
       logger
-    graphql-client (0.26.0)
-      activesupport (>= 3.0)
-      graphql (>= 1.13.0)
     guard (2.20.1)
       formatador (>= 0.2.4)
       listen (>= 2.7, < 4.0)
@@ -2348,7 +2345,6 @@ DEPENDENCIES
   flamegraph
   graphiql-rails
   graphql
-  graphql-client
   guard (~> 2.15)
   health_check (~> 3.1.0)
   http
