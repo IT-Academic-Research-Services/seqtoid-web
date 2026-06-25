@@ -1,2 +1,5 @@
 <!-- Global site tag for Adobe analytics -->
+<%# CZID-279: skip third-party analytics when running offline/no-egress (OFFLINE=1) so the local dev stack makes no external calls. %>
+<% unless ENV["OFFLINE"] == "1" %>
 <script src="https://assets.adobedtm.com/db5f13cb240b/dd174c0bf926/launch-a8af081070eb-development.min.js" async></script>
+<% end %>

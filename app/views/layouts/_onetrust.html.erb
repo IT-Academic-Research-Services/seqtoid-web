@@ -1,5 +1,7 @@
 <!-- OneTrust Cookies Consent Notice for czid.org -->
-<% if Rails.env.prod? %>
+<%# CZID-279: skip the third-party consent script when running offline/no-egress (OFFLINE=1). %>
+<% if ENV["OFFLINE"] == "1" %>
+<% elsif Rails.env.prod? %>
   <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"  type="text/javascript" charset="UTF-8" data-domain-script="1c26eebb-a1f5-496e-8e19-a26d600cae4f" ></script>
   <script type="text/javascript">
   function OptanonWrapper() { }

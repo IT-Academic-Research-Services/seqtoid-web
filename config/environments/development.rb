@@ -75,9 +75,11 @@ Rails.application.configure do
   # config.action_cable.url = 'wss://example.com/cable'
   # config.action_cable.allowed_request_origins = [ 'http://example.com', /http:\/\/example.*/ ]
 
-  # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  config.force_ssl = true
-  config.ssl_options = { redirect: { exclude: ->(request) { request.path =~ /health_check/ } } }
+  # CZID-279: do NOT force SSL in local development. Puma serves plain http on
+  # localhost and there is no local TLS cert, so force_ssl makes every browser
+  # request 301-redirect to https://localhost and fail to connect. SSL is still
+  # enforced in staging/sandbox/prod (see their environment files).
+  config.force_ssl = false
 
   # Include generic and useful information about system operation, but avoid logging too much
   # information to avoid inadvertent exposure of personally identifiable information (PII).
@@ -133,7 +135,12 @@ Rails.application.configure do
   # config.action_controller.asset_host = proc { |source|
   #   "http://localhost:8080" if source =~ /wp_bundle\.js$/i
   # }
-  config.asset_host = ENV["CZID_CLOUDFRONT_ENDPOINT"] || "dev.seqtoid.org"
+  # CZID-279: when no CDN endpoint is configured (local dev), leave asset_host
+  # unset so assets are served by the local Rails server (relative URLs).
+  # The old hardcoded "dev.seqtoid.org" fallback made the browser fetch the JS/CSS
+  # bundles from a host that doesn't resolve locally, so the React app never loaded
+  # (blank page). A real dev/CDN deploy still sets CZID_CLOUDFRONT_ENDPOINT.
+  config.asset_host = ENV["CZID_CLOUDFRONT_ENDPOINT"]
   # Uncomment if you wish to allow Action Cable access from any origin.
   # config.action_cable.disable_request_forgery_protection = true
 
