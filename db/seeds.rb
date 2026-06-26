@@ -24,37 +24,37 @@ ActiveRecord::Base.transaction do
   environment_name = ENV["ENVIRONMENT"]
 
   # TODO: Remove this when in production!
-  # AppConfig.create({"key"=>"auto_account_creation_v1", "value"=>"1"})
+  # AppConfig.upsert({ key: "auto_account_creation_v1", value: "1" })
 
-  AppConfig.create({"key"=>"launched_features", "value"=>"[\"bulk_downloads\",\"sample_type_free_text\",\"host_genome_free_text\",\"heatmap_filter_fe\",\"mass_normalized\",\"plqc\",\"consensus_genome\",\"cg_bulk_downloads\",\"nextclade\",\"appcues\",\"gen_viral_cg\",\"nanopore\",\"nanopore_v1\",\"cg_flat_list\",\"cg_appcues_help_button\",\"phylo_tree_ng\",\"improved_bg_model_selection\",\"landing_v2\",\"phylo_tree_appcue\",\"taxon_heatmap_presets\",\"blast\",\"annotation\",\"heatmap_pin_samples\",\"sorting_v0\",\"taxon_threshold_filter\",\"microbiome\",\"annotation_filter\",\"blast_v1\",\"pre_upload_check\",\"heatmap_elasticsearch\",\"samples_table_metadata_columns\",\"ont_v1\",\"bulk_deletion\",\"left_heatmap_filters\",\"amr_v3\",\"amr_v2\",\"amr_v1\",\"wgs_cg_upload\"]"})
+  AppConfig.upsert({ key: "launched_features", value: "[\"bulk_downloads\",\"sample_type_free_text\",\"host_genome_free_text\",\"heatmap_filter_fe\",\"mass_normalized\",\"plqc\",\"consensus_genome\",\"cg_bulk_downloads\",\"nextclade\",\"appcues\",\"gen_viral_cg\",\"nanopore\",\"nanopore_v1\",\"cg_flat_list\",\"cg_appcues_help_button\",\"phylo_tree_ng\",\"improved_bg_model_selection\",\"landing_v2\",\"phylo_tree_appcue\",\"taxon_heatmap_presets\",\"blast\",\"annotation\",\"heatmap_pin_samples\",\"sorting_v0\",\"taxon_threshold_filter\",\"microbiome\",\"annotation_filter\",\"blast_v1\",\"pre_upload_check\",\"heatmap_elasticsearch\",\"samples_table_metadata_columns\",\"ont_v1\",\"bulk_deletion\",\"left_heatmap_filters\",\"amr_v3\",\"amr_v2\",\"amr_v1\",\"wgs_cg_upload\"]" })
 
-  AppConfig.create({"key"=>"consensus-genome-version", "value"=>"3.5.5"})
+  AppConfig.upsert({ key: "consensus-genome-version", value: "3.5.5" })
 
-  AppConfig.create({"key"=>"short-read-mngs-version", "value"=>"8.3.15"})
+  AppConfig.upsert({ key: "short-read-mngs-version", value: "8.3.15" })
 
-  AppConfig.create({"key"=>"phylotree-ng-version", "value"=>"6.11.0"}) # TODO: This doesn't exist in CZI at all, as their latest was 1.2.6
+  AppConfig.upsert({ key: "phylotree-ng-version", value: "6.11.0" }) # TODO: This doesn't exist in CZI at all, as their latest was 1.2.6
 
-  AppConfig.create({"key"=>"amr-version", "value"=>"1.4.2"})
+  AppConfig.upsert({ key: "amr-version", value: "1.4.2" })
 
-  AppConfig.create({"key"=>"long-read-mngs-version", "value"=>"0.7.12"})
+  AppConfig.upsert({ key: "long-read-mngs-version", value: "0.7.12" })
 
-  AppConfig.create({"key"=>"sfn_single_wdl_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-default-wdl"})
+  AppConfig.upsert({ key: AppConfig::SFN_SINGLE_WDL_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-default-wdl" })
 
-  AppConfig.create({"key"=>"enable_sfn_notifications", "value"=>"1"})
+  AppConfig.upsert({ key: AppConfig::ENABLE_SFN_NOTIFICATIONS, value: "1" })
 
-  AppConfig.create({"key"=>"sfn_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-short-read-mngs-wdl"})
+  AppConfig.upsert({ key: AppConfig::SFN_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-short-read-mngs-wdl" })
 
-  AppConfig.create({"key"=>"sfn_mngs_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-short-read-mngs-wdl"})
+  AppConfig.upsert({ key: AppConfig::SFN_MNGS_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-short-read-mngs-wdl" })
 
-  AppConfig.create({"key"=>"sfn_cg_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-default-wdl"})
+  AppConfig.upsert({ key: AppConfig::SFN_CG_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-default-wdl" })
 
-  AppConfig.create({"key"=>"default_alignment_config_name", "value"=>"2024-02-06"})
+  AppConfig.upsert({ key: "default_alignment_config_name", value: "2024-02-06" })
 
-  AppConfig.create({"key"=>"card_folder", "value"=>"card-3.2.6-wildcard-4.0.0"})
+  AppConfig.upsert({ key: "card_folder", value: "card-3.2.6-wildcard-4.0.0" })
 
-  AppConfig.create({"key"=>"max_objects_bulk_download", "value"=>"500"})
+  AppConfig.upsert({ key: "max_objects_bulk_download", value: "500" })
 
-  AppConfig.create({"key"=>"max_samples_bulk_download_original_files", "value"=>"100"})
+  AppConfig.upsert({ key: "max_samples_bulk_download_original_files", value: "100" })
 
   AlignmentConfig.create({"diamond_db_path"=>nil, "index_dir_suffix"=>nil, "lineage_version"=>"2018-02-15", "lineage_version_old"=>1, "minimap2_long_db_path"=>nil, "minimap2_short_db_path"=>nil, "name"=>"2018-02-15", "s3_accession2taxid_path"=>"s3://#{S3_DATABASE_BUCKET}/alignment_data/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/accession2taxid.db", "s3_deuterostome_db_path"=>"s3://#{S3_DATABASE_BUCKET}/taxonomy/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/deuterostome_taxids.txt", "s3_lineage_path"=>"s3://#{S3_DATABASE_BUCKET}/taxonomy/2018-02-15-utc-1518652800-unixtime__2018-02-15-utc-1518652800-unixtime/taxid-lineages.db", "s3_nr_db_path"=>"s3://#{S3_DATABASE_BUCKET}/20170824/blast_db/nr", "s3_nr_loc_db_path"=>"s3://#{S3_DATABASE_BUCKET}/20170824/blast_db/nr_loc.db", "s3_nt_db_path"=>"s3://#{S3_DATABASE_BUCKET}/20170824/blast_db/nt", "s3_nt_info_db_path"=>nil, "s3_nt_loc_db_path"=>"s3://#{S3_DATABASE_BUCKET}/20170824/blast_db/nt_loc.db", "s3_taxon_blacklist_path"=>"s3://#{S3_DATABASE_BUCKET}/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/taxon_blacklist.txt"})
 
