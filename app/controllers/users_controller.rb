@@ -1,6 +1,6 @@
 class UsersController < ApplicationController
   skip_before_action :authenticate_user!, only: [:password_new, :register]
-  skip_before_action :verify_authenticity_token, only: :register # This prevents an error in registr(), causing email registration to fail
+  skip_before_action :verify_authenticity_token, only: :register # This prevents an error in register(), causing email registration to fail
   before_action :admin_required, except: [:password_new, :register, :update_user_data, :post_user_data_to_airtable]
   before_action :set_user, only: [:edit, :update, :destroy, :update_user_data, :post_user_data_to_airtable]
 
