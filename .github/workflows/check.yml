@@ -89,10 +89,12 @@ jobs:
       run: bundle exec rspec
       env:
         SAMPLES_BUCKET_NAME: idseq-samples-development
+        SAMPLES_BUCKET_NAME_V1: czi-infectious-disease-development-samples # bulk-downloads bucket (CZID-296)
     - name: Rails Test
       run: bundle exec rails test
       env:
         SAMPLES_BUCKET_NAME: idseq-samples-development
+        SAMPLES_BUCKET_NAME_V1: czi-infectious-disease-development-samples # bulk-downloads bucket (CZID-296)
         ALIGNMENT_CONFIG_DEFAULT_NAME: "2024-02-06"
 
   ruby_code_analysis:
