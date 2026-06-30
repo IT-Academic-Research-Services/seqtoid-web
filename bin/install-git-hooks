@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Install this repo's opt-in git hooks (CZID #306). Currently: a fast pre-push check
+# (bin/check-all --fast). Idempotent. Points git at the tracked .githooks/ directory.
+#
+#   bin/install-git-hooks      # install
+#   git config --unset core.hooksPath   # uninstall
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+chmod +x .githooks/* bin/check-all bin/install-git-hooks 2>/dev/null || true
+git config core.hooksPath .githooks
+echo "Installed git hooks (core.hooksPath=.githooks)."
+echo "  pre-push now runs 'bin/check-all --fast'. Bypass once with 'git push --no-verify'."
+echo "  Uninstall with: git config --unset core.hooksPath"

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# check-all — run the full seqtoid-web test + lint suite locally, mirroring CI (CZID #306).
+#
+# The local equivalent of the CI gate, so you catch egregious breakage BEFORE pushing.
+# Each layer maps 1:1 to a CI workflow (single source of truth — local and CI can't drift):
+#
+#   ruby    RSpec vs MySQL 8 in Docker, via bin/ci-local (-> bin/ci-test)   [ci-test-mysql8.yml]
+#   js      npm ci + eslint (+ a11y) + tsc + jest                            [check.yml: javascript]
+#   python  flake8 + unittest (test/python)                                  [check.yml: python]
+#
+# Usage:
+#   bin/check-all              full suite (the ruby layer needs Docker running)
+#   bin/check-all --fast       lint + type-check only (eslint, tsc, flake8) — seconds, not minutes
+#   bin/check-all js python    run only the named layer(s):  ruby | js | python
+#
+# Exit code is non-zero if ANY selected layer fails; a PASS/FAIL summary prints at the end.
+# CI + branch protection on main remain the authoritative gate — this is the fast local net.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+FAST=0
+WANT=""
+for a in "$@"; do
+  case "$a" in
+    --fast)         FAST=1 ;;
+    ruby|js|python) WANT="$WANT $a" ;;
+    -h|--help)      awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next}{exit}' "$0"; exit 0 ;;
+    *) echo "check-all: unknown arg '$a' (try --help)" >&2; exit 2 ;;
+  esac
+done
+if [ -z "$WANT" ]; then
+  if [ "$FAST" -eq 1 ]; then WANT="js python"; else WANT="ruby js python"; fi
+fi
+
+want()    { case " $WANT " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+section() { printf '\n\033[1m===== %s =====\033[0m\n' "$1"; }
+
+SUMMARY=""
+FAILED=0
+record() {  # record <label> <status>
+  if [ "$2" -eq 0 ]; then SUMMARY="${SUMMARY}\n  \033[32mPASS\033[0m  $1"
+  else                    SUMMARY="${SUMMARY}\n  \033[31mFAIL\033[0m  $1"; FAILED=1; fi
+}
+
+# ---- ruby ----------------------------------------------------------------
+if want ruby; then
+  if [ "$FAST" -eq 1 ]; then
+    section "ruby — skipped (--fast; run the full suite or CI for RSpec)"
+  else
+    section "ruby — RSpec vs MySQL 8 (Docker, bin/ci-local)  [ci-test-mysql8.yml]"
+    if command -v docker >/dev/null 2>&1; then
+      bin/ci-local; record "ruby   (rspec / mysql8)" "$?"
+    else
+      echo "  docker not found — start Docker to run the ruby layer."; record "ruby   (rspec / mysql8)" 1
+    fi
+  fi
+fi
+
+# ---- js / ts -------------------------------------------------------------
+if want js; then
+  if [ "$FAST" -eq 1 ]; then section "js/ts — eslint + tsc (fast)  [check.yml: javascript]"
+  else                       section "js/ts — eslint + a11y + tsc + jest  [check.yml: javascript]"; fi
+  (
+    set -e
+    npm ci
+    npx eslint app/assets/src e2e --ext .js,.jsx,.ts,.tsx --max-warnings 41
+    if [ "$FAST" -eq 0 ]; then
+      npx eslint app/assets/src -c .eslintrc-a11y.json --ext .js,.jsx,.ts,.tsx --max-warnings 152
+    fi
+    npx tsc -p ./app/assets/tsconfig.json --noemit
+    [ "$FAST" -eq 1 ] || CI=true npm test
+  )
+  if [ "$FAST" -eq 1 ]; then record "js/ts  (eslint / tsc)" "$?"; else record "js/ts  (eslint / tsc / jest)" "$?"; fi
+fi
+
+# ---- python --------------------------------------------------------------
+if want python; then
+  if [ "$FAST" -eq 1 ]; then section "python — flake8 (fast)  [check.yml: python]"
+  else                       section "python — flake8 + unittest  [check.yml: python]"; fi
+  (
+    set -e
+    if [ "$FAST" -eq 1 ]; then python3 -m pip install -q flake8
+    else                       python3 -m pip install -q -r requirements-dev.txt; fi
+    python3 -m flake8
+    [ "$FAST" -eq 1 ] || python3 -m unittest discover -v -s test/python/ -p 'test_*.py'
+  )
+  if [ "$FAST" -eq 1 ]; then record "python (flake8)" "$?"; else record "python (flake8 / unittest)" "$?"; fi
+fi
+
+printf '\n\033[1m===== summary =====\033[0m'
+printf '%b\n' "$SUMMARY"
+if [ "$FAILED" -eq 0 ]; then
+  printf '\033[32mALL CHECKS PASSED\033[0m\n'
+else
+  printf '\033[31mSOME CHECKS FAILED\033[0m — fix before pushing (or "git push --no-verify" to bypass the hook).\n'
+fi
+exit "$FAILED"

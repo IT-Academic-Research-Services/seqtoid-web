@@ -281,3 +281,15 @@ local-setup-admin-user: .env.localdev ## Set up a user for local development; Us
 .PHONY: ci-local
 ci-local: ## Run the full CI test suite locally in Docker (Postgres) — green this before pushing
 	./bin/ci-local
+
+.PHONY: check
+check: ## Run the full local test+lint suite (ruby+js+python), mirroring CI
+	@./bin/check-all
+
+.PHONY: check-fast
+check-fast: ## Fast local checks only (eslint+tsc+flake8) — seconds
+	@./bin/check-all --fast
+
+.PHONY: install-git-hooks
+install-git-hooks: ## Install the opt-in fast pre-push hook
+	@./bin/install-git-hooks

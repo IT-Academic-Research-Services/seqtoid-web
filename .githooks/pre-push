@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Opt-in pre-push guard (CZID #306) — runs the FAST local checks (eslint, tsc, flake8)
+# so egregiously-broken code doesn't leave your machine. Installed by bin/install-git-hooks
+# (which sets core.hooksPath=.githooks). Bypass a single push with:  git push --no-verify
+#
+# This is a fast sanity net, NOT the authoritative gate — CI + branch protection on `main`
+# are. Run the FULL suite anytime with:  make check   (or bin/check-all)
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+echo "pre-push: running fast local checks (bin/check-all --fast) — 'git push --no-verify' to skip…"
+exec "$ROOT/bin/check-all" --fast
