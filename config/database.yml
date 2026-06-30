@@ -2,7 +2,7 @@ default: &default
   adapter: mysql2
   username: <%= ENV['DB_USERNAME'] || 'root' %>
   password: <%= ENV['DB_PASSWORD'] %>
-  host: <%= ENV['DB_HOST'] || '127.0.0.1' %>
+  host: <%= ENV['RDS_ADDRESS'] || ENV['DB_HOST'] || '127.0.0.1' %>
   port: <%= ENV['DB_PORT'] || 3306 %>
   database: idseq_<%= Rails.env %>
   encoding: utf8mb4
