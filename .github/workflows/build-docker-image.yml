@@ -71,10 +71,32 @@ jobs:
         run: |
           AWS_ACCOUNT_ID=${{ steps.configure_aws_credentials.outputs.aws-account-id }}
           echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+          # CZID-75: the immutable image ref scanned + signed below
+          echo "IMAGE_REF=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/idseq-web:${GITHUB_SHA::8}" >> $GITHUB_ENV
       - name: Build docker image
         run: bin/build-docker $(basename $GITHUB_REF) ${GITHUB_SHA::8}
+      # CZID-75: scan the built image BEFORE it ships — fail the release on HIGH/CRITICAL CVEs.
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "true"
       - name: Push docker image
         run: bin/push-docker $(basename $GITHUB_REF) ${GITHUB_SHA::8}
+      # CZID-75: sign the pushed image so the deploy side can enforce "signed images only" (#77).
+      # Keyless (Sigstore/Fulcio, via the GHA OIDC token) — for a private/air-gapped posture swap to a
+      # KMS key: `cosign sign --key awskms://<arn> --yes "$REF@$DIGEST"`.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign image (cosign, keyless)
+        env:
+          COSIGN_YES: "true"
+        run: |
+          DIGEST="$(docker inspect --format='{{ index .RepoDigests 0 }}' "${IMAGE_REF}" | cut -d@ -f2)"
+          cosign sign "${IMAGE_REF%:*}@${DIGEST}"
 
   # build_prod_docker_image:
   #   runs-on: ubuntu-latest
