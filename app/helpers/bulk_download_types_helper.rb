@@ -4,7 +4,7 @@ module BulkDownloadTypesHelper
 
   # Common to all workflows
   SAMPLE_METADATA_BULK_DOWNLOAD_TYPE = "sample_metadata".freeze
-  ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE = "original_input_file".freeze
+  # ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE = "original_input_file".freeze
 
   # Specific to short read mNGS workflows
   SAMPLE_OVERVIEW_BULK_DOWNLOAD_TYPE = "sample_overview".freeze
@@ -96,15 +96,15 @@ module BulkDownloadTypesHelper
       file_type_display: "sample_metadata.csv",
       workflows: ALL_WORKFLOWS,
     },
-    {
-      type: ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE,
-      display_name: "Original Input Files",
-      description: "Original files you submitted to CZ ID",
-      category: "raw_data",
-      execution_type: ECS_EXECUTION_TYPE,
-      uploader_only: true,
-      workflows: [WorkflowRun::WORKFLOW[:short_read_mngs], WorkflowRun::WORKFLOW[:long_read_mngs]], # for CG downloads v0
-    },
+    # {
+    #   type: ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE,
+    #   display_name: "Original Input Files",
+    #   description: "Original files you submitted to CZ ID",
+    #   category: "raw_data",
+    #   execution_type: ECS_EXECUTION_TYPE,
+    #   uploader_only: true,
+    #   workflows: [WorkflowRun::WORKFLOW[:short_read_mngs], WorkflowRun::WORKFLOW[:long_read_mngs]], # for CG downloads v0
+    # },
 
     # Specific to long read mNGS workflows
     {

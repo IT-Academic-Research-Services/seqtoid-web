@@ -1,5 +1,5 @@
 const SAMPLE_METADATA_BULK_DOWNLOAD_TYPE = "sample_metadata";
-const ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE = "original_input_file";
+// const ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE = "original_input_file";
 
 const SAMPLE_OVERVIEW_BULK_DOWNLOAD_TYPE = "sample_overview";
 const SAMPLE_TAXON_REPORT_BULK_DOWNLOAD_TYPE = "sample_taxon_report";
@@ -36,11 +36,11 @@ export const BULK_DOWNLOAD_TYPE_INFO = {
       "User-uploaded metadata, including sample collection location, collection date, sample type",
     fileTypeDisplay: "sample_metadata.csv",
   },
-  [ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE]: {
-    type: ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE,
-    displayName: "Original Input Files",
-    description: "Original files you submitted to SeqtoID",
-  },
+  // [ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE]: {
+  //   type: ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE,
+  //   displayName: "Original Input Files",
+  //   description: "Original files you submitted to SeqtoID",
+  // },
   // Short Read mNGS Download Types
   [SAMPLE_OVERVIEW_BULK_DOWNLOAD_TYPE]: {
     type: SAMPLE_OVERVIEW_BULK_DOWNLOAD_TYPE,

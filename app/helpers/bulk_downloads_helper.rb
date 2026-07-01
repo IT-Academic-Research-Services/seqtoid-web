@@ -148,11 +148,11 @@ module BulkDownloadsHelper
       objects_count = workflow_run_ids.length
     end
 
-    if create_params[:download_type] == BulkDownloadTypesHelper::ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE
-      validate_num_objects(num_objects, AppConfig::MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES)
-    else
-      validate_num_objects(num_objects, AppConfig::MAX_OBJECTS_BULK_DOWNLOAD)
-    end
+    # if create_params[:download_type] == BulkDownloadTypesHelper::ORIGINAL_INPUT_FILE_BULK_DOWNLOAD_TYPE
+    #   validate_num_objects(num_objects, AppConfig::MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES)
+    # else
+    validate_num_objects(num_objects, AppConfig::MAX_OBJECTS_BULK_DOWNLOAD)
+    # end
 
     if objects_count != viewable_objects.count
       raise BulkDownloadsHelper::SAMPLE_NO_PERMISSION_ERROR if sample_ids.present?
