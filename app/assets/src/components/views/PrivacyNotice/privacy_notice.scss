@@ -1,1 +1,209 @@
 @import "~/styles/support.scss";
+
+// ===========================
+// Color tokens — cypherid-web-infra/maintenance/dist/style.css :root
+// ===========================
+$navy:   #052049;
+$blue:   #1a6fbd;
+$teal:   #16a0ac;
+$white:  #ffffff;
+$off:    #f8fafc;
+$muted:  #64748b;
+$border: #e2e8f0;
+$text:   #1e293b;
+
+// ===========================
+// Page wrapper
+// ===========================
+.page {
+  min-height: 100vh;
+}
+
+// ===========================
+// Legal header — navy gradient banner
+// ===========================
+.legal-header {
+  background: linear-gradient(135deg, $navy 0%, #1a3a5c 100%);
+  color: $white;
+  padding: 56px 0 48px;
+
+  :global(h1) {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  :global(.updated) {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+// ===========================
+// Legal body — scoped text styles via :global() so plain HTML elements match
+// Apply className={cs.legalBody} to the outer content div
+// ===========================
+.legal-body {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+  line-height: 1.8;
+  color: $text;
+
+  :global(h1) {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: $navy;
+    margin-bottom: 8px;
+  }
+
+  :global(h2) {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: $navy;
+    margin: 40px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid $border;
+  }
+
+  :global(h3) {
+    font-size: 1rem;
+    font-weight: 600;
+    color: $navy;
+    margin: 24px 0 8px;
+  }
+
+  :global(p) {
+    font-size: 0.925rem;
+    color: #374151;
+    margin-bottom: 14px;
+    line-height: 1.8;
+  }
+
+  :global(ul) {
+    margin: 0 0 14px 20px;
+  }
+
+  :global(ul li) {
+    font-size: 0.925rem;
+    color: #374151;
+    margin-bottom: 8px;
+    line-height: 1.7;
+  }
+
+  :global(a) {
+    color: $blue;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  :global(strong) {
+    color: $navy;
+    font-weight: 600;
+  }
+}
+
+// ===========================
+// Legal warning banner (arbitration notice at top of Terms)
+// ===========================
+.legal-warning {
+  background: #fef3cd;
+  border: 1px solid #ffc107;
+  border-left: 4px solid #ffc107;
+  color: #664d03;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 24px 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+
+  :global(strong) {
+    color: #533e02;
+  }
+}
+
+// ===========================
+// Privacy summary table
+// ===========================
+.privacy-table-wrap {
+  overflow-x: auto;
+  margin: 24px 0 36px;
+  border-radius: 12px;
+  border: 1px solid $border;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
+}
+
+.privacy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+  min-width: 860px;
+  table-layout: fixed;
+
+  :global(colgroup col:nth-child(1)) { width: 13%; }
+  :global(colgroup col:nth-child(2)) { width: 18%; }
+  :global(colgroup col:nth-child(3)) { width: 25%; }
+  :global(colgroup col:nth-child(4)) { width: 28%; }
+  :global(colgroup col:nth-child(5)) { width: 16%; }
+
+  :global(thead tr) {
+    background: $navy;
+  }
+
+  :global(th) {
+    color: $white;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }
+
+  :global(tbody tr:nth-child(even) td) {
+    background: $off;
+  }
+
+  :global(tbody tr:hover td) {
+    background: #eef5ff;
+    transition: background 0.15s;
+  }
+
+  :global(td) {
+    padding: 12px 16px;
+    border-bottom: 1px solid $border;
+    vertical-align: top;
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
+    word-wrap: break-word;
+  }
+
+  :global(td strong) {
+    color: $navy;
+    font-weight: 600;
+  }
+
+  :global(tr:last-child td) {
+    border-bottom: none;
+  }
+}
+
+// Row group separator rows — applied via className={cs.rowGroup} on <tr>
+.row-group {
+  :global(td) {
+    background: #f0f7ff;
+    font-weight: 700;
+    color: $navy;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 8px 16px;
+    border-bottom: 2px solid #c7d8f0;
+    border-top: 2px solid #c7d8f0;
+  }
+}
