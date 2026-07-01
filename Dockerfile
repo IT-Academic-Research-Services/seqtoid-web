@@ -55,9 +55,6 @@ WORKDIR /app
 # without it. It must be present BEFORE `npm ci`, not via the later `COPY . ./`.
 COPY .npmrc package.json package-lock.json ./
 
-# Copy aws-sdk-js-v3 packages that are installed from file
-COPY vendor/aws-sdk-js-v3/* ./vendor/aws-sdk-js-v3/
-
 RUN npm ci --omit=optional
 
 # This section is for the purpose of installing the non-MariaDB mysql-client /

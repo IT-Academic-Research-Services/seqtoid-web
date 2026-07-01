@@ -3,6 +3,11 @@ log
 .git
 node_modules
 
+# Webpack build output — regenerated inside the image by `npm run build-img`.
+# MUST be ignored: otherwise the later `COPY . ./` copies a stale local dist/
+# over the freshly-built bundle, silently shipping old frontend assets.
+app/assets/dist
+
 # sql and sql.gz files that are typically generate to
 # populate the db for local development
 /*.sql

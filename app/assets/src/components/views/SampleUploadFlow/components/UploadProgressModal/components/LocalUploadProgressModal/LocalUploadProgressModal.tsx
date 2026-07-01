@@ -1,5 +1,4 @@
 import { ChecksumAlgorithm, S3Client } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
 import cx from "classnames";
 import {
   constant,
@@ -23,6 +22,7 @@ import {
 import { TaxonOption } from "~/components/common/filters/types";
 import PrimaryButton from "~/components/ui/controls/buttons/PrimaryButton";
 import { logError } from "~/components/utils/logUtil";
+import { ResumableUpload } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/resumableUpload";
 import { MetadataBasic, Project, SampleFromApi } from "~/interface/shared";
 import Modal from "~ui/containers/Modal";
 import { UploadWorkflows } from "../../../../constants";
@@ -270,9 +270,15 @@ export const LocalUploadProgressModal = ({
         accessKeyId,
         secretAccessKey,
         sessionToken,
-        expiration,
+        // The backend returns expiration as an ISO string; the AWS SDK v3 credential
+        // provider requires a Date (it calls expiration.getTime()).
+        expiration: expiration ? new Date(expiration) : undefined,
       },
       useAccelerateEndpoint: true,
+      // Only attach the checksum we explicitly request (SHA256 per part); don't let newer SDK
+      // versions auto-inject a default CRC32 request checksum, which can break accelerate/CORS PUTs.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   };
 
@@ -304,7 +310,7 @@ export const LocalUploadProgressModal = ({
       fileSize: body?.size,
     });
 
-    const fileUpload = new Upload({
+    const fileUpload = new ResumableUpload({
       client: s3Client,
       leavePartsOnError: true, // configures lib to propagate errors
       params: uploadParams,
