@@ -59,9 +59,10 @@ const DiscoveryViewRouter = ({
         <Route exact path="/user_profile_form">
           <UserProfileForm />
         </Route>
-        <Route exact path="/impact">
+        {/* REBRAND: Impact page temporarily disabled */}
+        {/* <Route exact path="/impact">
           <ImpactPage />
-        </Route>
+        </Route> */}
         <Route exact path="/pathogen_list">
           <Suspense fallback={<LoadingPage />}>
             <PathogenListView />

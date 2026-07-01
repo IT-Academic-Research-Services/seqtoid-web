@@ -62,7 +62,7 @@ export class FAQPage extends React.Component {
                 Metadata with all SeqtoID users but that is completely up to
                 you. You can choose to share your Report Data with a small group
                 of SeqtoID users, by adding them to a Project, or with all other
-                CZ ID users by marking a Project as {'"Public"'}.
+                SeqtoID users by marking a Project as {'"Public"'}.
               </React.Fragment>,
             ]}
           />
@@ -363,7 +363,7 @@ export class FAQPage extends React.Component {
         >
           <p>
             We rely on service providers to help us provide, improve, and secure
-            the service, including Chan Zuckerberg Initiative our technology
+            the service, including UCSF, our technology
             partner. In our terms with third party service providers, we work
             with service providers to secure data from unauthorized access and
             use and limit their use of data to providing and improving relevant

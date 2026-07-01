@@ -1,7 +1,5 @@
 import cx from "classnames";
 import React from "react";
-import IconBiohubSFLogo from "~/components/ui/icons/IconBiohubSFLogo";
-import IconCziLogo from "~/components/ui/icons/IconCziLogo";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import { SeqtoIDLogoReversed } from "~ui/icons";
 import cs from "./Footer.scss";
@@ -25,7 +23,7 @@ export const Footer = () => {
           <a
             // NOTE(2021-09-30): Alternatively there is https://boards.greenhouse.io/chanzuckerberginitiative/jobs/2931482 as of now.
             href="https://boards.greenhouse.io/chanzuckerberginitiative/jobs/3293983"
-            aria-label="View the Chan Zuckerberg Initiative careers page (opens in new window)"
+            aria-label="View the UCSF careers page (opens in new window)"
             target="_blank"
             rel="noreferrer"
           >
@@ -72,33 +70,6 @@ export const Footer = () => {
             >
               Cookie Settings
             </span>
-          </div>
-        </div>
-        <div className={cs.czLogoContainer}>
-          <div className={cs.czLogoInnerContainer}>
-            <div>
-              <a
-                href="https://chanzuckerberg.com/"
-                className={cs.cziLogo}
-                aria-label="View the Chan Zuckerberg Initiative website (opens in new window)"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <IconCziLogo />
-              </a>
-            </div>
-            <div className={cs.separator}></div>
-            <div>
-              <a
-                href="https://www.czbiohub.org/"
-                className={cs.biohubLogo}
-                aria-label="View the Chan Zuckerberg Biohub website (opens in new window)"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <IconBiohubSFLogo />
-              </a>
-            </div>
           </div>
         </div>
       </div>

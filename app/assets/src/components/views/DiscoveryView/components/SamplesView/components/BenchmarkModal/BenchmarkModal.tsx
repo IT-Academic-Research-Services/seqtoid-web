@@ -62,7 +62,7 @@ export const BenchmarkModal = ({
       />
       <DialogContent>
         <h3 className={cs.project}>
-          Project to store benchmark: <b>CZID Benchmarks</b>
+          Project to store benchmark: <b>SeqtoID Benchmarks</b>
         </h3>
         <GroundTruthFilesDropdown
           onGroundTruthFileSelection={onGroundTruthFileSelection}

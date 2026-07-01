@@ -30,8 +30,10 @@ class SupportController < ApplicationController
   end
 
   def impact
-    @hide_header = true
-    render "home/discovery_view_router"
+    # REBRAND: Impact page temporarily disabled
+    redirect_to root_path
+    # @hide_header = true
+    # render "home/discovery_view_router"
   end
 
   def security_white_paper

@@ -39,7 +39,7 @@ export const LandingHeader = ({
         message={
           <>
             {
-              " UCSF’S INSTITUTE FOR GLOBAL HEALTH SCIENCES WILL MANAGE CZ ID TOWARD THE END OF 2025. CLICK "
+              " UCSF’S INSTITUTE FOR GLOBAL HEALTH SCIENCES WILL MANAGE SeqtoID TOWARD THE END OF 2025. CLICK "
             }
             <ExternalLink
               className={cs.link}
@@ -58,7 +58,8 @@ export const LandingHeader = ({
         </a>
         <nav className={cs.nav} data-test-id="home-top-nav">
           <span className={cs.hideMobile}>
-            <a
+            {/* REBRAND: Case Studies temporarily disabled - impact page hidden */}
+            {/* <a
               className={`${cs.textLink} ${
                 impactPage ? cs.textLinkActive : null
               }`}
@@ -67,7 +68,7 @@ export const LandingHeader = ({
               data-testid="home-top-nav-impact"
             >
               Case Studies
-            </a>
+            </a> */}
             <a
               className={cs.textLink}
               href="http://help.czid.org"
@@ -115,7 +116,8 @@ export const LandingHeader = ({
               </span>
             </div>
             <div className={cs.mobileNavLinkContainer}>
-              <a
+              {/* REBRAND: Case Studies mobile link temporarily disabled */}
+              {/* <a
                 className={cs.mobileNavLink}
                 href="/impact"
                 style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
@@ -125,7 +127,7 @@ export const LandingHeader = ({
                 data-testid="home-mobile-menu-impact"
               >
                 Case Studies
-              </a>
+              </a> */}
               <a
                 className={cs.mobileNavLink}
                 href="http://help.czid.org"
