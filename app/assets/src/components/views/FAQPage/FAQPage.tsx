@@ -333,7 +333,7 @@ export class FAQPage extends React.Component {
           <p>Yes, you do.</p>
           <p>
             You have options to control or limit how we and our partners use
-            cookies and similar technologies on czid.org. You can learn more and
+            cookies and similar technologies on seqtoid.org. You can learn more and
             adjust your cookie preferences by visiting the{" "}
             <span className={cx(cs.cookieSettings, "optanon-show-settings")}>
               Cookie Settings

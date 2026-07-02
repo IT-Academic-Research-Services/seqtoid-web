@@ -24,9 +24,7 @@ const MainMenu = ({ adminUser, userSignedIn }: MainMenuProps) => {
         <a
           className={cs.item}
           href="#"
-          rel="noopener noreferrer"
-          /* eslint-disable-next-line react/jsx-no-target-blank */
-          target="_blank"
+          aria-label="View the SeqtoID help page"
           data-testid="menu-item-help-center"
         >
           Help Center

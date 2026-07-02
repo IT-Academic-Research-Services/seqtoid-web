@@ -73,9 +73,7 @@ export const LandingHeader = ({
             <a
               className={cs.textLink}
               href="#"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="View the SeqtoID help page (opens in new window)"
+              aria-label="View the SeqtoID help page"
               data-testid="home-top-nav-resources"
             >
               Resources
@@ -134,9 +132,7 @@ export const LandingHeader = ({
                 className={cs.mobileNavLink}
                 href="#"
                 style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="View the SeqtoID help page (opens in new window)"
+                aria-label="View the SeqtoID help page"
                 data-testid="home-mobile-menu-resources"
               >
                 Resources

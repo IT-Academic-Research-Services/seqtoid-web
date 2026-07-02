@@ -19,23 +19,19 @@ export const Footer = () => {
           <div>
             <a
               href="/privacy"
-              aria-label="View the SeqtoID privacy notice (opens in new window)"
-              target="_blank"
-              rel="noopener noreferrer"
+              aria-label="View the SeqtoID privacy notice"
             >
               Privacy
             </a>
             <span>|</span>
             <a
               href="/terms"
-              aria-label="View the SeqtoID terms of use (opens in new window)"
-              target="_blank"
-              rel="noopener noreferrer"
+              aria-label="View the SeqtoID terms of use"
             >
               Terms
             </a>
             <span>|</span>
-            <a href={CONTACT_US_LINK} target="_blank" rel="noreferrer">
+            <a href={CONTACT_US_LINK} target="_blank" rel="noreferrer" aria-label="Contact the SeqtoID team (opens in new window)">
               Contact us
             </a>
             <span>|</span>
