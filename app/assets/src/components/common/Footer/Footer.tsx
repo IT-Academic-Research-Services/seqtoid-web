@@ -12,31 +12,6 @@ export const Footer = () => {
           <SeqtoIDLogoReversed className={cs.footerLogo} />
         </a>
         <div className={cs.topNavMenu}>
-          <a
-            href="https://github.com/chanzuckerberg/czid-workflows"
-            aria-label="View the repo for czid-workflows on GitHub (opens in new window)"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Github
-          </a>
-          <a
-            // NOTE(2021-09-30): Alternatively there is https://boards.greenhouse.io/chanzuckerberginitiative/jobs/2931482 as of now.
-            href="https://boards.greenhouse.io/chanzuckerberginitiative/jobs/3293983"
-            aria-label="View the UCSF careers page (opens in new window)"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Careers
-          </a>
-          <a
-            href="http://help.czid.org"
-            aria-label="View the SeqtoID help page (opens in new window)"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Resources
-          </a>
         </div>
       </div>
       <div className={cs.bottomNavContainer}>

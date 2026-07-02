@@ -64,7 +64,8 @@ const UserMenuDropDown = ({
       <BareDropdown.Item
         key="help"
         text={
-          <ExternalLink className={cs.option} href="https://help.czid.org">
+          // TODO: update to help.seqtoid.org once help center migration is complete
+          <ExternalLink className={cs.option} href="#">
             Help Center
           </ExternalLink>
         }

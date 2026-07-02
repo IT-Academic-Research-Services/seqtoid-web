@@ -27,17 +27,19 @@ export const LandingHeaderV1 = ({ browserInfo }: LandingHeaderV1Props) => {
         </div>
         <div className={cs.fill} />
         <div className={cs.links}>
+          {/* TODO: update to help.seqtoid.org once help center migration is complete */}
           <ExternalLink
             className={cs.headerLink}
-            href="https://help.czid.org"
+            href="#"
             analyticsEventName="Landing_help-center-link_clicked"
             data-testid="help-center"
           >
             Help Center
           </ExternalLink>
+          {/* TODO: update to help.seqtoid.org once help center migration is complete */}
           <ExternalLink
             className={cs.headerLink}
-            href="https://www.czid.org/impact"
+            href="#"
             analyticsEventName="Landing_video-tour-link_clicked"
             data-testid="video-tour"
           >

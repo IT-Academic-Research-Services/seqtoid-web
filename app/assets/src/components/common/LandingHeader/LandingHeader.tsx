@@ -69,9 +69,10 @@ export const LandingHeader = ({
             >
               Case Studies
             </a> */}
+            {/* TODO: update to help.seqtoid.org once help center migration is complete */}
             <a
               className={cs.textLink}
-              href="http://help.czid.org"
+              href="#"
               target="_blank"
               rel="noreferrer"
               aria-label="View the SeqtoID help page (opens in new window)"
@@ -128,9 +129,10 @@ export const LandingHeader = ({
               >
                 Case Studies
               </a> */}
+              {/* TODO: update to help.seqtoid.org once help center migration is complete */}
               <a
                 className={cs.mobileNavLink}
-                href="http://help.czid.org"
+                href="#"
                 style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
                 target="_blank"
                 rel="noreferrer"

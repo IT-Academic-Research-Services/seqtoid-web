@@ -20,9 +20,10 @@ const MainMenu = ({ adminUser, userSignedIn }: MainMenuProps) => {
     return (
       <div className={cs.loggedOutMainMenu}>
         {/* Keep referrer links */}
+        {/* TODO: update to help.seqtoid.org once help center migration is complete */}
         <a
           className={cs.item}
-          href="https://help.czid.org"
+          href="#"
           rel="noopener noreferrer"
           /* eslint-disable-next-line react/jsx-no-target-blank */
           target="_blank"
