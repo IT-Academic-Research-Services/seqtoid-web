@@ -4,7 +4,7 @@ Production is **never deployed directly**. It is reachable only through the prom
 (`deploy-promote.yml`), which walks a change through every lower tier first and gates prod on success.
 
 > Everyday dev/staging/sandbox deploys use the **Deploy** workflow (`deploy.yml`), which *blocks* `prod` as a
-> destination (CZID-101). See `docs/DEPLOY-METHODS.md` for the day-to-day deploy + rebuild paths.
+> destination. See `docs/DEPLOY-METHODS.md` for the day-to-day deploy + rebuild paths.
 
 ---
 
@@ -15,7 +15,7 @@ guard (type "promote")
   → deploy dev
     → deploy staging        (needs dev)
       → verify staging       (Playwright smoke — needs staging)
-        → deploy prod        (needs smoke)   ← also pauses for a required reviewer (CZID-81)
+        → deploy prod        (needs smoke)   ← also pauses for a required reviewer
 ```
 
 Each job `needs:` the previous, so **prod is unreachable unless dev + staging both deployed green and the
@@ -36,13 +36,13 @@ on flakier e2e would block legitimate promotions. (Run full e2e against staging 
 | Gate | What it enforces | Where |
 |---|---|---|
 | **Ordering** (automatic) | prod can't run unless dev + staging deployed and staging smoke passed | the `needs:` chain above |
-| **Required reviewer** (CZID-81) | a human must approve before the prod job runs | the prod job's `environment: prod` |
+| **Required reviewer** | a human must approve before the prod job runs | the prod job's `environment: prod` |
 
 The `deploy-prod` job (via `reusable-deploy-workflow.yml`) already references `environment: prod`. That makes
 GitHub pause the job for an approval **once the protected `prod` Environment with a required reviewer exists**.
 Until it's created, `environment: prod` is a no-op and only the ordering gate applies.
 
-### Finishing CZID-81 — create the protected `prod` environment (repo admin, one-time)
+### Create the protected `prod` environment (repo admin, one-time)
 
 ```bash
 # 1. Get the reviewer's user id (or use a team — see the API docs for team reviewers):

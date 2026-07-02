@@ -96,7 +96,7 @@ e.g. bin/bundle, bin/rails, bin/rake, stay at root, bin/local-scripts for local 
 `SERVER_DOMAIN`: The Rails web app domain, used to set callback URLs for ECS bulk downloads so that they can send status updates back to the web app. (e.g. "czid.org")  
 `SMTP_PASSWORD`: The password for the SMTP user, set [here](../config/application.rb#L38). Configures Rails ActionMailer to send emails via SMTP using Amazon SES.  
 `SMTP_USER`: The username for the SMTP user, set [here](../config/application.rb#L40). Configures Rails ActionMailer to send emails via SMTP using Amazon SES.  
-`SYSTEM_ADMIN_USER_ID`: **Appears to be unused** since the GraphQL federation server was collapsed into Rails-native GraphQL (CZID-285). Was an admin user ID for interacting with the federation service.  
+`SYSTEM_ADMIN_USER_ID`: **Appears to be unused** since the GraphQL federation server was collapsed into Rails-native GraphQL. Was an admin user ID for interacting with the federation service.  
 `SYSTEM_ADMIN_PROJECT_ID`: **Appears to be unused.** _Recommend removing references to this._  
 `HEATMAP_ES_ADDRESS`: The URL of the ElasticSearch endpoint used for generating heatmap data, set [here](../app/helpers/elasticsearch_query_helper.rb#L8).  
 `INDEXING_LAMBDA_MODE`: Specifies whether local endpoints are used in lieu of AWS Lambda functions for initiating taxon indexing requests. Used [here](../app/helpers/elasticsearch_query_helper.rb#L774).  
