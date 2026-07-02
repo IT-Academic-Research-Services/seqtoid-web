@@ -20,9 +20,5 @@ This takes around 15 minutes
 make local-start-webapp
 ```
 
-4. Download and start graphql-federation-service
-```
-git clone git@github.com:chanzuckerberg/czid-graphql-federation-server.git
-cd czid-graphql-federation-server
-make local-init
-```
+The GraphQL API (including the formerly-separate federation resolvers) is served by the
+Rails app itself at `/graphql` — no separate service to start.
