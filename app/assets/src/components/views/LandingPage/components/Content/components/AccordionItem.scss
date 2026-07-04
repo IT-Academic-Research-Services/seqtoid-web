@@ -76,6 +76,16 @@
   @media (max-width: 768px) {
     @include font-header-s;
   }
+
+  // Open/expanded state: match the hover color (UCSF blue) instead of CZI blue.
+  &.open {
+    color: $sds-color-primary-400;
+  }
+}
+
+// Fill for the open-state (minus) toggle icon circle — matches hover UCSF blue.
+.openCircle {
+  fill: $sds-color-primary-400;
 }
 
 .accordionText {
