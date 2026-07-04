@@ -11,7 +11,9 @@ const TERMS_STYLES = `
   .terms-notice-legal-body p { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 16px; }
   .terms-notice-legal-body ul { padding-left: 24px; margin-bottom: 16px; }
   .terms-notice-legal-body li { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 8px; }
-  .terms-notice-legal-body a { color: #006BE9; text-decoration: none; }
+  .terms-notice-title { font-size: 28px; font-weight: 700; color: #052049; margin-bottom: 24px; }
+  /* !important overrides the global \`a { color: inherit !important }\` in _header.scss (same pattern as support.scss). */
+  .terms-notice-legal-body a { color: #006BE9 !important; text-decoration: none; }
   .terms-notice-legal-body a:hover { text-decoration: underline; }
   .terms-notice-legal-body strong { font-weight: 600; color: #1a202c; }
   .terms-notice-warning { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px 20px; margin: 24px 0; }
@@ -25,6 +27,7 @@ export function TermsOfUse() {
       <LandingHeader legalNav />
       <NarrowContainer size="small" className="terms-notice-page">
         <div className="terms-notice-legal-body">
+        <h1 className="terms-notice-title">Terms of Use</h1>
         <div className="terms-notice-warning">
           <p><strong>PLEASE BE ADVISED THAT THIS AGREEMENT CONTAINS AN ARBITRATION PROVISION IN SECTION 9 BELOW THAT AFFECTS YOUR RIGHTS UNDER THIS AGREEMENT.</strong> EXCEPT FOR CERTAIN TYPES OF DISPUTES MENTIONED IN THAT PROVISION, YOU AND UCSF (AS DEFINED BELOW) AGREE THAT (1) DISPUTES BETWEEN US WILL BE RESOLVED BY INDIVIDUAL BINDING ARBITRATION, AND (2) YOU AND UCSF (AND ITS PARTNERS AND AFFILIATES) WAIVE ANY RIGHT TO PARTICIPATE IN A CLASS-ACTION LAWSUIT, CLASS-WIDE ARBITRATION, OR ANY OTHER REPRESENTATIVE ACTION.</p>
         </div>
