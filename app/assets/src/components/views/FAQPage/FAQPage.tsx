@@ -16,6 +16,10 @@ export class FAQPage extends React.Component {
         <div className={cs.title}>
           <h1>Frequently Asked Questions</h1>
         </div>
+        {/* TODO(REBRAND-15): Pending UCSF input — contact emails privacy@czid.org
+            and security@czid.org (multiple occurrences below) still need UCSF
+            replacements, and the "SeqtoID Security White Paper" (/security_white_paper)
+            content is pending UCSF review. Left as-is per rebrand ground rules. */}
         <Accordion
           className={cs.question}
           header={
@@ -209,14 +213,14 @@ export class FAQPage extends React.Component {
           className={cs.question}
           header={<h3>What is your address?</h3>}
         >
-          <List
-            listItems={[
-              `Chan Zuckerberg Biohub, 499 Illinois Street, Fourth Floor San
-              Francisco, CA 94158`,
-              `Chan Zuckerberg Initiative, LLC, 801 Jefferson Ave, Redwood City,
-              CA 94063`,
-            ]}
-          />
+          {/* Address copied verbatim from TermsOfUse.tsx §12 Contact Information. */}
+          <p>Our mailing address is:</p>
+          <p>
+            SeqToID Administrator<br />
+            1855 Folsom St, Suite 601<br />
+            San Francisco, CA 94143<br />
+            USA
+          </p>
         </Accordion>
         <Accordion
           className={cs.question}
@@ -231,8 +235,8 @@ export class FAQPage extends React.Component {
             Cookies are small text files sent by your computer or device each
             time you visit our website. They are stored in your browser’s cache
             or mobile device and allow a website or a third party to recognize
-            your browser. Some of the cookies we use are associated with your CZ
-            ID account (including information about you, such as the email
+            your browser. Some of the cookies we use are associated with your
+            SeqtoID account (including information about you, such as the email
             address you gave us) and other cookies are not.
           </p>
           <p>Cookies can be classified by their lifespan:</p>
@@ -338,7 +342,25 @@ export class FAQPage extends React.Component {
             You have options to control or limit how we and our partners use
             cookies and similar technologies on seqtoid.org. You can learn more and
             adjust your cookie preferences by visiting the{" "}
-            <span className={cx(cs.cookieSettings, "optanon-show-settings")}>
+            {/* This span lives inside a collapsed Accordion, so it isn't in the
+                DOM when OneTrust binds its `.optanon-show-settings` handlers at
+                init (unlike the always-present Footer link). Invoke the OneTrust
+                API directly so the preference center opens reliably. */}
+            <span
+              className={cx(cs.cookieSettings, "optanon-show-settings")}
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                // @ts-expect-error OneTrust is injected globally by the OneTrust script
+                window.OneTrust?.ToggleInfoDisplay?.()
+              }
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  // @ts-expect-error OneTrust is injected globally by the OneTrust script
+                  window.OneTrust?.ToggleInfoDisplay?.();
+                }
+              }}
+            >
               Cookie Settings
             </span>
             . You also have choices and control over the cookies that you allow
