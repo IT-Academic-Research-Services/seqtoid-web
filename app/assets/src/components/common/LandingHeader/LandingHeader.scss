@@ -4,7 +4,7 @@
 @import "~@czi-sds/components/dist/variables";
 
 .header {
-  background: $sds-color-gray-black;
+  background: $primary-darkest; // REBRAND: UCSF navy (#052049)
   padding: 2rem 3rem;
   display: flex;
   justify-content: space-between;

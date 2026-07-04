@@ -1,10 +1,11 @@
 // using czifui variables as of 12/2021
-$primary-off-white: #f8f9fe;
-$primary-lightest: #eff2fc;
-$primary-light: #a9bdfc;
-$primary: #3867fa;
-$primary-dark: #2b52cd;
-$primary-darkest: #223f9c;
+// REBRAND: primary palette remapped to UCSF colors (CTA blue #006BE9 / navy #052049)
+$primary-off-white: #f5faff;
+$primary-lightest: #e2f4fc;
+$primary-light: #8cb4f5;
+$primary: #006be9;
+$primary-dark: #0055ba;
+$primary-darkest: #052049;
 
 $secondary: #9bc74e;
 
@@ -35,11 +36,12 @@ $warning-light: #f4eee4;
 $warning-medium: #f5a623;
 $warning-dark: #946314;
 
-$info-off-white: #eff2fc;
-$info-lightest: #ebeffc;
-$info-light: #e7eaf4;
-$info-medium: #3867fa;
-$info-dark: #223f9c;
+// REBRAND: info palette tracks primary (UCSF CTA blue / navy)
+$info-off-white: #f5faff;
+$info-lightest: #e2f4fc;
+$info-light: #dfeef9;
+$info-medium: #006be9;
+$info-dark: #052049;
 
 $beta-dark: #693bac;
 $beta-medium: #7a41ce;
