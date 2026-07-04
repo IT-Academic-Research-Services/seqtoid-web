@@ -371,7 +371,7 @@ Rails.application.routes.draw do
   get 'health_check' => "health_check/health_check#index"
 
   get '/favicon.ico', to: proc { |_env|
-    ico = File.binread(Rails.root.join('app/assets/images/favicon.ico'))
+    ico = File.binread(Rails.root.join('app/assets/images/seqtoid_favicon.ico'))
     [200, { 'Content-Type' => 'image/x-icon', 'Cache-Control' => 'public, max-age=86400' }, [ico]]
   }
 
