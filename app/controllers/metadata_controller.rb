@@ -8,7 +8,10 @@ class MetadataController < ApplicationController
   prepend_before_action :token_based_login_support, only: TOKEN_AUTH_METHODS
 
   def dictionary
-    render "home/discovery_view_router"
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the MetadataDictionary component is the only header here.
+    # Rendered standalone (default metadata/dictionary view) to match /faqs, /privacy, /terms.
+    @hide_header = true
   end
 
   def instructions

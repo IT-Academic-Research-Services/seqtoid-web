@@ -1,7 +1,8 @@
 import cx from "classnames";
 import { nanoid } from "nanoid";
 import React from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Footer } from "~/components/common/Footer";
+import { LandingHeader } from "~/components/common/LandingHeader";
 import { Accordion, NarrowContainer } from "~/components/layout";
 import List from "~/components/ui/List";
 import cs from "./faqs_page.scss";
@@ -9,7 +10,9 @@ import cs from "./faqs_page.scss";
 export class FAQPage extends React.Component {
   render() {
     return (
-      <NarrowContainer className={cs.faqPage} size="small">
+      <>
+        <LandingHeader legalNav />
+        <NarrowContainer className={cs.faqPage} size="small">
         <div className={cs.title}>
           <h1>Frequently Asked Questions</h1>
         </div>
@@ -164,7 +167,7 @@ export class FAQPage extends React.Component {
                 Other metadata can be uploaded to SeqtoID but is not required
                 and may be deleted at any point. We have put together a metadata
                 ontology that you can find{" "}
-                <RouterLink to="/metadata/dictionary">here </RouterLink>
+                <a href="/metadata/dictionary">here </a>
                 that does not include any fields where Protected Health
                 Information (PHI) can be derived.
               </React.Fragment>,
@@ -394,7 +397,9 @@ export class FAQPage extends React.Component {
             <a href="mailto:security@czid.org">security@czid.org</a>.
           </p>
         </Accordion>
-      </NarrowContainer>
+        </NarrowContainer>
+        <Footer />
+      </>
     );
   }
 }

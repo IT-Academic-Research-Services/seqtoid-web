@@ -28,7 +28,10 @@ class SupportController < ApplicationController
   end
 
   def faqs
-    render "home/discovery_view_router"
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the FAQPage component is the only header here.
+    # Rendered standalone (default support/faqs view) to match /privacy and /terms.
+    @hide_header = true
   end
 
   def privacy_notice_for_user_research

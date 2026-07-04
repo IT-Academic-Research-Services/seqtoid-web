@@ -19,6 +19,9 @@ interface LandingHeaderProps {
   // "Help Center" + a "Terms" dropdown instead of "Resources" + "Sign in".
   // Used only by TermsOfUse / PrivacyNotice; homepage usage is unchanged.
   legalNav?: boolean;
+  // REBRAND: bare variant — render only the logo, no right-side nav.
+  // Used by the Metadata Dictionary page.
+  logoOnly?: boolean;
 }
 
 export const LandingHeader = ({
@@ -26,6 +29,7 @@ export const LandingHeader = ({
   emergencyBannerMessage,
   impactPage,
   legalNav,
+  logoOnly,
 }: LandingHeaderProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -66,7 +70,8 @@ export const LandingHeader = ({
         <a aria-label="Go to the SeqtoID homepage" href="/">
           <SeqtoIDLogoReversed className={cs.headerLogo} />
         </a>
-        <nav className={cs.nav} data-test-id="home-top-nav">
+        {!logoOnly && (
+          <nav className={cs.nav} data-test-id="home-top-nav">
           {legalNav ? (
             <div className={cs.legalNav}>
               {/* TODO: update to help.seqtoid.org once help center migration is complete */}
@@ -221,7 +226,8 @@ export const LandingHeader = ({
               )}
             </div>
           </div>
-        </nav>
+          </nav>
+        )}
       </div>
     </>
   );

@@ -16,10 +16,8 @@ import { AdminProject } from "../AdminProject";
 import { AdminSample } from "../AdminSample";
 import { AdminSettings } from "../AdminSettings";
 import { DiscoveryViewFC } from "../DiscoveryView/DiscoveryViewFC";
-import { FAQPage } from "../FAQPage";
 import { ImpactPage } from "../ImpactPage";
 import { LandingPage } from "../LandingPage";
-import { MetadataDictionary } from "../MetadataDictionary";
 import { PathogenListView } from "../PathogenListView";
 import PhyloTreeListView from "../PhyloTree/PhyloTreeListView";
 import { PrivacyNoticeForUserResearch } from "../PrivacyNoticeForUserResearch";
@@ -109,12 +107,6 @@ const DiscoveryViewRouter = ({
             />
           )}
         />
-        <Route exact path="/metadata/dictionary">
-          <MetadataDictionary />
-        </Route>
-        <Route exact path="/faqs">
-          <FAQPage />
-        </Route>
         <Route exact path="/admin">
           <AdminPage />
         </Route>
