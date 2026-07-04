@@ -1,7 +1,10 @@
 import React from "react";
+import { Footer } from "~/components/common/Footer";
+import { LandingHeader } from "~/components/common/LandingHeader";
 import { NarrowContainer } from "~/components/layout";
 
 const TERMS_STYLES = `
+  .terms-notice-page { padding: 48px 0 64px; }
   .terms-notice-legal-body { font-family: inherit; }
   .terms-notice-legal-body h2 { font-size: 20px; font-weight: 700; color: #052049; margin: 32px 0 12px; }
   .terms-notice-legal-body h3 { font-size: 16px; font-weight: 600; color: #052049; margin: 24px 0 8px; }
@@ -17,9 +20,11 @@ const TERMS_STYLES = `
 
 export function TermsOfUse() {
   return (
-    <NarrowContainer>
+    <>
       <style dangerouslySetInnerHTML={{ __html: TERMS_STYLES }} />
-      <div className="terms-notice-legal-body">
+      <LandingHeader legalNav />
+      <NarrowContainer size="small" className="terms-notice-page">
+        <div className="terms-notice-legal-body">
         <div className="terms-notice-warning">
           <p><strong>PLEASE BE ADVISED THAT THIS AGREEMENT CONTAINS AN ARBITRATION PROVISION IN SECTION 9 BELOW THAT AFFECTS YOUR RIGHTS UNDER THIS AGREEMENT.</strong> EXCEPT FOR CERTAIN TYPES OF DISPUTES MENTIONED IN THAT PROVISION, YOU AND UCSF (AS DEFINED BELOW) AGREE THAT (1) DISPUTES BETWEEN US WILL BE RESOLVED BY INDIVIDUAL BINDING ARBITRATION, AND (2) YOU AND UCSF (AND ITS PARTNERS AND AFFILIATES) WAIVE ANY RIGHT TO PARTICIPATE IN A CLASS-ACTION LAWSUIT, CLASS-WIDE ARBITRATION, OR ANY OTHER REPRESENTATIVE ACTION.</p>
         </div>
@@ -229,7 +234,9 @@ export function TermsOfUse() {
           USA
         </p>
       </div>
-    </NarrowContainer>
+      </NarrowContainer>
+      <Footer />
+    </>
   );
 }
 

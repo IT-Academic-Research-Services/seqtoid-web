@@ -59,6 +59,51 @@
   }
 }
 
+// REBRAND: legal-page nav (Help Center + "Legal" dropdown) for /terms & /privacy.
+// Single right-aligned flex row so the block-level BareDropdown wrapper sits inline
+// beside "Help Center" instead of dropping to its own line.
+.legalNav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+
+  .textLink {
+    margin: 0; // gap handles spacing; keep it a plain text link
+    padding: 0;
+  }
+
+  @media (max-width: 768px) {
+    display: none;
+  }
+}
+
+.legalDivider {
+  width: 1px;
+  height: 18px;
+  background: rgba($sds-color-gray-white, 0.25);
+}
+
+.legalTrigger {
+  color: $sds-color-gray-white !important;
+  font-family: $sds-font-font-family;
+  @include font-body-xs;
+  font-weight: $font-weight-semibold; // same weight as "Resources"
+  cursor: pointer;
+}
+
+// BareDropdown already lays out [trigger][caret] via .arrowOutsideTrigger
+// (display:flex, align-items:center). The caret is a SIBLING of the trigger text,
+// so the 4px text↔chevron gap goes here on the wrapper, and we force the caret
+// icon white for the navy bar.
+.termsDropdown {
+  gap: 4px;
+
+  svg {
+    color: $sds-color-gray-white;
+    fill: $sds-color-gray-white;
+  }
+}
+
 .hideMobile {
   @media (max-width: 768px) {
     display: none;

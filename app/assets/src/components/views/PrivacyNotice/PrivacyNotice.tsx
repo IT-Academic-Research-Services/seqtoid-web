@@ -1,7 +1,10 @@
 import React from "react";
+import { Footer } from "~/components/common/Footer";
+import { LandingHeader } from "~/components/common/LandingHeader";
 import { NarrowContainer } from "~/components/layout";
 
 const PRIVACY_STYLES = `
+  .privacy-notice-page { padding: 48px 0 64px; }
   .privacy-notice-table-wrap { overflow-x: auto; margin: 24px 0; }
   .privacy-notice-table { width: 100%; border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   .privacy-notice-table thead tr { background-color: #052049; color: #ffffff; }
@@ -19,9 +22,11 @@ const PRIVACY_STYLES = `
 
 export const PrivacyNotice = () => {
   return (
-    <NarrowContainer>
+    <>
       <style dangerouslySetInnerHTML={{ __html: PRIVACY_STYLES }} />
-      <div className="privacy-notice-legal-body">
+      <LandingHeader legalNav />
+      <NarrowContainer size="small" className="privacy-notice-page">
+        <div className="privacy-notice-legal-body">
         <p>The SeqToID platform ("SeqToID" or the "Services") is owned by The Regents of the University of California and operated by the University of California, San Francisco (UCSF) (together, "UCSF", "we", "us" or "our"). This privacy notice ("Privacy Notice") describes the types of information we collect or that is uploaded by website visitors ("Visitors") and registered users ("Users"), and how we use, disclose, and protect that information.</p>
 
         <p>UCSF operates SeqToID to support public-health surveillance, scientific research, and responsible data sharing. In line with international public-health guidance (including World Health Organization data-sharing principles), our approach emphasizes: (a) timely sharing for public-health action, (b) equitable recognition of data contributors, (c) protection of privacy and confidentiality, (d) transparent governance of data use, and (e) legal and regulatory compliance. These principles guide how we store, share, and grant access to data.</p>
@@ -268,7 +273,9 @@ export const PrivacyNotice = () => {
 
         <p>This Privacy Notice was last updated on June 4, 2026. We may update this Privacy Notice from time to time and will provide you with notice of any material updates before they become effective.</p>
       </div>
-    </NarrowContainer>
+      </NarrowContainer>
+      <Footer />
+    </>
   );
 };
 

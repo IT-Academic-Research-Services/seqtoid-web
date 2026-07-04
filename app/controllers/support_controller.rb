@@ -13,9 +13,15 @@ class SupportController < ApplicationController
   skip_before_action :authenticate_user!, :verify_authenticity_token, only: PUBLIC_ACTIONS
 
   def privacy
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the PrivacyNotice component is the only header here.
+    @hide_header = true
   end
 
   def terms
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the TermsOfUse component is the only header here.
+    @hide_header = true
   end
 
   def terms_changes
