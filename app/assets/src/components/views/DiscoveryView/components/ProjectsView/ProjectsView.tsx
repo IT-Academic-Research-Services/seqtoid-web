@@ -79,7 +79,10 @@ export class ProjectsView extends React.Component<ProjectsViewProps> {
       {
         dataKey: "created_at",
         label: "Created On",
-        width: 100,
+        // Width must clear the sortable header's overhead (sort icon + the
+        // centering left-margin the label reserves for it), otherwise the
+        // "Created On" label truncates to "Create…". 100px was too narrow.
+        width: 140,
         cellRenderer: TableRenderers.renderDateWithElapsed,
       },
       {
