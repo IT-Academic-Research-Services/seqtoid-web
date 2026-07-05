@@ -5,7 +5,8 @@
 
 .header {
   align-items: center;
-  background-color: $sds-color-gray-black;
+  // REBRAND: UCSF navy (#052049) to match the landing/legal header bar.
+  background-color: $primary-darkest;
   display: flex;
   flex-direction: row;
   // Header height might influence layout on other pages that use calc to compute available height.
@@ -32,6 +33,9 @@
     flex: 0 0 auto;
     color: $sds-color-gray-white;
     margin-right: $sds-spaces-s;
+    // REBRAND: divider separating the primary nav from the user menu.
+    padding-left: $sds-spaces-l;
+    border-left: 1px solid rgba($sds-color-gray-white, 0.25);
 
     .userName {
       @include font-body-xs;
@@ -54,6 +58,9 @@
   .termsDropdown {
     flex: 0 0 auto;
     color: $sds-color-gray-white;
+    // REBRAND: divider separating the primary nav from the terms menu.
+    padding-left: $sds-spaces-l;
+    border-left: 1px solid rgba($sds-color-gray-white, 0.25);
 
     .terms {
       @include font-body-xs;
@@ -80,12 +87,18 @@
 
   .mainMenu {
     @include font-body-xs;
-    margin-right: 100px;
+    // REBRAND: tightened spacing — the userDropdown divider now separates the nav.
+    margin-right: $sds-spaces-l;
     display: flex;
-    color: $sds-color-gray-500;
+    // REBRAND: brighter nav items for legibility on the navy bar.
+    color: rgba($sds-color-gray-white, 0.7);
 
     .item {
       font-weight: $font-weight-semibold;
+
+      &:hover {
+        color: $sds-color-gray-white;
+      }
 
       &.selected {
         color: $sds-color-gray-white !important;
@@ -100,11 +113,16 @@
   .loggedOutMainMenu {
     @include font-body-xs;
     display: flex;
-    color: $sds-color-gray-500;
+    // REBRAND: brighter nav items for legibility on the navy bar.
+    color: rgba($sds-color-gray-white, 0.7);
 
     .item {
       font-weight: $font-weight-semibold;
       margin-right: 25px;
+
+      &:hover {
+        color: $sds-color-gray-white;
+      }
 
       &.selected {
         color: $sds-color-gray-white !important;
