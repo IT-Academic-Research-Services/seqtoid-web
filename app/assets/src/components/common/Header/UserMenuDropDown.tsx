@@ -1,5 +1,8 @@
 import React from "react";
-import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
+import {
+  CONTACT_US_LINK,
+  HELP_CENTER_LINK,
+} from "~/components/utils/documentationLinks";
 import BareDropdown from "~ui/controls/dropdowns/BareDropdown";
 import { postToUrlWithCSRF } from "~utils/links";
 import cs from "./header.scss";
@@ -63,8 +66,13 @@ const UserMenuDropDown = ({
       <BareDropdown.Item
         key="help"
         text={
-          // TODO: update to help.seqtoid.org once help center migration is complete
-          <a className={cs.option} href="#" aria-label="View the SeqtoID help page">
+          <a
+            className={cs.option}
+            href={HELP_CENTER_LINK}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View the SeqtoID help center (opens in new window)"
+          >
             Help Center
           </a>
         }
