@@ -104,11 +104,13 @@ RSpec.describe "DeviceLocationAttestations", type: :request do
       end
 
       # DENY branches driven through the provider result.
+      # NOTE: literal DB string values (not model constants) so the table builds at file-load time without
+      # triggering Rails autoloading of the model class before the suite boots.
       {
-        "provider returns FAILED (bad signature)" => [DeviceLocationAttestation::STATUS_FAILED, DeviceLocationAttestation::FAILURE_INVALID_SIGNATURE],
-        "provider returns FAILED (spoofed)"       => [DeviceLocationAttestation::STATUS_FAILED, DeviceLocationAttestation::FAILURE_SPOOFED],
-        "provider returns FAILED (expired)"       => [DeviceLocationAttestation::STATUS_FAILED, DeviceLocationAttestation::FAILURE_EXPIRED],
-        "provider returns PENDING"                => [DeviceLocationAttestation::STATUS_PENDING, nil],
+        "provider returns FAILED (bad signature)" => %w[failed invalid_signature],
+        "provider returns FAILED (spoofed)"       => %w[failed spoofed],
+        "provider returns FAILED (expired)"       => %w[failed expired],
+        "provider returns PENDING"                => ["pending", nil],
       }.each do |label, (status, reason)|
         context "#{label} (deny)" do
           before do

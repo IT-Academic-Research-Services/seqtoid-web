@@ -117,12 +117,14 @@ RSpec.describe "ExportControlClearances", type: :request do
       end
 
       # ---- DENY branches: any non-(verified AND clear) combination records a row and denies ----
+      # NOTE: the table uses the literal DB string values (not the model constants) so it can be built at
+      # file-load time without triggering Rails autoloading of the model class before the suite boots.
       {
-        "verified but screening HIT"            => [ExportControlClearance::VERIFICATION_VERIFIED, ExportControlClearance::SCREENING_HIT],
-        "verified but screening PENDING"        => [ExportControlClearance::VERIFICATION_VERIFIED, ExportControlClearance::SCREENING_PENDING],
-        "IDV PENDING even if screening clear"   => [ExportControlClearance::VERIFICATION_PENDING, ExportControlClearance::SCREENING_CLEAR],
-        "IDV FAILED even if screening clear"    => [ExportControlClearance::VERIFICATION_FAILED, ExportControlClearance::SCREENING_CLEAR],
-        "both pending"                          => [ExportControlClearance::VERIFICATION_PENDING, ExportControlClearance::SCREENING_PENDING],
+        "verified but screening HIT"            => %w[verified hit],
+        "verified but screening PENDING"        => %w[verified pending],
+        "IDV PENDING even if screening clear"   => %w[pending clear],
+        "IDV FAILED even if screening clear"    => %w[failed clear],
+        "both pending"                          => %w[pending pending],
       }.each do |label, (idv, screen)|
         context "#{label} (deny)" do
           before { stub_providers(idv: idv, screen: screen) }
