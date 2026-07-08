@@ -2,6 +2,7 @@ import React from "react";
 import { Footer } from "~/components/common/Footer";
 import { LandingHeader } from "~/components/common/LandingHeader";
 import { NarrowContainer } from "~/components/layout";
+import { LAST_UPDATED_DATE } from "~/components/views/legalConstants";
 
 const PRIVACY_STYLES = `
   .privacy-notice-page { padding: 48px 0 64px; }
@@ -16,7 +17,10 @@ const PRIVACY_STYLES = `
   .privacy-notice-legal-body p { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 16px; }
   .privacy-notice-legal-body ul { padding-left: 24px; margin-bottom: 16px; }
   .privacy-notice-legal-body li { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 8px; }
-  .privacy-notice-title { font-size: 28px; font-weight: 700; color: #052049; margin-bottom: 24px; }
+  .privacy-notice-title { font-size: 28px; font-weight: 700; color: #052049; margin-bottom: 8px; }
+  .privacy-notice-updated { font-size: 13px; color: #6b7280; margin: 0 0 24px; }
+  .privacy-notice-updated a { color: #006BE9 !important; text-decoration: none; }
+  .privacy-notice-updated a:hover { text-decoration: underline; }
   /* !important overrides the global \`a { color: inherit !important }\` in _header.scss (same pattern as support.scss). */
   .privacy-notice-legal-body a { color: #006BE9 !important; text-decoration: none; }
   .privacy-notice-legal-body a:hover { text-decoration: underline; }
@@ -30,6 +34,10 @@ export const PrivacyNotice = () => {
       <NarrowContainer size="small" className="privacy-notice-page">
         <div className="privacy-notice-legal-body">
         <h1 className="privacy-notice-title">Privacy Policy</h1>
+        <p className="privacy-notice-updated">
+          Last Updated: {LAST_UPDATED_DATE} &middot;{" "}
+          <a href="/terms_changes">See Recent Changes</a>
+        </p>
         <p>The SeqToID platform ("SeqToID" or the "Services") is owned by The Regents of the University of California and operated by the University of California, San Francisco (UCSF) (together, "UCSF", "we", "us" or "our"). This privacy notice ("Privacy Notice") describes the types of information we collect or that is uploaded by website visitors ("Visitors") and registered users ("Users"), and how we use, disclose, and protect that information.</p>
 
         <p>UCSF operates SeqToID to support public-health surveillance, scientific research, and responsible data sharing. In line with international public-health guidance (including World Health Organization data-sharing principles), our approach emphasizes: (a) timely sharing for public-health action, (b) equitable recognition of data contributors, (c) protection of privacy and confidentiality, (d) transparent governance of data use, and (e) legal and regulatory compliance. These principles guide how we store, share, and grant access to data.</p>
