@@ -6,7 +6,9 @@ import cs from "./Footer.scss";
 
 export const Footer = () => {
   return (
-    <div className={cs.footer}>
+    // Semantic <footer> element (REBRAND-26): gives the sitewide sticky-footer
+    // rules in home.scss a stable, non-CSS-modules hook (`.page_content:has(footer)`).
+    <footer className={cs.footer}>
       <div className={cs.topNavContainer}>
         <a aria-label="Go to the SeqtoID homepage" href="/">
           <SeqtoIDLogoReversed className={cs.footerLogo} />
@@ -44,6 +46,6 @@ export const Footer = () => {
           </div>
         </div>
       </div>
-    </div>
+    </footer>
   );
 };
