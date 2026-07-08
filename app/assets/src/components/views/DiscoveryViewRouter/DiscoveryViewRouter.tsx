@@ -20,7 +20,6 @@ import { ImpactPage } from "../ImpactPage";
 import { LandingPage } from "../LandingPage";
 import { PathogenListView } from "../PathogenListView";
 import PhyloTreeListView from "../PhyloTree/PhyloTreeListView";
-import { PrivacyNoticeForUserResearch } from "../PrivacyNoticeForUserResearch";
 import SampleView from "../SampleView";
 
 // These props come from Rails .html.erb views via the react_component function in app/assets/src/index.tsx (the entrypoint)
@@ -65,9 +64,6 @@ const DiscoveryViewRouter = ({
           <Suspense fallback={<LoadingPage />}>
             <PathogenListView />
           </Suspense>
-        </Route>
-        <Route exact path="/privacy_notice_for_user_research">
-          <PrivacyNoticeForUserResearch />
         </Route>
         <Route
           path="/phylo_tree_ngs/:id"

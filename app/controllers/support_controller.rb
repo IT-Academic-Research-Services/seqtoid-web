@@ -2,7 +2,6 @@ class SupportController < ApplicationController
   PUBLIC_ACTIONS = [
     :faqs,
     :impact,
-    :privacy_notice_for_user_research,
     :privacy,
     :terms_changes,
     :terms,
@@ -32,10 +31,6 @@ class SupportController < ApplicationController
     # LandingHeader rendered by the FAQPage component is the only header here.
     # Rendered standalone (default support/faqs view) to match /privacy and /terms.
     @hide_header = true
-  end
-
-  def privacy_notice_for_user_research
-    render "home/discovery_view_router"
   end
 
   def impact
