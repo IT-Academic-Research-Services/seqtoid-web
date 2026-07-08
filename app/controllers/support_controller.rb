@@ -24,6 +24,9 @@ class SupportController < ApplicationController
   end
 
   def terms_changes
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the TermsChanges component is the only header here.
+    @hide_header = true
   end
 
   def faqs
