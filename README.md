@@ -159,3 +159,5 @@ organisms in large datasets. A collaborative open project of the
 the platform architecture + SSOT guide (cross-repo).
 
 <!-- e2e pipeline test 2026-07-16: exercising the IT-ARS CI/CD pipeline end-to-end (feature -> integration -> preview -> roll-up -> deploy). Safe no-op marker. -->
+
+<!-- demo sandbox marker: 2026-07-16 upload verification (platform-overhaul #697) -->
