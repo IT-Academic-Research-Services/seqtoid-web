@@ -85,12 +85,14 @@ jobs:
           bin/build-docker "$PR_HEAD_REF" "${PR_HEAD_SHA:0:8}"
           echo "Pushed ${PREVIEW_ECR_REPO}:sha-${PR_HEAD_SHA:0:8}" >> "$GITHUB_STEP_SUMMARY"
 
-      # Surface the sandbox URL ON the PR. Without this a dev has to just KNOW the
-      # pr-<N>.dev.seqtoid.org convention -- the link appeared nowhere in GitHub (no comment, no
-      # deployment). Sticky: find our marked comment and PATCH it, so re-runs update in place
-      # instead of spamming the thread. Uses gh (preinstalled on the runner) -- no new action dep.
+      # Surface the sandbox URL ON the PR -- but ONLY for PRs that actually get a sandbox.
+      #
+      # This workflow runs on EVERY pull_request into integration (the image is built either way so
+      # that adding the label later is instant), but a sandbox is only generated for PRs labelled
+      # `preview`. Posting the link unconditionally put a "Preview sandbox" URL on PRs that have no
+      # sandbox and never will -- a permanently dead link that reads as "the sandbox is broken".
       - name: Post the preview sandbox link on the PR
-        if: always()
+        if: ${{ always() && contains(github.event.pull_request.labels.*.name, 'preview') }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -101,9 +103,13 @@ jobs:
           MARKER="<!-- preview-sandbox-link -->"
           URL="https://pr-${PR_NUMBER}.dev.seqtoid.org"
           if [ "$BUILD_RESULT" = "success" ]; then
-            STATUS="Image pushed (\`sha-${PR_HEAD_SHA:0:8}\`). Argo is provisioning the sandbox -- it usually serves within a few minutes."
+            STATUS="**Status: building the sandbox.** Image pushed (\`sha-${PR_HEAD_SHA:0:8}\`); Argo is now provisioning.
+
+          **This link will not resolve yet.** Expect **~10-15 minutes** from here: Argo provisions an isolated schema + scoped DB user, runs migrations, seeds users, then starts the app and publishes DNS. Until DNS exists the browser shows \`DNS_PROBE_FINISHED_NXDOMAIN\` / \"site can't be reached\" -- that is expected, not a failure.
+
+          This comment updates itself to **LIVE** when the sandbox actually serves."
           else
-            STATUS="The preview image build did NOT succeed, so the sandbox will not come up. See the workflow run above."
+            STATUS="**Status: build FAILED**, so no sandbox will come up. See the workflow run above."
           fi
           BODY="$(cat <<EOF
           ${MARKER}
@@ -113,23 +119,76 @@ jobs:
 
           ${STATUS}
 
-          Isolated per-PR environment: its own DB schema + scoped user, SSM config and S3 prefix (it can never touch the shared dev DB). Shares the dev Batch/SFN pipeline. Auto-reaped when this PR closes.
+          Isolated per-PR environment: its own DB schema + scoped user, SSM config, S3 bucket prefix and hostname (it can never touch the shared dev DB or dev's samples). Shares the dev Batch/SFN pipeline. Auto-reaped when this PR closes.
 
           Watch it: [Grafana](https://grafana.dev.seqtoid.org) -> Argo CD dashboard (\`seqtoid-pr-${PR_NUMBER}\`), or Logs Overview filtered to \`namespace=seqtoid-pr-${PR_NUMBER}\`.
           EOF
           )"
-          # sed strips the leading indentation the heredoc picked up from this YAML block.
           BODY="$(printf '%s\n' "$BODY" | sed -E 's/^[[:space:]]{10}//')"
           existing="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --jq "[.[] | select(.body | contains(\"${MARKER}\")) | .id] | first // empty")"
           if [ -n "$existing" ]; then
             gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$BODY" >/dev/null
-            echo "Updated sandbox-link comment ${existing}."
           else
             gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="$BODY" >/dev/null
-            echo "Posted sandbox-link comment."
           fi
           echo "Sandbox: ${URL}" >> "$GITHUB_STEP_SUMMARY"
+
+      # Wait for the sandbox to ACTUALLY serve, then say so. Without this a dev has no signal at
+      # all: the link is dead for ~10-15 min and looks identical to a broken sandbox, so the only
+      # way to know is to keep refreshing. Polls the real page (`/`), NOT /health_check -- that
+      # path is excluded from Rails host authorization, so it returns 200 while every real page
+      # 403s, and it reported a dead sandbox as healthy for hours on 2026-07-16.
+      #
+      # Only runs for labelled PRs (a sandbox exists) and only if the image actually pushed.
+      # Never fails the build: a timeout is reported on the comment, not as a red X, because the
+      # image is fine either way and the sandbox may still arrive.
+      - name: Wait for the sandbox to serve, then mark it LIVE
+        if: ${{ success() && contains(github.event.pull_request.labels.*.name, 'preview') }}
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          MARKER="<!-- preview-sandbox-link -->"
+          URL="https://pr-${PR_NUMBER}.dev.seqtoid.org"
+          started=$(date +%s)
+          live=""
+          # ~22 min of polling (66 * 20s). Sandboxes normally land at 10-15 min.
+          for _ in $(seq 1 66); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "${URL}/" || echo 000)
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then live=1; break; fi
+            sleep 20
+          done
+          mins=$(( ( $(date +%s) - started ) / 60 ))
+          if [ -n "$live" ]; then
+            STATUS="**Status: LIVE** -- served after ~${mins} min (image \`sha-${PR_HEAD_SHA:0:8}\`). Log in with your normal dev account."
+          else
+            STATUS="**Status: still not serving after ~${mins} min.** The image built fine, so this is the sandbox side: check the Argo CD dashboard for \`seqtoid-pr-${PR_NUMBER}\`, or Logs Overview for \`namespace=seqtoid-pr-${PR_NUMBER}\`. Common causes: a provision/migrate hook failing, or the node pool having no capacity."
+          fi
+          BODY="$(cat <<EOF
+          ${MARKER}
+          ### Preview sandbox
+
+          **${URL}**
+
+          ${STATUS}
+
+          Isolated per-PR environment: its own DB schema + scoped user, SSM config, S3 bucket prefix and hostname (it can never touch the shared dev DB or dev's samples). Shares the dev Batch/SFN pipeline. Auto-reaped when this PR closes.
+
+          Watch it: [Grafana](https://grafana.dev.seqtoid.org) -> Argo CD dashboard (\`seqtoid-pr-${PR_NUMBER}\`), or Logs Overview filtered to \`namespace=seqtoid-pr-${PR_NUMBER}\`.
+          EOF
+          )"
+          BODY="$(printf '%s\n' "$BODY" | sed -E 's/^[[:space:]]{10}//')"
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq "[.[] | select(.body | contains(\"${MARKER}\")) | .id] | first // empty")"
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$BODY" >/dev/null
+          fi
+          echo "Sandbox ${URL}: ${live:+LIVE }${live:-NOT SERVING} after ~${mins} min" >> "$GITHUB_STEP_SUMMARY"
 
       # Scanning + signing (Trivy/cosign/GHCR) are deliberately NOT done here -- previews are
       # ephemeral throwaways. The supply-chain gate runs on the integration->main promotion.
