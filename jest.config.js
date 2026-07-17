@@ -14,31 +14,6 @@ const mappedModuleAliases = Object.entries(webpackConfig.resolve.alias)
 // This is needed, otherwise Jest gives an error when it tries importing css/scss files.
 mappedModuleAliases["\\.(css|scss)$"] = "jest/__mocks__/styleMock.ts";
 
-// The d3-scale family resolves its "main"/"module" entry to ESM source
-// (src/index.js, bare `export` statements). Webpack consumes that natively, but
-// Jest 26 runs CommonJS and does not transform node_modules, so importing
-// anything that pulls in d3-scale dies on "Unexpected token 'export'". Babel
-// cannot rescue this either: .babelrc (which carries preset-env and the
-// commonjs transform) is file-relative and does not apply inside node_modules,
-// and the root babel.config.js has no module transform. Both packages already
-// publish a self-contained UMD build, which CommonJS can require directly, so
-// point Jest at those. This affects the test runtime only -- webpack still
-// takes the ESM path in the real bundle. d3-array and internmap are absent from
-// the list below because they already default to CommonJS.
-[
-  "d3-scale",
-  "d3-scale-chromatic",
-  "d3-interpolate",
-  "d3-format",
-  "d3-time",
-  "d3-time-format",
-  "d3-color",
-].forEach(pkg => {
-  mappedModuleAliases[
-    `^${pkg}$`
-  ] = `<rootDir>/node_modules/${pkg}/dist/${pkg}.js`;
-});
-
 module.exports = {
   verbose: true,
   moduleNameMapper: mappedModuleAliases,
@@ -66,15 +41,47 @@ module.exports = {
     "!app/assets/src/images/**",
   ],
   coveragePathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/build/"],
+  // The d3 v4+ scoped packages (d3-scale, d3-transition, d3-color, ...) publish
+  // ESM-only entry points ("main": "src/index.js"). Jest ignores node_modules
+  // when transforming, so importing them from a test blows up with
+  // "SyntaxError: Unexpected token 'export'". Two pieces are needed:
+  //
+  //  1. transformIgnorePatterns must let the d3-* packages through. The bare
+  //     "d3" package (v3.5, UMD) is deliberately NOT in this list -- it is
+  //     already CommonJS-loadable and running it through babel's commonjs
+  //     transform breaks its UMD `this` binding.
+  //  2. babel-jest must be given an explicit configFile. This repo keeps its
+  //     presets (preset-env / typescript / react) in .babelrc, which babel only
+  //     applies to files inside the root package -- so node_modules files would
+  //     be transformed with babel.config.js alone and keep their ESM syntax.
+  //     Pointing babel-jest at .babelrc applies the same presets everywhere.
+  //
+  // App code is transformed exactly as before; this only widens what else Jest
+  // is willing to transform.
+  //
+  // This replaces the earlier moduleNameMapper approach of aliasing individual
+  // d3-* packages to their UMD dist builds: that needs a new entry for every
+  // package added (it did not cover d3-transition/d3-ease/d3-dispatch, which
+  // the Dendogram suite pulls in), whereas transforming the source handles the
+  // whole family at once.
+  transform: {
+    "^.+\\.(js|jsx|ts|tsx)$": [
+      "babel-jest",
+      { configFile: path.join(rootFolder, ".babelrc") },
+    ],
+  },
+  transformIgnorePatterns: [
+    "node_modules/(?!(d3-[a-z0-9-]+|internmap|delaunator|robust-predicates)/)",
+  ],
   coverageReporters: ["text-summary", "json", "html"],
   // RATCHET, not a target. These floors sit just below the true whole-tree
   // baseline measured with the honest collectCoverageFrom above. Re-measured
-  // after the Heatmap unit suite landed, 2026-07-17: lines 14.86% /
-  // branches 11.13% / functions 12.75% / stmts 15.00% (was 11.29 / 8.97 / 9.62
-  // / 11.33 immediately before it, and 4.66 / 3.00 / 2.93 / 4.70 at the #240
-  // baseline). Covering the single largest uncovered file in the frontend
-  // (visualizations/heatmap/Heatmap.ts, 794 lines at 0%) moved the whole-tree
-  // line number by ~3.6 points on its own.
+  // after the D3 visualization units landed -- Heatmap, then Histogram and
+  // Dendogram -- on Node 24.18.0, 2026-07-17: lines 17.56% / branches 13.43% /
+  // functions 14.84% / stmts 17.70% (was 14.86 / 11.13 / 12.75 / 15.00 with
+  // Heatmap alone, 11.31 / 9.01 / 9.64 / 11.35 after coverage wave 1, and
+  // 4.66 / 3.00 / 2.93 / 4.70 at the original honest baseline). The three D3
+  // classes were the 1st, 7th and 11th largest uncovered files in the tree.
   // Flooring to the whole number below actual means CI fails only if coverage
   // REGRESSES -- coverage can only go up. Bump these floors upward as new specs
   // land (see COVERAGE-GAP-ANALYSIS-JEST-2026-07-07.md for the path to 90/90).
@@ -82,10 +89,10 @@ module.exports = {
   // nothing; these honest floors replace that fiction.
   coverageThreshold: {
     global: {
-      branches: 11,
-      functions: 12,
-      lines: 14,
-      statements: 14,
+      branches: 13,
+      functions: 14,
+      lines: 17,
+      statements: 17,
     },
   },
   globals: {},
