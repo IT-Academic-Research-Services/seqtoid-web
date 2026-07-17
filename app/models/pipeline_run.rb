@@ -366,7 +366,36 @@ class PipelineRun < ApplicationRecord
     self.output_states = output_state_entries
 
     # Also initialize results_finalized here.
-    self.results_finalized = IN_PROGRESS
+    #
+    # PERSIST it, do not just assign it. This is an after_create callback, so a bare
+    # `self.results_finalized = IN_PROGRESS` only dirties the attribute in memory -- the INSERT has
+    # already happened and nothing writes it again. The column then stays NULL in the database, and
+    # `results_in_progress` selects `WHERE results_finalized = 0`, which NULL does not match. The
+    # run is invisible to the result monitor: its outputs sit at UNKNOWN forever, results never
+    # load, and the report never renders. Nothing errors.
+    #
+    # It looked like it worked only because of a side effect. On the async-notification path
+    # (Sample#kickoff_pipeline, `if ENABLE_SFN_NOTIFICATIONS == "1"`), `pr.dispatch` runs on THIS
+    # same in-memory object and ends in `update(...)`, which flushes every dirty attribute --
+    # including this one. Dev/staging/prod all run with notifications on, so the column always
+    # happened to get written and nobody noticed it was never this method's doing.
+    #
+    # With notifications OFF -- the polling model a preview sandbox runs, since a sandbox has no
+    # shoryuken to receive notifications -- that branch is skipped. PipelineMonitor dispatches
+    # instead, from a run reloaded fresh out of the database where the attribute is NULL and not
+    # dirty, so `update(...)` writes only the SFN ARN. The pipeline then runs perfectly to
+    # SUCCEEDED and no result is ever loaded. Observed on a sandbox: run 3 reached CHECKED with
+    # results_finalized NULL and every output_state still UNKNOWN, and the result monitor never
+    # logged the run at all.
+    #
+    # update_column, not update: skip validations and callbacks. We are inside after_create, the
+    # row exists, and re-entering the callback chain here would be a needless hazard.
+    #
+    # Safe for the clone exception on the after_create guard above (`unless: :results_finalized?`):
+    # ActiveRecord's `?` query method is false for 0, so a run initialized to IN_PROGRESS still
+    # takes this path, exactly as when the value was only in memory. Only a genuinely finalized
+    # clone (FINALIZED_SUCCESS/FINALIZED_FAIL) skips it, as before.
+    update_column(:results_finalized, IN_PROGRESS) # rubocop:disable Rails/SkipsModelValidations
   end
 
   def create_run_stages
