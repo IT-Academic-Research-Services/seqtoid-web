@@ -100,6 +100,11 @@ class SupportRequestsController < ApplicationController
       # the log group is not configured (e.g. local/test) or the query fails, so an
       # operator can still pull the trail manually via the deep-links above.
       action_log_steps: action_log_steps,
+      # (CZID-722) The same trail, structured into a customer journey: sessions,
+      # per-step dwell time, the step that errored, and how far the user got through
+      # known funnels before dropping. Pure transform over action_log_steps -- no
+      # extra query, nil when there is no trail. Operator-only, like the rest of B.
+      journey: build_journey(action_log_steps),
       # Full browser/session diagnostics (support-only).
       diagnostics: diagnostics,
       environment: Rails.env,
@@ -191,6 +196,18 @@ class SupportRequestsController < ApplicationController
     )
   rescue StandardError => e
     LogUtil.log_error("Support action-log query failed", exception: e)
+    nil
+  end
+
+  # (CZID-722) Build the operator-only customer-journey view from the action-log
+  # trail already fetched above. Best-effort and defensive: SupportJourney is a pure
+  # transform, but this wrapper still swallows any failure so structuring the journey
+  # can never break a support submission (same contract as query_action_log_steps).
+  # Returns nil when there is no usable trail, so the payload simply omits the block.
+  def build_journey(action_log_steps)
+    SupportJourney.from_steps(action_log_steps)
+  rescue StandardError => e
+    LogUtil.log_error("Support journey build failed", exception: e)
     nil
   end
 
