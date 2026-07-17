@@ -14,6 +14,31 @@ const mappedModuleAliases = Object.entries(webpackConfig.resolve.alias)
 // This is needed, otherwise Jest gives an error when it tries importing css/scss files.
 mappedModuleAliases["\\.(css|scss)$"] = "jest/__mocks__/styleMock.ts";
 
+// The d3-scale family resolves its "main"/"module" entry to ESM source
+// (src/index.js, bare `export` statements). Webpack consumes that natively, but
+// Jest 26 runs CommonJS and does not transform node_modules, so importing
+// anything that pulls in d3-scale dies on "Unexpected token 'export'". Babel
+// cannot rescue this either: .babelrc (which carries preset-env and the
+// commonjs transform) is file-relative and does not apply inside node_modules,
+// and the root babel.config.js has no module transform. Both packages already
+// publish a self-contained UMD build, which CommonJS can require directly, so
+// point Jest at those. This affects the test runtime only -- webpack still
+// takes the ESM path in the real bundle. d3-array and internmap are absent from
+// the list below because they already default to CommonJS.
+[
+  "d3-scale",
+  "d3-scale-chromatic",
+  "d3-interpolate",
+  "d3-format",
+  "d3-time",
+  "d3-time-format",
+  "d3-color",
+].forEach(pkg => {
+  mappedModuleAliases[
+    `^${pkg}$`
+  ] = `<rootDir>/node_modules/${pkg}/dist/${pkg}.js`;
+});
+
 module.exports = {
   verbose: true,
   moduleNameMapper: mappedModuleAliases,
@@ -44,9 +69,12 @@ module.exports = {
   coverageReporters: ["text-summary", "json", "html"],
   // RATCHET, not a target. These floors sit just below the true whole-tree
   // baseline measured with the honest collectCoverageFrom above. Re-measured
-  // after coverage wave 1 landed (#244 utils/api, #245 common, #246 ui) on
-  // Node 24.18.0, 2026-07-08: lines 11.31% / branches 9.01% / functions 9.64% /
-  // stmts 11.35% (was 4.66 / 3.00 / 2.93 / 4.70 at the #240 baseline).
+  // after the Heatmap unit suite landed, 2026-07-17: lines 14.86% /
+  // branches 11.13% / functions 12.75% / stmts 15.00% (was 11.29 / 8.97 / 9.62
+  // / 11.33 immediately before it, and 4.66 / 3.00 / 2.93 / 4.70 at the #240
+  // baseline). Covering the single largest uncovered file in the frontend
+  // (visualizations/heatmap/Heatmap.ts, 794 lines at 0%) moved the whole-tree
+  // line number by ~3.6 points on its own.
   // Flooring to the whole number below actual means CI fails only if coverage
   // REGRESSES -- coverage can only go up. Bump these floors upward as new specs
   // land (see COVERAGE-GAP-ANALYSIS-JEST-2026-07-07.md for the path to 90/90).
@@ -54,10 +82,10 @@ module.exports = {
   // nothing; these honest floors replace that fiction.
   coverageThreshold: {
     global: {
-      branches: 9,
-      functions: 9,
-      lines: 11,
-      statements: 11,
+      branches: 11,
+      functions: 12,
+      lines: 14,
+      statements: 14,
     },
   },
   globals: {},
