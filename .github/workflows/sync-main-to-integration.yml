@@ -12,7 +12,7 @@ name: Sync main -> integration
 #   - a feature branched off integration is developed and tested against stale code;
 #   - roll-up conflicts accumulate the longer the drift persists.
 # Every roll-up merge commit also lands on main and not integration, so the drift restarts immediately
-# even in the happy path. See platform-overhaul #691.
+# even in the happy path. Tracked in the platform-overhaul back-sync ticket (Forgejo 691).
 
 on:
   push:
@@ -86,12 +86,12 @@ jobs:
             echo "::error::main -> integration does not merge cleanly. A human must reconcile it."
             gh issue create \
               --title "integration has drifted from main and no longer merges cleanly" \
-              --body "The automated main -> integration sync could not merge. \`integration\` must be reconciled by hand before the next roll-up, or the drift will keep growing. See platform-overhaul #691." \
+              --body "The automated main -> integration sync could not merge. \`integration\` must be reconciled by hand before the next roll-up, or the drift will keep growing. Tracked in the platform-overhaul back-sync ticket (Forgejo 691)." \
               || true
             exit 1
           fi
           git push -u origin "$BRANCH"
           gh pr create --base integration --head "$BRANCH" \
             --title "sync: bring integration up to main" \
-            --body "Automated back-sync. \`integration\` was behind \`main\`; without this it keeps drifting and every feature PR into integration carries the backlog in its diff. See platform-overhaul #691." \
+            --body "Automated back-sync. \`integration\` was behind \`main\`; without this it keeps drifting and every feature PR into integration carries the backlog in its diff. Tracked in the platform-overhaul back-sync ticket (Forgejo 691)." \
             || echo "a sync PR may already be open"
