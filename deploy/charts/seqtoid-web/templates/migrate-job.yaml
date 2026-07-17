@@ -65,6 +65,21 @@ spec:
             {{- toYaml .Values.migrate.command | nindent 12 }}
           env:
             {{- include "seqtoid-web.commonEnv" . | nindent 12 }}
+            {{- if .Values.preview.redis.enabled }}
+            # This Job is a PreSync hook, so it runs before EVERY Sync-phase resource -- including
+            # the sandbox's own Redis (preview-redis.yaml, sync-wave -10). Booting Rails would
+            # otherwise force a connection to a Service that does not exist yet: `Resque.redis=` is
+            # lazy, but `Resque.schedule=` writes the schedule into Redis at boot, and a migrate Job
+            # has no reason to write a schedule only the resque-scheduler process ever reads.
+            #
+            # Skipping it here is what lets the Redis stay a normal Sync resource. The alternative
+            # -- making the Redis a PreSync hook so it lands first -- would inherit Argo's default
+            # hook-delete-policy (BeforeHookCreation) and delete/recreate the Redis on every sync,
+            # dropping queued jobs and recreating the stuck-LOADING_QUEUED bug this all exists to
+            # fix. See config/initializers/resque.rb.
+            - name: SKIP_RESQUE_SCHEDULE
+              value: "1"
+            {{- end }}
           resources:
             {{- toYaml .Values.migrate.resources | nindent 12 }}
 {{- end }}
