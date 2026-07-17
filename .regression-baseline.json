@@ -1,9 +1,9 @@
 {
-  "_comment": "Regression baseline for the main-merge no-regressions gate. Consumed by seqtoid-ssot-infra/platform-harness bin/regression-compare.sh (wired into ci-test-mysql8.yml). Monotonic-up metrics FAIL the gate if they drop below these floors (coverage tol 0.5pp); rspec/jest failure counts must be 0 (enforced from the live run, not this file). RE-BLESS after an intentional change: on a green main run `seqtoid-ssot-infra/platform-harness/capture-baseline.sh --run-app` and commit the updated numbers. Counts are null until the first blessed run fills them (null = skipped, not failed).",
-  "captured_at": "2026-07-04 (rspec blessed from green integration ci-test-mysql8: 1876 examples, 0 failures)",
+  "_comment": "Regression baseline for the main-merge no-regressions gate. Consumed by seqtoid-ssot-infra/platform-harness bin/regression-compare.sh (wired into ci-test-mysql8.yml). Monotonic-up metrics FAIL the gate if they drop below these floors (coverage tol 0.5pp, example counts have NO tolerance); rspec/jest failure counts must be 0 (enforced from the live run, not this file). Counts are null until the first blessed run fills them (null = skipped, not failed). RE-BLESS after an intentional change: do NOT use platform-harness/capture-baseline.sh -- it emits the multi-repo baseline/main-baseline.json schema, not this single-repo file, and its --run-app path measures an UNSHARDED local suite whose coverage number is not the collated number this gate re-measures. Instead read the numbers off the 'Collate coverage + regression gate' job of a green integration->main run: SimpleCov prints 'Line Coverage: X%' (-> app.coverage.line) and the aggregated 'N examples, 0 failures' (-> app.rspec.examples). Only bless a run that collated all 4 shards.",
+  "captured_at": "2026-07-17 (collate job of green integration->main promotion run 29570461820, head 2cfeb19d5: 4/4 shards collated, 3704 examples, 0 failures, Line Coverage 90.93% (15086/16590), Branch Coverage 75.88% (3888/5124))",
   "metrics": {
-    "app.coverage.line": 72.13,
-    "app.rspec.examples": 1876,
+    "app.coverage.line": 90.93,
+    "app.rspec.examples": 3704,
     "app.jest.total": null
   }
 }
