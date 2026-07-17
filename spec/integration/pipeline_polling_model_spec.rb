@@ -51,6 +51,14 @@ RSpec.describe 'pipeline result loading with SFN notifications OFF (the polling 
     end
   end
 
+  # Mark every output LOADED except the named one, and refresh the association so monitor_results
+  # sees what the database actually holds. update_all alone leaves loaded copies stale.
+  def load_all_outputs_except(output)
+    pipeline_run.output_states.where.not(output: output)
+                .update_all(state: PipelineRun::STATUS_LOADED) # rubocop:disable Rails/SkipsModelValidations
+    pipeline_run.output_states.reload
+  end
+
   context 'an output that will never exist (insert_size_metrics on a single-end sample)' do
     before do
       # Nothing is in S3: no output is "ready".
@@ -68,8 +76,13 @@ RSpec.describe 'pipeline result loading with SFN notifications OFF (the polling 
 
     it 'lets the run finalize, so the sample can stop reading as in-progress' do
       # Everything else already loaded; insert_size_metrics is the last one outstanding.
-      pipeline_run.output_states.where.not(output: "insert_size_metrics")
-                  .update_all(state: PipelineRun::STATUS_LOADED) # rubocop:disable Rails/SkipsModelValidations
+      # `.reload` is load-bearing: update_all writes the DB but leaves an already-loaded
+      # association holding stale rows, so monitor_results would iterate copies still reading
+      # UNKNOWN, re-process outputs that are actually LOADED, and -- since only
+      # insert_size_metrics has a checker -- mark the rest FAILED via `!checker`. The run then
+      # finalizes as FINALIZED_FAIL and the spec fails for a reason that has nothing to do with
+      # what it is testing.
+      load_all_outputs_except("insert_size_metrics")
 
       pipeline_run.monitor_results
 
@@ -77,8 +90,7 @@ RSpec.describe 'pipeline result loading with SFN notifications OFF (the polling 
     end
 
     it 'displays COMPLETE rather than POST PROCESSING -- the bug a human actually sees' do
-      pipeline_run.output_states.where.not(output: "insert_size_metrics")
-                  .update_all(state: PipelineRun::STATUS_LOADED) # rubocop:disable Rails/SkipsModelValidations
+      load_all_outputs_except("insert_size_metrics")
 
       pipeline_run.monitor_results
       pipeline_run.reload
