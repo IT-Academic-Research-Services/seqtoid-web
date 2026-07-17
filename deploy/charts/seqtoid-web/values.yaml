@@ -317,6 +317,29 @@ preview:
   # preview IRSA role no longer grants write/delete on it, so leaving this empty now fails the
   # upload on IAM rather than quietly polluting research data. Set it.
   samplesBucket: ""
+  # A sandbox's OWN Redis, so it never shares a Resque queue with dev.
+  #
+  # Sandboxes copy dev's config, which includes dev's REDISCLOUD_URL -- putting every sandbox on
+  # DEV's job queues. Resque namespaces a bare client under :resque, so the keys are identical, and
+  # the worker's queue list ends in `*`, so it consumes every queue. Both directions bite silently:
+  # dev's workers eat a sandbox's ResultMonitorLoader jobs (proven -- the sandbox's report can then
+  # never render, even though its pipeline SUCCEEDED), and a sandbox's workers can eat DEV's
+  # scheduled jobs -- notably HandleSfnNotificationsTimeout, dev's failsafe for missed SFN
+  # notifications, without which a stalled dev pipeline has nothing to rescue it.
+  #
+  # Enabling this makes sandbox:provision REQUIRE the URL below and write it over the inherited
+  # value, the same way it overrides DB_USERNAME and SERVER_DOMAIN. Off for dev/staging/prod, which
+  # keep their real ElastiCache.
+  redis:
+    enabled: false
+    image: redis:7-alpine
+    # Redis holds only a sandbox's job queue: small, and nothing persists.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
   provisioner:
     serviceAccountName: seqtoid-web-provisioner
     roleArn: ""          # the seqtoid-web-preview-provisioner IRSA role (infra repo)

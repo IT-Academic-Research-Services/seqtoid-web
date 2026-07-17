@@ -71,6 +71,20 @@ spec:
             - name: SANDBOX_SAMPLES_BUCKET
               value: {{ . | quote }}
             {{- end }}
+            {{- if .Values.preview.redis.enabled }}
+            # This sandbox's OWN Redis (preview-redis.yaml), which provision writes over the
+            # REDISCLOUD_URL inherited from dev. Without the override the sandbox shares dev's
+            # Resque queues in BOTH directions: dev's workers eat the sandbox's result-loader jobs
+            # (so its report never renders even though its pipeline SUCCEEDED), and the sandbox's
+            # workers can eat DEV's scheduled jobs -- notably HandleSfnNotificationsTimeout, dev's
+            # failsafe for missed SFN notifications.
+            #
+            # Templated here rather than derived in the rake task so the URL always matches the
+            # Service this same chart renders; the task must not have to guess the release name or
+            # namespace. Plain `redis://`, not dev's `rediss://` -- this one is in-cluster.
+            - name: SANDBOX_REDIS_URL
+              value: "redis://{{ include "seqtoid-web.fullname" . }}-redis.{{ .Release.Namespace }}.svc.cluster.local:6379"
+            {{- end }}
           resources:
             {{- toYaml .Values.preview.resources | nindent 12 }}
 {{- end }}

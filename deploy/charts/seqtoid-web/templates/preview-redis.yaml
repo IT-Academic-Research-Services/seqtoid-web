@@ -1,0 +1,126 @@
+{{- if .Values.preview.redis.enabled }}
+# =============================================================================
+# A per-sandbox Redis, so a preview NEVER shares a job queue with dev.
+#
+# WHY THIS EXISTS: sandboxes inherited dev's REDISCLOUD_URL from the config they copy, which put
+# every sandbox on DEV's Resque queues. Resque wraps a bare Redis client in
+# Redis::Namespace.new(:resque, ...), so dev and every sandbox land on identical queue keys in one
+# Redis, and the worker's queue list ends in `*` -- it consumes EVERY queue. The result is
+# competing consumers in both directions, silently:
+#
+#   * A sandbox enqueues, DEV's worker pops it and runs it against DEV's database. Proven: a
+#     sandbox's five ResultMonitorLoader jobs were executed by dev's worker within one second of
+#     being enqueued, resolving PipelineRun.find(2) in dev's schema -- a different sample. The
+#     sandbox's own outputs sat at LOADING_QUEUED forever and its report never rendered. This is
+#     the user-visible bug: a sandbox can run a pipeline to SUCCEEDED and never show a result.
+#   * DEV enqueues, a SANDBOX's worker pops it and runs it against the SANDBOX, so dev's job
+#     silently never happens on dev. The one that bites here is HandleSfnNotificationsTimeout --
+#     dev's failsafe for missed SFN notifications -- because a dev pipeline can then stall with
+#     nothing to rescue it. (The scheduled account-deletion and export-control jobs also cross
+#     over, but their obligations are prod concerns, not dev ones; do not read a compliance
+#     problem into this.)
+#
+# This is the same hazard shoryuken is disabled in previews for -- "a sandbox shoryuken would be a
+# competing consumer on dev's shared SQS queue". That reasoning was never applied to Resque over
+# dev's shared Redis.
+#
+# WHY ITS OWN REDIS RATHER THAN A NAMESPACE: namespacing the keys would stop the collision, but a
+# sandbox would still hold network access and credentials to dev's Redis, isolated by nothing but a
+# config string. That is exactly the pattern rejected when `seqtoid-sandbox` turned out to hold
+# 4.8TB of research data -- previews got their own bucket because isolation must be enforced by a
+# boundary, not by a string. A sandbox already owns its schema, its DB user, its SSM path and its
+# S3 bucket; this is the missing one. It also costs nothing to tear down: the Deployment dies with
+# the namespace, so teardown needs no new logic and can never leak keys into dev's Redis.
+#
+# EPHEMERAL BY DESIGN: no persistence. A sandbox's queue is disposable, and Redis restarting means
+# losing in-flight jobs, which for a preview is a re-sync away. `--save ""` disables RDB snapshots
+# so it never writes to disk (there is no volume to write to).
+#
+# ORDERING: sync-wave -10 puts this ahead of the app/workers (wave 0), and Argo waits for a wave to
+# be healthy before starting the next -- so nothing that speaks Resque boots before its Redis
+# answers. The PreSync hooks are a separate problem: they run before ALL Sync waves, and
+# `rails db:migrate` boots Rails, which used to force a Redis connection via `Resque.schedule=`.
+# That is handled at the source (SKIP_RESQUE_SCHEDULE in config/initializers/resque.rb) rather than
+# by racing this Deployment into the PreSync phase, where Argo's default hook-delete-policy
+# (BeforeHookCreation) would delete and recreate the Redis on every sync and drop queued jobs --
+# reintroducing the stuck-LOADING_QUEUED bug this whole change exists to fix.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-redis
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "seqtoid-web.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "seqtoid-web.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: redis
+          image: {{ .Values.preview.redis.image | quote }}
+          imagePullPolicy: IfNotPresent
+          # --save "": no RDB snapshotting. There is no volume, and a sandbox's queue is
+          # disposable; persistence would only buy disk writes and a slower start.
+          args: ["redis-server", "--save", "", "--appendonly", "no"]
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.preview.redis.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-redis
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "seqtoid-web.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+{{- end }}
