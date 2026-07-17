@@ -891,4 +891,33 @@ describe PipelineRun, type: :model do
       end
     end
   end
+
+  describe "results_finalized initialization on create" do
+    # A bare `self.results_finalized = IN_PROGRESS` in the after_create callback only dirties the
+    # attribute in memory. If it is not persisted, the column stays NULL, `results_in_progress`
+    # (WHERE results_finalized = 0) never matches the run, and the result monitor never looks at
+    # it: outputs stay UNKNOWN, results never load, the report never renders, and nothing errors.
+    #
+    # It appeared to work only because the async-notification path calls `pr.dispatch` on the same
+    # in-memory object, and dispatch's `update(...)` flushed the dirty attribute as a side effect.
+    # With notifications off (the polling model a preview sandbox runs, having no shoryuken),
+    # nothing does -- so this must not depend on who dispatches, or on dispatching at all.
+    let(:sample) { create(:sample, project: create(:project)) }
+
+    it "PERSISTS results_finalized as IN_PROGRESS, not just in memory" do
+      pipeline_run = create(:pipeline_run, sample: sample)
+      # reload: the whole point is what is in the DATABASE, not what the in-memory object holds.
+      expect(pipeline_run.reload.results_finalized).to eq(PipelineRun::IN_PROGRESS)
+    end
+
+    it "is visible to results_in_progress, which is what the result monitor selects on" do
+      pipeline_run = create(:pipeline_run, sample: sample)
+      expect(PipelineRun.results_in_progress).to include(pipeline_run)
+    end
+
+    it "still creates output_states -- the after_create guard treats 0 as not-finalized" do
+      pipeline_run = create(:pipeline_run, sample: sample)
+      expect(pipeline_run.output_states).not_to be_empty
+    end
+  end
 end
