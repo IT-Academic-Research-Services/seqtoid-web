@@ -434,13 +434,45 @@ namespace :sandbox do
   # on ANY re-sync of a sandbox (a PR push re-runs the migrate hook against the existing
   # schema). Guard it: only run db:seed on a truly fresh schema (no app_configs yet).
   # The first sync seeds the (dev) SFN ARNs + launched features; later re-syncs skip it.
-  desc "Run db:seed only if the sandbox schema has not been seeded yet (idempotent)"
+  desc "Run db:seed only if the sandbox schema has not been seeded yet (idempotent), then force the sandbox onto the polling pipeline model"
   task seed_once: :environment do
     if AppConfig.count.zero?
       puts "[sandbox:seed_once] fresh schema -- running db:seed"
       Rake::Task["db:seed"].invoke
     else
       puts "[sandbox:seed_once] app_configs already present (#{AppConfig.count}) -- skipping db:seed"
+    end
+
+    # A sandbox POLLS; it does not get notified. db:seed writes
+    # enable_sfn_notifications=1, which is right for dev and wrong here, and the mismatch is
+    # silent: the sample dispatches, the pipeline runs to completion in Step Functions, and the
+    # UI sits on whatever stage it started at, forever. Nothing errors.
+    #
+    # With the flag at 1 the app expects SQS notifications to drive status, so
+    # pipeline_monitor.rake deliberately skips the poll:
+    #
+    #   if AppConfigHelper.get_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS) != "1"
+    #     pr.update_job_status
+    #   end
+    #
+    # ...and the notifications never arrive, because a sandbox runs NO shoryuken -- deliberately.
+    # A sandbox shoryuken would be a competing consumer on DEV's shared notification queue and
+    # would steal dev's messages. So the sandbox runs both monitors and polls instead. Setting
+    # the flag to 0 is what makes those monitors actually do their job; it is the config half of
+    # the polling model the preview values already describe in prose.
+    #
+    # Enforced on EVERY sync rather than only on a fresh seed: the skip-branch above means an
+    # already-seeded sandbox would otherwise keep the wrong value forever, and this is how
+    # existing sandboxes self-heal on their next sync.
+    #
+    # Dev/staging/prod are untouched -- this task only ever runs in a sandbox's own schema.
+    flag = AppConfig.find_or_initialize_by(key: AppConfig::ENABLE_SFN_NOTIFICATIONS)
+    if flag.value == "0"
+      puts "[sandbox:seed_once] enable_sfn_notifications already 0 (polling model) -- ok"
+    else
+      puts "[sandbox:seed_once] forcing enable_sfn_notifications #{flag.value.inspect} -> \"0\": a sandbox has no shoryuken, so status must be polled"
+      flag.value = "0"
+      flag.save!
     end
   end
 end
