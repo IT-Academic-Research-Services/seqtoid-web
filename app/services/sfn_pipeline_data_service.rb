@@ -225,10 +225,14 @@ class SfnPipelineDataService
   end
 
   def retrieve_step_inputs(stage_info, step)
+    Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.stage_info=#{stage_info&.inspect}")
+    Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.step=#{step&.inspect}")
     variables = []
     files = []
     step_inputs = stage_info["task_inputs"][step]
+    Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.step_inputs=#{step_inputs&.inspect}")
     step_inputs.each do |input|
+      Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.input=#{input&.inspect}")
       # add type information for input: variable (like string or int) or file
       # if type information is not in inputs, it's a file
       output_step, var_name = input.split(".")
@@ -236,8 +240,11 @@ class SfnPipelineDataService
         name: var_name,
         type: "File",
       }
+      Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.input_info=#{input_info.inspect}")
+      Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.output_step=#{output_step&.inspect}")
 
       if output_step == WORKFLOW_INPUT_PREFIX
+        Rails.logger.debug("SfnPipelineDataService.retrieve_step_inputs.output_step=#{input_info.inspect}")
         input_info[:type] = stage_info["inputs"][var_name]
       else
         input_info[:file] = File.basename(stage_info["basenames"][input])

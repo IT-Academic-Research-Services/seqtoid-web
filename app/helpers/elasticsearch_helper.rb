@@ -23,19 +23,24 @@ module ElasticsearchHelper
   end
 
   def taxon_search(query, tax_levels = TaxonCount::NAME_2_LEVEL.keys, filters = {})
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.query=#{query&.inspect}")
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.filters=#{filters.inspect}")
     return {} if Rails.env.test?
 
     query = sanitize(query)
 
     # sanitize tax_levels
     tax_levels = tax_levels.select { |l| TaxonCount::NAME_2_LEVEL[l] }
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.tax_levels=#{tax_levels}")
 
     matching_taxa = []
     taxon_ids = []
 
     ncbi_version = filters[:project_id] ? get_ncbi_version(filters[:project_id]) : AppConfigHelper.get_app_config(AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME)
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.ncbi_version=#{ncbi_version&.inspect}")
 
     tax_levels.each do |level|
+      Rails.logger.debug("ElasticsearchHelper.taxon_search.level=#{level}")
       # NOTE(tiago): We tried to use a query of type `match` before but did not work
       # with partial matching. The default analyzers (standard english) used to
       # index only creates full word terms. For partial matching to work, we
@@ -52,6 +57,7 @@ module ElasticsearchHelper
       # tokenize query and add wildcards for partial matching
 
       tokens = query.scan(/\w+/).map { |t| "*#{t}*" }
+      Rails.logger.debug("ElasticsearchHelper.taxon_search.tokens=#{tokens&.inspect}")
       search_params = {
         size: ElasticsearchHelper::MAX_SEARCH_RESULTS,
         query: {
@@ -70,21 +76,30 @@ module ElasticsearchHelper
           },
         },
       }
+      Rails.logger.debug("ElasticsearchHelper.taxon_search.search_params=#{search_params.inspect}")
       search_response = TaxonLineage.search(search_params)
+      Rails.logger.debug("ElasticsearchHelper.taxon_search.search_response=#{search_response&.inspect}")
       search_taxon_ids = search_response.aggregations.distinct_taxa.buckets.pluck(:key)
+      Rails.logger.debug("ElasticsearchHelper.taxon_search.search_taxon_ids=#{search_taxon_ids&.inspect}")
 
       matching_taxa += fetch_taxon_data(search_taxon_ids, ncbi_version, level)
       taxon_ids += search_taxon_ids
     end
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.matching_taxa.1=#{matching_taxa.inspect}")
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.taxon_ids.1=#{taxon_ids.inspect}")
     taxon_ids = filter_by_samples(taxon_ids, filters[:samples]) if filters[:samples]
     taxon_ids = filter_by_project(taxon_ids, filters[:project_id]) if filters[:project_id]
     taxon_ids = filter_by_superkingdom(taxon_ids, filters[:superkingdom]) if filters[:superkingdom]
     taxon_ids = Set.new(taxon_ids)
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.taxon_ids.2=#{taxon_ids.inspect}")
 
     # Always remove homo sapiens from search, same as reports, because all homo sapiens
     # hits are supposed to removed upstream in the pipeline. See also remove_homo_sapiens_counts!
     taxon_ids = taxon_ids.delete_if { |tax_id| TaxonLineage::HOMO_SAPIENS_TAX_IDS.include?(tax_id) }
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.taxon_ids.3=#{taxon_ids.inspect}")
 
+    foo = matching_taxa.select { |taxon| taxon_ids.include? taxon["taxid"] }
+    Rails.logger.debug("ElasticsearchHelper.taxon_search.matching_taxa.2=#{foo.inspect}")
     return matching_taxa.select { |taxon| taxon_ids.include? taxon["taxid"] }
   end
 
