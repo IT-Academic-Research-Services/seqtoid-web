@@ -186,11 +186,12 @@ namespace :sandbox do
       #   * Dev's worker pops the SANDBOX's jobs and runs them against DEV's database. Observed: a
       #     sandbox's five ResultMonitorLoader jobs executed on dev within a second of being
       #     enqueued, resolving PipelineRun.find(2) in dev's schema -- a different sample. The
-      #     sandbox's outputs stayed LOADING_QUEUED and its report never rendered.
+      #     sandbox's outputs stayed LOADING_QUEUED and its report never rendered. That is the
+      #     user-visible bug: a sandbox runs a pipeline to SUCCEEDED and shows no result.
       #   * A sandbox's worker pops DEV's scheduled jobs and runs them against the SANDBOX, so
-      #     dev's job silently never happens on dev. Those include DeleteUnclaimedUserAccounts
-      #     ("accounts that have not been claimed within 30 days MUST NOT be retained" -- a stated
-      #     compliance obligation) and ResolveScreeningHolds (export-control hold resolution).
+      #     dev's job silently never happens on dev. The one that matters here is
+      #     HandleSfnNotificationsTimeout, dev's failsafe for missed SFN notifications: a dev
+      #     pipeline can stall with nothing left to rescue it.
       #
       # This is the hazard shoryuken is disabled in previews for; it was never applied to Resque.
       #
@@ -201,9 +202,9 @@ namespace :sandbox do
       scoped["REDISCLOUD_URL"] = ENV.fetch("SANDBOX_REDIS_URL") do
         abort("[sandbox:provision] SANDBOX_REDIS_URL is unset. A sandbox must not inherit dev's " \
               "REDISCLOUD_URL: it would share dev's Resque queues in both directions -- dev would " \
-              "eat this sandbox's result-loader jobs, and this sandbox could eat dev's scheduled " \
-              "account-deletion and export-control jobs. Set preview.redis.enabled=true so the " \
-              "chart provisions this sandbox's own Redis and passes its URL.")
+              "eat this sandbox's result-loader jobs (so this sandbox could never show a result), " \
+              "and this sandbox could eat dev's scheduled jobs. Set preview.redis.enabled=true so " \
+              "the chart provisions this sandbox's own Redis and passes its URL.")
       end
 
       File.write(f.path, JSON.pretty_generate(scoped))

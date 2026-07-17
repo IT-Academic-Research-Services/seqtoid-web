@@ -11,12 +11,14 @@
 #   * A sandbox enqueues, DEV's worker pops it and runs it against DEV's database. Proven: a
 #     sandbox's five ResultMonitorLoader jobs were executed by dev's worker within one second of
 #     being enqueued, resolving PipelineRun.find(2) in dev's schema -- a different sample. The
-#     sandbox's own outputs sat at LOADING_QUEUED forever and its report never rendered.
-#   * DEV enqueues, a SANDBOX's worker pops it and runs it against the SANDBOX. Dev's scheduled
-#     job then silently never happens on dev. config/resque_schedule.yml includes
-#     DeleteUnclaimedUserAccounts ("accounts that have not been claimed within 30 days MUST NOT be
-#     retained" -- a compliance obligation), ResolveScreeningHolds (export-control hold
-#     resolution), and HandleSfnNotificationsTimeout (dev's stuck-pipeline failsafe).
+#     sandbox's own outputs sat at LOADING_QUEUED forever and its report never rendered. This is
+#     the user-visible bug: a sandbox can run a pipeline to SUCCEEDED and never show a result.
+#   * DEV enqueues, a SANDBOX's worker pops it and runs it against the SANDBOX, so dev's job
+#     silently never happens on dev. The one that bites here is HandleSfnNotificationsTimeout --
+#     dev's failsafe for missed SFN notifications -- because a dev pipeline can then stall with
+#     nothing to rescue it. (The scheduled account-deletion and export-control jobs also cross
+#     over, but their obligations are prod concerns, not dev ones; do not read a compliance
+#     problem into this.)
 #
 # This is the same hazard shoryuken is disabled in previews for -- "a sandbox shoryuken would be a
 # competing consumer on dev's shared SQS queue". That reasoning was never applied to Resque over
