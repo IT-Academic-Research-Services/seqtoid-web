@@ -34,4 +34,190 @@ RSpec.describe CheckPipelineRuns do
       expect { described_class.benchmark_update(Time.now.to_f) }.not_to raise_error
     end
   end
+
+  # update_jobs is the poller. Every branch below was previously unexercised, and the
+  # ENABLE_SFN_NOTIFICATIONS conditional is the one that cost a real sample: a preview
+  # sandbox runs with the flag OFF (it cannot have a shoryuken -- that would make it a
+  # competing consumer on dev's shared SQS queue), so polling is the ONLY thing that
+  # advances its runs. Dev/staging/prod run the flag ON, so the polling side is dead code
+  # there and nobody noticed it had switched itself off. A sample reached SUCCEEDED while
+  # its card read HOST FILTERING forever, and nothing raised.
+  describe ".update_jobs" do
+    # Record ids rather than setting a message expectation on a specific object: update_jobs
+    # does its own find_by, so the PipelineRun it polls is never one the spec holds a
+    # reference to. The list is also what makes "exactly once, across all shards" assertable.
+    let(:polled) { [] }
+
+    before do
+      allow_any_instance_of(PipelineRun).to receive(:update_job_status) do |pipeline_run|
+        polled << pipeline_run.id
+      end
+    end
+
+    # shutdown_requested is class-level state on a long-lived daemon object. Leaving it set
+    # would silently empty `polled` in every later spec in this file.
+    after { described_class.shutdown_requested = false }
+
+    around do |example|
+      previous = AppConfigHelper.get_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS)
+      example.run
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, previous.to_s)
+    end
+
+    def in_progress_run
+      create(:pipeline_run, sample: create(:sample), job_status: PipelineRun::STATUS_READY, finalized: 0)
+    end
+
+    context "when SFN notifications are OFF (a preview sandbox: no shoryuken, so it must poll)" do
+      before { AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "0") }
+
+      it "polls the run's status" do
+        pipeline_run = in_progress_run
+
+        described_class.update_jobs(1, 0, [pipeline_run.id])
+
+        expect(polled).to eq([pipeline_run.id])
+      end
+    end
+
+    context "when the flag has never been set" do
+      before { AppConfigHelper.remove_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS) }
+
+      it "polls, because absent is not \"1\"" do
+        pipeline_run = in_progress_run
+
+        described_class.update_jobs(1, 0, [pipeline_run.id])
+
+        expect(polled).to eq([pipeline_run.id])
+      end
+    end
+
+    context "when SFN notifications are ON (dev/staging/prod: shoryuken delivers status)" do
+      before { AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "1") }
+
+      it "does not poll, leaving status to the notification path" do
+        pipeline_run = in_progress_run
+
+        described_class.update_jobs(1, 0, [pipeline_run.id])
+
+        expect(polled).to be_empty
+      end
+    end
+
+    context "sharding" do
+      before { AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "0") }
+
+      it "polls each run exactly once across the full set of shards" do
+        ids = Array.new(4) { in_progress_run.id }
+        # Shards above 0 reconnect, which in a transactional spec would drop the connection
+        # holding the fixtures. The partition maths is what is under test here.
+        allow(ActiveRecord::Base.connection).to receive(:reconnect!)
+
+        described_class.update_jobs(2, 0, ids)
+        described_class.update_jobs(2, 1, ids)
+
+        # match_array is multiset equality: a run polled twice by overlapping shards fails.
+        expect(polled).to match_array(ids)
+      end
+
+      it "leaves ids belonging to another shard alone" do
+        ids = Array.new(4) { in_progress_run.id }
+
+        described_class.update_jobs(2, 0, ids)
+
+        expect(polled).to all(satisfy { |id| id.even? })
+        expect(polled).not_to be_empty
+      end
+    end
+
+    context "when a run cannot be polled" do
+      before { AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "0") }
+
+      it "skips an id whose run no longer exists rather than raising" do
+        pipeline_run = in_progress_run
+        deleted_id = pipeline_run.id + 10_000
+
+        expect { described_class.update_jobs(1, 0, [deleted_id, pipeline_run.id]) }.not_to raise_error
+        expect(polled).to eq([pipeline_run.id])
+      end
+
+      it "logs one run's failure and still polls the rest" do
+        failing = in_progress_run
+        healthy = in_progress_run
+        allow_any_instance_of(PipelineRun).to receive(:update_job_status) do |pipeline_run|
+          raise "S3 exploded" if pipeline_run.id == failing.id
+
+          polled << pipeline_run.id
+        end
+
+        expect(LogUtil).to receive(:log_error).with(
+          /Updating pipeline run #{failing.id} failed with exception: S3 exploded/,
+          hash_including(pipeline_run_id: failing.id)
+        )
+
+        described_class.update_jobs(1, 0, [failing.id, healthy.id])
+
+        expect(polled).to eq([healthy.id])
+      end
+    end
+
+    context "when shutdown has been requested" do
+      before { AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "0") }
+
+      it "stops polling so the daemon can drain on SIGTERM" do
+        pipeline_run = in_progress_run
+        described_class.shutdown_requested = true
+
+        described_class.update_jobs(1, 0, [pipeline_run.id])
+
+        expect(polled).to be_empty
+      end
+    end
+  end
+
+  describe ".run" do
+    let(:polled) { [] }
+
+    before do
+      allow_any_instance_of(PipelineRun).to receive(:update_job_status) do |pipeline_run|
+        polled << pipeline_run.id
+      end
+      # run() forks a worker per shard. Forking inside a transactional spec hands the child a
+      # copy of an uncommitted transaction and a shared DB socket. Run the shard inline so the
+      # spec still exercises the real in_progress selection and shard maths.
+      allow(Process).to receive(:fork) { |&shard| shard.call }
+      allow(Process).to receive(:waitpid)
+      # benchmark_update shells out to `aws s3 cp`; an empty body makes it no-op via its own guard.
+      allow(described_class).to receive(:`).and_return("")
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "0")
+    end
+
+    after { described_class.shutdown_requested = false }
+
+    around do |example|
+      previous = AppConfigHelper.get_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS)
+      example.run
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, previous.to_s)
+    end
+
+    # A duration of 0 means t_end == t_now, so the loop runs exactly one iteration and
+    # breaks before any sleep. This is the same entry point as `pipeline_monitor[single_iteration]`.
+    it "polls the in-progress runs and nothing else" do
+      sample = create(:sample)
+      in_progress = create(:pipeline_run, sample: sample, job_status: PipelineRun::STATUS_READY, finalized: 0)
+      # Finished: in_progress filters on finalized: 0.
+      create(:pipeline_run, sample: sample, job_status: PipelineRun::STATUS_CHECKED, finalized: 1)
+      # Failed: in_progress filters job_status != FAILED.
+      create(:pipeline_run, sample: sample, job_status: PipelineRun::STATUS_FAILED, finalized: 0)
+
+      described_class.run(0, 60.0)
+
+      expect(polled).to eq([in_progress.id])
+    end
+
+    it "completes an iteration when there is nothing in progress" do
+      expect { described_class.run(0, 60.0) }.not_to raise_error
+      expect(polled).to be_empty
+    end
+  end
 end
