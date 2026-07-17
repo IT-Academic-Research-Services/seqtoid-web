@@ -101,6 +101,14 @@ RSpec.describe CheckPipelineRuns do
         described_class.update_jobs(1, 0, [pipeline_run.id])
 
         expect(polled).to be_empty
+
+        # Carry the control inside the example. "Nothing was polled" is also exactly what a spec
+        # whose stub had quietly stopped intercepting would report, so prove the poller was live
+        # and willing by flipping the single thing under test: with the flag off, this very same
+        # call polls. Without this, the spec would still pass against a poller that never worked.
+        AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "0")
+        described_class.update_jobs(1, 0, [pipeline_run.id])
+        expect(polled).to eq([pipeline_run.id])
       end
     end
 
@@ -171,6 +179,12 @@ RSpec.describe CheckPipelineRuns do
         described_class.update_jobs(1, 0, [pipeline_run.id])
 
         expect(polled).to be_empty
+
+        # Same reasoning as the notifications-ON spec: an empty list only means "shutdown stopped
+        # it" if the poller would otherwise have run. Clearing the flag must make this poll.
+        described_class.shutdown_requested = false
+        described_class.update_jobs(1, 0, [pipeline_run.id])
+        expect(polled).to eq([pipeline_run.id])
       end
     end
   end
