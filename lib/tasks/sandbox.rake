@@ -26,6 +26,34 @@ namespace :sandbox do
     { schema: "idseq_pr_#{pr}", user: "sbx_pr_#{pr}", ssm: "idseq-sandbox-pr-#{pr}-web" }
   end
 
+  # Ask GitHub what a SPECIFIC PR is, and distinguish the three answers that matter:
+  #   :open    -- live, never touch it
+  #   :closed  -- a real orphan, safe to reap
+  #   :absent  -- this repo has no such PR AT ALL (HTTP 404)
+  #
+  # :absent is the whole point. "Not in the open-PR list" and "closed" are NOT the same fact, and
+  # conflating them is what nearly destroyed two live sandboxes: sandboxes provisioned before the
+  # IT-ARS cutover carry PR numbers minted by the thorvath-slower fork (which inherited upstream
+  # numbering, so it is in the 300s). Asked "is 332 open?", IT-ARS says no -- because it has never
+  # had a PR 332, not because that PR closed. A PR number stopped being an identity the moment two
+  # repos could mint one.
+  #
+  # Anything other than 200/404 RAISES rather than defaulting -- a 500, a rate-limit or a revoked
+  # token must never read as "absent" and must never read as "closed". The caller reaps on what
+  # this returns, so an unknown answer has to stop the run, not pick a side.
+  def github_pr_state(repo, token, number)
+    uri = URI("https://api.github.com/repos/#{repo}/pulls/#{number}")
+    req = Net::HTTP::Get.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    req["Accept"] = "application/vnd.github+json"
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+
+    return :absent if res.is_a?(Net::HTTPNotFound)
+    raise "GitHub API #{res.code} fetching #{repo} PR #{number}: #{res.body.to_s[0, 200]}" unless res.is_a?(Net::HTTPSuccess)
+
+    JSON.parse(res.body)["state"] == "open" ? :open : :closed
+  end
+
   # Raw admin connection from the chamber-injected master creds (NOT the Rails pool,
   # which points at a specific schema). Used only to run DDL / user management.
   def admin_client
@@ -376,9 +404,19 @@ namespace :sandbox do
   # and reaps the difference. Run it on a schedule from a STABLE image (never a per-PR tag, which
   # is failure mode (b) all over again).
   #
-  # FAILS CLOSED: if the open-PR list cannot be fetched, it reaps NOTHING rather than guessing --
-  # a bad PR list would drop the schema of a live sandbox someone is using.
-  desc "Reap sandbox schemas/users/SSM paths whose PR is no longer open (backstop for teardown)"
+  # FAILS CLOSED, on two separate axes -- both are load-bearing:
+  #
+  #   1. If the open-PR list cannot be fetched, it reaps NOTHING rather than guessing. A bad PR
+  #      list would drop the schema of a live sandbox someone is using.
+  #   2. It only reaps a PR this repo CONFIRMS is closed. Absence from the open-PR list is not
+  #      proof of closure -- see github_pr_state.
+  #
+  # Guard 1 alone was NOT enough, and the gap is worth stating plainly because the original comment
+  # here claimed the job was safe: a list fetched from the WRONG REPO is indistinguishable from a
+  # correct one (well-formed, non-empty, HTTP 200), so "the fetch succeeded" proved nothing about
+  # whether the answer meant anything. The first dry-run cycle marked two sandboxes belonging to
+  # OPEN PRs for destruction and reported it as a clean run. Only the dry-run flag stopped it.
+  desc "Reap sandbox schemas/users/SSM paths whose PR this repo confirms is closed (teardown backstop)"
   task :reap_orphans do
     require "json"
     require "net/http"
@@ -427,9 +465,34 @@ namespace :sandbox do
     end
     ssm_prs = ssm_prs.uniq
 
-    orphans = (live_schemas | ssm_prs).reject { |pr| open_prs.include?(pr) }.sort
+    # Classify every sandbox that physically exists. Being absent from the open-PR list is NOT
+    # sufficient to destroy something -- confirm with GitHub that the PR exists here and is closed.
+    # A sandbox whose number this repo has never issued is FOREIGN: it was minted by some other
+    # repo (pre-cutover forks number in the 300s), its PR may well be open, and we cannot reason
+    # about it from here. Skipping is the only safe answer -- and it is a LOUD skip, because a
+    # backstop that silently ignores state is how orphans accumulated in the first place.
+    candidates = (live_schemas | ssm_prs).sort
+    orphans = []
+    foreign = []
+    candidates.each do |pr|
+      next if open_prs.include?(pr) # live, and cheap to rule out -- no API call needed
+
+      case github_pr_state(repo, token, pr)
+      when :open then next # raced with a PR opening between the list and now
+      when :closed then orphans << pr
+      when :absent then foreign << pr
+      end
+    end
+
     puts "[sandbox:reap_orphans] schemas=#{live_schemas.sort.inspect} ssm=#{ssm_prs.sort.inspect} " \
          "-> orphans=#{orphans.inspect}#{dry_run ? ' (DRY RUN)' : ''}"
+
+    unless foreign.empty?
+      warn "[sandbox:reap_orphans] SKIPPING #{foreign.size} sandbox(es) that #{repo} has no PR for: " \
+           "#{foreign.inspect}. These were provisioned from a DIFFERENT repo (their PR numbers are " \
+           "not ours to interpret) and may belong to PRs that are still OPEN there. This reaper " \
+           "cannot safely decide their fate -- clean them up deliberately, by hand."
+    end
 
     if orphans.empty?
       puts "[sandbox:reap_orphans] nothing to reap"
