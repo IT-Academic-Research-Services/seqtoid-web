@@ -1109,7 +1109,10 @@ class PipelineRun < ApplicationRecord
     status_display_helper(output_state_hash(output_states_by_pipeline_run_id), results_finalized, technology)
   end
 
-  def check_and_enqueue(output_state)
+  # should_be_available is passed in by callers that mutate this record before looping, because
+  # deriving it here from `updated_at` would then be self-defeating -- see the note in
+  # monitor_results. Callers that do not touch the row first can omit it and get the old behaviour.
+  def check_and_enqueue(output_state, should_be_available = nil)
     # If the pipeline monitor tells us that no jobs are running anymore,
     # yet outputs are not available, we need to draw the conclusion that
     # those outputs should be marked as failed. Otherwise we will never
@@ -1124,7 +1127,7 @@ class PipelineRun < ApplicationRecord
 
     Rails.logger.info("[PR: #{id}] Checking output - finalized: #{finalized?}, last update: #{updated_at}")
     # If the run completed over a minute ago, the output should be available.
-    should_be_available = finalized? && updated_at < 1.minute.ago
+    should_be_available = finalized? && updated_at < 1.minute.ago if should_be_available.nil?
     if output_ready?(output)
       Rails.logger.info("[PR: #{id}] Enqueue for resque: #{output}")
       output_state.update(state: STATUS_LOADING_QUEUED)
@@ -1162,12 +1165,39 @@ class PipelineRun < ApplicationRecord
     update_pipeline_version(self, :pipeline_version, pipeline_version_file) if pipeline_version.blank?
     return if pipeline_version.blank? && !finalized
 
+    # Capture "has this run been quiet for a while?" BEFORE update_job_stats, because
+    # update_job_stats WRITES this row: load_compression_ratio/load_qc_percent call `update!`, which
+    # sets updated_at to now. Deriving the answer afterwards asks "was this row last touched over a
+    # minute ago?" milliseconds after touching it, so it is always false -- not usually, always.
+    #
+    # From the result-monitor log, the write and the check land in the same second:
+    #
+    #   11:09:10.107  UPDATE `pipeline_runs` SET `compression_ratio` = 1.768... WHERE `id` = 4
+    #   [PR: 4] Checking output - finalized: false, last update: 2026-07-17 04:09:10 -0700
+    #
+    # (11:09:10 UTC is 04:09:10 PDT -- that log line prints updated_at at check time.)
+    #
+    # The consequence is that check_and_enqueue's `elsif should_be_available || ...` branch never
+    # runs, so an output that will never appear -- insert_size_metrics for a single-end sample -- is
+    # never resolved to LOADED/FAILED. all_output_states_terminal? then never holds, the run never
+    # reaches FINALIZED_SUCCESS, and status_display_helper can never print COMPLETE: every such
+    # sample reads "POST PROCESSING" forever.
+    #
+    # This was invisible because the same branch is short-circuited by
+    # `|| ENABLE_SFN_NOTIFICATIONS == "1"`, which dev/staging/prod all set. They have never needed
+    # should_be_available to be true, so nothing depended on it working. Only the polling model --
+    # what a preview sandbox runs, having no shoryuken to notify it -- reaches the left-hand side.
+    #
+    # load_stage_results has the same loop but calls update_job_stats AFTER it, so it is unaffected
+    # and keeps deriving the value itself.
+    should_be_available = finalized? && updated_at < 1.minute.ago
+
     # Update job stats:
     compiling_stats_error = update_job_stats
 
     # Load any new outputs that have become available:
     output_states.each do |o|
-      check_and_enqueue(o)
+      check_and_enqueue(o, should_be_available)
     end
 
     # Check if run is complete:

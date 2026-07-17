@@ -920,4 +920,61 @@ describe PipelineRun, type: :model do
       expect(pipeline_run.output_states).not_to be_empty
     end
   end
+
+  describe "#monitor_results should_be_available" do
+    # monitor_results calls update_job_stats, which WRITES this row (load_compression_ratio /
+    # load_qc_percent call `update!`), and update! sets updated_at to now. Deriving
+    # "has this run been quiet for a minute?" AFTER that asks the question milliseconds after
+    # touching the row, so the answer is always no -- not usually, always.
+    #
+    # The result: check_and_enqueue's `elsif should_be_available || ...` branch never runs, so an
+    # output that will never appear (insert_size_metrics for a single-end sample) is never resolved,
+    # all_output_states_terminal? never holds, the run never reaches FINALIZED_SUCCESS, and the
+    # sample reads "POST PROCESSING" forever.
+    #
+    # It was invisible because that branch is short-circuited by `|| ENABLE_SFN_NOTIFICATIONS == "1"`,
+    # which dev/staging/prod all set -- they have never needed should_be_available to be true. Only
+    # the polling model (a preview sandbox, which has no shoryuken) reaches the left-hand side.
+    #
+    # These specs stub update_job_stats to do the one thing that matters -- touch the row -- so they
+    # pin the ORDERING rather than the stat maths.
+    let(:sample) { create(:sample, project: create(:project)) }
+    let(:pipeline_run) do
+      create(:pipeline_run, sample: sample, pipeline_version: "8.3", finalized: 1)
+    end
+
+    before do
+      # A run that finished a while ago: quiet, and therefore "available" by intent.
+      pipeline_run.update_column(:updated_at, 5.minutes.ago) # rubocop:disable Rails/SkipsModelValidations
+      allow(pipeline_run).to receive(:update_job_stats) do
+        pipeline_run.touch # rubocop:disable Rails/SkipsModelValidations
+        nil
+      end
+      allow(pipeline_run).to receive(:output_ready?).and_return(false)
+    end
+
+    it "reports available even though update_job_stats refreshes updated_at first" do
+      allow(pipeline_run).to receive(:check_and_enqueue)
+
+      pipeline_run.monitor_results
+
+      # The point: TRUE, despite update_job_stats having just set updated_at to now.
+      expect(pipeline_run).to have_received(:check_and_enqueue).with(anything, true).at_least(:once)
+    end
+
+    it "reports NOT available for a run that is still being actively updated" do
+      pipeline_run.update_column(:updated_at, Time.now.utc) # rubocop:disable Rails/SkipsModelValidations
+      allow(pipeline_run).to receive(:check_and_enqueue)
+
+      pipeline_run.monitor_results
+
+      expect(pipeline_run).to have_received(:check_and_enqueue).with(anything, false).at_least(:once)
+    end
+
+    it "still derives it itself when a caller does not pass one" do
+      # load_stage_results updates stats AFTER its loop, so it is unaffected and omits the argument.
+      output_state = pipeline_run.output_states.first
+      expect { pipeline_run.check_and_enqueue(output_state) }.not_to raise_error
+    end
+  end
 end
