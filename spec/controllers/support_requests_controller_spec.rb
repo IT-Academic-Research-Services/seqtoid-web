@@ -71,6 +71,9 @@ RSpec.describe SupportRequestsController, type: :controller do
         # still gets a one-click deep-link to the raw per-user action-log trail.
         expect(captured[:action_log_steps]).to be_nil
         expect(captured[:log_links][:otel_action_log]).to include("logs-insights")
+        # (CZID-722) With no trail to structure, the journey block is nil too, so the
+        # payload just omits it -- same inert contract as action_log_steps.
+        expect(captured[:journey]).to be_nil
       end
 
       context "when SUPPORT_LOG_GROUP is configured and the action log has entries" do
@@ -93,6 +96,28 @@ RSpec.describe SupportRequestsController, type: :controller do
           expect(captured[:action_log_steps]).to eq(steps)
           expect(captured[:summary]).to include("Recent steps:")
           expect(captured[:summary]).to include("bulk_download.create (error)")
+        end
+
+        it "attaches the structured customer journey (CZID-722) built from the same steps" do
+          steps = [
+            { at: "2026-07-09T10:00:00Z", action: "sample.bulk_upload", outcome: "ok" },
+            { at: "2026-07-09T10:05:00Z", action: "bulk_download.create", outcome: "error", error_class: "RuntimeError" },
+          ]
+          allow(SupportActionLogQuery).to receive(:recent_steps).and_return(steps)
+
+          captured = nil
+          allow(LogUtil).to receive(:log_message) { |_msg, **payload| captured = payload }
+
+          post :create, params: valid_params
+
+          journey = captured[:journey]
+          expect(journey[:step_count]).to eq(2)
+          expect(journey[:session_count]).to eq(1)
+          # The two steps are a completed sample_to_download funnel that errored at
+          # the download stage -- the structural "what led to the ticket".
+          funnel = journey[:funnels].find { |f| f[:name] == "sample_to_download" }
+          expect(funnel[:completed]).to be(true)
+          expect(funnel[:errored_at]).to eq("bulk_download.create")
         end
       end
 

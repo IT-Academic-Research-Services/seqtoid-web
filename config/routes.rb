@@ -170,6 +170,12 @@ Rails.application.routes.draw do
     end
   end
 
+  # CZID-722 (Phase 2b): admin-only aggregate product-usage analytics JSON. The data
+  # seam the (separate, exposed) analytics dashboard consumes. Admin-gated in the
+  # controller (login_required + admin_required). Path is under /admin; the controller
+  # is top-level (not Admin::) so the shared auth redirect resolves correctly.
+  get 'admin/product_usage_analytics', to: 'product_usage_analytics#index'
+
   # SupportController:
   get 'faqs', to: 'support#faqs'
   get 'privacy_notice_for_user_research', to: "support#privacy_notice_for_user_research"
