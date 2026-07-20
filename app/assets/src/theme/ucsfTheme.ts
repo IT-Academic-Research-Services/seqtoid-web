@@ -19,6 +19,15 @@ const UCSF_PRIMARY = {
   600: "#052049", // UCSF navy
 };
 
+// AppTheme types `borders` as optional, so `defaultAppTheme.borders` is `Borders | undefined`.
+// Spreading a possibly-undefined value would demote every required Borders field (error, gray,
+// link, success, warning) to optional and break makeThemeOptions' AppTheme contract. Assert the
+// SDS invariant once so the spread below narrows to a full Borders.
+const baseBorders = defaultAppTheme.borders;
+if (!baseBorders) {
+  throw new Error("SDS defaultAppTheme.borders is unexpectedly undefined");
+}
+
 const ucsfAppTheme = {
   ...defaultAppTheme,
   colors: {
@@ -31,9 +40,9 @@ const ucsfAppTheme = {
     },
   },
   borders: {
-    ...defaultAppTheme.borders,
+    ...baseBorders,
     primary: {
-      ...(defaultAppTheme.borders?.primary ?? {}),
+      ...baseBorders.primary,
       400: "1px solid #006be9",
     },
   },
