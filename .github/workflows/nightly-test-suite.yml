@@ -34,6 +34,9 @@ on:
     # 08:00 UTC = 01:00 PDT / 00:00 PST — nightly, off-peak. crontab.guru for syntax.
     - cron: '0 8 * * *'
   workflow_dispatch:
+  # Reusable so the nightly-full-regime.yml orchestrator (#734) can fan out to this same
+  # suite as its unit+coverage leg instead of duplicating the rspec/jest job definitions.
+  workflow_call:
 
 permissions:
   contents: read
