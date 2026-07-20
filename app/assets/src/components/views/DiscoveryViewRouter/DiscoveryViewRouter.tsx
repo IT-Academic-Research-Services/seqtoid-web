@@ -16,7 +16,6 @@ import { AdminProject } from "../AdminProject";
 import { AdminSample } from "../AdminSample";
 import { AdminSettings } from "../AdminSettings";
 import { DiscoveryViewFC } from "../DiscoveryView/DiscoveryViewFC";
-import { ImpactPage } from "../ImpactPage";
 import { LandingPage } from "../LandingPage";
 import { PathogenListView } from "../PathogenListView";
 import PhyloTreeListView from "../PhyloTree/PhyloTreeListView";

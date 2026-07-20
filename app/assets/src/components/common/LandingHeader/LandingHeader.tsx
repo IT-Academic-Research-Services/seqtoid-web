@@ -27,7 +27,6 @@ interface LandingHeaderProps {
 export const LandingHeader = ({
   announcementBannerEnabled,
   emergencyBannerMessage,
-  impactPage,
   legalNav,
   logoOnly,
 }: LandingHeaderProps) => {

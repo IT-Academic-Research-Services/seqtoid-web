@@ -41,11 +41,11 @@ export const PrivacyNotice = () => {
           Last Updated: {LAST_UPDATED_DATE} &middot;{" "}
           <a href="/terms_changes">See Recent Changes</a>
         </p>
-        <p>The SeqToID platform ("SeqToID" or the "Services") is owned by The Regents of the University of California and operated by the University of California, San Francisco (UCSF) (together, "UCSF", "we", "us" or "our"). This privacy notice ("Privacy Notice") describes the types of information we collect or that is uploaded by website visitors ("Visitors") and registered users ("Users"), and how we use, disclose, and protect that information.</p>
+        <p>The SeqToID platform (&quot;SeqToID&quot; or the &quot;Services&quot;) is owned by The Regents of the University of California and operated by the University of California, San Francisco (UCSF) (together, &quot;UCSF&quot;, &quot;we&quot;, &quot;us&quot; or &quot;our&quot;). This privacy notice (&quot;Privacy Notice&quot;) describes the types of information we collect or that is uploaded by website visitors (&quot;Visitors&quot;) and registered users (&quot;Users&quot;), and how we use, disclose, and protect that information.</p>
 
         <p>UCSF operates SeqToID to support public-health surveillance, scientific research, and responsible data sharing. In line with international public-health guidance (including World Health Organization data-sharing principles), our approach emphasizes: (a) timely sharing for public-health action, (b) equitable recognition of data contributors, (c) protection of privacy and confidentiality, (d) transparent governance of data use, and (e) legal and regulatory compliance. These principles guide how we store, share, and grant access to data.</p>
 
-        <p>For ease of understanding, we've created the below Summary Table, which pulls out some key points. More details can be found in the full Privacy Notice below and in the <a href="/terms">Terms of Use</a> ("Terms") that apply to your use of SeqToID.</p>
+        <p>For ease of understanding, we&apos;ve created the below Summary Table, which pulls out some key points. More details can be found in the full Privacy Notice below and in the <a href="/terms">Terms of Use</a> (&quot;Terms&quot;) that apply to your use of SeqToID.</p>
 
         <h2>Summary Table</h2>
 
@@ -103,7 +103,7 @@ export const PrivacyNotice = () => {
                 <td>Data about researchers with SeqToID accounts such as name, email, institution, basic information about how they are using SeqToID (ex: search queries), and information provided through surveys, during an in-person event, or for user support (ex: resolving support requests).</td>
                 <td>We use this data only to operate, secure, and improve the SeqToID services.</td>
                 <td>Basic SeqToID account information such as name and institution may be visible to other SeqToID Users (ex: with collaborators on a shared project).<br /><br />This data is also shared with service providers (ex: AWS) that help operate, improve, and secure SeqToID.<br /><br />Service providers will not use any data shared with them for any purpose beyond operating, improving, and securing SeqToID.<br /><br />We will never sell your data or share it with anyone that does.</td>
-                <td>Users can request deletion of their SeqToID account data by contacting us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and we will fulfill the request within the timelines set forth under applicable privacy laws. You can learn more about your choices in the Section titled, "Choices About Your Data."</td>
+                <td>Users can request deletion of their SeqToID account data by contacting us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and we will fulfill the request within the timelines set forth under applicable privacy laws. You can learn more about your choices in the Section titled, &quot;Choices About Your Data.&quot;</td>
               </tr>
               <tr>
                 <td><strong>Device and Analytics Data</strong></td>
@@ -129,7 +129,7 @@ export const PrivacyNotice = () => {
 
         <p>UCSF aims to facilitate rapid, responsible sharing of pathogen information to support global health responses. Where appropriate and consistent with applicable law, funder requirements, and user choices, SeqToID enables expedited sharing of pathogen reports to public-health authorities and registered researchers to inform surveillance and response.</p>
 
-        <p>Here&apos;s how SeqToID works: Users submit Upload Data (as described below). This data may contain human and non-human genetic sequences ("Raw Sample Data"; as further defined below), as well as information about those sequences, such as the date the sample was collected and the host species it was collected from ("Sample Metadata" as further defined below). For example, a researcher might upload genetic information from mosquitoes, which are often a source of infectious disease, or from humans, who can be infected by such diseases. SeqToID then processes this Upload Data in order to identify pathogens found within the genetic sequence (e.g., the mosquito may be carrying the chikungunya virus).</p>
+        <p>Here&apos;s how SeqToID works: Users submit Upload Data (as described below). This data may contain human and non-human genetic sequences (&quot;Raw Sample Data&quot;; as further defined below), as well as information about those sequences, such as the date the sample was collected and the host species it was collected from (&quot;Sample Metadata&quot; as further defined below). For example, a researcher might upload genetic information from mosquitoes, which are often a source of infectious disease, or from humans, who can be infected by such diseases. SeqToID then processes this Upload Data in order to identify pathogens found within the genetic sequence (e.g., the mosquito may be carrying the chikungunya virus).</p>
 
         <p>We hope that this sharing of pathogen data will help to create a global dashboard that helps researchers better understand pathogens.</p>
 
@@ -150,7 +150,7 @@ export const PrivacyNotice = () => {
 
         <h2>1. Upload Data.</h2>
 
-        <p>"Upload Data" is data that Users upload to SeqToID (other than the information Users provide during registration to create an account). As explained below, Upload Data consists of genetic sequence information (human or non-human) and metadata about those genetic sequences (such as time and location of sample collection).</p>
+        <p>&quot;Upload Data&quot; is data that Users upload to SeqToID (other than the information Users provide during registration to create an account). As explained below, Upload Data consists of genetic sequence information (human or non-human) and metadata about those genetic sequences (such as time and location of sample collection).</p>
 
         <p>As described in our Terms, Users are required to obtain and maintain all necessary consents, permissions, and authorizations required by applicable laws prior to uploading, sharing, and exporting Upload Data with the Services.</p>
 
@@ -158,9 +158,9 @@ export const PrivacyNotice = () => {
 
         <p>Upload Data includes Raw Sample Data and Sample Metadata.</p>
 
-        <p><strong>Raw Sample Data:</strong> "Raw Sample Data" is full genetic sequence data uploaded by Users (i.e. FASTA or FASTQ files). Genetic sequence data contains genetic information about pathogens in the sample and of the host from which the sample was taken. The host could be a human or non-human (e.g., mosquito). Host genetic information is filtered out in order to generate Reports, so Report Data should not contain any human sequence data.</p>
+        <p><strong>Raw Sample Data:</strong> &quot;Raw Sample Data&quot; is full genetic sequence data uploaded by Users (i.e. FASTA or FASTQ files). Genetic sequence data contains genetic information about pathogens in the sample and of the host from which the sample was taken. The host could be a human or non-human (e.g., mosquito). Host genetic information is filtered out in order to generate Reports, so Report Data should not contain any human sequence data.</p>
 
-        <p><strong>Sample Metadata:</strong> "Sample Metadata" includes information related to the Raw Sample Data, such as the host type (e.g., human or mosquito), upload date, and tissue type and free-text research notes entered by Users. This data should not include personally-identifying information regarding the individual to whom the Raw Sample Data relates.</p>
+        <p><strong>Sample Metadata:</strong> &quot;Sample Metadata&quot; includes information related to the Raw Sample Data, such as the host type (e.g., human or mosquito), upload date, and tissue type and free-text research notes entered by Users. This data should not include personally-identifying information regarding the individual to whom the Raw Sample Data relates.</p>
 
         <h3>Sensitive Personal Information</h3>
 
@@ -186,7 +186,7 @@ export const PrivacyNotice = () => {
 
         <h2>2. Report Data.</h2>
 
-        <p>Report Data is information SeqToID produced from Upload Data. We generate Report Data by processing Upload Data through our Data Pipeline. The "Data Pipeline" cleans (e.g., by removing duplicate nucleotides) and analyzes (e.g., by matching Raw Sample Data nucleotide sequences with known pathogen sequences) the Upload Data. Report Data may include, for example, data about the pathogen sequences identified in the Raw Sample Data and the frequency of such identification ("Pathogen Data") or raw numeric counts of non-personally identifying gene expression profiles that were found in the Raw Sample Data ("Gene Counts").</p>
+        <p>Report Data is information SeqToID produced from Upload Data. We generate Report Data by processing Upload Data through our Data Pipeline. The &quot;Data Pipeline&quot; cleans (e.g., by removing duplicate nucleotides) and analyzes (e.g., by matching Raw Sample Data nucleotide sequences with known pathogen sequences) the Upload Data. Report Data may include, for example, data about the pathogen sequences identified in the Raw Sample Data and the frequency of such identification (&quot;Pathogen Data&quot;) or raw numeric counts of non-personally identifying gene expression profiles that were found in the Raw Sample Data (&quot;Gene Counts&quot;).</p>
 
         <p>Once Raw Sample Data has been put through the Data Pipeline, the Report Data that is produced no longer includes any human genetic sequence data, is not personal data, and does not, on its own, permit association with any specific individual. If you are able to find human sequence data in any Reports in SeqToID, please let us know at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and we will address it.</p>
 
@@ -194,7 +194,7 @@ export const PrivacyNotice = () => {
 
         <h3>Who can see Report Data?</h3>
 
-        <p>As mentioned above in Section 1 (How We Disclose Upload Data), Users can choose to share their Report Data by creating Projects (groups of Reports) and share those Projects with specific other SeqToID Users ("Restricted Release") or Users can decide to share it more broadly with all SeqToID Users by marking a Project as "Public" ("Public Release"). This does not include Raw Sample Data.</p>
+        <p>As mentioned above in Section 1 (How We Disclose Upload Data), Users can choose to share their Report Data by creating Projects (groups of Reports) and share those Projects with specific other SeqToID Users (&quot;Restricted Release&quot;) or Users can decide to share it more broadly with all SeqToID Users by marking a Project as &quot;Public&quot; (&quot;Public Release&quot;). This does not include Raw Sample Data.</p>
 
         <p>Users also may have the option to share their Report Data with certain third party tools, like Nextclade. You control whether to use this integration or not. If you do, we will collect basic information about your use of that integration, such as how often you use it.</p>
 
@@ -204,11 +204,11 @@ export const PrivacyNotice = () => {
 
         <h3>What We Collect</h3>
 
-        <p><strong>Visitor Data.</strong> This is information collected from visitors to our website, whether or not they are Users ("Visitor Data").</p>
+        <p><strong>Visitor Data.</strong> This is information collected from visitors to our website, whether or not they are Users (&quot;Visitor Data&quot;).</p>
 
-        <p><strong>User Data.</strong> User Data is any information we collect from a User about that User such as identifiers and professional or employment-related information ("User Data"). It may include information necessary to create or access your account such as your name, username, email address, and login credentials. This could also include information we collect if you decide to respond to a voluntary survey or join us for an in-person event.</p>
+        <p><strong>User Data.</strong> User Data is any information we collect from a User about that User such as identifiers and professional or employment-related information (&quot;User Data&quot;). It may include information necessary to create or access your account such as your name, username, email address, and login credentials. This could also include information we collect if you decide to respond to a voluntary survey or join us for an in-person event.</p>
 
-        <p><strong>Device and Analytics Data.</strong> When Visitors and Users visit or use our Service, we may automatically collect Device Data or Analytics Information which includes internet or other electronic network activity and geolocation data. "Device Data" includes information about your browser type and operating system, IP address and/or device ID, including basic analytics from your device or browser. "Analytics Information" relates to any of your requests, queries, or use of the Services, such as the amount of time spent viewing particular web pages. We use service providers for this service.</p>
+        <p><strong>Device and Analytics Data.</strong> When Visitors and Users visit or use our Service, we may automatically collect Device Data or Analytics Information which includes internet or other electronic network activity and geolocation data. &quot;Device Data&quot; includes information about your browser type and operating system, IP address and/or device ID, including basic analytics from your device or browser. &quot;Analytics Information&quot; relates to any of your requests, queries, or use of the Services, such as the amount of time spent viewing particular web pages. We use service providers for this service.</p>
 
         <p><strong>Cookies, Web Beacons, and other Technologies.</strong> A cookie is a small file that may be stored on your computer or other device. Web beacons and similar technologies are small bits of code embedded in web pages or an email, for example, that communicate with third parties. We use these technologies to recognize your device and browser and do things such as keep you logged in or to understand usage patterns by Users and Visitors to our Services. We do not use cookies to serve third party ads.</p>
 
