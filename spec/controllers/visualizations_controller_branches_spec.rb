@@ -46,7 +46,9 @@ RSpec.describe VisualizationsController, type: :controller do
     it "redirects a 'table' visualization to its sample page" do
       project = create(:project, users: [@joe])
       sample = create(:sample, project: project, user: @joe)
-      vis = create(:visualization, user_id: @joe.id, visualization_type: "table", name: "T", data: {})
+      # data must be non-blank (Visualization validates :data, presence: true);
+      # the action mutates it (sets sampleIds/id) before redirecting.
+      vis = create(:visualization, user_id: @joe.id, visualization_type: "table", name: "T", data: { "tableState" => [] })
       vis.samples << sample
 
       get :visualization, params: { type: "table", id: vis.id }
