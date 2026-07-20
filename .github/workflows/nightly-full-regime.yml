@@ -20,9 +20,11 @@ name: Nightly full-platform test regime
 #     - contract_api     -> GraphQL SDL + committed-snapshot drift + key REST endpoints (#742)
 #   REAL but env-gated (only where the deployed-env vars/secrets exist):
 #     - browser_e2e      -> reuses e2e-automation.yml against dev (#738)
+#     - pipeline_e2e_aupr-> dispatches the CI-native viral benchmark + gates on its AUPR result
+#                           (#737); off unless NIGHTLY_PIPELINE_E2E_ENABLED=true + a cross-repo
+#                           token. Real AWS SFN+Batch AUPR>=0.98 gate documented in the job.
 #   TODO stubs (each mapped to its child ticket; a marked no-op step, not a hidden skip):
 #     - integration_suite      -> #736   cross-component (MySQL8 + OpenSearch + Redis + LocalStack S3)
-#     - pipeline_e2e_aupr      -> #737   real SFN+Batch benchmark, AUPR >= 0.98 gate
 #     - load_soak              -> #739   k6/Locust load + latency SLOs
 #     - dast_zap               -> #740   OWASP ZAP DAST against dev (SAST half is real above)
 #     - chaos_resilience       -> #743   Karpenter evict / OpenSearch loss / DB failover drills
@@ -220,22 +222,86 @@ jobs:
           echo "No tooling exists yet; this job is a deliberate marked placeholder."
 
   pipeline_e2e_aupr:
-    name: Pipeline E2E + AUPR gate (#737) [STUB]
+    name: Pipeline E2E + AUPR gate (#737)
     needs: guard
+    # GUARDED, off by default. Running a real pipeline benchmark to completion is expensive and
+    # needs infrastructure that plain CI does not have, so this leg no-ops until a maintainer opts
+    # in with NIGHTLY_PIPELINE_E2E_ENABLED=true (an unset var -> the whole job is skipped, honest,
+    # no wasted minutes). When enabled it invokes a REAL end-to-end pipeline benchmark and gates on
+    # AUPR; it does NOT define a new benchmark, it drives the ones that already exist.
+    #
+    # WIRED PATH (CI-native, no AWS): dispatch the seqtoid-workflows short-read-mngs VIRAL benchmark
+    # (.github/workflows/short-read-mngs-viral-benchmarks.yml). That workflow runs the actual WDL
+    # pipeline via miniwdl/docker in the runner and enforces an AUPR floor through
+    # `harvest.py --min-aupr`, controlled by the SHORT_READ_MNGS_MIN_AUPR repo variable ON THAT REPO.
+    # This job dispatches it, polls to completion, and fails this leg if that run (its AUPR gate
+    # included) fails. To assert AUPR >= 0.98, set SHORT_READ_MNGS_MIN_AUPR=0.98 on seqtoid-workflows.
+    #
+    # DEEPER VARIANT (real AWS, NOT wired here -- documented for the #737 follow-up): the app-native
+    # gate runs the benchmark through the deployed SFN + Batch + S3 + ECR pipeline. The dispatch
+    # (SfnBenchmarkPipelineDispatchService -> BenchmarkWorkflowRun) and AUPR computation
+    # (BenchmarkMetricsService, nt_aupr/nr_aupr) already exist in-app; what is missing is a
+    # `taxonomy:benchmark_gate[0.98]` rake that dispatches, polls, and asserts AUPR >= 0.98. Once it
+    # exists, run it against deployed dev exactly like refresh-reference-data.sh drives a one-off
+    # czecs-task-rake job: assume secrets.DEV_AWS_ROLE (OIDC) and invoke it on the running dev task
+    # definition. That needs live AWS (dev role + SFN/Batch/ECR) and is intentionally left out of the
+    # wired path so this workflow never kicks off a costly cloud benchmark by accident.
+    if: ${{ vars.NIGHTLY_PIPELINE_E2E_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      # Cross-repo target for the CI-native viral benchmark + the AUPR floor we expect it to enforce.
+      WORKFLOWS_REPO: IT-Academic-Research-Services/seqtoid-workflows
+      BENCHMARK_WORKFLOW: short-read-mngs-viral-benchmarks.yml
+      BENCHMARK_REF: integration
+      EXPECTED_MIN_AUPR: '0.98'
     steps:
-      - name: TODO
+      - name: Preconditions
+        env:
+          # Needs actions:write on seqtoid-workflows to dispatch + actions:read to poll. A missing
+          # token is a hard, explicit failure (not a silent green) so an enabled-but-unconfigured
+          # regime is obvious in the report.
+          WORKFLOWS_DISPATCH_TOKEN: ${{ secrets.WORKFLOWS_DISPATCH_TOKEN }}
         run: |
-          echo "STUB for platform-overhaul #737: run the benchmark end-to-end through the"
-          echo "REAL pipeline (SFN + Batch + S3 + ECR) for all 4 workflows and gate on"
-          echo "AUPR >= 0.98 (see benchmarks-are-the-aws-e2e-validator, #388)."
-          echo ""
-          echo "The benchmark dispatch already exists in-app: SfnBenchmarkPipelineDispatchService"
-          echo "kicks off a BenchmarkWorkflowRun; BenchmarkMetricsService computes AUPR. The"
-          echo "missing piece is a scheduled invocation that (a) assumes DEV_AWS_ROLE, (b)"
-          echo "dispatches the benchmark run(s), (c) polls to completion, (d) asserts AUPR >="
-          echo "0.98 and alerts on regression. Needs live AWS (SFN/Batch/ECR) + dev role."
-          echo "Wire alongside refresh-reference-data.yml's DEV_AWS_ROLE pattern."
+          set -euo pipefail
+          if [ -z "${WORKFLOWS_DISPATCH_TOKEN}" ]; then
+            echo "::error::NIGHTLY_PIPELINE_E2E_ENABLED=true but secrets.WORKFLOWS_DISPATCH_TOKEN is unset."
+            echo "This leg dispatches the ${BENCHMARK_WORKFLOW} benchmark on ${WORKFLOWS_REPO}; it needs a"
+            echo "token with actions:write (dispatch) + actions:read (poll) on that repo. Also set"
+            echo "SHORT_READ_MNGS_MIN_AUPR=${EXPECTED_MIN_AUPR} on ${WORKFLOWS_REPO} so its harvest.py AUPR gate bites."
+            exit 1
+          fi
+          echo "Preconditions OK -- will dispatch ${BENCHMARK_WORKFLOW} on ${WORKFLOWS_REPO}@${BENCHMARK_REF}."
+
+      - name: Dispatch viral benchmark + gate on its AUPR result
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOWS_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Timestamp BEFORE dispatch so we can identify the run we just started (gh workflow run does
+          # not return a run id). Dispatching this workflow forces a full benchmark run (its has-diff
+          # job treats workflow_dispatch as a full-run trigger).
+          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run "${BENCHMARK_WORKFLOW}" --repo "${WORKFLOWS_REPO}" --ref "${BENCHMARK_REF}"
+
+          echo "Dispatched; locating the run created at/after ${since}..."
+          run_id=""
+          for _ in $(seq 1 12); do
+            sleep 10
+            run_id="$(gh run list --repo "${WORKFLOWS_REPO}" --workflow "${BENCHMARK_WORKFLOW}" \
+              --event workflow_dispatch --created ">=${since}" --limit 1 --json databaseId \
+              --jq '.[0].databaseId // empty')"
+            [ -n "${run_id}" ] && break
+          done
+          if [ -z "${run_id}" ]; then
+            echo "::error::Could not locate the dispatched ${BENCHMARK_WORKFLOW} run on ${WORKFLOWS_REPO}."
+            exit 1
+          fi
+
+          echo "Watching ${WORKFLOWS_REPO} run ${run_id} to completion (AUPR gate is enforced inside it)..."
+          # --exit-status makes gh return non-zero if the run concluded failure -- i.e. if the viral
+          # benchmark's harvest.py --min-aupr gate (SHORT_READ_MNGS_MIN_AUPR) tripped, this leg goes red.
+          gh run watch "${run_id}" --repo "${WORKFLOWS_REPO}" --exit-status --interval 30
+          echo "Pipeline E2E benchmark run ${run_id} passed (AUPR gate included)."
 
   load_soak:
     name: Load / performance / soak (#739) [STUB]
@@ -411,7 +477,7 @@ jobs:
             echo "| Deep security SAST | #740 | real | ${SEC} |"
             echo "| Browser E2E (Playwright) | #738 | real, env-gated | ${E2E} |"
             echo "| Cross-component integration | #736 | STUB | ${INTEG} |"
-            echo "| Pipeline E2E + AUPR gate | #737 | STUB | ${PIPE} |"
+            echo "| Pipeline E2E + AUPR gate | #737 | real, guarded | ${PIPE} |"
             echo "| Load / performance / soak | #739 | STUB | ${LOAD} |"
             echo "| DAST (OWASP ZAP) | #740 | STUB | ${DAST} |"
             echo "| Contract / API | #742 | real | ${CONTRACT} |"
