@@ -14,14 +14,19 @@ require "rails_helper"
 #   - limit present-branch: [MAX, limit].min cap.
 #   - samples sort: sorting allowed -> Sample.sort_samples; else -> order(hash).
 #   - limit.nil? guard: offset/limit applied only when a cap exists.
+#   - offset: read from params[:offset] (0 default) and passed to samples.offset -- guards
+#     the params[:offset] fix (was params[offset], a nil key that pinned offset to 0).
 #   - basic gate: basic false -> visibility + details merge; basic true -> skipped.
 #   - list_all_sample_ids gate: results[:sampleIds] added only when truthy.
 RSpec.describe Queries::SampleListQuery, type: :concern do
   # Minimal host mixing in the concern. The concern reads context[:current_user] /
   # context[:current_power] and calls SamplesHelper methods -- the real helper is
-  # mixed in (via the concern) and its methods are stubbed on the instance.
+  # mixed in (via the concern) and its methods are stubbed on the instance. The
+  # `included do field ... end` block needs a `field` DSL method on the host; a no-op
+  # class method that ignores its block satisfies it without graphql-ruby machinery.
   let(:host_class) do
     Class.new do
+      def self.field(*_args, **_kwargs); end
       include Queries::SampleListQuery
       attr_accessor :context
     end
@@ -162,6 +167,26 @@ RSpec.describe Queries::SampleListQuery, type: :concern do
       host.samples_list({ basic: true, limit: 5 })
 
       expect(rel).to have_received(:limit).with(5)
+    end
+
+    it "applies the requested offset when a limit is in effect" do
+      rel = samples_spy
+      stub_helpers(rel)
+
+      # offset is read from params[:offset]; with a limit present the
+      # `unless limit.nil?` block runs samples.offset(offset).limit(limit).
+      host.samples_list({ basic: true, limit: 5, offset: 20 })
+
+      expect(rel).to have_received(:offset).with(20)
+    end
+
+    it "defaults the offset to 0 when none is given" do
+      rel = samples_spy
+      stub_helpers(rel)
+
+      host.samples_list({ basic: true, limit: 5 })
+
+      expect(rel).to have_received(:offset).with(0)
     end
   end
 
