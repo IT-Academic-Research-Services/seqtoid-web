@@ -37,7 +37,7 @@ RSpec.describe AmrHeatmapController, type: :controller do
         job_status: PipelineRun::STATUS_CHECKED,
         output_states_data: [{
           output: "amr_counts",
-          state: PipelineRun::STATUS_RUNNING, # present but not LOADED
+          state: PipelineRun::STATUS_UNKNOWN, # valid OutputState value, present but not LOADED
         }],
       }])
 
