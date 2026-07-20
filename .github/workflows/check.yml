@@ -172,8 +172,22 @@ jobs:
       # Verifies that package.json and package-lock.json match.
       # See: https://docs.npmjs.com/cli/v7/commands/npm-ci
       run: npm ci
-    - name: Test
-      run: npm test
+    - name: Test (with coverage gate)
+      # Run Jest WITH --coverage so jest.config.js `coverageThreshold` gates the
+      # PR (#718). Plain `npm test` (no --coverage) runs the suite but does NOT
+      # enforce the ratchet, so before this the Jest coverage floor was measured
+      # only in nightly-test-suite.yml and never blocked a regression on the PR
+      # path -- mirroring how sharded SimpleCov gates Ruby on .regression-baseline.json.
+      #
+      # The floors live in jest.config.js and only ever move up. Measured
+      # whole-tree baseline (Node 24.18.0): statements 17.70% / branches 13.43%
+      # / functions 14.84% / lines 17.56%; floors sit one whole number below at
+      # 17 / 13 / 14 / 17, so CI fails only if coverage REGRESSES. Devs' local
+      # `npm test` (no --coverage) is unchanged.
+      #
+      # --coverageReporters json-summary writes client-coverage/coverage-summary.json
+      # for anyone who wants the totals; text-summary keeps the human-readable table.
+      run: npm test -- --coverage --ci --coverageReporters=text-summary --coverageReporters=json-summary
       env:
         CI: true
     - name: ESLint
