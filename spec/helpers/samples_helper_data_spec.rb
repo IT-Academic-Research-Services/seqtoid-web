@@ -26,6 +26,55 @@ RSpec.describe SamplesHelper, type: :helper do
     end
   end
 
+  # The nil-safe getters above cover only the pr == nil branch. These exercise the
+  # complementary "pipeline run present" branch of each guard (and, for the
+  # blank-aware getters, both the blank and non-blank sides of the `|| ...blank?`
+  # short-circuit) so the getter's conditional is fully branch-covered.
+  describe "pipeline-run getters with a present pipeline run" do
+    it "reads adjusted_remaining_reads straight off the pipeline run" do
+      pr = instance_double(PipelineRun, adjusted_remaining_reads: 1234)
+      expect(helper.get_adjusted_remaining_reads(pr)).to eq(1234)
+    end
+
+    it "returns the pipeline run's insert_size_metric_set" do
+      metric_set = instance_double(InsertSizeMetricSet)
+      pr = instance_double(PipelineRun, insert_size_metric_set: metric_set)
+      expect(helper.get_insert_size_metric_set(pr)).to be(metric_set)
+    end
+
+    it "reads the mean off a present insert-size metric set" do
+      metric_set = instance_double(InsertSizeMetricSet, mean: 305.5)
+      pr = instance_double(PipelineRun, insert_size_metric_set: metric_set)
+      expect(helper.get_insert_size_mean(pr)).to eq(305.5)
+    end
+
+    it "reads the standard deviation off a present insert-size metric set" do
+      metric_set = instance_double(InsertSizeMetricSet, standard_deviation: 12.3)
+      pr = instance_double(PipelineRun, insert_size_metric_set: metric_set)
+      expect(helper.get_insert_size_standard_deviation(pr)).to eq(12.3)
+    end
+
+    it "returns the compression ratio when it is present and non-blank" do
+      pr = instance_double(PipelineRun, compression_ratio: 2.5)
+      expect(helper.get_compression_ratio(pr)).to eq(2.5)
+    end
+
+    it "returns nil compression ratio when the value is blank" do
+      pr = instance_double(PipelineRun, compression_ratio: nil)
+      expect(helper.get_compression_ratio(pr)).to be_nil
+    end
+
+    it "returns the qc percent when it is present and non-blank" do
+      pr = instance_double(PipelineRun, qc_percent: 98.7)
+      expect(helper.get_qc_percent(pr)).to eq(98.7)
+    end
+
+    it "returns nil qc percent when the value is blank" do
+      pr = instance_double(PipelineRun, qc_percent: "")
+      expect(helper.get_qc_percent(pr)).to be_nil
+    end
+  end
+
   describe "#insert_size_metric_hash" do
     it "returns empty-string values when there is no metric set" do
       pr = instance_double(PipelineRun, insert_size_metric_set: nil)
