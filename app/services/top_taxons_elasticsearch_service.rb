@@ -60,21 +60,37 @@ class TopTaxonsElasticsearchService
   end
 
   def build_filter_param_hash
+    # Normalize to indifferent access up front. Callers pass ActionController::Parameters
+    # (string-keyed internally, indifferent []), but the include?("categories"/"subcategories"/
+    # "readSpecificity") checks below use STRING keys while every [] read uses a SYMBOL. That
+    # only lines up for ACP; a plain Hash with symbol keys would make include? return false and
+    # silently skip those filter blocks. With indifferent access, include? and [] agree
+    # regardless of the caller's key type.
+    params = @params.respond_to?(:to_unsafe_h) ? @params.to_unsafe_h : @params
+    params = params.with_indifferent_access
+
     filter_params = {}
-    filter_params[:min_reads] = @params[:minReads] ? @params[:minReads].to_i : MINIMUM_READ_THRESHOLD
-    removed_taxon_ids = (@params[:removedTaxonIds] || []).map do |x|
+    filter_params[:min_reads] = params[:minReads] ? params[:minReads].to_i : MINIMUM_READ_THRESHOLD
+    removed_taxon_ids = (params[:removedTaxonIds] || []).map do |x|
       Integer(x)
-    rescue ArgumentError
+    rescue ArgumentError, TypeError
       nil
     end
     removed_taxon_ids = removed_taxon_ids.compact
-    filter_params[:addedTaxonIds] = @params[:addedTaxonIds] || []
-    taxon_ids = @params[:taxonIds] || []
+    filter_params[:addedTaxonIds] = params[:addedTaxonIds] || []
+    # Coerce taxonIds the same way as removedTaxonIds. Taxids are integers, but from an HTTP
+    # request they arrive as strings; both sides of the set subtraction below must share a type
+    # or it silently removes nothing ("20" != 20).
+    taxon_ids = (params[:taxonIds] || []).map do |x|
+      Integer(x)
+    rescue ArgumentError, TypeError
+      nil
+    end
     taxon_ids = taxon_ids.compact
 
     taxon_ids -= removed_taxon_ids
     filter_params[:taxon_ids] = taxon_ids
-    threshold_filters = @params[:thresholdFilters]
+    threshold_filters = params[:thresholdFilters]
 
     filter_params[:threshold_filters] = if threshold_filters.is_a?(Array)
                                           (threshold_filters || []).map { |filter| JSON.parse(filter || "{}") }
@@ -84,20 +100,20 @@ class TopTaxonsElasticsearchService
 
     filter_params[:background_id] = @background_id && @background_id > 0 ? @background_id : @samples.first.default_background_id
 
-    if @params.include?("categories")
-      filter_params[:categories] = @params[:categories]
+    if params.include?("categories")
+      filter_params[:categories] = params[:categories]
     end
-    if @params.include?("subcategories")
-      subcategories = JSON.parse(@params[:subcategories])
+    if params.include?("subcategories")
+      subcategories = JSON.parse(params[:subcategories])
       filter_params[:include_phage] = subcategories && subcategories["Viruses"] && subcategories["Viruses"].include?("Phage")
     end
-    filter_params[:taxon_level] = @params[:species].to_i == TaxonCount::TAX_LEVEL_SPECIES ? TaxonCount::TAX_LEVEL_SPECIES : TaxonCount::TAX_LEVEL_GENUS
-    if @params.include?("readSpecificity")
-      filter_params[:read_specificity] = @params[:readSpecificity].to_i
+    filter_params[:taxon_level] = params[:species].to_i == TaxonCount::TAX_LEVEL_SPECIES ? TaxonCount::TAX_LEVEL_SPECIES : TaxonCount::TAX_LEVEL_GENUS
+    if params.include?("readSpecificity")
+      filter_params[:read_specificity] = params[:readSpecificity].to_i
     end
-    filter_params[:sort_by] = @params[:sortBy] || DEFAULT_TAXON_SORT_PARAM
-    filter_params[:taxons_per_sample] = @params[:taxonsPerSample] || DEFAULT_MAX_NUM_TAXONS
-    filter_params[:taxon_tags] = @params[:taxonTags] || []
+    filter_params[:sort_by] = params[:sortBy] || DEFAULT_TAXON_SORT_PARAM
+    filter_params[:taxons_per_sample] = params[:taxonsPerSample] || DEFAULT_MAX_NUM_TAXONS
+    filter_params[:taxon_tags] = params[:taxonTags] || []
 
     # add the mandatory counts > 5 threshold filter to the `threshold_filters` to be later parsed by `elasticsearch_query_helper#parse_custom_filters`
     metric_count_type = filter_params[:sort_by].split("_")[1].upcase # TODO: I am extracting the metric details out of sort_by when they should probably be passed directly from the frontend
