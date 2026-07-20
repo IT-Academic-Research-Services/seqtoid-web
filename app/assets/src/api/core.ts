@@ -14,7 +14,7 @@ const postWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
     // Just return the data.
     return resp.data;
   } catch (e) {
-    return Promise.reject(e.response.data);
+    return Promise.reject(e.response?.data ?? e);
   }
 };
 
@@ -30,7 +30,7 @@ const putWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
     // Just return the data.
     return resp.data;
   } catch (e) {
-    return Promise.reject(e.response.data);
+    return Promise.reject(e.response?.data ?? e);
   }
 };
 
@@ -40,7 +40,7 @@ const get = async (url: $TSFixMe, config: $TSFixMe = {}) => {
     // Just return the data.
     return resp.data;
   } catch (e) {
-    return Promise.reject(e.response.data);
+    return Promise.reject(e.response?.data ?? e);
   }
 };
 
@@ -54,7 +54,7 @@ const deleteWithCSRF = async (url: $TSFixMe) => {
     });
     return resp.data;
   } catch (e) {
-    return Promise.reject(e.response.data);
+    return Promise.reject(e.response?.data ?? e);
   }
 };
 
