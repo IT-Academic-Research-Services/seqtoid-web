@@ -20,13 +20,16 @@ require "rails_helper"
 #   - list_all_sample_ids gate: results[:sampleIds] added only when truthy.
 RSpec.describe Queries::SampleListQuery, type: :concern do
   # Minimal host mixing in the concern. The concern reads context[:current_user] /
-  # context[:current_power] and calls SamplesHelper methods -- the real helper is
-  # mixed in (via the concern) and its methods are stubbed on the instance. The
-  # `included do field ... end` block needs a `field` DSL method on the host; a no-op
-  # class method that ignores its block satisfies it without graphql-ruby machinery.
+  # context[:current_power] and calls SamplesHelper methods -- the real helper is mixed in
+  # (via the concern) and its methods are stubbed on the instance. The `included do field
+  # ... end` block needs a `field` DSL method on the host; a no-op class method that
+  # ignores its block satisfies it without graphql-ruby machinery. sanitize_order_dir comes
+  # from ParameterSanitization (a DIFFERENT concern than SamplesHelper), so it is mixed in
+  # too -- verify_partial_doubles requires the host class to define every method we stub.
   let(:host_class) do
     Class.new do
       def self.field(*_args, **_kwargs); end
+      include ParameterSanitization
       include Queries::SampleListQuery
       attr_accessor :context
     end
