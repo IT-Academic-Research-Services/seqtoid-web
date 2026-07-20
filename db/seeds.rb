@@ -23,6 +23,16 @@ ActiveRecord::Base.transaction do
   account_id = ENV["AWS_ACCOUNT_ID"]
   environment_name = ENV["ENVIRONMENT"]
 
+  # Fail loud rather than seed a broken ARN. A blank AWS_ACCOUNT_ID interpolates to
+  # `arn:aws:states:us-west-2::stateMachine:...` (empty account segment), which is
+  # persisted to app_config and only surfaces at dispatch as
+  # Aws::States::Errors::InvalidArn ("AccountId can not be empty") -- after the
+  # sample upload, with nothing recorded. This is the sandbox seed path (db:seed via
+  # sandbox:seed_once) that bit per-PR previews whose chart did not export
+  # AWS_ACCOUNT_ID (platform-overhaul 728). AppConfig.create never overwrites on a
+  # re-seed, so a silent mis-seed persists until the sandbox is re-provisioned.
+  raise "db/seeds.rb: AWS_ACCOUNT_ID is blank -- refusing to seed empty-account SFN ARNs" if account_id.blank?
+
   # TODO: Remove this when in production!
   # AppConfig.create({"key"=>"auto_account_creation_v1", "value"=>"1"})
 

@@ -40,7 +40,7 @@ module ParameterSanitization
     if annotation_filter.is_a?(String)
       JSON.parse(annotation_filter)["name"].downcase.parameterize(separator: '_')
     else
-      annotation_filter.name.downcase.parameterize(separator: '_') || null
+      annotation_filter.name.downcase.parameterize(separator: '_') || nil
     end
   end
 end

@@ -1,0 +1,351 @@
+name: Nightly full-platform test regime
+
+# Orchestrator for the comprehensive overnight test regime (platform-overhaul epic #734).
+# The overnight window is where we can afford slow, expensive, high-fidelity checks that
+# do NOT belong on the PR path: full suites + coverage, reference-data integrity, real
+# pipeline AUPR e2e, browser journeys, load, deep security/DAST, chaos, observability.
+#
+# This workflow FANS OUT to those suites as separate jobs and aggregates their results in
+# one `report` job. It reuses existing reusable workflows where they already exist rather
+# than duplicating them:
+#   - nightly-test-suite.yml  (full RSpec + jest + coverage)      -> unit_coverage
+#   - security-scan.yml       (gitleaks + trivy + brakeman)       -> security_dast
+#   - e2e-automation.yml      (Playwright browser journeys)       -> browser_e2e
+#
+# STATE (be honest about real vs scaffold):
+#   REAL, runs today:
+#     - unit_coverage    -> reuses nightly-test-suite.yml (#735, minus mutation testing)
+#     - data_integrity   -> runs the reference_data:integrity_check rake gate + its spec (#741)
+#     - security_scan    -> reuses security-scan.yml gitleaks/trivy/brakeman (#740, minus DAST)
+#   REAL but env-gated (only where the deployed-env vars/secrets exist):
+#     - browser_e2e      -> reuses e2e-automation.yml against dev (#738)
+#   TODO stubs (each mapped to its child ticket; a marked no-op step, not a hidden skip):
+#     - integration_suite      -> #736   cross-component (MySQL8 + OpenSearch + Redis + LocalStack S3)
+#     - pipeline_e2e_aupr      -> #737   real SFN+Batch benchmark, AUPR >= 0.98 gate
+#     - load_soak              -> #739   k6/Locust load + latency SLOs
+#     - dast_zap               -> #740   OWASP ZAP DAST against dev (SAST half is real above)
+#     - contract_api           -> #742   GraphQL federation + REST contract snapshots
+#     - chaos_resilience       -> #743   Karpenter evict / OpenSearch loss / DB failover drills
+#     - observability_alerting -> #744   synthetic signals prove alerts fire (LGTM + Sentry)
+#
+# Non-blocking by design: this is a nightly cadence, not a PR gate. The `report` job
+# summarizes every leg but does NOT hard-fail the run (exit 0), so a red suite does not
+# block anything while the regime is still being built out. Flipping `report` to
+# alert-on-red (Sentry/Slack routing) is #745.
+
+on:
+  schedule:
+    # 06:00 UTC = 23:00 PDT / 22:00 PST -- earlier than the existing nightly-test-suite
+    # (08:00 UTC) and the integration->main roll-up (09:00 UTC), so the expensive regime
+    # has run and reported before the promotion window. GitHub cron is UTC-only (no DST).
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+# Least privilege at the top; jobs that reuse a workflow needing more (e2e id-token)
+# widen it at the job level.
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-full-regime
+  cancel-in-progress: false
+
+jobs:
+  # Single canonical-repo gate for the WHOLE regime. Mirrors promote-integration-to-main.yml:
+  # a repo VARIABLE, not a `github.repository` string compare and not `github.event.repository.fork`
+  # -- GitHub reports IT-ARS/seqtoid-web as isFork=TRUE and thorvath-slower as isFork=FALSE, so the
+  # fork flag would enable this on the fork and disable it on the real upstream, exactly backwards
+  # (platform-overhaul #692). Set NIGHTLY_REGIME_ENABLED=true on the canonical repo only; forks
+  # leave it unset and the entire regime no-ops (no wasted cron, no misleading green skips).
+  guard:
+    name: Canonical-repo gate
+    if: ${{ vars.NIGHTLY_REGIME_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enabled
+        run: echo "NIGHTLY_REGIME_ENABLED=true -- running the overnight regime on this repo."
+
+  # ---- REAL, runs today -------------------------------------------------------------
+
+  unit_coverage:
+    name: Unit + coverage (RSpec + jest)
+    needs: guard
+    # Reuse the existing nightly suite verbatim (full RSpec/MySQL8 + jest + coverage).
+    # #735's mutation-testing (mutant/stryker) is not yet here -- tracked in #735.
+    uses: ./.github/workflows/nightly-test-suite.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  data_integrity:
+    name: Data-integrity / reference-data (#741)
+    needs: guard
+    runs-on: ubuntu-latest
+    container: ruby:3.3.6
+    env:
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_HOST: db
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      db:
+        image: bitnamilegacy/mysql:8.0
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: idseq_test
+          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
+          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Determine Kernel Version
+        run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
+      - name: Cache Ruby Dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
+      - name: Install system + Ruby deps
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y build-essential default-libmysqlclient-dev default-mysql-client
+          gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
+          bundle config path vendor/bundle
+          bundle install --jobs 4 --retry 3
+      - name: Prepare test schema
+        run: bundle exec rake db:create db:schema:load
+
+      # (1) Unit-level: the integrity checker's logic, driven by factories (green today).
+      - name: Integrity spec (check logic)
+        run: bundle exec rspec spec/lib/tasks/reference_data_integrity_spec.rb
+
+      # (2) End-to-end of the rake GATE itself: seed a known-good reference dataset, then
+      # assert `reference_data:integrity_check` exits 0. This exercises the actual CLI
+      # entrypoint, the versioned_lineages query, and the abort/exit contract that the
+      # (future) live-dev run relies on -- not just the pure methods.
+      - name: Seed known-good reference data
+        run: |
+          bundle exec rails runner '
+            AppConfig.find_or_create_by!(key: AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME) { |c| c.value = "nightly-selftest" }
+            AlignmentConfig.find_or_create_by!(name: "nightly-selftest") do |c|
+              c.lineage_version = "2024-02-06"
+              %w[s3_nt_db_path s3_nt_loc_db_path s3_nr_db_path s3_nr_loc_db_path s3_lineage_path s3_accession2taxid_path s3_deuterostome_db_path s3_nt_info_db_path].each { |p| c[p] = "s3://selftest/#{p}" }
+            end
+            TaxonLineage.find_or_create_by!(taxid: 694009) { |t| t.tax_name = "sars-cov-selftest"; t.version_start = "2024-02-06"; t.version_end = "2024-02-06" }
+          '
+      - name: Integrity gate PASSES on known-good data
+        run: bundle exec rake reference_data:integrity_check
+
+      # (3) Negative control: prove the gate actually GATES. Remove the sentinel lineage
+      # row (the #528 incomplete-slice scenario) and assert the rake now exits non-zero.
+      - name: Integrity gate FAILS on an incomplete slice (negative control)
+        run: |
+          set +e
+          bundle exec rails runner 'TaxonLineage.where(taxid: 694009).delete_all'
+          bundle exec rake reference_data:integrity_check
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "BUG: integrity gate returned 0 on a known-incomplete slice -- it is not gating."
+            exit 1
+          fi
+          echo "OK: integrity gate correctly failed (rc=$rc) on the incomplete slice."
+
+      # TODO(#741): run this same task against the LIVE dev reference DB (mirror
+      # bin/manual_deploy_scripts/refresh-reference-data.sh: assume DEV_AWS_ROLE, invoke
+      # rake on the deployed task definition). That validates the REAL deployed slice, not
+      # a seeded fixture. Needs DEV_AWS_ROLE + the ECS-exec path; env-gated like refresh.
+
+  security_scan:
+    name: Deep security SAST (#740)
+    needs: guard
+    # Reuse the existing security suite (gitleaks + trivy fs + brakeman). The DAST half
+    # (OWASP ZAP against dev) is the dast_zap stub below.
+    uses: ./.github/workflows/security-scan.yml
+    permissions:
+      contents: read
+      pull-requests: read
+    secrets: inherit
+
+  # ---- REAL but env-gated (deployed env) --------------------------------------------
+
+  browser_e2e:
+    name: Browser E2E (Playwright, dev) (#738)
+    needs: guard
+    # Only where the deployed-env creds/target exist. Guarded on a repo VARIABLE so the
+    # canonical repo can turn it on once NIGHTLY dev creds are wired without editing YAML;
+    # unset elsewhere (and on the fork) -> no-op, matching the browser suite's need for a
+    # live env + CZID_*/BASESPACE_* secrets.
+    if: ${{ vars.NIGHTLY_E2E_ENABLED == 'true' }}
+    uses: ./.github/workflows/e2e-automation.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      node-environment: staging
+      test-category: smoke
+      should-run-with-feature-flags: false
+    secrets: inherit
+
+  # ---- TODO stubs (each mapped to a child ticket; a marked no-op, not a hidden skip) --
+
+  integration_suite:
+    name: Cross-component integration (#736) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #736: service-level integration across"
+          echo "MySQL 8 + OpenSearch + Redis/Resque + S3 (LocalStack), cross-component seams."
+          echo "No tooling exists yet; this job is a deliberate marked placeholder."
+
+  pipeline_e2e_aupr:
+    name: Pipeline E2E + AUPR gate (#737) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #737: run the benchmark end-to-end through the"
+          echo "REAL pipeline (SFN + Batch + S3 + ECR) for all 4 workflows and gate on"
+          echo "AUPR >= 0.98 (see benchmarks-are-the-aws-e2e-validator, #388)."
+          echo ""
+          echo "The benchmark dispatch already exists in-app: SfnBenchmarkPipelineDispatchService"
+          echo "kicks off a BenchmarkWorkflowRun; BenchmarkMetricsService computes AUPR. The"
+          echo "missing piece is a scheduled invocation that (a) assumes DEV_AWS_ROLE, (b)"
+          echo "dispatches the benchmark run(s), (c) polls to completion, (d) asserts AUPR >="
+          echo "0.98 and alerts on regression. Needs live AWS (SFN/Batch/ECR) + dev role."
+          echo "Wire alongside refresh-reference-data.yml's DEV_AWS_ROLE pattern."
+
+  load_soak:
+    name: Load / performance / soak (#739) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #739: k6/Locust load against dev, latency SLOs +"
+          echo "RUM/Web-Vitals budgets; catch slow queries (top_taxons / ES). Needs dev target."
+
+  dast_zap:
+    name: DAST (OWASP ZAP, dev) (#740) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #740 (DAST half): OWASP ZAP baseline/full scan"
+          echo "against the running dev app. The SAST half (gitleaks/trivy/brakeman) is REAL"
+          echo "in the security_scan job above. Needs a deployed dev URL + ZAP action."
+
+  contract_api:
+    name: Contract / API tests (#742) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #742: GraphQL federation + REST schema/contract"
+          echo "snapshot tests. Snapshot the federated schema + key REST contracts and diff."
+
+  chaos_resilience:
+    name: Chaos / resilience (#743) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #743: exercise the failure modes we actually hit"
+          echo "-- Karpenter node eviction mid-boot (#696), OpenSearch node loss (#723-726),"
+          echo "pod restart, DB failover. Needs dev cluster access + a chaos harness."
+
+  observability_alerting:
+    name: Observability / alerting validation (#744) [STUB]
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #744: emit synthetic signals and assert alerts"
+          echo "fire through the LGTM stack + Sentry (grafana.dev.seqtoid.org, observability"
+          echo "LGTM plan #700). Proves the alerting path, not just that dashboards render."
+
+  # ---- Aggregation ------------------------------------------------------------------
+
+  report:
+    name: Nightly regime summary (#745)
+    # Always run so a red/failed leg still produces a summary; never blocks (nightly).
+    if: ${{ always() && needs.guard.result == 'success' }}
+    needs:
+      - guard
+      - unit_coverage
+      - data_integrity
+      - security_scan
+      - browser_e2e
+      - integration_suite
+      - pipeline_e2e_aupr
+      - load_soak
+      - dast_zap
+      - contract_api
+      - chaos_resilience
+      - observability_alerting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize
+        env:
+          UNIT: ${{ needs.unit_coverage.result }}
+          DATA: ${{ needs.data_integrity.result }}
+          SEC: ${{ needs.security_scan.result }}
+          E2E: ${{ needs.browser_e2e.result }}
+          INTEG: ${{ needs.integration_suite.result }}
+          PIPE: ${{ needs.pipeline_e2e_aupr.result }}
+          LOAD: ${{ needs.load_soak.result }}
+          DAST: ${{ needs.dast_zap.result }}
+          CONTRACT: ${{ needs.contract_api.result }}
+          CHAOS: ${{ needs.chaos_resilience.result }}
+          OBS: ${{ needs.observability_alerting.result }}
+        run: |
+          {
+            echo "# Nightly full-platform test regime (#734)"
+            echo ""
+            echo "| Suite | Ticket | State | Result |"
+            echo "| --- | --- | --- | --- |"
+            echo "| Unit + coverage (RSpec + jest) | #735 | real | ${UNIT} |"
+            echo "| Data-integrity / reference-data | #741 | real | ${DATA} |"
+            echo "| Deep security SAST | #740 | real | ${SEC} |"
+            echo "| Browser E2E (Playwright) | #738 | real, env-gated | ${E2E} |"
+            echo "| Cross-component integration | #736 | STUB | ${INTEG} |"
+            echo "| Pipeline E2E + AUPR gate | #737 | STUB | ${PIPE} |"
+            echo "| Load / performance / soak | #739 | STUB | ${LOAD} |"
+            echo "| DAST (OWASP ZAP) | #740 | STUB | ${DAST} |"
+            echo "| Contract / API | #742 | STUB | ${CONTRACT} |"
+            echo "| Chaos / resilience | #743 | STUB | ${CHAOS} |"
+            echo "| Observability / alerting | #744 | STUB | ${OBS} |"
+            echo ""
+            echo "Real suites gate on their own result; STUB rows are marked placeholders"
+            echo "for the #735-745 child tickets. This report is non-blocking by design."
+          } >> "$GITHUB_STEP_SUMMARY"
+          # TODO(#745): emit a structured report + route failures to Sentry/Slack, and add
+          # history/trend. For now the regime never hard-fails (exit 0) so it cannot block
+          # while it is still being built out. Flip real-suite reds to alert-on-red here.
+          echo "Nightly regime summary written (non-blocking)."

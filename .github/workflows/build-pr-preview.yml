@@ -16,6 +16,13 @@ run-name: Preview build for PR #${{ github.event.pull_request.number }}
 
 on:
   pull_request:
+    # opened/synchronize/reopened fire on PR creation + every push (the default set). `labeled`
+    # is added so applying the `preview` label AFTER a PR is created also runs this -- otherwise
+    # the sandbox link comment only ever posts if the label was present at open/push time, and
+    # labelling later (the natural UI flow) silently posts nothing (the env still comes up via
+    # Argo, which watches labels independently). The job's `if:` below skips a build for any
+    # OTHER label so non-preview labelling doesn't trigger a wasteful rebuild.
+    types: [opened, synchronize, reopened, labeled]
     branches: [integration]
 
 # One in-flight preview build per PR; a new push supersedes the previous.
@@ -36,7 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     # SAME-REPO ONLY: a fork PR gets no OIDC token (id-token is not granted to fork PRs),
     # so it could not assume the role anyway; skip it explicitly and loudly.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # AND: on a `labeled` event only proceed when the label is `preview` -- code events
+    # (opened/synchronize/reopened) always build; adding an unrelated label must not rebuild.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview')
     permissions:
       id-token: write
       contents: read

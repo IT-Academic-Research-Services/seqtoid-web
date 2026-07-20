@@ -85,7 +85,7 @@ export class DiscoverySidebar extends React.Component<
       stats: {
         numSamples: DiscoverySidebar.formatNumber((sampleStats || {}).count),
         numProjects: DiscoverySidebar.formatNumber(
-          projectStats.count || sampleStats.projectCount || 0,
+          (projectStats || {}).count || (sampleStats || {}).projectCount || 0,
         ),
         avgTotalReads: DiscoverySidebar.formatNumber(
           (sampleStats || {}).avgTotalReads,

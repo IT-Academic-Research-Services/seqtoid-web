@@ -6,6 +6,7 @@
 # DSN stands for Data Source Name.
 # https://docs.sentry.io/platforms/ruby/guides/rails/configuration/options/
 if ENV['SENTRY_DSN_BACKEND']
+  require Rails.root.join('lib/sentry_event_filter').to_s
 
   Sentry.init do |config|
     config.dsn = ENV['SENTRY_DSN_BACKEND']
@@ -37,6 +38,16 @@ if ENV['SENTRY_DSN_BACKEND']
     # Do not send PII by default. user/context is attached explicitly in
     # ApplicationController#set_sentry_context.
     config.send_default_pii = false
+
+    # Drop benign shutdown-time noise before it reports (platform-overhaul 727).
+    # Today this filters only the resque-scheduler SIGTERM race where releasing the
+    # Redis master lock hits a mid-connect socket (Errno::EALREADY caused by the
+    # shutdown Interrupt). SentryEventFilter is deliberately narrow so real Redis
+    # outages still report -- see lib/sentry_event_filter.rb.
+    config.before_send = lambda do |event, hint|
+      exception = hint && hint[:exception]
+      SentryEventFilter.shutdown_connect_race?(exception) ? nil : event
+    end
   end
 
   # Reporting failures:

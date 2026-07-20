@@ -64,6 +64,17 @@ jobs:
             exit 0
           fi
 
+          # NO-OP GUARD: main can be AHEAD of integration by commits that change no files -- most
+          # commonly the merge commit that promote-integration-to-main lands on main during the
+          # nightly promote round-trip. The trees are then identical, so there is nothing to sync;
+          # without this the fast-forward push gets rejected by branch protection and the fallback
+          # opens a PR with a 0-file diff that sits open until someone closes it. If the working
+          # trees match, stop here as a clean no-op rather than open (or leave) an empty PR.
+          if git diff --quiet origin/main origin/integration; then
+            echo "main and integration have identical trees -- nothing to sync (no-op)."
+            exit 0
+          fi
+
           # Lossless fast-forward: integration has NO commits of its own, so it can simply advance.
           if git merge-base --is-ancestor origin/integration origin/main; then
             echo "integration is strictly behind main -- fast-forwarding."
@@ -90,6 +101,15 @@ jobs:
               || true
             exit 1
           fi
+          # Belt-and-suspenders: never open an EMPTY PR. If the merged (local) branch has no file
+          # diff against integration -- e.g. it only pulled in no-op merge commits -- there is
+          # nothing to review, so stop before pushing the branch or opening a PR. The early
+          # tree-identity guard above catches the common case; this covers the diverged path too.
+          if git diff --quiet origin/integration "$BRANCH"; then
+            echo "synced branch has no file changes vs integration -- skipping PR (no-op)."
+            exit 0
+          fi
+
           git push -u origin "$BRANCH"
           gh pr create --base integration --head "$BRANCH" \
             --title "sync: bring integration up to main" \

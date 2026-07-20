@@ -16,6 +16,17 @@ module SeedResource
 
     def sfn_configs
       account_id = ENV["AWS_ACCOUNT_ID"]
+      # Fail loud rather than seed a broken ARN. When AWS_ACCOUNT_ID is blank the
+      # interpolation below produces `arn:aws:states:us-west-2::stateMachine:...`
+      # (empty account segment), which the app persists to app_config and only
+      # discovers at dispatch time as Aws::States::Errors::InvalidArn ("AccountId
+      # can not be empty") -- after the sample upload, with nothing recorded. This
+      # bit per-PR preview sandboxes whose chart did not export AWS_ACCOUNT_ID
+      # (platform-overhaul 728). find_or_create never overwrites, so a silent
+      # mis-seed persists until the sandbox is re-provisioned; aborting here makes
+      # a mis-seed impossible instead of merely unlikely.
+      raise "SeedResource::AppConfigs: AWS_ACCOUNT_ID is blank -- refusing to seed empty-account SFN ARNs" if account_id.blank?
+
       # The SWIPE state machines are named per deployment stage (idseq-swipe-<stage>-...).
       # Previously the stage was hardcoded to "dev", so seeding in the staging account produced
       # `idseq-swipe-dev-default-wdl` in the staging account -> StateMachineDoesNotExist (#385).
