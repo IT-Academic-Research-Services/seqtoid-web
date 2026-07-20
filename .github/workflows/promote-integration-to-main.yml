@@ -19,11 +19,19 @@ name: Promote integration -> main
 
 on:
   schedule:
-    # Nightly 09:00 UTC = 1am PST / 2am PDT -- overnight Pacific (nobody touching integration),
-    # and one hour AFTER the nightly test suite (0 8 UTC) so the promoted HEAD is freshly tested
-    # and the two never overlap. GitHub cron is UTC-only (no DST): midnight PST would be 08:00 UTC,
-    # which collides with the test suite, so it is shifted to 09:00 UTC. (#680)
+    # Twice-daily roll-up cadence (dev picks up reviewed integration commits at midday AND
+    # overnight, instead of once a day). Each cron opens/reuses the same integration->main PR
+    # and enables auto-merge, so a run with nothing new to promote is a cheap no-op.
+    #
+    # Overnight run: 09:00 UTC = 1am PST / 2am PDT -- overnight Pacific (nobody touching
+    # integration), and one hour AFTER the nightly test suite (0 8 UTC) so the promoted HEAD is
+    # freshly tested and the two never overlap. GitHub cron is UTC-only (no DST): midnight PST
+    # would be 08:00 UTC, which collides with the test suite, so it is shifted to 09:00 UTC. (#680)
     - cron: "0 9 * * *"
+    # Midday run: 20:00 UTC = 12:00 PST (pinned to literal PST; drifts to 1:00pm Pacific during
+    # PDT/summer, since GitHub cron has no DST). A second promotion during the working day so the
+    # morning's reviewed integration commits reach dev without waiting for the overnight roll-up.
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       reason:
