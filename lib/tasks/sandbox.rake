@@ -184,6 +184,16 @@ namespace :sandbox do
     c.query("CREATE USER IF NOT EXISTS '#{n[:user]}'@'%' IDENTIFIED BY '#{c.escape(password)}'")
     c.query("ALTER USER '#{n[:user]}'@'%' IDENTIFIED BY '#{c.escape(password)}'")
     c.query("GRANT ALL PRIVILEGES ON `#{n[:schema]}`.* TO '#{n[:user]}'@'%'")
+    # Read-only grant on the shared taxon-lineage reference schema, so this sandbox can
+    # attach its taxon_lineages as a VIEW onto the FULL lineage instead of loading a per-PR
+    # slice that omits taxid 694009 + ~20k taxa (platform-overhaul 731; mirrors how the
+    # sandbox already READS dev's shared taxon_lineages_alias in OpenSearch). SELECT-only on
+    # a fixed reference schema -- the sandbox still cannot write it and still cannot reach
+    # idseq_dev. A DB-level grant is accepted even before the schema is built, and is
+    # harmless when the feature is unused, so a sandbox is ready to attach the moment the
+    # shared reference exists. Name defaults must match sandbox_lineage_ref.rake's REF_SCHEMA.
+    ref_schema = ENV["TAXON_LINEAGE_REF_SCHEMA"].presence || "idseq_sandbox_ref"
+    c.query("GRANT SELECT ON `#{ref_schema}`.* TO '#{n[:user]}'@'%'")
     c.query("FLUSH PRIVILEGES")
     c.close
 
@@ -237,6 +247,15 @@ namespace :sandbox do
       # fleet); isolation comes from the es_host the app passes, not from a separate lambda. Pin
       # LAMBDA_ENV=dev so this holds even if a sandbox pod runs under a non-development Rails.env.
       scoped["LAMBDA_ENV"] = "dev"
+
+      # Point this sandbox's taxon_lineages at the shared FULL-lineage schema via a VIEW
+      # instead of loading a per-PR slice (platform-overhaul 731). The taxon-load hook
+      # (taxon_lineage_slice:load_slice_if_needed) branches on this var: when set it runs
+      # sandbox_lineage_ref:attach and skips the slice import + the ES rebuild. Same default
+      # as the read-only GRANT issued above and as sandbox_lineage_ref.rake's REF_SCHEMA, so
+      # the grant, the view, and the load hook all name the same schema. Read-only reference;
+      # mutable data stays in this sandbox's own idseq_pr_<N>.
+      scoped["TAXON_LINEAGE_REF_SCHEMA"] = ref_schema
       # The sandbox serves on its OWN host, so it needs its OWN SERVER_DOMAIN; importing dev's
       # pointed all three consumers at dev. Most visibly it made the sandbox return 403 "Blocked
       # hosts" on every page: config/environments/development.rb allowlists ENV["SERVER_DOMAIN"],

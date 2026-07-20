@@ -65,6 +65,10 @@ class BenchmarkWorkflowRun < WorkflowRun
 
   def additional_mngs_info
     run_ids = inputs&.[]("run_ids")
+    # A benchmark can be persisted with partial/malformed inputs (inputs nil, or no
+    # "run_ids" key). Degrade to an empty hash rather than NoMethodError on nil.each_with_object.
+    return {} if run_ids.blank?
+
     info = run_ids.each_with_object({}) do |run_id, result|
       pr = PipelineRun.find(run_id)
       sample_id = pr&.sample&.id

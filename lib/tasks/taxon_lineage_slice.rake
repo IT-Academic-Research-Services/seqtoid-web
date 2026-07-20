@@ -302,6 +302,18 @@ namespace :taxon_lineage_slice do
   # run before web/workers come up.
   desc "Idempotently load the taxon lineage slice + build its ES index (deploy hook)"
   task load_slice_if_needed: :environment do
+    # Preview sandboxes read the FULL lineage from a shared schema via a VIEW instead of
+    # loading a per-PR slice (platform-overhaul 731). When TAXON_LINEAGE_REF_SCHEMA is set
+    # (sandbox preview values), attach the view and skip BOTH the slice import and the ES
+    # rebuild below -- a sandbox's ES client reads dev's shared taxon_lineages_alias, so it
+    # has no index of its own to (re)build here. Dev/staging/prod leave the var unset and
+    # keep the existing slice/full-load behavior unchanged.
+    if ENV["TAXON_LINEAGE_REF_SCHEMA"].present?
+      puts "TAXON_LINEAGE_REF_SCHEMA=#{ENV['TAXON_LINEAGE_REF_SCHEMA']} set; attaching shared-lineage view (sandbox)."
+      Rake::Task["sandbox_lineage_ref:attach"].invoke
+      next
+    end
+
     # Completeness guard (#528, Issue 2). The old presence-only `exists?` check skipped
     # re-import once ANY row for the version existed, so a partial/truncated import (e.g. a
     # pod SIGTERM'd mid-load) was permanently masked — taxid 694009 went missing on dev for

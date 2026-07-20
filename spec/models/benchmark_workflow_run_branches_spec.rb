@@ -54,5 +54,19 @@ RSpec.describe BenchmarkWorkflowRun, type: :model do
 
       expect(run.results["additional_info"]).to eq({})
     end
+
+    it "returns an empty additional_info hash for an MNGS workflow with no run_ids" do
+      # Partial/malformed inputs: MNGS workflow selected but the "run_ids" key is
+      # absent. additional_mngs_info must degrade to {} rather than call
+      # each_with_object on nil (NoMethodError).
+      run = build_benchmark(inputs_json: {
+        "workflow_benchmarked" => "short-read-mngs",
+      }.to_json)
+      allow(run).to receive(:output).and_return(nil)
+      allow(BenchmarkMetricsService).to receive(:call).and_return({})
+
+      expect { run.results }.not_to raise_error
+      expect(run.results["additional_info"]).to eq({})
+    end
   end
 end
