@@ -98,3 +98,5 @@ blessclientconfig.yml
 
 # ngrok server domain config for local dev
 server-domain.env
+
+client-coverage
