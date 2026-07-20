@@ -27,7 +27,10 @@ const TERMS_STYLES = `
 export function TermsOfUse() {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: TERMS_STYLES }} />
+      <style
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: TERMS_STYLES }}
+      />
       <LandingHeader legalNav />
       <NarrowContainer size="small" className="terms-notice-page">
         <div className="terms-notice-legal-body">

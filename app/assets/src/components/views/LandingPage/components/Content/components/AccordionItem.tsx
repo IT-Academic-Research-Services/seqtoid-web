@@ -1,3 +1,4 @@
+import cx from "classnames";
 import React from "react";
 import cs from "./AccordionItem.scss";
 
@@ -64,7 +65,7 @@ const AccordionItem = (props: AccordionItemProps) => {
         </svg>
       )}
       <span
-        className={`${cs.accordionTitle}${props.isOpen ? ` ${cs.open}` : ""}`}
+        className={cx(cs.accordionTitle, { [cs.open]: props.isOpen })}
       >
         {props.accordionTitle}
       </span>

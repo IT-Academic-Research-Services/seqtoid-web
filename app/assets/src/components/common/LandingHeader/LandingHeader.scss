@@ -93,7 +93,7 @@
 
 // BareDropdown already lays out [trigger][caret] via .arrowOutsideTrigger
 // (display:flex, align-items:center). The caret is a SIBLING of the trigger text,
-// so the 4px text↔chevron gap goes here on the wrapper, and we force the caret
+// so the 4px text-to-chevron gap goes here on the wrapper, and we force the caret
 // icon white for the navy bar.
 .termsDropdown {
   gap: 4px;

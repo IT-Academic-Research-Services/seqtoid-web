@@ -87,7 +87,7 @@
 
   .mainMenu {
     @include font-body-xs;
-    // REBRAND: tightened spacing — the userDropdown divider now separates the nav.
+    // REBRAND: tightened spacing -- the userDropdown divider now separates the nav.
     margin-right: $sds-spaces-l;
     display: flex;
     // REBRAND: brighter nav items for legibility on the navy bar.

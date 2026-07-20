@@ -5,8 +5,8 @@
 // declared with `!default`, so they can't be overridden by pre-declaration.
 //
 // Instead, webpack's `resolve.alias` (see webpack.config.common.js) redirects that
-// import to THIS file. We pull in the real SDS tokens via a RELATIVE path — which
-// bypasses the alias and avoids infinite recursion — then override only the primary
+// import to THIS file. We pull in the real SDS tokens via a RELATIVE path -- which
+// bypasses the alias and avoids infinite recursion -- then override only the primary
 // and primary-border families with UCSF colors. Everything else is untouched.
 //
 // Scope: $sds-color-primary-* and $sds-borders-primary-* only. Values mirror

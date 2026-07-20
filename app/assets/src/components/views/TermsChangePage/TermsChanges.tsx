@@ -17,7 +17,10 @@ const TERMS_CHANGES_STYLES = `
 export const TermsChanges = () => {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: TERMS_CHANGES_STYLES }} />
+      <style
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: TERMS_CHANGES_STYLES }}
+      />
       <LandingHeader legalNav />
       <NarrowContainer size="small" className="terms-changes-page">
         <div className="terms-changes-legal-body">

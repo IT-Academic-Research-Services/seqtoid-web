@@ -1,7 +1,7 @@
 @import "~/styles/support.scss";
 
 // ===========================
-// Color tokens — cypherid-web-infra/maintenance/dist/style.css :root
+// Color tokens -- cypherid-web-infra/maintenance/dist/style.css :root
 // ===========================
 $navy:   #052049;
 $blue:   #1a6fbd;
@@ -20,7 +20,7 @@ $text:   #1e293b;
 }
 
 // ===========================
-// Legal header — navy gradient banner
+// Legal header -- navy gradient banner
 // ===========================
 .legal-header {
   background: linear-gradient(135deg, $navy 0%, #1a3a5c 100%);
@@ -40,7 +40,7 @@ $text:   #1e293b;
 }
 
 // ===========================
-// Legal body — scoped text styles via :global() so plain HTML elements match
+// Legal body -- scoped text styles via :global() so plain HTML elements match
 // Apply className={cs.legalBody} to the outer content div
 // ===========================
 .legal-body {
@@ -193,7 +193,7 @@ $text:   #1e293b;
   }
 }
 
-// Row group separator rows — applied via className={cs.rowGroup} on <tr>
+// Row group separator rows -- applied via className={cs.rowGroup} on <tr>
 .row-group {
   :global(td) {
     background: #f0f7ff;

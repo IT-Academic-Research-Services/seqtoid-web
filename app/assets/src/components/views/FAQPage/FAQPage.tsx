@@ -16,7 +16,7 @@ export class FAQPage extends React.Component {
         <div className={cs.title}>
           <h1>Frequently Asked Questions</h1>
         </div>
-        {/* TODO(REBRAND-15): Pending UCSF input — contact emails privacy@czid.org
+        {/* TODO(REBRAND-15): Pending UCSF input -- contact emails privacy@czid.org
             and security@czid.org (multiple occurrences below) still need UCSF
             replacements, and the "SeqtoID Security White Paper" (/security_white_paper)
             content is pending UCSF review. Left as-is per rebrand ground rules. */}
@@ -213,7 +213,7 @@ export class FAQPage extends React.Component {
           className={cs.question}
           header={<h3>What is your address?</h3>}
         >
-          {/* Address copied verbatim from TermsOfUse.tsx §12 Contact Information. */}
+          {/* Address copied verbatim from TermsOfUse.tsx section 12 Contact Information. */}
           <p>Our mailing address is:</p>
           <p>
             SeqToID Administrator<br />

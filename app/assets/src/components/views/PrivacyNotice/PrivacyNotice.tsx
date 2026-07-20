@@ -29,7 +29,10 @@ const PRIVACY_STYLES = `
 export const PrivacyNotice = () => {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: PRIVACY_STYLES }} />
+      <style
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: PRIVACY_STYLES }}
+      />
       <LandingHeader legalNav />
       <NarrowContainer size="small" className="privacy-notice-page">
         <div className="privacy-notice-legal-body">

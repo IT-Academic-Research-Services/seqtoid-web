@@ -19,7 +19,7 @@ interface LandingHeaderProps {
   // "Help Center" + a "Terms" dropdown instead of "Resources" + "Sign in".
   // Used only by TermsOfUse / PrivacyNotice; homepage usage is unchanged.
   legalNav?: boolean;
-  // REBRAND: bare variant — render only the logo, no right-side nav.
+  // REBRAND: bare variant -- render only the logo, no right-side nav.
   // Used by the Metadata Dictionary page.
   logoOnly?: boolean;
 }
