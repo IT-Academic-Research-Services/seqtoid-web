@@ -48,20 +48,26 @@ RSpec.describe PipelineRun, type: :model do
   end
 
   describe "#wdl_s3_folder" do
+    # NOTE: #workflow is a derived method (reads technology), not a settable column,
+    # so it is stubbed rather than passed to .new. technology is a real column and is
+    # set because wdl_s3_folder also reads it directly in the `|| nanopore` disjunct.
     it "uses the workflow-versioned folder when pipeline_version >= 5.0.0 (first disjunct)" do
-      pr = PipelineRun.new(workflow: "short-read-mngs", wdl_version: "6.1.0", technology: PipelineRun::TECHNOLOGY_INPUT[:illumina])
+      pr = PipelineRun.new(wdl_version: "6.1.0", technology: PipelineRun::TECHNOLOGY_INPUT[:illumina])
+      allow(pr).to receive(:workflow).and_return("short-read-mngs")
       allow(pr).to receive(:pipeline_version_at_least).and_return(true)
       expect(pr.wdl_s3_folder).to include("short-read-mngs-v6.1.0")
     end
 
     it "uses the workflow-versioned folder for nanopore even when < 5.0.0 (second disjunct)" do
-      pr = PipelineRun.new(workflow: "long-read-mngs", wdl_version: "3.2.0", technology: PipelineRun::TECHNOLOGY_INPUT[:nanopore])
+      pr = PipelineRun.new(wdl_version: "3.2.0", technology: PipelineRun::TECHNOLOGY_INPUT[:nanopore])
+      allow(pr).to receive(:workflow).and_return("long-read-mngs")
       allow(pr).to receive(:pipeline_version_at_least).and_return(false)
       expect(pr.wdl_s3_folder).to include("long-read-mngs-v3.2.0")
     end
 
     it "uses the legacy main folder for old illumina runs (else arm)" do
-      pr = PipelineRun.new(workflow: "short-read-mngs", wdl_version: "3.2.0", technology: PipelineRun::TECHNOLOGY_INPUT[:illumina])
+      pr = PipelineRun.new(wdl_version: "3.2.0", technology: PipelineRun::TECHNOLOGY_INPUT[:illumina])
+      allow(pr).to receive(:workflow).and_return("short-read-mngs")
       allow(pr).to receive(:pipeline_version_at_least).and_return(false)
       expect(pr.wdl_s3_folder).to include("v3.2.0/#{WorkflowRun::WORKFLOW[:main]}")
     end
