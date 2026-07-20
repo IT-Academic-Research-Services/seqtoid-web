@@ -50,7 +50,12 @@ RSpec.describe Queries::SampleListQuery, type: :concern do
     allow(rel).to receive(:offset).and_return(rel)
     allow(rel).to receive(:limit).and_return(rel)
     allow(rel).to receive(:includes).and_return(rel)
-    allow(rel).to receive(:as_json).and_return([{ "id" => ids.first }])
+    # Return a FRESH array+hash on every call. The production code calls as_json twice
+    # (limited_samples.as_json and format_samples(...).as_json) and zips the two results,
+    # doing `sample[:details] = details`. With a single shared return object both sides are
+    # the SAME hash, so that assignment makes the hash reference itself -> deep_transform_keys
+    # recurses forever (SystemStackError). A block yields a new object per call.
+    allow(rel).to receive(:as_json) { [{ "id" => ids.first }] }
     allow(rel).to receive(:map).and_return(ids)
     rel
   end
