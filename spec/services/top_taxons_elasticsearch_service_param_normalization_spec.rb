@@ -23,15 +23,15 @@ RSpec.describe TopTaxonsElasticsearchService do
   describe "#build_filter_param_hash key normalization (plain symbol-keyed Hash)" do
     it "honors categories from a symbol-keyed plain Hash" do
       # Reverting the fix (include?("categories") against a symbol-keyed Hash) drops this key.
-      expect(filter_for(categories: ["Bacteria"])[:categories]).to eq(["Bacteria"])
+      expect(filter_for({ categories: ["Bacteria"] })[:categories]).to eq(["Bacteria"])
     end
 
     it "honors subcategories/include_phage from a symbol-keyed plain Hash" do
-      expect(filter_for(subcategories: '{"Viruses":["Phage"]}')[:include_phage]).to be_truthy
+      expect(filter_for({ subcategories: '{"Viruses":["Phage"]}' })[:include_phage]).to be_truthy
     end
 
     it "honors readSpecificity from a symbol-keyed plain Hash" do
-      expect(filter_for(readSpecificity: "1")[:read_specificity]).to eq(1)
+      expect(filter_for({ readSpecificity: "1" })[:read_specificity]).to eq(1)
     end
 
     it "still omits categories when the key is genuinely absent" do
@@ -48,7 +48,7 @@ RSpec.describe TopTaxonsElasticsearchService do
     end
 
     it "removes string taxonIds when the caller is a plain symbol-keyed Hash too" do
-      result = filter_for(taxonIds: ["10", "20", "30"], removedTaxonIds: ["20"])
+      result = filter_for({ taxonIds: ["10", "20", "30"], removedTaxonIds: ["20"] })
       expect(result[:taxon_ids]).to eq([10, 30])
     end
   end
