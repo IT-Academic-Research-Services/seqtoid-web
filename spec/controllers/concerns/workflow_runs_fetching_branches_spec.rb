@@ -15,8 +15,12 @@ require "rails_helper"
 RSpec.describe WorkflowRunsFetching, type: :concern do
   # Minimal host that mixes in the concern. The collaborators the concern reads
   # (current_user / sanitize_order_dir / fetch_* helpers) are stubbed per-example.
+  # The real host (WorkflowRunsController) includes BOTH concerns. verify_partial_doubles
+  # is on, so the host class must actually define every method we stub -- including
+  # sanitize_order_dir, which lives in ParameterSanitization, not WorkflowRunsFetching.
   let(:host_class) do
     Class.new do
+      include ParameterSanitization
       include WorkflowRunsFetching
       attr_accessor :current_user, :current_power
     end
