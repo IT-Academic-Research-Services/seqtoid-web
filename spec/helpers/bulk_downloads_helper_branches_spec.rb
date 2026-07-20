@@ -50,6 +50,12 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
     it "maps percentidentity to percent_identity" do
       expect(BulkDownloadsHelper.parse_metric_string("NT_percentidentity")).to eq(["NT", "percent_identity"])
     end
+
+    it "degrades to [nil, nil] for a string with neither separator (was a NoMethodError)" do
+      # No "_" or "." -> both branches skipped -> metric_fe nil. The guard must return [nil, nil]
+      # instead of calling nil.to_sym. Removing the guard makes this raise NoMethodError.
+      expect(BulkDownloadsHelper.parse_metric_string("bogus")).to eq([nil, nil])
+    end
   end
 
   describe ".parse_filters" do

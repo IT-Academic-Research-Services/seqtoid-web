@@ -341,7 +341,9 @@ module BulkDownloadsHelper
     elsif metric_string.include?(".")
       count_type, metric_fe = metric_string.split(".", 2) # split into 2
     end
-    [count_type, METRIC_MAP[metric_fe.to_sym]]
+    # A metric string with neither "_" nor "." leaves count_type/metric_fe nil; guard the
+    # nil.to_sym (was a NoMethodError) so malformed input degrades to [nil, nil].
+    [count_type, metric_fe && METRIC_MAP[metric_fe.to_sym]]
   end
 
   def self.parse_filters(filters)
