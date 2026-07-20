@@ -13,11 +13,14 @@ require "rails_helper"
 #   - resolve: paginated_ids present -> include/exclude next guard; counts || {} nil arm.
 RSpec.describe Queries::FedWorkflowRunsAggregateQuery, type: :concern do
   # Host mixing in the concern. The `included do field ... end` needs a no-op `field` DSL.
-  # discovery_projects_scope / format_discovery_projects come from ProjectsDiscovery (not
-  # mixed in here) so they are stubbed on the instance.
+  # discovery_projects_scope / format_discovery_projects come from the ProjectsDiscovery
+  # concern; with verify_partial_doubles on, the host class must actually define them
+  # before we can stub them -- so ProjectsDiscovery is mixed in too (we only stub, never
+  # call, its real methods).
   let(:host_class) do
     Class.new do
       def self.field(*_args, **_kwargs); end
+      include ProjectsDiscovery
       include Queries::FedWorkflowRunsAggregateQuery
     end
   end
