@@ -91,6 +91,32 @@ describe("api/core.ts", () => {
     });
   });
 
+  // Regression (Sentry DEV-REACTJS-PROJECT-8/-5/-A): on a NETWORK error (timeout / abort /
+  // offline / CORS) axios rejects with an error that has NO `response`, so `e.response.data`
+  // threw a TypeError ("undefined is not an object (evaluating 'r.response.data')") that
+  // cascaded through the Discovery view. With the `e.response?.data ?? e` guard, each method
+  // must reject with the error object itself instead of crashing. Reverting the guard makes
+  // these reject with a TypeError, not the network error -> the toBe assertion fails.
+  describe("network error (no response object)", () => {
+    const netErr = { message: "Network Error", code: "ERR_NETWORK" };
+    it("post rejects with the error, not a TypeError", async () => {
+      mockedAxios.post.mockRejectedValueOnce(netErr);
+      await expect(postWithCSRF("/foo")).rejects.toBe(netErr);
+    });
+    it("put rejects with the error, not a TypeError", async () => {
+      mockedAxios.put.mockRejectedValueOnce(netErr);
+      await expect(putWithCSRF("/bar")).rejects.toBe(netErr);
+    });
+    it("get rejects with the error, not a TypeError", async () => {
+      mockedAxios.get.mockRejectedValueOnce(netErr);
+      await expect(get("/baz")).rejects.toBe(netErr);
+    });
+    it("delete rejects with the error, not a TypeError", async () => {
+      mockedAxios.delete.mockRejectedValueOnce(netErr);
+      await expect(deleteWithCSRF("/qux")).rejects.toBe(netErr);
+    });
+  });
+
   it("exposes the max-samples GET constant", () => {
     expect(MAX_SAMPLES_FOR_GET_REQUEST).toBe(256);
   });
