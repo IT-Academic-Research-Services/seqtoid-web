@@ -115,6 +115,28 @@ namespace :sandbox do
     names
   end
 
+  # The shared sandbox OpenSearch endpoint (czid-sandbox-heatmap-es), published to
+  # /idseq-sandbox-web/HEATMAP_ES_ADDRESS by the heatmap-sandbox terraform component
+  # (cypherid-web-infra). ALL preview sandboxes read/write this ONE domain instead of dev's, so a
+  # sandbox's regular-cadence taxon indexing + evictions never touch dev's heatmap/taxon data.
+  # Overridable via SANDBOX_HEATMAP_ES_ADDRESS. Fails loudly rather than letting a sandbox silently
+  # inherit dev's endpoint -- that silent inheritance is precisely the isolation bug this closes.
+  def sandbox_shared_es_address
+    override = ENV["SANDBOX_HEATMAP_ES_ADDRESS"].to_s.strip
+    return override unless override.empty?
+
+    val = `aws ssm get-parameter --name /idseq-sandbox-web/HEATMAP_ES_ADDRESS --with-decryption --query Parameter.Value --output text 2>&1`.strip
+    if !$CHILD_STATUS.success? || val.empty? || val == "None"
+      abort("[sandbox:provision] cannot resolve the sandbox OpenSearch endpoint from " \
+            "/idseq-sandbox-web/HEATMAP_ES_ADDRESS (got: #{val.inspect}). The sandbox heatmap " \
+            "domain (czid-sandbox-heatmap-es) must be provisioned first (cypherid-web-infra " \
+            "envs/dev/heatmap-sandbox). Refusing to fall back to dev's ES -- that would share " \
+            "dev's heatmap/taxon-search data with sandboxes. Set SANDBOX_HEATMAP_ES_ADDRESS to " \
+            "override.")
+    end
+    val
+  end
+
   desc "Provision a per-PR sandbox: isolated schema + scoped user + its own SSM path"
   task :provision do
     require "securerandom"
@@ -193,6 +215,28 @@ namespace :sandbox do
       scoped["DB_NAME"] = n[:schema]
       scoped["SAMPLES_BUCKET_NAME"] = sandbox_bucket
       scoped["SAMPLES_BUCKET_NAME_V1"] = sandbox_bucket
+
+      # Point the sandbox's HEATMAP OpenSearch client at the ISOLATED sandbox domain
+      # (czid-sandbox-heatmap-es), not dev's czid-dev-heatmap-es. The heatmap client writes the
+      # scored_taxon_counts + pipeline_runs indices (taxon indexing) and, via the eviction Lambda,
+      # delete_by_query on them -- exactly the destructive, regular-cadence operations that must not
+      # touch dev's data. Source of truth: /idseq-sandbox-web/HEATMAP_ES_ADDRESS, published by the
+      # heatmap-sandbox terraform component (cypherid-web-infra). The Rails app passes this host to
+      # the taxon-indexing Lambda as es_host, so a sandbox's indexing lands here too. Fail closed
+      # (no fallback to dev) -- inheriting dev's endpoint is the bug, not a safe default.
+      #
+      # ES_ADDRESS is deliberately NOT overridden: that client only reads taxon_lineages_alias (the
+      # 4.75M-doc reference taxonomy) for taxon search/autocomplete. Reference data is read-only in
+      # the sandbox path (only the admin taxonomy-refresh job writes it, which sandboxes never run),
+      # so a sandbox querying dev's copy cannot damage it -- same principle as the read-only
+      # seqtoid-public-references S3 bucket. Keeping it on dev avoids replicating 4.75M docs into
+      # every sandbox tier and keeps taxon search working with no extra data migration.
+      scoped["HEATMAP_ES_ADDRESS"] = sandbox_shared_es_address
+
+      # Keep sandboxes invoking the DEV-account taxon-indexing lambdas (there is no sandbox lambda
+      # fleet); isolation comes from the es_host the app passes, not from a separate lambda. Pin
+      # LAMBDA_ENV=dev so this holds even if a sandbox pod runs under a non-development Rails.env.
+      scoped["LAMBDA_ENV"] = "dev"
       # The sandbox serves on its OWN host, so it needs its OWN SERVER_DOMAIN; importing dev's
       # pointed all three consumers at dev. Most visibly it made the sandbox return 403 "Blocked
       # hosts" on every page: config/environments/development.rb allowlists ENV["SERVER_DOMAIN"],

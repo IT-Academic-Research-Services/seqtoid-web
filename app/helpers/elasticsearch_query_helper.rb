@@ -824,6 +824,12 @@ module ElasticsearchQueryHelper
     payload = {
       background_id: background_id,
       pipeline_run_ids: pipeline_run_ids,
+      # Tell the indexing Lambda which OpenSearch domain to write into: this pod's own heatmap
+      # host. In dev/staging/prod that is the env's shared domain (no change). In a preview
+      # sandbox, sandbox.rake overrides HEATMAP_ES_ADDRESS to the isolated sandbox domain, so the
+      # sandbox's taxon indexing lands there instead of dev's. Omitted -> the Lambda falls back to
+      # its own configured host.
+      es_host: ENV["HEATMAP_ES_ADDRESS"],
     }
     resp = call_lambda(function_name, payload)
 
@@ -885,6 +891,9 @@ module ElasticsearchQueryHelper
     function_name = "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict_selected_taxons"
     payload = {
       pipeline_run_ids: pipeline_run_ids,
+      # Same isolation as indexing: evict from this pod's own heatmap domain, so a preview
+      # sandbox's eviction targets the sandbox domain, never dev's.
+      es_host: ENV["HEATMAP_ES_ADDRESS"],
     }
     resp = call_lambda(function_name, payload)
 
