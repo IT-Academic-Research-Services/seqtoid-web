@@ -5,15 +5,29 @@ import React from "react";
 import { Footer } from "~/components/common/Footer/Footer";
 
 describe("Footer", () => {
-  it("renders the primary navigation and legal links", () => {
+  it("renders the legal and contact links", () => {
     render(React.createElement(Footer));
-    expect(screen.getByText("Github").getAttribute("href")).toContain(
-      "github.com",
+
+    const privacy = screen.getByText("Privacy");
+    expect(privacy.getAttribute("href")).toBe("/privacy");
+    expect(privacy.getAttribute("aria-label")).toBe(
+      "View the SeqtoID privacy notice",
     );
-    expect(screen.getByText("Careers")).toBeTruthy();
-    expect(screen.getByText("Resources")).toBeTruthy();
-    expect(screen.getByText("Privacy").getAttribute("href")).toBe("/privacy");
-    expect(screen.getByText("Terms").getAttribute("href")).toBe("/terms");
+
+    const terms = screen.getByText("Terms");
+    expect(terms.getAttribute("href")).toBe("/terms");
+    expect(terms.getAttribute("aria-label")).toBe(
+      "View the SeqtoID terms of use",
+    );
+
+    const contact = screen.getByText("Contact us");
+    expect(contact.getAttribute("href")).toBe(
+      "https://helpcenter.seqtoid.org/contact",
+    );
+    expect(contact.getAttribute("aria-label")).toBe(
+      "Contact the SeqtoID team (opens in new window)",
+    );
+
     expect(screen.getByText("Cookie Settings")).toBeTruthy();
   });
 
