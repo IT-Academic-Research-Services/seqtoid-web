@@ -69,24 +69,30 @@ RSpec.describe SfnExecution do
   end
 
   describe "#stop_execution" do
+    # A plain double, NOT an Aws::States::Client(stub_responses: true): the real
+    # SDK client still runs client-side request-parameter validation, which threw
+    # ArgumentError before the response stub was ever consulted. A plain double
+    # intercepts stop_execution outright, so only our branch logic is exercised.
+    let(:states) { double("Aws::States::Client") }
+
     before do
-      @states = Aws::States::Client.new(stub_responses: true)
-      allow(AwsClient).to receive(:[]).with(:states).and_return(@states)
+      allow(AwsClient).to receive(:[]).with(:states).and_return(states)
     end
 
     it "returns nil without calling AWS when the arn is blank" do
       blank = described_class.new(execution_arn: "", s3_path: s3_path)
-      expect(AwsClient).not_to receive(:[])
+      expect(states).not_to receive(:stop_execution)
       expect(blank.stop_execution).to be_nil
     end
 
     it "stops the execution and returns true on the happy path (no wait)" do
-      @states.stub_responses(:stop_execution, {})
+      allow(states).to receive(:stop_execution)
       expect(sfn_execution.stop_execution).to be(true)
+      expect(states).to have_received(:stop_execution).with(execution_arn: arn)
     end
 
     it "waits for finalization when wait is true, then returns true" do
-      @states.stub_responses(:stop_execution, {})
+      allow(states).to receive(:stop_execution)
       # Drive wait_until_finalized to exit on its first check (no sleep): return an
       # ABORTED description and an ExecutionAborted history for the two subpaths.
       allow(sfn_execution).to receive(:sfn_archive_from_s3) do |subpath|
@@ -102,7 +108,8 @@ RSpec.describe SfnExecution do
     end
 
     it "returns false when the execution no longer exists (rescue arm)" do
-      @states.stub_responses(:stop_execution, "ExecutionDoesNotExist")
+      allow(states).to receive(:stop_execution)
+        .and_raise(Aws::States::Errors::ExecutionDoesNotExist.new(nil, "gone"))
       expect(sfn_execution.stop_execution).to be(false)
     end
   end
