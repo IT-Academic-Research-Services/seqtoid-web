@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_07_21_120000) do
+ActiveRecord::Schema[7.0].define(version: 2026_07_21_130000) do
   create_table "accession_coverage_stats", charset: "utf8", collation: "utf8_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -249,6 +249,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_07_21_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "trace_id"
+    t.string "disposition", comment: "Terminal IM adjudication outcome: released or denied. Nil while the hold is unadjudicated."
+    t.string "resolution_status", comment: "Raw Descartes IM verdict that resolved the hold (e.g. Cleared, False Hit, CRI Auto-Clear, True Hit)."
+    t.string "incident_id", comment: "Resolving Descartes IM record id (SHresult id) that adjudicated this hold."
+    t.datetime "resolved_at", comment: "When a terminal IM verdict was applied. Equals released_at for a release; set on a deny while released_at stays nil."
     t.index ["screening_result_id"], name: "index_holds_on_screening_result_id"
     t.index ["subject_ref", "released_at"], name: "index_holds_on_subject_ref_and_released_at"
   end
