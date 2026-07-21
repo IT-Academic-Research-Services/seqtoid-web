@@ -119,17 +119,19 @@ class ResolveScreeningHolds
   def apply(screening_result, verdict, disposition)
     record_incident(screening_result, verdict)
     holds = Hold.for_subject(screening_result.subject_ref).active
-               .where(screening_result_id: screening_result.id)
+                .where(screening_result_id: screening_result.id)
 
     case disposition
     when :release
-      holds.each(&:release!)
+      holds.each { |hold| hold.release!(resolution_status: verdict.shstatus, incident_id: verdict.shresult_id) }
       Rails.logger.info(
         "[ResolveScreeningHolds] RELEASE subject=#{screening_result.subject_ref} " \
         "status=#{verdict.shstatus} incident=#{verdict.shresult_id}"
       )
     when :deny
-      # Terminal deny -- keep the hold in force and record it. No release, ever.
+      # Terminal deny -- keep the hold in force and record the adjudication durably on
+      # the hold (reviewed-and-denied), not just in the log. No release, ever.
+      holds.each { |hold| hold.deny!(resolution_status: verdict.shstatus, incident_id: verdict.shresult_id) }
       Rails.logger.warn(
         "[ResolveScreeningHolds] TRUE HIT kept-held subject=#{screening_result.subject_ref} " \
         "incident=#{verdict.shresult_id}"
@@ -148,7 +150,9 @@ class ResolveScreeningHolds
   def record_incident(screening_result, verdict)
     return if verdict.shresult_id.blank? || screening_result.incident_id.present?
 
-    screening_result.update_column(:incident_id, verdict.shresult_id)
+    # Deliberate single-column audit stamp: no callbacks/validations wanted, and it
+    # must not churn updated_at on an idempotent re-poll of the same verdict.
+    screening_result.update_column(:incident_id, verdict.shresult_id) # rubocop:disable Rails/SkipsModelValidations
   end
 
   # The "From" bound: the persisted watermark, or DEFAULT_LOOKBACK ago on the first ever poll. The cursor
