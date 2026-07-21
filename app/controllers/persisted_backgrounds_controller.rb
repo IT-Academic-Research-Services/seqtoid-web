@@ -42,6 +42,23 @@ class PersistedBackgroundsController < ApplicationController
         json: { error: e },
         status: :unprocessable_content
       )
+    rescue ActiveRecord::RecordNotUnique
+      # A concurrent create can slip past UniquePersistedBackgroundValidator
+      # (a TOCTOU race on the exists? check) and only lose at the DB unique
+      # index index_user_id_project_id, which raises RecordNotUnique rather
+      # than RecordInvalid. Treat a duplicate create as idempotent: return the
+      # already-persisted record instead of a 500.
+      existing = PersistedBackground.find_by(
+        user_id: current_user.id,
+        project_id: permitted_params[:projectId]
+      )
+      render(
+        json: {
+          message: "Persisted background already exists",
+          persisted_background_id: existing&.id,
+        },
+        status: :ok
+      )
     end
   end
 
