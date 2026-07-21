@@ -100,6 +100,24 @@ RSpec.describe PersistedBackgroundsController, type: :controller do
       end
     end
 
+    context "Joe's create loses a concurrent race and the DB unique index rejects the duplicate" do
+      it "should idempotently return the already-persisted background instead of a 500" do
+        existing = create(:persisted_background, user_id: @joe.id, project_id: @new_project.id, background_id: @public_bg.id)
+        # Simulate a TOCTOU race: the exists? validation passes but the DB unique
+        # index catches the duplicate on INSERT and raises RecordNotUnique, which
+        # UniquePersistedBackgroundValidator cannot prevent.
+        allow(PersistedBackground).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique)
+
+        post :create, params: { projectId: @new_project.id, backgroundId: @public_bg.id }
+
+        expect(response).to have_http_status :ok
+        json_response = JSON.parse(response.body)
+
+        expect(json_response["message"]).to eq("Persisted background already exists")
+        expect(json_response["persisted_background_id"]).to eq(existing.id)
+      end
+    end
+
     context "Joe tries to create a persisted background for another project that he does not have read access to with his own background" do
       it "should fail to create the persisted background" do
         post :create, params: { projectId: @admin_project.id, backgroundId: @public_bg.id }
