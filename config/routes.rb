@@ -178,7 +178,8 @@ Rails.application.routes.draw do
 
   # SupportController:
   get 'faqs', to: 'support#faqs'
-  get 'privacy_notice_for_user_research', to: "support#privacy_notice_for_user_research"
+  # REBRAND-24: research-participant privacy notice removed; redirect old URL to /privacy
+  get 'privacy_notice_for_user_research', to: redirect('/privacy')
   get 'impact', to: "support#impact"
   get 'privacy', to: 'support#privacy'
   get 'terms_changes', to: 'support#terms_changes'
@@ -370,8 +371,10 @@ Rails.application.routes.draw do
   # See health_check gem
   get 'health_check' => "health_check/health_check#index"
 
-  # No default favicon.ico
-  get '/favicon.ico', to: proc { [404, {}, ['']] }
+  get '/favicon.ico', to: proc { |_env|
+    ico = File.binread(Rails.root.join('app/assets/images/seqtoid_favicon.ico'))
+    [200, { 'Content-Type' => 'image/x-icon', 'Cache-Control' => 'public, max-age=86400' }, [ico]]
+  }
 
   # Un-shorten URLs. This should go second-to-last.
   get '/:id' => "shortener/shortened_urls#show"

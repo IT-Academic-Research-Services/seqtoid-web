@@ -1,44 +1,19 @@
 import cx from "classnames";
 import React from "react";
-import IconBiohubSFLogo from "~/components/ui/icons/IconBiohubSFLogo";
-import IconCziLogo from "~/components/ui/icons/IconCziLogo";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import { SeqtoIDLogoReversed } from "~ui/icons";
 import cs from "./Footer.scss";
 
 export const Footer = () => {
   return (
-    <div className={cs.footer}>
+    // Semantic <footer> element (REBRAND-26): gives the sitewide sticky-footer
+    // rules in home.scss a stable, non-CSS-modules hook (`.page_content:has(footer)`).
+    <footer className={cs.footer}>
       <div className={cs.topNavContainer}>
         <a aria-label="Go to the SeqtoID homepage" href="/">
           <SeqtoIDLogoReversed className={cs.footerLogo} />
         </a>
         <div className={cs.topNavMenu}>
-          <a
-            href="https://github.com/chanzuckerberg/czid-workflows"
-            aria-label="View the repo for czid-workflows on GitHub (opens in new window)"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Github
-          </a>
-          <a
-            // NOTE(2021-09-30): Alternatively there is https://boards.greenhouse.io/chanzuckerberginitiative/jobs/2931482 as of now.
-            href="https://boards.greenhouse.io/chanzuckerberginitiative/jobs/3293983"
-            aria-label="View the Chan Zuckerberg Initiative careers page (opens in new window)"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Careers
-          </a>
-          <a
-            href="http://help.czid.org"
-            aria-label="View the SeqtoID help page (opens in new window)"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Resources
-          </a>
         </div>
       </div>
       <div className={cs.bottomNavContainer}>
@@ -46,23 +21,19 @@ export const Footer = () => {
           <div>
             <a
               href="/privacy"
-              aria-label="View the SeqtoID privacy notice (opens in new window)"
-              target="_blank"
-              rel="noopener noreferrer"
+              aria-label="View the SeqtoID privacy notice"
             >
               Privacy
             </a>
             <span>|</span>
             <a
               href="/terms"
-              aria-label="View the SeqtoID terms of use (opens in new window)"
-              target="_blank"
-              rel="noopener noreferrer"
+              aria-label="View the SeqtoID terms of use"
             >
               Terms
             </a>
             <span>|</span>
-            <a href={CONTACT_US_LINK} target="_blank" rel="noreferrer">
+            <a href={CONTACT_US_LINK} target="_blank" rel="noreferrer" aria-label="Contact the SeqtoID team (opens in new window)">
               Contact us
             </a>
             <span>|</span>
@@ -74,34 +45,7 @@ export const Footer = () => {
             </span>
           </div>
         </div>
-        <div className={cs.czLogoContainer}>
-          <div className={cs.czLogoInnerContainer}>
-            <div>
-              <a
-                href="https://chanzuckerberg.com/"
-                className={cs.cziLogo}
-                aria-label="View the Chan Zuckerberg Initiative website (opens in new window)"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <IconCziLogo />
-              </a>
-            </div>
-            <div className={cs.separator}></div>
-            <div>
-              <a
-                href="https://www.czbiohub.org/"
-                className={cs.biohubLogo}
-                aria-label="View the Chan Zuckerberg Biohub website (opens in new window)"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <IconBiohubSFLogo />
-              </a>
-            </div>
-          </div>
-        </div>
       </div>
-    </div>
+    </footer>
   );
 };

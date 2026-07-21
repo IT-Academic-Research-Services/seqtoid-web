@@ -9,6 +9,40 @@ body {
   font-size: 14px;
   font-family: $sds-font-font-family;
 }
+
+// REBRAND-26: sitewide sticky footer, scoped with :has(footer).
+// Only pages that render a <Footer/> (Landing, FAQ, Terms, Privacy, Terms
+// Changes, Impact) match, so the flex-column shell is applied to THEM and
+// nowhere else. Authenticated data views (Discovery, Sample, heatmaps) never
+// render a footer, so :has() can't reach them and their own height/overflow
+// layout is left untouched. Footer pins to the viewport bottom on short pages
+// (via margin-top: auto) and simply follows content on long ones.
+body#id-seq:has(footer) {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.page:has(footer) {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.page_content:has(footer) {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+// The per-page React root (single child div of #page_content) must also stretch
+// so the footer inside it can be pushed to the bottom.
+.page_content:has(footer) > div {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.page_content:has(footer) footer {
+  margin-top: auto;
+  flex-shrink: 0;
+}
 .page-loading {
   position: fixed;
   display: none;

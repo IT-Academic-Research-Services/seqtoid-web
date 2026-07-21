@@ -20,12 +20,11 @@ const MainMenu = ({ adminUser, userSignedIn }: MainMenuProps) => {
     return (
       <div className={cs.loggedOutMainMenu}>
         {/* Keep referrer links */}
+        {/* TODO: update to help.seqtoid.org once help center migration is complete */}
         <a
           className={cs.item}
-          href="https://help.czid.org"
-          rel="noopener noreferrer"
-          /* eslint-disable-next-line react/jsx-no-target-blank */
-          target="_blank"
+          href="#"
+          aria-label="View the SeqtoID help page"
           data-testid="menu-item-help-center"
         >
           Help Center

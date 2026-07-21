@@ -1,3 +1,4 @@
+import cx from "classnames";
 import React from "react";
 import cs from "./AccordionItem.scss";
 
@@ -27,7 +28,12 @@ const AccordionItem = (props: AccordionItemProps) => {
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <circle cx="9.80701" cy="10.2426" r="9.80701" fill="#3867FA" />
+          <circle
+            className={cs.openCircle}
+            cx="9.80701"
+            cy="10.2426"
+            r="9.80701"
+          />
           <path d="M5.00977 10.2422L14.6045 10.2422" stroke="white" />
         </svg>
       ) : (
@@ -59,9 +65,7 @@ const AccordionItem = (props: AccordionItemProps) => {
         </svg>
       )}
       <span
-        className={cs.accordionTitle}
-        // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
-        style={props.isOpen ? { color: "#3867FA" } : null}
+        className={cx(cs.accordionTitle, { [cs.open]: props.isOpen })}
       >
         {props.accordionTitle}
       </span>

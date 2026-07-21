@@ -62,6 +62,7 @@ export class SampleUploadFlowHeader extends React.Component<SampleUploadFlowHead
               {currentStep === UploadStepType.SampleStep && (
                 <div className={cs.subtitle}>
                   Rather use our command-line interface?
+                  {/* TODO(REBRAND-19): confirm /cli_user_instructions content is SeqtoID-branded */}
                   <ExternalLink
                     href="/cli_user_instructions"
                     className={cs.link}

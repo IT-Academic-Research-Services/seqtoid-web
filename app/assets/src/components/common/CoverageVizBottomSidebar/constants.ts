@@ -1,6 +1,6 @@
 // Lighter shade of primary blue.
 export const READ_FILL_COLOR = "#A9BDFC";
-export const CONTIG_FILL_COLOR = "#3867FA";
+export const CONTIG_FILL_COLOR = "#006BE9"; // REBRAND: UCSF CTA blue
 export const REF_ACC_COLOR = "#EAEAEA";
 
 export const BLAST_NOT_AVAILABLE =

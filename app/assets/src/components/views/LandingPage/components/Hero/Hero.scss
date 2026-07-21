@@ -5,7 +5,7 @@
 
 .hero {
   font-family: $sds-font-font-family;
-  background-color: $sds-color-gray-black;
+  background-color: $primary-darkest; // REBRAND: UCSF navy (#052049)
   background: url("../../../../../images/landing_page/idseq-hero.svg");
   background-repeat: no-repeat;
   background-size: cover;
@@ -25,7 +25,7 @@
   @media (max-width: 768px) {
     text-align: left;
     padding: 48px 0 0 0;
-    background: $sds-color-gray-black;
+    background: $primary-darkest; // REBRAND: UCSF navy (#052049)
   }
 
   @media (max-width: 526px) {

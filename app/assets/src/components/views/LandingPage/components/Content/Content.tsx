@@ -82,9 +82,10 @@ export const Content = () => {
       <section className={cs.questions}>
         <h2>Frequently Asked Questions</h2>
         <KniAccordion />
+        {/* TODO: update to help.seqtoid.org once help center migration is complete */}
         <CtaButton
           text="View All Questions"
-          linkUrl="https://czid.org/faqs"
+          linkUrl="/faqs"
           aria-label="View the SeqtoID FAQ page (opens in new window)"
         />
       </section>

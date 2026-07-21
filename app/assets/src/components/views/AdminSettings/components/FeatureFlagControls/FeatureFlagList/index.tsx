@@ -21,7 +21,7 @@ export const FeatureFlagList = ({
     <>
       <h3 className={cs.header}>Unlaunched flags</h3>
       <p className={cs.text}>
-        Note: checks denote flags that are turned on for the current CZID user.
+        Note: checks denote flags that are turned on for the current SeqtoID user.
       </p>
       <ul className={cs.featureFlagList}>
         {flagNames.map(flagName => {

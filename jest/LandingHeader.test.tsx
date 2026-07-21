@@ -13,7 +13,10 @@ describe("LandingHeader", () => {
     expect(screen.getByTestId("home-top-nav-login").getAttribute("href")).toBe(
       "/auth0/login",
     );
-    expect(screen.getByTestId("home-top-nav-impact")).toBeTruthy();
+    // REBRAND-02: impact nav commented out pending impact-page re-enable. Uncomment this
+    // assertion when the {/* Case Studies */} block in LandingHeader.tsx is restored.
+    // expect(screen.getByTestId("home-top-nav-impact")).toBeTruthy();
+    expect(screen.getByTestId("home-top-nav-resources")).toBeTruthy();
   });
 
   it("toggles the mobile nav open when the hamburger is clicked", () => {

@@ -61,6 +61,8 @@ export const AMR_PIPELINE_HELP_LINK =
 
 export const CONTACT_US_LINK = "https://helpcenter.seqtoid.org/contact";
 
+export const HELP_CENTER_LINK = "https://helpcenter.seqtoid.org";
+
 export const WHITE_PAPER_LINK =
   "https://academic.oup.com/gigascience/article/9/10/giaa111/5918865";
 
