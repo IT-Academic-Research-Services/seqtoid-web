@@ -7,11 +7,17 @@ class ChangeContigsReadCountToBigint < ActiveRecord::Migration[7.2]
   #
   # base_count (bases in one contig) is left as integer: it is bounded by the
   # contig length, which never approaches 2.1 billion bases.
+  #
+  # safety_assured: strong_migrations flags change_column (a type change can
+  # rewrite the table) and aborts it at the migrate/PreSync hook -- which blocked
+  # the sandbox sync and the dev deploy. int -> bigint is a reviewed, non-destructive
+  # widening, so assert it. (contigs on dev/sandbox is small enough that the rebuild
+  # is a non-issue; revisit with an online change if this ever runs on a big table.)
   def up
-    change_column :contigs, :read_count, :bigint
+    safety_assured { change_column :contigs, :read_count, :bigint }
   end
 
   def down
-    change_column :contigs, :read_count, :integer
+    safety_assured { change_column :contigs, :read_count, :integer }
   end
 end
