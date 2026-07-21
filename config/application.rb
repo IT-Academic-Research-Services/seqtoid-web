@@ -86,3 +86,5 @@ HealthCheck.setup do |config|
   # for monitoring/readiness. (SMP-1297 / Rails 7.2 dev-deploy incident.)
   config.standard_checks = %w[database cache]
 end
+
+# platform-overhaul 782: throwaway PR to validate zero-downtime pingpong cutover on a preview sandbox.
