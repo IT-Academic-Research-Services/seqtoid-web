@@ -81,6 +81,33 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.topologySpread.enabled }}
+      # Availability: keep the replicas off a single node (and best-effort across AZs) so
+      # one node/spot loss can't take the whole app down. matchLabelKeys scopes the spread
+      # to a single rollout revision (rollouts-pod-template-hash), so during a ping-pong
+      # cutover the stable pods and the canary pods spread INDEPENDENTLY -- 4 pods don't
+      # need 4 nodes, and DoNotSchedule can't deadlock the surge. The PodDisruptionBudget
+      # (pdb.yaml) covers voluntary disruptions; this covers involuntary node loss.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.topologySpread.hostname.whenUnsatisfiable }}
+          matchLabelKeys:
+            - rollouts-pod-template-hash
+          labelSelector:
+            matchLabels:
+              {{- include "seqtoid-web.selectorLabels" . | nindent 14 }}
+        {{- if .Values.topologySpread.zone.enabled }}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: {{ .Values.topologySpread.zone.whenUnsatisfiable }}
+          matchLabelKeys:
+            - rollouts-pod-template-hash
+          labelSelector:
+            matchLabels:
+              {{- include "seqtoid-web.selectorLabels" . | nindent 14 }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: rails
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
