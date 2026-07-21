@@ -30,9 +30,18 @@ spec:
             pathType: Prefix
             backend:
               service:
+                {{- if eq .Values.rolloutStrategy "pingpong" }}
+                # Argo Rollouts rewrites this backend into a weighted ALB action that
+                # splits between the ping and pong target groups. port.name must be
+                # use-annotation so the AWS LB Controller reads the action annotation.
+                name: {{ include "seqtoid-web.fullname" . }}-root
+                port:
+                  name: use-annotation
+                {{- else }}
                 name: {{ include "seqtoid-web.fullname" . }}-active
                 port:
                   number: {{ .Values.service.port }}
+                {{- end }}
     {{- /* Additional hostnames routed to the same active service — e.g. a
            www.<host> vanity host that the app 301-redirects to the apex. Needed so
            the ALB serves them (the cert must already cover them) rather than 404,
@@ -45,8 +54,14 @@ spec:
             pathType: Prefix
             backend:
               service:
+                {{- if eq $.Values.rolloutStrategy "pingpong" }}
+                name: {{ include "seqtoid-web.fullname" $ }}-root
+                port:
+                  name: use-annotation
+                {{- else }}
                 name: {{ include "seqtoid-web.fullname" $ }}-active
                 port:
                   number: {{ $.Values.service.port }}
+                {{- end }}
     {{- end }}
 {{- end }}

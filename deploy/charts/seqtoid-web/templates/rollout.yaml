@@ -1,6 +1,12 @@
-# The web workload as an Argo Rollouts blueGreen Rollout (NOT a Deployment).
-# activeService takes live traffic; previewService fronts the new color for the
-# smoke AnalysisRun before promotion.
+# The web workload as an Argo Rollouts Rollout (NOT a Deployment).
+#
+# rolloutStrategy == blueGreen: activeService takes live traffic; previewService fronts
+#   the new color for the smoke AnalysisRun before promotion.
+# rolloutStrategy == pingpong: canary + ALB weighted target groups. The ping/pong pair
+#   keep static selectors (so pod readiness gates inject) and the ALB shifts weight
+#   between two target groups instead of an atomic selector flip -- zero-downtime. A
+#   single setWeight:100 step preserves the "validate then cut over" behavior. See the
+#   rolloutStrategy comment in values.yaml for why blueGreen drops traffic on ALB.
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -18,6 +24,28 @@ spec:
     matchLabels:
       {{- include "seqtoid-web.selectorLabels" . | nindent 6 }}
   strategy:
+    {{- if eq .Values.rolloutStrategy "pingpong" }}
+    canary:
+      pingPong:
+        pingService: {{ include "seqtoid-web.fullname" . }}-ping
+        pongService: {{ include "seqtoid-web.fullname" . }}-pong
+      trafficRouting:
+        alb:
+          ingress: {{ include "seqtoid-web.fullname" . }}
+          servicePort: {{ .Values.service.port }}
+          # The ingress backend points at -root (port use-annotation); Argo writes the
+          # weighted ALB action that splits between the ping and pong target groups.
+          rootService: {{ include "seqtoid-web.fullname" . }}-root
+      steps:
+        # Single full cutover: bring up the new color, let readiness gates + the
+        # controller's --aws-verify-target-group confirm the new target group is
+        # healthy, then shift 100% of weight. No atomic flip, so no zero-target window.
+        - setWeight: 100
+      # NOTE: the Job-based smoke AnalysisTemplate targets the fixed -preview service and
+      # so is blueGreen-only; re-adding an app-level smoke gate for pingpong (canary
+      # service name plumbed in) is a fast-follow. Readiness gates + verify-target-group
+      # already gate the cutover on ALB health.
+    {{- else }}
     blueGreen:
       activeService: {{ include "seqtoid-web.fullname" . }}-active
       previewService: {{ include "seqtoid-web.fullname" . }}-preview
@@ -40,6 +68,7 @@ spec:
           - templateName: {{ include "seqtoid-web.fullname" . }}-smoke
       {{- end }}
       {{- end }}
+    {{- end }}
   template:
     metadata:
       labels:
