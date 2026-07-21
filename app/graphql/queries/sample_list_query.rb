@@ -60,7 +60,7 @@ module Queries
                 [MAX_SAMPLES_LIMIT, limit].min
               end
 
-      offset = params[offset].to_i
+      offset = params[:offset].to_i
 
       list_all_sample_ids = ActiveModel::Type::Boolean.new.cast(params[:listAllIds])
 
