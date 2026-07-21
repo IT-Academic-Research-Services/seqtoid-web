@@ -34,7 +34,7 @@ module CzidGraphqlFederation
                       end
 
     resp = Client.query(query, variables: variables, context: context)
-    if resp.errors.any?
+    if resp&.errors&.any?
       err_msg = resp&.errors&.details&.to_h
       LogUtil.log_error(
         "GraphQL federation query failed: #{err_msg}",
