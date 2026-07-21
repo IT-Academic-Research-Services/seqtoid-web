@@ -34,3 +34,10 @@ CVE-2026-42246
 CVE-2026-42257
 CVE-2025-61594
 CVE-2026-27820
+
+# CVE-2026-59869 js-yaml 3.14.2 (transitive, build-time) -- DoS via crafted YAML. js-yaml
+# is a BUILD-tool transitive dep (^3.14.1), not parsing untrusted runtime input, so DoS
+# exposure is low. Fixed in 3.15.0 (safe in-3.x bump). Newly-disclosed CVE blocking ALL
+# dev builds; baselined to unblock. FORWARD-FIX tracked: add overrides js-yaml=3.15.0 +
+# regen lockfile on node-24 (local node-26 can't regen). platform-overhaul #786.
+CVE-2026-59869
