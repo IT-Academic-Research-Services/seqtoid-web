@@ -47,11 +47,47 @@ RSpec.describe Hold, type: :model do
       expect(hold.released_at).to be_present
     end
 
+    it "records the terminal IM verdict as a durable adjudication (SMP-1253)" do
+      hold = create(:hold)
+      hold.release!(resolution_status: "Cleared", incident_id: "IM-42")
+
+      expect(hold.reload).not_to be_active
+      expect(hold).to be_adjudicated
+      expect(hold.disposition).to eq(Hold::DISPOSITION_RELEASED)
+      expect(hold.resolution_status).to eq("Cleared")
+      expect(hold.incident_id).to eq("IM-42")
+      expect(hold.resolved_at).to be_present
+    end
+
     it "is idempotent -- keeps the first release timestamp" do
       hold = create(:hold, :released)
       first = hold.released_at
       hold.release!(at: 1.day.from_now)
       expect(hold.reload.released_at).to be_within(1.second).of(first)
+    end
+  end
+
+  describe "#deny!" do
+    it "records a terminal deny durably WITHOUT releasing the hold" do
+      hold = create(:hold)
+      hold.deny!(resolution_status: "True Hit", incident_id: "IM-99")
+
+      expect(hold.reload).to be_active # stays in force -- a deny never releases
+      expect(hold).to be_adjudicated
+      expect(hold.disposition).to eq(Hold::DISPOSITION_DENIED)
+      expect(hold.resolution_status).to eq("True Hit")
+      expect(hold.incident_id).to eq("IM-99")
+      expect(hold.resolved_at).to be_present
+    end
+
+    it "is idempotent -- only the first terminal verdict is recorded" do
+      hold = create(:hold)
+      hold.deny!(resolution_status: "True Hit", incident_id: "IM-99")
+      first = hold.reload.resolved_at
+      hold.deny!(at: 1.day.from_now, resolution_status: "True Hit", incident_id: "IM-different")
+
+      expect(hold.reload.resolved_at).to be_within(1.second).of(first)
+      expect(hold.incident_id).to eq("IM-99")
     end
   end
 

@@ -4,9 +4,14 @@
 # enabled behind its OFF-by-default flag.
 class Hold < ApplicationRecord
   # Why a hold was placed. Kept explicit so the record is self-describing.
-  REASON_SCREENING_HIT = "screening_hit".freeze  # a real alert-level match
-  REASON_SCREENING_ERROR = "screening_error".freeze  # fail-closed: vendor error/timeout/misconfig
+  REASON_SCREENING_HIT = "screening_hit".freeze # a real alert-level match
+  REASON_SCREENING_ERROR = "screening_error".freeze # fail-closed: vendor error/timeout/misconfig
   REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR].freeze
+
+  # Terminal IM adjudication outcomes recorded on the hold (SMP-1253 audit trail).
+  DISPOSITION_RELEASED = "released".freeze
+  DISPOSITION_DENIED = "denied".freeze
+  DISPOSITIONS = [DISPOSITION_RELEASED, DISPOSITION_DENIED].freeze
 
   # The screen that triggered the hold. Optional: a fail-closed error may have no persisted screen row.
   belongs_to :screening_result, optional: true
@@ -24,10 +29,42 @@ class Hold < ApplicationRecord
     released_at.nil?
   end
 
-  # Mark the hold released (adjudicated). Idempotent -- keeps the first release timestamp.
-  def release!(at: Time.current)
+  # True once a terminal IM verdict has been recorded on the hold (released OR denied).
+  # A hold can be adjudicated?=true yet still active? (a True Hit stays in force).
+  def adjudicated?
+    resolved_at.present?
+  end
+
+  # Mark the hold released after a terminal-clear IM verdict. Idempotent -- keeps the
+  # first release, so a re-poll of the same verdict does not churn the row.
+  #
+  # resolution_status (the raw IM verdict) and incident_id (the resolving IM record)
+  # make the human adjudication a DURABLE record on the hold, not just a timestamp
+  # plus an ephemeral log line (SMP-1253). resolved_at mirrors released_at here.
+  def release!(at: Time.current, resolution_status: nil, incident_id: nil)
     return true unless active?
 
-    update!(released_at: at)
+    update!(
+      released_at: at,
+      resolved_at: at,
+      disposition: DISPOSITION_RELEASED,
+      resolution_status: resolution_status,
+      incident_id: incident_id
+    )
+  end
+
+  # Record a terminal DENY (IM True Hit). The hold STAYS in force (released_at nil) but
+  # the adjudication becomes a durable record -- reviewed-and-denied, not indistinguishable
+  # from never-reviewed. Idempotent: only the first terminal verdict is recorded, and this
+  # NEVER releases the hold.
+  def deny!(at: Time.current, resolution_status: nil, incident_id: nil)
+    return true if adjudicated?
+
+    update!(
+      resolved_at: at,
+      disposition: DISPOSITION_DENIED,
+      resolution_status: resolution_status,
+      incident_id: incident_id
+    )
   end
 end

@@ -14,7 +14,7 @@ RSpec.describe ResolveScreeningHolds, type: :job do
   def held_subject(sdistributedid:, soptionalid: '0', subject_ref: nil)
     ref = subject_ref || "user:#{sdistributedid}"
     sr = create(:screening_result, :red, subject_ref: ref, soptionalid: soptionalid,
-                                          sdistributedid: sdistributedid)
+                                         sdistributedid: sdistributedid)
     hold = create(:hold, subject_ref: ref, screening_result: sr)
     [sr, hold]
   end
@@ -69,6 +69,17 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(sr.reload.incident_id).to eq('100')
     end
 
+    it 'records the release adjudication durably on the hold (SMP-1253)' do
+      _sr, hold = held_subject(sdistributedid: '100b')
+      run_with([verdict(status: 'Cleared', shresult_id: '100b')])
+
+      hold.reload
+      expect(hold.disposition).to eq(Hold::DISPOSITION_RELEASED)
+      expect(hold.resolution_status).to eq('Cleared')
+      expect(hold.incident_id).to eq('100b')
+      expect(hold.resolved_at).to be_present
+    end
+
     it 'RELEASES on False Hit' do
       _sr, hold = held_subject(sdistributedid: '101')
       run_with([verdict(status: 'False Hit', shresult_id: '101')])
@@ -89,6 +100,19 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(sr.reload.incident_id).to eq('103')
     end
 
+    it 'records the True Hit deny durably on the hold while leaving it in force (SMP-1253)' do
+      _sr, hold = held_subject(sdistributedid: '103b')
+      run_with([verdict(status: 'True Hit', shresult_id: '103b')])
+
+      hold.reload
+      expect(hold).to be_active # a deny never releases the hold
+      expect(hold).to be_adjudicated # but the review is now durable, not just logged
+      expect(hold.disposition).to eq(Hold::DISPOSITION_DENIED)
+      expect(hold.resolution_status).to eq('True Hit')
+      expect(hold.incident_id).to eq('103b')
+      expect(hold.resolved_at).to be_present
+    end
+
     ['DS New', 'Actioned', 'Escalated', 'Closed'].each do |status|
       it "KEEPS HELD on the non-terminal status #{status}" do
         _sr, hold = held_subject(sdistributedid: "200-#{status}")
@@ -99,7 +123,7 @@ RSpec.describe ResolveScreeningHolds, type: :job do
 
     it 'correlates by soptionalid (table-keyed) when the result id does not match a row' do
       sr = create(:screening_result, :red, subject_ref: 'user:sopt', soptionalid: '4242',
-                                            sdistributedid: 'unmatched-dist')
+                                           sdistributedid: 'unmatched-dist')
       hold = create(:hold, subject_ref: 'user:sopt', screening_result: sr)
 
       run_with([verdict(status: 'Cleared', shresult_id: 'no-such-dist', shoptid: '4242')])

@@ -47,8 +47,13 @@ class ConsensusGenomeMetricsService
     metrics = add_quast_metrics(metrics)
 
     return metrics
-  rescue SfnExecution::SfnDescriptionNotFoundError => err
-    LogUtil.log_error("ConsensusGenomeMetricsService: Cannot generate Consensus Genome metrics when the SFN description is not found", exception: err)
+  rescue SfnExecution::SfnDescriptionNotFoundError
+    # A missing SFN description is expected for old workflow runs whose Step
+    # Functions execution history has aged out (~90 days) and were never
+    # archived to S3: the metrics are simply unavailable, not an application
+    # error. Log at info level instead of capturing an exception to Sentry
+    # (DEV-RAILS-PROJECT-J / -H).
+    LogUtil.log_message("ConsensusGenomeMetricsService: Cannot generate Consensus Genome metrics when the SFN description is not found", workflow_run_id: @workflow_run.id)
     return nil
   end
 
