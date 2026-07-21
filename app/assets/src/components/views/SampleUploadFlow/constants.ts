@@ -1,6 +1,7 @@
 import { IconNameToSizes } from "@czi-sds/components";
 import { IconCovidVirusXLarge } from "~/components/ui/icons";
 import { WorkflowType } from "~/components/utils/workflows";
+import { Tag } from "@aws-sdk/client-s3";
 
 export const NO_TARGET_PROJECT_ERROR =
   "Please select a SeqtoID project to upload your samples to.";
@@ -426,3 +427,7 @@ export const INPUT_FILE_TYPES = {
   PRIMER_BED: "primer_bed",
   REFERENCE_SEQUENCE: "reference_sequence",
 };
+
+export const INPUT_FILE_S3_TAGS: Array<Tag> = [
+    { Key: "type", Value: "sample" },
+];

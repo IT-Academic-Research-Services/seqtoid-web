@@ -1,4 +1,4 @@
-import { ChecksumAlgorithm, S3Client } from "@aws-sdk/client-s3";
+import { ChecksumAlgorithm, PutObjectCommandInput, S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import cx from "classnames";
 import { find, get, map, pick, take } from "lodash/fp";
@@ -11,6 +11,7 @@ import {
 import { TaxonOption } from "~/components/common/filters/types";
 import PrimaryButton from "~/components/ui/controls/buttons/PrimaryButton";
 import { logError } from "~/components/utils/logUtil";
+import { inputFileS3Tags, s3TagsToUrlParams } from "~/components/views/SampleUploadFlow/utils";
 import { MetadataBasic, Project, SampleFromApi } from "~/interface/shared";
 import Modal from "~ui/containers/Modal";
 import { UploadWorkflows } from "../../../../constants";
@@ -243,7 +244,7 @@ export const RemoteUploadProgressModal = ({
   };
 
   const uploadInputFileToS3 = async (
-    _sample: SampleForUpload,
+    sample: SampleForUpload,
     inputFile: PathToFile,
     s3Client: S3Client,
   ) => {
@@ -253,16 +254,20 @@ export const RemoteUploadProgressModal = ({
       s3_file_path: s3Key,
     } = inputFile;
 
-    const uploadParams = {
+    const tags = inputFileS3Tags(sample.id);
+
+    const uploadParams: PutObjectCommandInput = {
       Bucket: s3Bucket,
       Key: s3Key,
       Body: body,
       ChecksumAlgorithm: ChecksumAlgorithm.SHA256,
+      Tagging: s3TagsToUrlParams(tags),
     };
 
     const fileUpload = new Upload({
       client: s3Client,
       params: uploadParams,
+      tags: tags,
     });
 
     await fileUpload.done();

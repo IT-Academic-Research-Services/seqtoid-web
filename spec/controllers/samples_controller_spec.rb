@@ -763,6 +763,7 @@ RSpec.describe SamplesController, type: :controller do
         action = [
           "s3:GetObject",
           "s3:PutObject",
+          "s3:PutObjectTagging",
           "s3:CreateMultipartUpload",
           "s3:AbortMultipartUpload",
           "s3:ListMultipartUploadParts",
