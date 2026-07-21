@@ -1,7 +1,8 @@
 import cx from "classnames";
 import { nanoid } from "nanoid";
 import React from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Footer } from "~/components/common/Footer";
+import { LandingHeader } from "~/components/common/LandingHeader";
 import { Accordion, NarrowContainer } from "~/components/layout";
 import List from "~/components/ui/List";
 import cs from "./faqs_page.scss";
@@ -9,10 +10,16 @@ import cs from "./faqs_page.scss";
 export class FAQPage extends React.Component {
   render() {
     return (
-      <NarrowContainer className={cs.faqPage} size="small">
+      <>
+        <LandingHeader legalNav />
+        <NarrowContainer className={cs.faqPage} size="small">
         <div className={cs.title}>
           <h1>Frequently Asked Questions</h1>
         </div>
+        {/* TODO(REBRAND-15): Pending UCSF input -- contact emails privacy@czid.org
+            and security@czid.org (multiple occurrences below) still need UCSF
+            replacements, and the "SeqtoID Security White Paper" (/security_white_paper)
+            content is pending UCSF review. Left as-is per rebrand ground rules. */}
         <Accordion
           className={cs.question}
           header={
@@ -62,7 +69,7 @@ export class FAQPage extends React.Component {
                 Metadata with all SeqtoID users but that is completely up to
                 you. You can choose to share your Report Data with a small group
                 of SeqtoID users, by adding them to a Project, or with all other
-                CZ ID users by marking a Project as {'"Public"'}.
+                SeqtoID users by marking a Project as {'"Public"'}.
               </React.Fragment>,
             ]}
           />
@@ -164,7 +171,7 @@ export class FAQPage extends React.Component {
                 Other metadata can be uploaded to SeqtoID but is not required
                 and may be deleted at any point. We have put together a metadata
                 ontology that you can find{" "}
-                <RouterLink to="/metadata/dictionary">here </RouterLink>
+                <a href="/metadata/dictionary">here </a>
                 that does not include any fields where Protected Health
                 Information (PHI) can be derived.
               </React.Fragment>,
@@ -206,14 +213,14 @@ export class FAQPage extends React.Component {
           className={cs.question}
           header={<h3>What is your address?</h3>}
         >
-          <List
-            listItems={[
-              `Chan Zuckerberg Biohub, 499 Illinois Street, Fourth Floor San
-              Francisco, CA 94158`,
-              `Chan Zuckerberg Initiative, LLC, 801 Jefferson Ave, Redwood City,
-              CA 94063`,
-            ]}
-          />
+          {/* Address copied verbatim from TermsOfUse.tsx section 12 Contact Information. */}
+          <p>Our mailing address is:</p>
+          <p>
+            SeqToID Administrator<br />
+            1855 Folsom St, Suite 601<br />
+            San Francisco, CA 94143<br />
+            USA
+          </p>
         </Accordion>
         <Accordion
           className={cs.question}
@@ -228,8 +235,8 @@ export class FAQPage extends React.Component {
             Cookies are small text files sent by your computer or device each
             time you visit our website. They are stored in your browser’s cache
             or mobile device and allow a website or a third party to recognize
-            your browser. Some of the cookies we use are associated with your CZ
-            ID account (including information about you, such as the email
+            your browser. Some of the cookies we use are associated with your
+            SeqtoID account (including information about you, such as the email
             address you gave us) and other cookies are not.
           </p>
           <p>Cookies can be classified by their lifespan:</p>
@@ -333,9 +340,27 @@ export class FAQPage extends React.Component {
           <p>Yes, you do.</p>
           <p>
             You have options to control or limit how we and our partners use
-            cookies and similar technologies on czid.org. You can learn more and
+            cookies and similar technologies on seqtoid.org. You can learn more and
             adjust your cookie preferences by visiting the{" "}
-            <span className={cx(cs.cookieSettings, "optanon-show-settings")}>
+            {/* This span lives inside a collapsed Accordion, so it isn't in the
+                DOM when OneTrust binds its `.optanon-show-settings` handlers at
+                init (unlike the always-present Footer link). Invoke the OneTrust
+                API directly so the preference center opens reliably. */}
+            <span
+              className={cx(cs.cookieSettings, "optanon-show-settings")}
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                // @ts-expect-error OneTrust is injected globally by the OneTrust script
+                window.OneTrust?.ToggleInfoDisplay?.()
+              }
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  // @ts-expect-error OneTrust is injected globally by the OneTrust script
+                  window.OneTrust?.ToggleInfoDisplay?.();
+                }
+              }}
+            >
               Cookie Settings
             </span>
             . You also have choices and control over the cookies that you allow
@@ -363,7 +388,7 @@ export class FAQPage extends React.Component {
         >
           <p>
             We rely on service providers to help us provide, improve, and secure
-            the service, including Chan Zuckerberg Initiative our technology
+            the service, including UCSF, our technology
             partner. In our terms with third party service providers, we work
             with service providers to secure data from unauthorized access and
             use and limit their use of data to providing and improving relevant
@@ -394,7 +419,9 @@ export class FAQPage extends React.Component {
             <a href="mailto:security@czid.org">security@czid.org</a>.
           </p>
         </Accordion>
-      </NarrowContainer>
+        </NarrowContainer>
+        <Footer />
+      </>
     );
   }
 }

@@ -2,7 +2,6 @@ class SupportController < ApplicationController
   PUBLIC_ACTIONS = [
     :faqs,
     :impact,
-    :privacy_notice_for_user_research,
     :privacy,
     :terms_changes,
     :terms,
@@ -13,25 +12,35 @@ class SupportController < ApplicationController
   skip_before_action :authenticate_user!, :verify_authenticity_token, only: PUBLIC_ACTIONS
 
   def privacy
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the PrivacyNotice component is the only header here.
+    @hide_header = true
   end
 
   def terms
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the TermsOfUse component is the only header here.
+    @hide_header = true
   end
 
   def terms_changes
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the TermsChanges component is the only header here.
+    @hide_header = true
   end
 
   def faqs
-    render "home/discovery_view_router"
-  end
-
-  def privacy_notice_for_user_research
-    render "home/discovery_view_router"
+    # REBRAND: hide the global page_header (black utility strip); the navy
+    # LandingHeader rendered by the FAQPage component is the only header here.
+    # Rendered standalone (default support/faqs view) to match /privacy and /terms.
+    @hide_header = true
   end
 
   def impact
-    @hide_header = true
-    render "home/discovery_view_router"
+    # REBRAND: Impact page temporarily disabled
+    redirect_to root_path
+    # @hide_header = true
+    # render "home/discovery_view_router"
   end
 
   def security_white_paper

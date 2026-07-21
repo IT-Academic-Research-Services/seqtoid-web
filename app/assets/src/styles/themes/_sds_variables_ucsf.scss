@@ -1,0 +1,28 @@
+// REBRAND: UCSF override of the @czi-sds design-system SCSS tokens.
+//
+// The app imports `~@czi-sds/components/dist/variables` in ~226 places to get the
+// SDS color/border tokens, which ship as CZ blue (#3867fa). Those tokens are not
+// declared with `!default`, so they can't be overridden by pre-declaration.
+//
+// Instead, webpack's `resolve.alias` (see webpack.config.common.js) redirects that
+// import to THIS file. We pull in the real SDS tokens via a RELATIVE path -- which
+// bypasses the alias and avoids infinite recursion -- then override only the primary
+// and primary-border families with UCSF colors. Everything else is untouched.
+//
+// Scope: $sds-color-primary-* and $sds-borders-primary-* only. Values mirror
+// app/assets/src/styles/themes/_colors.scss (400 = UCSF CTA blue, 600 = UCSF navy).
+
+@import "../../../../../node_modules/@czi-sds/components/dist/variables";
+
+$sds-color-primary-100: #f5faff;
+$sds-color-primary-200: #e2f4fc;
+$sds-color-primary-300: #8cb4f5;
+$sds-color-primary-400: #006be9; // UCSF CTA blue
+$sds-color-primary-500: #0055ba;
+$sds-color-primary-600: #052049; // UCSF navy
+
+$sds-borders-primary-300: 1px solid #8cb4f5;
+$sds-borders-primary-400: 1px solid #006be9;
+$sds-borders-primary-500: 1px solid #0055ba;
+$sds-borders-primary-600: 1px solid #052049;
+$sds-borders-primary-dashed: 2px dashed #006be9;

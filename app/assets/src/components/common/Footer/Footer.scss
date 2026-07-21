@@ -4,7 +4,7 @@
 @import "~@czi-sds/components/dist/variables";
 
 .footer {
-  background: $sds-color-gray-black;
+  background: $primary-darkest; // REBRAND: UCSF navy (#052049)
   color: $sds-color-gray-white;
   padding: 3rem 4rem;
   font-family: $sds-font-font-family;
@@ -65,7 +65,7 @@
 }
 
 .topNavMenuTop {
-  background: $sds-color-gray-black;
+  background: $primary-darkest; // REBRAND: UCSF navy (#052049)
 }
 
 .bottomNavContainer {

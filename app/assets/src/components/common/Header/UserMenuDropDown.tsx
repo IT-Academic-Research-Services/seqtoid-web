@@ -1,8 +1,10 @@
 import React from "react";
-import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
+import {
+  CONTACT_US_LINK,
+  HELP_CENTER_LINK,
+} from "~/components/utils/documentationLinks";
 import BareDropdown from "~ui/controls/dropdowns/BareDropdown";
 import { postToUrlWithCSRF } from "~utils/links";
-import ExternalLink from "../../ui/controls/ExternalLink";
 import cs from "./header.scss";
 
 interface UserMenuDropDownProps {
@@ -64,9 +66,15 @@ const UserMenuDropDown = ({
       <BareDropdown.Item
         key="help"
         text={
-          <ExternalLink className={cs.option} href="https://help.czid.org">
+          <a
+            className={cs.option}
+            href={HELP_CENTER_LINK}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View the SeqtoID help center (opens in new window)"
+          >
             Help Center
-          </ExternalLink>
+          </a>
         }
       />,
       <BareDropdown.Item
@@ -77,6 +85,7 @@ const UserMenuDropDown = ({
             href={CONTACT_US_LINK}
             target="_blank"
             rel="noreferrer"
+            aria-label="Contact the SeqtoID team (opens in new window)"
           >
             Contact Us
           </a>
@@ -114,12 +123,7 @@ export const TermsDropdownItem = (
   <BareDropdown.Item
     key="terms_of_service"
     text={
-      <a
-        className={cs.option}
-        target="_blank"
-        rel="noopener noreferrer"
-        href="/terms"
-      >
+      <a className={cs.option} href="/terms" aria-label="View the SeqtoID terms of use">
         Terms of Use
       </a>
     }
@@ -130,12 +134,7 @@ export const PrivacyDropdownItem = (
   <BareDropdown.Item
     key="privacy_notice"
     text={
-      <a
-        className={cs.option}
-        target="_blank"
-        rel="noopener noreferrer"
-        href="/privacy"
-      >
+      <a className={cs.option} href="/privacy" aria-label="View the SeqtoID privacy notice">
         Privacy Policy
       </a>
     }

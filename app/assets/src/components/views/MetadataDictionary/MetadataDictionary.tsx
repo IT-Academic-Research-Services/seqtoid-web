@@ -10,6 +10,7 @@ import _fp, {
 } from "lodash/fp";
 import React from "react";
 import { getOfficialMetadataFields } from "~/api/metadata";
+import { LandingHeader } from "~/components/common/LandingHeader";
 import NarrowContainer from "~/components/layout/NarrowContainer";
 import DataTable from "~/components/visualizations/table/DataTable";
 import { Dropdown } from "~ui/controls/dropdowns";
@@ -128,7 +129,9 @@ export class MetadataDictionary extends React.Component {
   render() {
     const fieldGroupsToDisplay = this.getFieldGroups();
     return (
-      <NarrowContainer className={cs.metadataDictionary}>
+      <>
+        <LandingHeader logoOnly />
+        <NarrowContainer className={cs.metadataDictionary}>
         <div className={cs.title}>Metadata Dictionary</div>
         {!fieldGroupsToDisplay && <div>Loading...</div>}
         {fieldGroupsToDisplay && (
@@ -159,7 +162,8 @@ export class MetadataDictionary extends React.Component {
             ),
             fieldGroupsToDisplay,
           )}
-      </NarrowContainer>
+        </NarrowContainer>
+      </>
     );
   }
 }

@@ -43,16 +43,7 @@ const WhitePaper = () => {
         <h2>Check out Our Paper in GigaScience</h2>
         <p>
           We describe SeqtoID (formerly IDseq), its capabilities, and how the
-          tool was validated. SeqtoID is a continuously evolving service. For
-          the most up to date analysis pipeline, check out{" "}
-          <a
-            href="https://github.com/chanzuckerberg/czid-workflows#workflows"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            our Github page
-          </a>
-          .
+          tool was validated. SeqtoID is a continuously evolving service.
         </p>
         <div className={cs.whitePaper__buttonRow}>
           <CtaButton

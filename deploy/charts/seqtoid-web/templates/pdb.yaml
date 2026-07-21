@@ -1,0 +1,22 @@
+{{- if and .Values.podDisruptionBudget.enabled (not .Values.suspend) -}}
+# Availability guard for the web app: cap how many web pods a VOLUNTARY disruption
+# (node drain, Karpenter consolidation, kubectl/API eviction) can take at once. With
+# replicaCount >= 2 this keeps at least one pod serving through a node recycle -- Karpenter
+# will evict one pod, wait for its replacement to become Ready elsewhere, then the other,
+# instead of draining a node out from under both at once (which is how dev could go down
+# even with 2 replicas). Involuntary node loss is covered separately by the pod topology
+# spread (rollout.yaml). Selects only the web Rollout pods (component=web), not workers.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+spec:
+  # maxUnavailable (not minAvailable) so a 1-replica preview sandbox stays evictable --
+  # minAvailable:1 on a single pod would block Karpenter from ever reclaiming its node.
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "seqtoid-web.selectorLabels" . | nindent 6 }}
+{{- end }}

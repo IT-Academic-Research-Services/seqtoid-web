@@ -4,7 +4,7 @@ import { scaleLinear } from "d3-scale";
 import { event as currentEvent, mouse, select } from "d3-selection";
 import { flatten } from "lodash/fp";
 
-const DEFAULT_COLOR = "#3867FA";
+const DEFAULT_COLOR = "#006BE9"; // REBRAND: UCSF CTA blue
 
 export default class GenomeViz {
   barEndpoints: $TSFixMe;

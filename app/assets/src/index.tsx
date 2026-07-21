@@ -1,4 +1,3 @@
-import { defaultTheme } from "@czi-sds/components";
 import { ThemeProvider as EmotionThemeProvider } from "@emotion/react";
 import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
 import * as Sentry from "@sentry/react";
@@ -11,6 +10,7 @@ import "url-search-params-polyfill";
 import ErrorFallback from "~/components/common/ErrorBoundary/ErrorFallback";
 import SupportPortal from "~/components/common/SupportPortal/SupportPortal";
 import { UserContext } from "~/components/common/UserContext";
+import { ucsfTheme } from "~/theme/ucsfTheme";
 import { initialGlobalContextState } from "./globalContext/initialState";
 import { GlobalContext, globalContextReducer } from "./globalContext/reducer";
 import UserContextType from "./interface/allowedFeatures";
@@ -108,8 +108,8 @@ const ReactComponentWithGlobalContext = ({
               value={{ globalContextState, globalContextDispatch }}
             >
               <StyledEngineProvider injectFirst>
-                <EmotionThemeProvider theme={defaultTheme}>
-                  <ThemeProvider theme={defaultTheme}>
+                <EmotionThemeProvider theme={ucsfTheme}>
+                  <ThemeProvider theme={ucsfTheme}>
                     {React.createElement(matchedComponent, props)}
                     {/* In-app self-help portal (#440): floating Help/Diagnostics
                         button, rendered on every authenticated page. It reads

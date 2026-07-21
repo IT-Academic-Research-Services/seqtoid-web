@@ -1,5 +1,5 @@
 export const BAR_FILL_COLOR = "#A9BDFC";
-export const HOVER_BAR_FILL_COLOR = "#3867FA";
+export const HOVER_BAR_FILL_COLOR = "#006BE9"; // REBRAND: UCSF CTA blue
 export const BAR_CLICK_FILL_COLOR = "#223F9C";
 export const READS_LOST_STACK_COLORS = [
   "#AABDFC",

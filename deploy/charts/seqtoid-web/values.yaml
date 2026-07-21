@@ -109,13 +109,56 @@ blueGreen:
 # Smoke check the AnalysisTemplate runs against the PREVIEW color before promotion.
 smoke:
   image: curlimages/curl:8.10.1
-  # Paths that must return HTTP 200 on the preview color. /health_check first;
-  # add critical read paths here as they harden.
+  # Critical user paths the smoke checks. Used by BOTH the blueGreen AnalysisTemplate
+  # (curls the -preview color) AND the pingpong PreSync gate (in-process app.get). Keep
+  # these to pages that must render or cleanly redirect: health, homepage/landing, the
+  # login page, the main app page. An authenticated path that 302s to login is a healthy
+  # app (see gate.acceptStatuses); a 4xx/5xx is a bad build.
   paths:
     - /health_check
+    - /
+    - /auth0/login
+    - /home
   timeoutSeconds: 10
-  # How many times the analysis retries the smoke Job before declaring failure.
+  # How many times the blueGreen analysis retries the smoke Job before declaring failure.
   failureLimit: 2
+  # PreSync smoke GATE (pingpong mode, platform-overhaul 782). Runs the NEW image and
+  # drives an in-process integration request to each smoke.path BEFORE the Rollout is
+  # touched. A failure aborts the whole Argo sync, so the running pods keep the old build
+  # and no user ever reaches an unvalidated build. This is what gives pingpong the same
+  # "validate before any user traffic" guarantee blueGreen had, without the ~30s 503.
+  gate:
+    enabled: true
+    # A page that renders (200) or cleanly redirects (301/302, e.g. an authed path ->
+    # login) passes; anything else (4xx/5xx, boot error) fails the build.
+    acceptStatuses: "200 301 302"
+    backoffLimit: 1              # one retry absorbs a transient boot blip
+    activeDeadlineSeconds: 300   # bound a stuck boot so it fails cleanly, not forever
+
+# High availability for the web app -- two replicas only protect you if they can't BOTH
+# be lost at once. Without these, replicaCount:2 still bin-packs onto one node, so a single
+# node/spot loss or a Karpenter consolidation takes the whole app down.
+podDisruptionBudget:
+  enabled: true
+  # At most one web pod voluntarily disrupted at a time (node drain / Karpenter
+  # consolidation / eviction) -> with 2 replicas one always keeps serving. maxUnavailable
+  # (not minAvailable) so a 1-replica sandbox stays evictable instead of pinning its node.
+  maxUnavailable: 1
+
+topologySpread:
+  enabled: true
+  hostname:
+    # HARD spread: the replicas MUST be on different nodes (Karpenter provisions a second
+    # node to satisfy it) so one node/spot loss cannot take both. Safe with the
+    # matchLabelKeys=rollouts-pod-template-hash in rollout.yaml, which scopes the spread
+    # per rollout revision -- a ping-pong surge to 4 pods never needs 4 nodes and cannot
+    # deadlock. Flip to ScheduleAnyway if you ever need best-effort instead of guaranteed.
+    whenUnsatisfiable: DoNotSchedule
+  zone:
+    # Best-effort AZ spread on top of node spread; ScheduleAnyway so a single-AZ capacity
+    # crunch cannot block scheduling.
+    enabled: true
+    whenUnsatisfiable: ScheduleAnyway
 
 resources:
   requests:

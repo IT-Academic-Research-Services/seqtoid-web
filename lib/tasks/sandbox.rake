@@ -243,6 +243,9 @@ namespace :sandbox do
       # sandbox's SSM path is never (re)written, and the pod stays on its old image -- the sandbox
       # "rebuilds but nothing changes". Deleting the inherited dev value avoids the empty write entirely.
       # Then enable static file serving so the pod serves its precompiled public/ bundle. (CZID-279.)
+      # NOTE: deleting it from `scoped` here only stops us RE-importing dev's value; it does not
+      # remove a copy already in the SSM path (chamber import cannot delete). The actual removal is
+      # the explicit ssm_delete_params! after the import below -- both are required.
       scoped.delete("CZID_CLOUDFRONT_ENDPOINT")
       scoped["RAILS_SERVE_STATIC_FILES"] = "1"
 
@@ -332,6 +335,18 @@ namespace :sandbox do
       # a pod booting mid-provision sees a consistent (if briefly older) config, never a broken one.
       sh!("chamber import #{n[:ssm]} #{f.path}")
     end
+
+    # Force-remove the CloudFront asset-host keys from the sandbox path. Omitting
+    # CZID_CLOUDFRONT_ENDPOINT from `scoped` above is NOT enough to unset it: `chamber import`
+    # only ADDS/OVERWRITES, it never DELETES a key already in the path, and the shared dev config
+    # seeds CZID_CLOUDFRONT_ENDPOINT (+ its legacy CLOUDFRONT_ENDPOINT alias) = dev's CDN
+    # (assets.dev.seqtoid.org) on the first provision. Left in place, the app boots with
+    # asset_host = that CDN, so a sandbox emits its rebranded / new-content-hash JS+CSS bundle URLs
+    # pointing at dev's CDN -- which only has dev's bundles, so every asset 404s and the page renders
+    # blank (only external scripts survive). Deleting them makes asset_host nil so the pod serves its
+    # own precompiled public/ assets (RAILS_SERVE_STATIC_FILES=1, set above). Idempotent: a name that
+    # is already absent lands in the API's InvalidParameters list, not an error. (CZID-279.)
+    ssm_delete_params!(["/#{n[:ssm]}/CZID_CLOUDFRONT_ENDPOINT", "/#{n[:ssm]}/CLOUDFRONT_ENDPOINT"])
 
     # Sweep any lower-case leftovers from provisions that ran the old `chamber write` path. They are
     # invisible to chamber (it would lowercase the name and match the wrong key), so enumerate and

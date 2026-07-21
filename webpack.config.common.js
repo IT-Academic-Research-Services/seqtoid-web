@@ -27,6 +27,14 @@ const config = {
       "~ui": path.resolve(__dirname, "app/assets/src/components/ui"),
       "~utils": path.resolve(__dirname, "app/assets/src/components/utils"),
       styles: path.resolve(__dirname, STYLES_PATH),
+      // REBRAND: redirect the @czi-sds design-token SCSS import to a local override
+      // that recolors the primary tokens to UCSF (see _sds_variables_ucsf.scss).
+      // Exact-match ($) so only the bare import is aliased; the override file re-imports
+      // the real tokens via a relative path, avoiding recursion. Applies to dev + prod.
+      "@czi-sds/components/dist/variables$": path.resolve(
+        __dirname,
+        "app/assets/src/styles/themes/_sds_variables_ucsf.scss",
+      ),
     },
     fallback: {
       util: require.resolve("util"),

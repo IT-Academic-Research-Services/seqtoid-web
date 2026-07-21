@@ -84,7 +84,7 @@ const Header = ({
         message={
           <>
             {
-              " UCSF’S INSTITUTE FOR GLOBAL HEALTH SCIENCES WILL MANAGE CZ ID TOWARD THE END OF 2025. CLICK "
+              " UCSF’S INSTITUTE FOR GLOBAL HEALTH SCIENCES WILL MANAGE SeqtoID TOWARD THE END OF 2025. CLICK "
             }
             <ExternalLink
               className={cs.link}
