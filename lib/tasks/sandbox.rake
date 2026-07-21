@@ -226,6 +226,21 @@ namespace :sandbox do
       scoped["SAMPLES_BUCKET_NAME"] = sandbox_bucket
       scoped["SAMPLES_BUCKET_NAME_V1"] = sandbox_bucket
 
+      # The sandbox serves on its OWN host, so it must serve its OWN compiled assets -- same
+      # principle as SERVER_DOMAIN and HEATMAP_ES_ADDRESS below (inheriting dev's endpoint is the
+      # bug, not a safe default). The shared dev config sets CZID_CLOUDFRONT_ENDPOINT to dev's
+      # CloudFront (assets.dev.seqtoid.org), whose ORIGIN is the dev pod, not this PR's pod. So a
+      # sandbox page loaded from pr-<N>.dev.seqtoid.org fetches its JS/CSS from the dev CDN; any
+      # frontend-changing PR builds a bundle with a NEW content hash that exists only in the PR pod,
+      # so the CDN 404s it and React never mounts (blank page: "react_component is not defined").
+      # Unchanged assets (e.g. vendors.js) keep dev's hash and still 200 -- the asymmetry that makes
+      # this look like a per-PR defect when it is an infra gap that hits every frontend PR.
+      # Fix: blank the endpoint so config/environments/development.rb sets asset_host = nil
+      # (pod-relative -> assets are fetched from pr-<N>.dev.seqtoid.org itself), and enable static
+      # file serving so the pod serves its precompiled public/ bundle. (CZID-279.)
+      scoped["CZID_CLOUDFRONT_ENDPOINT"] = ""
+      scoped["RAILS_SERVE_STATIC_FILES"] = "1"
+
       # Point the sandbox's HEATMAP OpenSearch client at the ISOLATED sandbox domain
       # (czid-sandbox-heatmap-es), not dev's czid-dev-heatmap-es. The heatmap client writes the
       # scored_taxon_counts + pipeline_runs indices (taxon indexing) and, via the eviction Lambda,
