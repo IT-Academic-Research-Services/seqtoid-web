@@ -2259,6 +2259,7 @@ export class DiscoveryView extends React.Component<
       isAdmin,
       domain,
       mapTilerKey,
+      mapStyleId,
       snapshotShareId,
       workflowRunsProjectAggregates,
       fetchWorkflowRunsProjectAggregates,
@@ -2329,6 +2330,7 @@ export class DiscoveryView extends React.Component<
                 mapLocationData={mapLocationData}
                 mapPreviewedLocationId={mapPreviewedLocationId}
                 mapTilerKey={mapTilerKey}
+                mapStyleId={mapStyleId}
                 onClearFilters={this.handleClearFilters}
                 onDisplaySwitch={this.handleDisplaySwitch}
                 onLoadRows={projects.handleLoadObjectRows}
@@ -2375,6 +2377,7 @@ export class DiscoveryView extends React.Component<
                   mapLocationData={mapLocationData}
                   mapPreviewedLocationId={mapPreviewedLocationId}
                   mapTilerKey={mapTilerKey}
+                  mapStyleId={mapStyleId}
                   onActiveColumnsChange={this.handleSampleActiveColumnsChange}
                   onClearFilters={this.handleClearFilters}
                   onDeleteSample={this.resetDataFromFilterChange}

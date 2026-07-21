@@ -20,6 +20,7 @@ interface DiscoveryMapProps {
   mapLevel?: string;
   mapLocationData?: Record<string, unknown>;
   mapTilerKey?: string;
+  mapStyleId?: string;
   onClearFilters?: $TSFixMeFunction;
   onClick?: $TSFixMeFunction;
   onMapLevelChange?: $TSFixMeFunction;
@@ -55,7 +56,7 @@ class DiscoveryMapCC extends React.Component<
       tooltipShouldClose: false,
     };
 
-    // By default throttle includes the trailing event
+    // By default, throttle includes the trailing event
     this.trackEventThrottled = throttle(
       DEFAULT_THROTTLE_MS,
       (eventName: string, eventData: EventData) =>
@@ -200,7 +201,7 @@ class DiscoveryMapCC extends React.Component<
   };
 
   render() {
-    const { mapTilerKey, mapLocationData } = this.props;
+    const { mapStyleId, mapTilerKey, mapLocationData } = this.props;
     const { tooltip } = this.state;
 
     return (
@@ -208,6 +209,8 @@ class DiscoveryMapCC extends React.Component<
         banner={this.renderBanner()}
         // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
         mapTilerKey={mapTilerKey}
+        // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
+        mapStyleId={mapStyleId}
         markers={
           mapLocationData &&
           Object.values(mapLocationData).map(this.renderMarker)

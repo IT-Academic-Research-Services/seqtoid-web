@@ -3,15 +3,13 @@ import MapGL, { NavigationControl } from "react-map-gl";
 import { limitToRange } from "~/components/utils/format";
 import cs from "./base_map.scss";
 
-// MapTiler map name: "2019-06-04"
-export const MAP_STYLE_ID = "e65c2178-ffbd-4e9a-bbeb-1250a61bd01b";
-
 interface BaseMapProps {
   banner?: object;
   height?: string | number;
   latitude?: number;
   longitude?: number;
   mapTilerKey: string;
+  mapStyleId: string;
   markers?: unknown[];
   onClick?: $TSFixMeFunction;
   popups?: unknown[];
@@ -87,11 +85,11 @@ class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
   };
 
   render() {
-    const { banner, mapTilerKey, markers, onClick, popups, tooltip } =
+    const { banner, mapStyleId, mapTilerKey, markers, onClick, popups, tooltip } =
       this.props;
     const { viewport } = this.state;
 
-    const styleURL = `https://api.maptiler.com/maps/${MAP_STYLE_ID}/style.json?key=${mapTilerKey}`;
+    const styleURL = `https://api.maptiler.com/maps/${mapStyleId}/style.json?key=${mapTilerKey}`;
     return (
       <div className={cs.mapContainer}>
         <MapGL

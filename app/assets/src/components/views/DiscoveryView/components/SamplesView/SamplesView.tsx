@@ -118,6 +118,7 @@ export const SamplesView = forwardRef(function SamplesView(
     mapLocationData,
     mapPreviewedLocationId,
     mapTilerKey,
+    mapStyleId,
     onActiveColumnsChange,
     onClearFilters,
     onDeleteSample,
@@ -1062,6 +1063,7 @@ export const SamplesView = forwardRef(function SamplesView(
           mapLevel={mapLevel}
           mapLocationData={mapLocationData}
           mapTilerKey={mapTilerKey}
+          mapStyleId={mapStyleId}
           onClearFilters={onClearFilters}
           onClick={onMapClick}
           onMapLevelChange={onMapLevelChange}

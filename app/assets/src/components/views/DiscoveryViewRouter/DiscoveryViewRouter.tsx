@@ -30,6 +30,7 @@ interface DiscoveryViewRouterProps {
   admin: boolean;
   domain: string;
   mapTilerKey: string;
+  mapStyleId: string;
   projectId: string;
   snapshotProjectDescription: string;
   snapshotProjectName: string;
@@ -42,6 +43,7 @@ const DiscoveryViewRouter = ({
   admin,
   domain,
   mapTilerKey,
+  mapStyleId,
   projectId,
   snapshotProjectDescription,
   snapshotProjectName,
@@ -139,6 +141,7 @@ const DiscoveryViewRouter = ({
                 admin={admin}
                 domain={domain}
                 mapTilerKey={mapTilerKey}
+                mapStyleId={mapStyleId}
                 projectId={projectId}
                 snapshotProjectDescription={snapshotProjectDescription}
                 snapshotProjectName={snapshotProjectName}

@@ -4,5 +4,6 @@
     admin: <%= current_user.admin %>,
     projectId: <%= raw(@project_id ? "\"#{@project_id}\"" : "null") %>,
     mapTilerKey: '<%= ENV["MAPTILER_API_KEY"] %>',
+    mapStyleId: '<%= ENV["MAP_STYLE_ID"] %>',
   }, 'page_content', JSON.parse('<%= raw escape_json(user_context)%>'));
 <% end %>
