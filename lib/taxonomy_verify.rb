@@ -31,16 +31,16 @@ module TaxonomyVerify
   # species CZID keys COVID reporting off, and a spread of common bacterial/viral/eukaryotic
   # pathogens). If any resolves to the wrong domain in the candidate, the merge mangled the tree.
   KNOWN_PANEL = {
-    9606    => "Eukaryota", # Homo sapiens (host)
-    2697049 => "Viruses",   # SARS-CoV-2
-    694009  => "Viruses",   # Severe acute respiratory syndrome-related coronavirus (CZID COVID species)
-    11676   => "Viruses",   # HIV-1
-    121791  => "Viruses",   # Nipah henipavirus
-    1280    => "Bacteria",  # Staphylococcus aureus
-    562     => "Bacteria",  # Escherichia coli
-    1773    => "Bacteria",  # Mycobacterium tuberculosis
-    5833    => "Eukaryota", # Plasmodium falciparum (malaria)
-    5476    => "Eukaryota", # Candida albicans
+    9606 => "Eukaryota", # Homo sapiens (host)
+    2_697_049 => "Viruses", # SARS-CoV-2
+    694_009 => "Viruses", # Severe acute respiratory syndrome-related coronavirus (CZID COVID species)
+    11_676 => "Viruses", # HIV-1
+    121_791 => "Viruses", # Nipah henipavirus
+    1280 => "Bacteria", # Staphylococcus aureus
+    562 => "Bacteria", # Escherichia coli
+    1773 => "Bacteria",  # Mycobacterium tuberculosis
+    5833 => "Eukaryota", # Plasmodium falciparum (malaria)
+    5476 => "Eukaryota", # Candida albicans
   }.freeze
 
   # Default statistical bounds (fractions of the current baseline). Tunable via the rake's ENV.

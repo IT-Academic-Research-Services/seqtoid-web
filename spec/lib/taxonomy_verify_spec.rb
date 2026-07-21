@@ -97,14 +97,14 @@ RSpec.describe TaxonomyVerify do
     end
 
     it "fails (blocking) when a load-bearing organism is misclassified" do
-      bad = correct.merge(2697049 => "Bacteria") # SARS-CoV-2 must be Viruses
+      bad = correct.merge(2_697_049 => "Bacteria") # SARS-CoV-2 must be Viruses
       result = described_class.check_known_panel(bad)
       expect(result).to be_failed_block
       expect(result.detail).to include("2697049")
     end
 
     it "fails (blocking) when a panel taxid vanished from the candidate" do
-      result = described_class.check_known_panel(correct.except(694009))
+      result = described_class.check_known_panel(correct.except(694_009))
       expect(result).to be_failed_block
       expect(result.detail).to include("694009")
     end

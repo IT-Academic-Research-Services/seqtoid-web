@@ -36,9 +36,9 @@ namespace :taxonomy do
     bucket = S3_DATABASE_BUCKET
     files = {
       "versioned-taxid-lineages" => "#{prefix}/versioned-taxid-lineages.csv.gz",
-      "changed_lineage_taxa"     => "#{prefix}/changed_lineage_taxa.csv.gz",
-      "new_taxa"                 => "#{prefix}/new_taxa.csv.gz",
-      "deleted_taxa"             => "#{prefix}/deleted_taxa.csv.gz",
+      "changed_lineage_taxa" => "#{prefix}/changed_lineage_taxa.csv.gz",
+      "new_taxa" => "#{prefix}/new_taxa.csv.gz",
+      "deleted_taxa" => "#{prefix}/deleted_taxa.csv.gz",
     }
 
     puts "[taxonomy:verify] candidate version=#{version} prefix=s3://#{bucket}/#{prefix}"
@@ -46,11 +46,9 @@ namespace :taxonomy do
     # --- object sizes (structural.artifacts) ---
     sizes = {}
     files.each do |base, key|
-      begin
-        sizes[base] = s3.head_object(bucket: bucket, key: key).content_length
-      rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey
-        sizes[base] = nil
-      end
+      sizes[base] = s3.head_object(bucket: bucket, key: key).content_length
+    rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey
+      sizes[base] = nil
     end
 
     # Download each gzipped artifact ONCE to a Tempfile (memoized -- the 151 MB versioned file is read
@@ -75,6 +73,7 @@ namespace :taxonomy do
     # --- changelog counts (sanity.deltas), streamed ---
     count_rows = lambda do |base|
       next 0 unless sizes[base]
+
       n = 0
       stream_gz.call(base) { |gz| gz.each_line.with_index { |_, i| n = i } } # i is 0-based; header at 0 => data = i
       n # last index == data-row count (header consumed as index 0)
@@ -130,7 +129,11 @@ namespace :taxonomy do
 
     puts "\n=== taxonomy:verify report ==="
     results.each do |r|
-      mark = r.pass? ? "PASS" : (r.blocking ? "FAIL" : "WARN")
+      mark = if r.pass?
+               "PASS"
+             else
+               (r.blocking ? "FAIL" : "WARN")
+             end
       puts format("  [%-4s] %-22s %s", mark, r.name, r.detail)
     end
     puts "  ---------------------------------------------"
