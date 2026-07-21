@@ -1,3 +1,62 @@
+{{- if eq .Values.rolloutStrategy "pingpong" }}
+# Ping / pong / root Services for the canary + ALB weighted-target-group Rollout.
+# The ping and pong Services keep STATIC base selectors -- Argo Rollouts adds the
+# pod-template-hash so each points at one color, but never rewrites the selector the
+# way blueGreen rewrites -active at promotion. Static selectors are what let the AWS
+# LB Controller inject pod readiness gates, giving zero-downtime cutovers. The root
+# Service is the ingress backend; Argo writes the weighted ALB action that splits
+# traffic between the ping and pong target groups.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-ping
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    seqtoid.io/rollout-role: ping
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "seqtoid-web.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-pong
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    seqtoid.io/rollout-role: pong
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "seqtoid-web.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-root
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    seqtoid.io/rollout-role: root
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "seqtoid-web.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- else }}
 # Active + preview Services for the blueGreen Rollout. Argo Rollouts manages the
 # pod-template-hash selector on each; we only supply the stable base selector.
 apiVersion: v1
@@ -33,3 +92,4 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP
+{{- end }}

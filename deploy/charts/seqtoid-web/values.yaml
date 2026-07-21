@@ -78,7 +78,26 @@ containerPort: 3000
 service:
   port: 80
 
-# Blue/green strategy knobs (consumed by the Rollout).
+# Rollout strategy: "blueGreen" (default) or "pingpong".
+#
+# blueGreen flips the activeService selector atomically at promotion. Behind an AWS
+# ALB with IP targets that drops traffic for one health-check window (~30s of 503s)
+# on every promotion: the old pod IPs deregister the instant the selector flips, but
+# the new IPs still have to pass the ALB health check before they receive traffic, so
+# there is a window with zero healthy targets. Pod readiness gates -- the AWS fix for
+# this -- CANNOT be injected on blueGreen, because the selector is modified after the
+# pods already exist (Argo Rollouts AWS ALB docs).
+#
+# pingpong uses the canary strategy with a ping/pong pair + ALB weighted target groups
+# (trafficRouting.alb). The two Services keep STATIC selectors, so the AWS LB Controller
+# CAN inject pod readiness gates, and the ALB shifts weight between the two target groups
+# instead of an atomic flip -- both colors serve during the shift, so there is no
+# zero-target window. A single setWeight:100 step keeps the "validate then cut over"
+# behavior of blueGreen. Requires --aws-verify-target-group on the rollouts controller
+# and the elbv2.k8s.aws/pod-readiness-gate-inject=enabled label on the namespace.
+rolloutStrategy: blueGreen
+
+# Blue/green strategy knobs (consumed by the Rollout when rolloutStrategy == blueGreen).
 blueGreen:
   autoPromotionEnabled: false     # dev/staging true; prod false (manual gate)
   scaleDownDelaySeconds: 30
