@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2025_07_13_000001) do
+ActiveRecord::Schema[7.0].define(version: 2026_07_21_120000) do
   create_table "accession_coverage_stats", charset: "utf8", collation: "utf8_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -149,7 +149,7 @@ ActiveRecord::Schema[7.0].define(version: 2025_07_13_000001) do
     t.bigint "pipeline_run_id"
     t.string "name"
     t.text "sequence", size: :long
-    t.integer "read_count"
+    t.bigint "read_count"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.text "lineage_json", size: :medium
