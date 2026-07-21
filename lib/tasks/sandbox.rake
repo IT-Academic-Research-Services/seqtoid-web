@@ -235,10 +235,15 @@ namespace :sandbox do
       # so the CDN 404s it and React never mounts (blank page: "react_component is not defined").
       # Unchanged assets (e.g. vendors.js) keep dev's hash and still 200 -- the asymmetry that makes
       # this look like a per-PR defect when it is an infra gap that hits every frontend PR.
-      # Fix: blank the endpoint so config/environments/development.rb sets asset_host = nil
-      # (pod-relative -> assets are fetched from pr-<N>.dev.seqtoid.org itself), and enable static
-      # file serving so the pod serves its precompiled public/ bundle. (CZID-279.)
-      scoped["CZID_CLOUDFRONT_ENDPOINT"] = ""
+      # Fix: DELETE the endpoint (do not blank it). config/environments/development.rb does
+      # `config.asset_host = ENV["CZID_CLOUDFRONT_ENDPOINT"]`, so an ABSENT key yields asset_host = nil
+      # (pod-relative -> assets are fetched from pr-<N>.dev.seqtoid.org itself) -- the intended "unset"
+      # state. Blanking it to "" does NOT work: SSM Parameter Store rejects an empty String value
+      # ("Member must have length greater than or equal to 1"), so `chamber import` below aborts, the
+      # sandbox's SSM path is never (re)written, and the pod stays on its old image -- the sandbox
+      # "rebuilds but nothing changes". Deleting the inherited dev value avoids the empty write entirely.
+      # Then enable static file serving so the pod serves its precompiled public/ bundle. (CZID-279.)
+      scoped.delete("CZID_CLOUDFRONT_ENDPOINT")
       scoped["RAILS_SERVE_STATIC_FILES"] = "1"
 
       # Point the sandbox's HEATMAP OpenSearch client at the ISOLATED sandbox domain
@@ -312,6 +317,13 @@ namespace :sandbox do
               "and this sandbox could eat dev's scheduled jobs. Set preview.redis.enabled=true so " \
               "the chart provisions this sandbox's own Redis and passes its URL.")
       end
+
+      # Drop any nil/empty values before importing: SSM Parameter Store rejects an empty String
+      # value, and `chamber import` aborts the WHOLE path on the first one it hits -- one blank
+      # override would otherwise silently leave the sandbox unprovisioned (pod stuck on its old
+      # image). Absence is the correct representation of "unset" for every consumer here. Guard once
+      # so no future override has to remember this.
+      scoped.reject! { |_k, v| v.nil? || v.to_s.empty? }
 
       File.write(f.path, JSON.pretty_generate(scoped))
       # Import (not write) so the scoped values land under the SAME uppercase keys the app reads, and
