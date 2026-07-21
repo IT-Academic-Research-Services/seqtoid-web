@@ -37,14 +37,15 @@ spec:
           # weighted ALB action that splits between the ping and pong target groups.
           rootService: {{ include "seqtoid-web.fullname" . }}-root
       steps:
-        # Single full cutover: bring up the new color, let readiness gates + the
-        # controller's --aws-verify-target-group confirm the new target group is
-        # healthy, then shift 100% of weight. No atomic flip, so no zero-target window.
+        # Single full cutover of an ALREADY-VALIDATED build. The new build is smoke-gated
+        # BEFORE this Rollout is ever touched -- the smoke-gate PreSync hook boots the new
+        # image and drives in-process requests to the critical paths, and a failure aborts
+        # the whole sync so a bad build never reaches this step (see smoke-hook.yaml). So
+        # here we only need the zero-downtime cutover: readiness gates hold the new pods
+        # NotReady until their ALB target is healthy, then weight shifts 0 -> 100. No
+        # atomic flip, so no zero-target window; and because the build was validated at
+        # zero user traffic, no user is ever served an unvalidated build.
         - setWeight: 100
-      # NOTE: the Job-based smoke AnalysisTemplate targets the fixed -preview service and
-      # so is blueGreen-only; re-adding an app-level smoke gate for pingpong (canary
-      # service name plumbed in) is a fast-follow. Readiness gates + verify-target-group
-      # already gate the cutover on ALB health.
     {{- else }}
     blueGreen:
       activeService: {{ include "seqtoid-web.fullname" . }}-active

@@ -109,13 +109,31 @@ blueGreen:
 # Smoke check the AnalysisTemplate runs against the PREVIEW color before promotion.
 smoke:
   image: curlimages/curl:8.10.1
-  # Paths that must return HTTP 200 on the preview color. /health_check first;
-  # add critical read paths here as they harden.
+  # Critical user paths the smoke checks. Used by BOTH the blueGreen AnalysisTemplate
+  # (curls the -preview color) AND the pingpong PreSync gate (in-process app.get). Keep
+  # these to pages that must render or cleanly redirect: health, homepage/landing, the
+  # login page, the main app page. An authenticated path that 302s to login is a healthy
+  # app (see gate.acceptStatuses); a 4xx/5xx is a bad build.
   paths:
     - /health_check
+    - /
+    - /auth0/login
+    - /home
   timeoutSeconds: 10
-  # How many times the analysis retries the smoke Job before declaring failure.
+  # How many times the blueGreen analysis retries the smoke Job before declaring failure.
   failureLimit: 2
+  # PreSync smoke GATE (pingpong mode, platform-overhaul 782). Runs the NEW image and
+  # drives an in-process integration request to each smoke.path BEFORE the Rollout is
+  # touched. A failure aborts the whole Argo sync, so the running pods keep the old build
+  # and no user ever reaches an unvalidated build. This is what gives pingpong the same
+  # "validate before any user traffic" guarantee blueGreen had, without the ~30s 503.
+  gate:
+    enabled: true
+    # A page that renders (200) or cleanly redirects (301/302, e.g. an authed path ->
+    # login) passes; anything else (4xx/5xx, boot error) fails the build.
+    acceptStatuses: "200 301 302"
+    backoffLimit: 1              # one retry absorbs a transient boot blip
+    activeDeadlineSeconds: 300   # bound a stuck boot so it fails cleanly, not forever
 
 resources:
   requests:

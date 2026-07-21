@@ -1,0 +1,72 @@
+{{- if and (eq .Values.rolloutStrategy "pingpong") .Values.smoke.gate.enabled (not .Values.suspend) -}}
+# Critical-path smoke GATE (platform-overhaul 782) -- pingpong mode only.
+#
+# A PreSync hook that runs the NEW image and drives an in-process integration request
+# (rake smoke:critical_paths -> ActionDispatch::Integration::Session#get) to each
+# critical user path, with the real DB/OpenSearch/secrets (chamber), but NO live server
+# and NO user traffic. If ANY path fails, the hook exits non-zero -> the Argo sync aborts
+# -> the Rollout is never updated -> the running pods keep the OLD build. So a bad build
+# can never reach the ping-pong cutover, let alone a user.
+#
+# Ordering: sync-wave AFTER the migrate hook (wave 0) so the schema is ready before the
+# app boots. The ping-pong cutover (Rollout, Sync phase) only happens once this passes.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-smoke-gate
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    app.kubernetes.io/component: smoke-gate
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    # Reap the prior gate Job right before a new sync creates one. HookSucceeded is safe
+    # here (unlike migrate) -- a smoke run is stateless and idempotent, so there is no
+    # in-flight state to protect; BeforeHookCreation alone still keeps the last run's logs
+    # around for inspection until the next sync.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # Run AFTER the migrate hook (wave 0) so migrations are applied before the app boots.
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  backoffLimit: {{ .Values.smoke.gate.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.smoke.gate.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      annotations:
+        karpenter.sh/do-not-disrupt: "true"
+      labels:
+        {{- include "seqtoid-web.labels" . | nindent 8 }}
+        app.kubernetes.io/component: smoke-gate
+    spec:
+      restartPolicy: Never
+      # Same SA as migrate: the app SA normally, or (on a brand-new sandbox namespace) the
+      # provisioner SA, since this PreSync hook runs before the Sync-phase app SA exists.
+      serviceAccountName: {{ .Values.migrate.serviceAccountName | default (include "seqtoid-web.serviceAccountName" .) }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: smoke-gate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # entrypoint.sh wraps this in `chamber exec <service> -- bundle exec ...`, so the
+          # smoke runs with the exact DB/secrets/OpenSearch config the app would use.
+          args:
+            - rake
+            - smoke:critical_paths
+          env:
+            {{- include "seqtoid-web.commonEnv" . | nindent 12 }}
+            - name: SMOKE_PATHS
+              value: {{ .Values.smoke.paths | join " " | quote }}
+            - name: SMOKE_ACCEPT_STATUSES
+              value: {{ .Values.smoke.gate.acceptStatuses | quote }}
+            # A migrate-style hook does not run the scheduler; keep Rails from writing the
+            # Resque schedule at boot (mirrors the migrate hook).
+            {{- if .Values.preview.redis.enabled }}
+            - name: SKIP_RESQUE_SCHEDULE
+              value: "1"
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}
