@@ -52,4 +52,36 @@ RSpec.describe TopTaxonsElasticsearchService do
       expect(result[:taxon_ids]).to eq([10, 30])
     end
   end
+
+  describe "#build_filter_param_hash thresholdFilters shape handling" do
+    # DEV-REACTJS-PROJECT-1D: params[:thresholdFilters] can arrive as a Hash (Rails parses a
+    # nested-object encoding thresholdFilters[i][k]=v into an index-keyed Hash). The old
+    # else-branch JSON.parse'd it, raising "no implicit conversion of
+    # HashWithIndifferentAccess into String" and 500'ing the heatmap. Only Strings are JSON.
+    let(:one_filter) { { "metric" => "NT_rpm", "value" => 1, "operator" => ">=" } }
+
+    it "parses a JSON string (the frontend's normal encoding)" do
+      result = filter_for({ thresholdFilters: '[{"metric":"NT_rpm","value":1,"operator":">="}]' })
+      expect(result[:threshold_filters]).to eq([one_filter])
+    end
+
+    it "does NOT JSON.parse a Hash (Rails-parsed nested params) -- the heatmap-500 regression" do
+      nested = ActionController::Parameters.new(thresholdFilters: { "0" => one_filter })
+      expect { filter_for(nested) }.not_to raise_error
+      expect(filter_for(nested)[:threshold_filters]).to eq([one_filter])
+    end
+
+    it "parses an array of JSON strings" do
+      result = filter_for({ thresholdFilters: ['{"metric":"NT_rpm","value":1,"operator":">="}'] })
+      expect(result[:threshold_filters]).to eq([one_filter])
+    end
+
+    it "returns [] for an empty-array string" do
+      expect(filter_for({ thresholdFilters: "[]" })[:threshold_filters]).to eq([])
+    end
+
+    it "returns [] when thresholdFilters is absent" do
+      expect(filter_for({})[:threshold_filters]).to eq([])
+    end
+  end
 end
