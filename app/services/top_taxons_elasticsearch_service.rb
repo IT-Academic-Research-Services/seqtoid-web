@@ -92,11 +92,25 @@ class TopTaxonsElasticsearchService
     filter_params[:taxon_ids] = taxon_ids
     threshold_filters = params[:thresholdFilters]
 
-    filter_params[:threshold_filters] = if threshold_filters.is_a?(Array)
-                                          (threshold_filters || []).map { |filter| JSON.parse(filter || "{}") }
-                                        else
-                                          JSON.parse(threshold_filters || "[]")
-                                        end
+    # thresholdFilters arrives in several shapes; only STRINGS are JSON to be parsed.
+    #   * String -- the frontend JSON.stringify's the array (the common case): parse it.
+    #   * Array  -- either JSON strings (parse each) or already-parsed hashes (keep as-is).
+    #   * Hash   -- Rails parsed a nested-object encoding (thresholdFilters[i][k]=v) into an
+    #               index-keyed Hash; its values ARE the filter hashes. JSON.parse-ing a Hash
+    #               raised "no implicit conversion of HashWithIndifferentAccess into String"
+    #               and 500'd the heatmap (surfaced as a generic ElasticSearch error).
+    # Downstream (HeatmapHelper.parse_custom_filters) iterates an array of filter hashes.
+    filter_params[:threshold_filters] =
+      case threshold_filters
+      when String
+        JSON.parse(threshold_filters.presence || "[]")
+      when Array
+        threshold_filters.map { |filter| filter.is_a?(String) ? JSON.parse(filter.presence || "{}") : filter }
+      when Hash
+        threshold_filters.values.map { |filter| filter.is_a?(String) ? JSON.parse(filter.presence || "{}") : filter }
+      else
+        []
+      end
 
     filter_params[:background_id] = @background_id && @background_id > 0 ? @background_id : @samples.first.default_background_id
 
