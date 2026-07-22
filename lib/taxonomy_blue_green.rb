@@ -34,7 +34,10 @@ module TaxonomyBlueGreen
   # The fresh, concrete ES index the alias will point at (never reuse a name -> a failed rebuild can't
   # corrupt the serving index).
   def index_name(version, timestamp)
-    "#{LIVE_TABLE}_v#{slug(version)}_#{timestamp}"
+    # ES/OpenSearch index names MUST be lowercase, but the timestamp carries uppercase T/Z
+    # (e.g. 20260722T1955Z) -> create_index 400s with invalid_index_name_exception and the load's
+    # DB swap succeeds but the ES rebuild dies. Downcase so the derived index name is always valid.
+    "#{LIVE_TABLE}_v#{slug(version)}_#{timestamp}".downcase
   end
 
   # Atomic swap: stage table becomes live, live becomes the backup -- one statement, no window where

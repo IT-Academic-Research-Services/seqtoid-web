@@ -15,8 +15,9 @@ RSpec.describe TaxonomyBlueGreen do
     it "derives collision-free staging/backup/index names" do
       expect(described_class.staging_table("2026-07-09")).to eq("taxon_lineages_v2026_07_09")
       expect(described_class.backup_table("20260720T0148Z")).to eq("taxon_lineages_bak_20260720T0148Z")
+      # ES index names must be lowercase -- the uppercase T/Z in the timestamp is downcased.
       expect(described_class.index_name("2026-07-09", "20260720T0148Z"))
-        .to eq("taxon_lineages_v2026_07_09_20260720T0148Z")
+        .to eq("taxon_lineages_v2026_07_09_20260720t0148z")
     end
   end
 
