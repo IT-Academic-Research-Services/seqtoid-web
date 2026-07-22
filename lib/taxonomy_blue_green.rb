@@ -58,4 +58,57 @@ module TaxonomyBlueGreen
       n.start_with?("#{LIVE_TABLE}_bak_") ||
       n.start_with?("#{LIVE_TABLE}_parked_")
   end
+
+  # --- rollback robustness helpers (#548 hardening) ------------------------------------------------
+  # A load renames the current live table to `taxon_lineages_bak_<ts>` and never drops it, so rollback
+  # is a pure RENAME back -- the restored table is the SAME physical rows, not a copy. These helpers
+  # let an operator (a) find the backup with no bookkeeping, and (b) PROVE the restore is byte-identical.
+
+  BACKUP_PREFIX = "#{LIVE_TABLE}_bak_"
+
+  # Recognize a backup table name and pull its timestamp fragment for ordering.
+  def backup_timestamp(name)
+    n = name.to_s
+    return nil unless n.start_with?(BACKUP_PREFIX)
+
+    n.delete_prefix(BACKUP_PREFIX)
+  end
+
+  # Newest preserved backup from a list of table names -- the default rollback target, so an operator
+  # can `taxonomy:rollback` with no argument. Timestamps are UTC `%Y%m%dT%H%MZ`, lexically sortable.
+  def latest_backup(table_names)
+    Array(table_names).select { |n| backup_timestamp(n) }
+                      .max_by { |n| backup_timestamp(n) }
+  end
+
+  # SHOW TABLES filter that returns exactly the preserved backups (newest-first ordering is applied in
+  # Ruby via latest_backup / sort, since SHOW TABLES cannot ORDER BY).
+  def show_backups_sql
+    "SHOW TABLES LIKE '#{BACKUP_PREFIX}%'"
+  end
+
+  # A content fingerprint used to PROVE a rollback restored the exact prior state. CHECKSUM TABLE is a
+  # deterministic function of row content (independent of table name), so the pre-load fingerprint of
+  # the live table equals the post-rollback fingerprint iff the identical rows are back. Paired with
+  # the row count + version range it is a strong, cheap equality proof.
+  def checksum_sql(table = LIVE_TABLE)
+    "CHECKSUM TABLE `#{table}`"
+  end
+
+  def stats_sql(table = LIVE_TABLE)
+    "SELECT COUNT(*) AS row_count, COUNT(DISTINCT taxid) AS distinct_taxid, " \
+      "MIN(version_start) AS min_version_start, MAX(version_end) AS max_version_end " \
+      "FROM `#{table}`"
+  end
+
+  # True iff two fingerprint hashes describe identical table content. Compares the CHECKSUM TABLE value
+  # AND the row count/version range (belt-and-suspenders: a checksum match with a differing count would
+  # signal something pathological, so we require both).
+  def fingerprint_match?(a, b)
+    return false if a.nil? || b.nil?
+
+    %w[checksum row_count distinct_taxid min_version_start max_version_end].all? do |k|
+      a[k].to_s == b[k].to_s && !a[k].nil?
+    end
+  end
 end
