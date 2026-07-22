@@ -17,7 +17,14 @@
 namespace :smoke do
   desc "Smoke the critical user paths in-process; non-zero exit on any failure (782 gate)."
   task critical_paths: :environment do
-    require "action_dispatch/integration"
+    # ActionDispatch::Integration::Session lives in action_dispatch/testing/integration
+    # (Rails >= 5). The bare "action_dispatch/integration" path does not exist and raised
+    # LoadError in the deployed image (platform-overhaul 787). Fall back for safety.
+    begin
+      require "action_dispatch/testing/integration"
+    rescue LoadError
+      require "action_dispatch/integration"
+    end
 
     paths = ENV.fetch("SMOKE_PATHS", "/health_check /").split
     accepted = ENV.fetch("SMOKE_ACCEPT_STATUSES", "200 301 302").split.map(&:to_i)
