@@ -41,3 +41,8 @@ CVE-2026-27820
 # dev builds; baselined to unblock. FORWARD-FIX tracked: add overrides js-yaml=3.15.0 +
 # regen lockfile on node-24 (local node-26 can't regen). platform-overhaul #786.
 CVE-2026-59869
+# CVE-2026-13149 brace-expansion 1.1.15 (transitive, build-time) -- DoS via crafted input.
+# Same class as CVE-2026-59869: build-tool transitive npm dep, not parsing untrusted runtime
+# input, low exposure. Fixed in 1.1.16. Part of the same newly-disclosed npm-DoS wave
+# blocking dev builds. Forward-fix (override + node-24 lockfile regen) tracked with #786.
+CVE-2026-13149
