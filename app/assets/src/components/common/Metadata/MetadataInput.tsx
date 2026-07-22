@@ -47,8 +47,7 @@ const MetadataInput = ({
         className={className}
         value={value}
         onResultSelect={({ result }) => {
-          // Result can be plain text or a match. We treat them the same.
-          onChange(metadataType.key, result.name || result, true);
+          onChange(metadataType.key, result.name, true);
         }}
         taxaCategory={taxaCategory}
         // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322

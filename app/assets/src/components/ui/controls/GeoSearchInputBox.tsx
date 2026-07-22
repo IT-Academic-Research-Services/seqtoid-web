@@ -126,9 +126,6 @@ const GeoSearchInputBox = ({
   };
 
   const handleResultSelected = ({ result }) => {
-    // Wrap plain text submission
-    if (isString(result) && result !== "") result = { name: result };
-
     onResultSelect && onResultSelect({ result });
   };
 

@@ -1,11 +1,11 @@
 import cx from "classnames";
 import { forEach, sumBy, values } from "lodash/fp";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { BareDropdown } from "~ui/controls/dropdowns";
 import Input from "~ui/controls/Input";
 import cs from "./live_search_pop_box.scss";
 
-type SearchResult = {
+export type SearchResult = {
   title: string;
   name: number | string;
   description?: string;
@@ -27,7 +27,7 @@ interface LiveSearchPopBoxProps {
   inputClassName?: string;
   inputMode?: boolean;
   minChars?: number;
-  onResultSelect?(params: any): void;
+  onResultSelect?(params: { currentEvent?: any; result: SearchResult }): void;
   onSearchTriggered?(query: string): SearchResults | Promise<SearchResults>;
   placeholder?: string;
   rectangular?: boolean;
@@ -54,20 +54,35 @@ const LiveSearchPopBox = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isFocused, setIsFocused] = useState<boolean>(false);
   const [results, setResults] = useState<SearchResults>({});
-  const [inputValue, setInputValue] = useState<string>("");
 
-  // If the value has changed, reset the input value.
-  // Store the prevValue to detect whether the value has changed.
+  // Use selectedResult state to keep track of the entire SearchResult object instead of just a string.
+  // When a user types, we update it with a plain text SearchResult { title, name }.
+  // When they select a suggestion, we set it to the full, rich SearchResult object.
+  const [selectedResult, setSelectedResult] = useState<SearchResult>(() => ({
+    title: value || "",
+    name: value || "",
+  }));
+  const wasSelectedRef = useRef<boolean>(false);
+  const blurTimeoutRef = useRef<any>(null);
+
   useEffect(() => {
-    // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
-    setInputValue(value);
+    return () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // If the value has changed from the parent, reset the selected result.
+  useEffect(() => {
+    setSelectedResult({ title: value || "", name: value || "" });
   }, [value]);
 
   const handleKeyDown = keyEvent => {
     // Pressing enter selects what they currently typed.
     if (keyEvent.key === "Enter" && inputMode) {
       handleResultSelect({
-        result: inputValue,
+        result: selectedResult,
         currentEvent: {},
       });
     }
@@ -79,15 +94,19 @@ const LiveSearchPopBox = ({
   };
 
   const handleResultSelect = ({ currentEvent, result }) => {
-    setInputValue(result.title);
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+    wasSelectedRef.current = true;
+    setSelectedResult(result);
     onResultSelect && onResultSelect({ currentEvent, result });
     closeDropdown();
   };
 
-  const triggerSearch = async () => {
+  const triggerSearch = async (query: string) => {
     const timerId = latestTimerId;
     // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2722
-    const results = await onSearchTriggered(inputValue);
+    const results = await onSearchTriggered(query);
 
     if (timerId === latestTimerId) {
       setIsLoading(false);
@@ -95,11 +114,11 @@ const LiveSearchPopBox = ({
     }
   };
 
-  const handleSearchChange = value => {
-    setInputValue(value);
+  const handleSearchChange = (newValue: string) => {
+    setSelectedResult({ title: newValue, name: newValue });
 
     // check minimum requirements for value
-    const parsedValue = value.trim();
+    const parsedValue = newValue.trim();
     if (parsedValue.length >= minChars) {
       setIsFocused(true);
       setIsLoading(true);
@@ -108,7 +127,10 @@ const LiveSearchPopBox = ({
         clearTimeout(latestTimerId);
       }
 
-      const newTimerId = setTimeout(triggerSearch, delayTriggerSearch);
+      const newTimerId = setTimeout(
+        () => triggerSearch(newValue),
+        delayTriggerSearch,
+      );
       setLatestTimerId(newTimerId);
     }
   };
@@ -126,7 +148,7 @@ const LiveSearchPopBox = ({
         placeholder={placeholder}
         onChange={handleSearchChange}
         onKeyPress={handleKeyDown}
-        value={inputValue}
+        value={selectedResult.title}
         disableAutocomplete
       />
     </div>
@@ -134,24 +156,34 @@ const LiveSearchPopBox = ({
 
   const handleFocus = () => {
     if (hasEnoughChars() && shouldSearchOnFocus) {
-      handleSearchChange(inputValue);
+      handleSearchChange(selectedResult.title);
     }
 
     setIsFocused(true);
   };
 
-  // If a user selects an option, handleResultSelect will run and update props.value before this function runs.
-  // So inputValue will equal props.value when this function runs and onResultSelect will not be called, which is correct.
   const handleBlur = () => {
-    // If the user has changed the input without selecting an option, select what they currently typed as plain-text.
-    if (onResultSelect && inputValue !== value) {
-      onResultSelect({ result: inputValue });
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
     }
 
-    closeDropdown();
+    blurTimeoutRef.current = setTimeout(() => {
+      if (wasSelectedRef.current) {
+        wasSelectedRef.current = false;
+        closeDropdown();
+        return;
+      }
+
+      // If the user has changed the input without selecting an option, select the typed plain-text.
+      if (onResultSelect && selectedResult.title !== value) {
+        onResultSelect({ result: selectedResult });
+      }
+
+      closeDropdown();
+    }, 100);
   };
 
-  const buildItem = (categoryKey, result, index) => (
+  const buildItem = (categoryKey: string, result: SearchResult, index) => (
     <BareDropdown.Item
       key={`${categoryKey}-${result.name}`}
       text={
@@ -180,10 +212,10 @@ const LiveSearchPopBox = ({
     // @ts-expect-error Property 'convert' does not exist on type 'LodashForEach'.ts(2339)
     const uncappedForEach = forEach.convert({ cap: false });
     const items = [];
-    uncappedForEach((category, key) => {
+    uncappedForEach((category: SearchCategory, key: string) => {
       // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
       items.push(buildSectionHeader(category.name));
-      uncappedForEach((result, index) => {
+      uncappedForEach((result: SearchResult, index) => {
         // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
         items.push(buildItem(key, result, index));
       }, category.results);
@@ -196,7 +228,7 @@ const LiveSearchPopBox = ({
     return sumBy(cat => cat?.results?.length, values(results));
   };
 
-  const hasEnoughChars = () => inputValue?.trim()?.length >= minChars;
+  const hasEnoughChars = () => selectedResult.title?.trim()?.length >= minChars;
   const shouldOpen = getResultsLength() && isFocused && hasEnoughChars();
 
   return (
@@ -209,7 +241,6 @@ const LiveSearchPopBox = ({
       fluid
       hideArrow
       items={renderDropdownItems()}
-      onChange={handleResultSelect}
       open={!!shouldOpen}
       trigger={renderSearchBox()}
       usePortal
