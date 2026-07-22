@@ -58,30 +58,36 @@ RSpec.describe TopTaxonsElasticsearchService do
     # nested-object encoding thresholdFilters[i][k]=v into an index-keyed Hash). The old
     # else-branch JSON.parse'd it, raising "no implicit conversion of
     # HashWithIndifferentAccess into String" and 500'ing the heatmap. Only Strings are JSON.
+    #
+    # build_filter_param_hash ALWAYS appends the mandatory min-reads threshold filter
+    # (metric NT_r, value = min_reads, operator >=) AFTER the user's thresholdFilters, so
+    # every expected result carries it last. With no minReads, min_reads defaults to
+    # MINIMUM_READ_THRESHOLD (1). The `<<` append also proves each branch returns a mutable Array.
     let(:one_filter) { { "metric" => "NT_rpm", "value" => 1, "operator" => ">=" } }
+    let(:mandatory) { { "metric" => "NT_r", "value" => 1, "operator" => ">=" } }
 
     it "parses a JSON string (the frontend's normal encoding)" do
       result = filter_for({ thresholdFilters: '[{"metric":"NT_rpm","value":1,"operator":">="}]' })
-      expect(result[:threshold_filters]).to eq([one_filter])
+      expect(result[:threshold_filters]).to eq([one_filter, mandatory])
     end
 
     it "does NOT JSON.parse a Hash (Rails-parsed nested params) -- the heatmap-500 regression" do
       nested = ActionController::Parameters.new(thresholdFilters: { "0" => one_filter })
       expect { filter_for(nested) }.not_to raise_error
-      expect(filter_for(nested)[:threshold_filters]).to eq([one_filter])
+      expect(filter_for(nested)[:threshold_filters]).to eq([one_filter, mandatory])
     end
 
     it "parses an array of JSON strings" do
       result = filter_for({ thresholdFilters: ['{"metric":"NT_rpm","value":1,"operator":">="}'] })
-      expect(result[:threshold_filters]).to eq([one_filter])
+      expect(result[:threshold_filters]).to eq([one_filter, mandatory])
     end
 
-    it "returns [] for an empty-array string" do
-      expect(filter_for({ thresholdFilters: "[]" })[:threshold_filters]).to eq([])
+    it "yields only the mandatory min-reads filter for an empty-array string" do
+      expect(filter_for({ thresholdFilters: "[]" })[:threshold_filters]).to eq([mandatory])
     end
 
-    it "returns [] when thresholdFilters is absent" do
-      expect(filter_for({})[:threshold_filters]).to eq([])
+    it "yields only the mandatory min-reads filter when thresholdFilters is absent" do
+      expect(filter_for({})[:threshold_filters]).to eq([mandatory])
     end
   end
 end
