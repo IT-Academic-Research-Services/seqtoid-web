@@ -240,7 +240,12 @@ class SfnPipelineDataService
       if output_step == WORKFLOW_INPUT_PREFIX
         input_info[:type] = stage_info["inputs"][var_name]
       else
-        input_info[:file] = File.basename(stage_info["basenames"][input])
+        # A step input may have no matching basename entry in the SFN pipeline
+        # data (e.g. an optional or backwards-incompatible input). Guard the nil
+        # so File.basename does not raise TypeError and 500 the results_folder
+        # endpoint (DEV-RAILS-PROJECT-5); leave :file unset when unavailable.
+        basename = stage_info["basenames"][input]
+        input_info[:file] = File.basename(basename) if basename
       end
 
       case input_info[:type]
