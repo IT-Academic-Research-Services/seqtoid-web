@@ -371,6 +371,12 @@ Rails.application.routes.draw do
   # See health_check gem
   get 'health_check' => "health_check/health_check#index"
 
+  # Chaos Engine accuracy-gate integrity probe (#810/#815) -- in-cluster only, bearer-token gated,
+  # DISABLED unless CHAOS_INTEGRITY_TOKEN is set. See Internal::ChaosController.
+  namespace :internal do
+    get 'chaos/integrity' => 'chaos#integrity'
+  end
+
   get '/favicon.ico', to: proc { |_env|
     ico = File.binread(Rails.root.join('app/assets/images/seqtoid_favicon.ico'))
     [200, { 'Content-Type' => 'image/x-icon', 'Cache-Control' => 'public, max-age=86400' }, [ico]]
