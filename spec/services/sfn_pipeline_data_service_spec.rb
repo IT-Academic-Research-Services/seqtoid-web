@@ -390,4 +390,39 @@ RSpec.describe SfnPipelineDataService do
       end
     end
   end
+
+  describe "#retrieve_step_inputs" do
+    # Use allocate to exercise the pure input-parsing logic without booting a
+    # full pipeline run / S3 (the method only reads its stage_info argument).
+    subject { SfnPipelineDataService.allocate }
+    let(:step) { "some_step" }
+
+    it "does not raise when a step input has no matching basename (DEV-RAILS-PROJECT-5)" do
+      stage_info = {
+        "task_inputs" => { step => ["PrevStep.some_file"] },
+        "inputs" => {},
+        # No basename entry for "PrevStep.some_file" -> nil.
+        "basenames" => {},
+      }
+
+      variables, files = subject.send(:retrieve_step_inputs, stage_info, step)
+
+      expect(variables).to eq([])
+      expect(files.size).to eq(1)
+      expect(files.first).not_to have_key(:file)
+      expect(files.first[:name]).to eq("some_file")
+    end
+
+    it "sets :file to the basename when the entry is present" do
+      stage_info = {
+        "task_inputs" => { step => ["PrevStep.some_file"] },
+        "inputs" => {},
+        "basenames" => { "PrevStep.some_file" => "path/to/reads.fastq" },
+      }
+
+      _variables, files = subject.send(:retrieve_step_inputs, stage_info, step)
+
+      expect(files.first[:file]).to eq("reads.fastq")
+    end
+  end
 end
