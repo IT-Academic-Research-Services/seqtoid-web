@@ -31,6 +31,18 @@ RSpec.describe ConsensusGenomeCoverageService, type: :service do
     end
   end
 
+  describe "#call when the SFN description is missing" do
+    it "handles it as an expected condition (info log, not a Sentry error)" do
+      expect(workflow_run).to receive(:output).with(ConsensusGenomeWorkflowRun::OUTPUT_DEPTHS).and_raise(SfnExecution::SfnDescriptionNotFoundError, "fake_path")
+      # An aged-out SFN description is expected, not an error: log at info level
+      # via log_message and never capture an exception to Sentry.
+      expect(LogUtil).to receive(:log_message)
+      expect(LogUtil).not_to receive(:log_error)
+
+      expect(subject.call).to eq(nil)
+    end
+  end
+
   describe "#call" do
     before do
       expect(workflow_run).to receive(:output).with(ConsensusGenomeWorkflowRun::OUTPUT_DEPTHS) { depths_file_content }
