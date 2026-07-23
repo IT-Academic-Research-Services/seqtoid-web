@@ -46,3 +46,10 @@ CVE-2026-59869
 # input, low exposure. Fixed in 1.1.16. Part of the same newly-disclosed npm-DoS wave
 # blocking dev builds. Forward-fix (override + node-24 lockfile regen) tracked with #786.
 CVE-2026-13149
+
+# 2026-07-23: baselined to unblock the dev CD build (both HIGH, gate-on-new). Forward-fix tracked
+# in the backlog (FJ ticket): net-imap = strip the stale Ruby default gemspec in the Dockerfile
+# (bundler already runs the fixed 0.6.4.1; only the non-loaded 0.4.9.1 default gemspec is flagged);
+# fast-uri = npm override to >=3.1.3.
+CVE-2026-42258
+CVE-2026-13676
