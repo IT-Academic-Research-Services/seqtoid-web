@@ -55,8 +55,8 @@ RSpec.describe BulkDownloadsController, type: :controller do
         @sample_two = create(:sample, project: @project, name: "Test Sample Two",
                                       pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
-        expect(BATCH_CLIENT).to receive(:submit_job)
-          .exactly(1).times.and_return(double(job_arn: "ABC"))
+        allow(KubeJobClient).to receive(:new)
+          .and_return(double(create_job: { "metadata" => { "name" => "ABC" } }))
 
         bulk_download_params = {
           download_type: "unmapped_reads",
@@ -88,8 +88,8 @@ RSpec.describe BulkDownloadsController, type: :controller do
         @sample_two = create(:sample, project: @project, name: "Test Sample Two",
                                       pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
-        expect(BATCH_CLIENT).to receive(:submit_job).exactly(1).times
-                                                    .and_raise(Aws::Errors::ServiceError.new(nil, "AccessDenied"))
+        allow(KubeJobClient).to receive(:new)
+          .and_raise(KubeJobClient::Error, "create job -> 403 Forbidden")
 
         bulk_download_params = {
           download_type: "unmapped_reads",
@@ -263,9 +263,9 @@ RSpec.describe BulkDownloadsController, type: :controller do
                                        project: @collaborative_project,
                                        user: @user,
                                        pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
-        # Bulk downloads submit to AWS Batch (migrated off aegea); mock the submit so CI doesn't hit AWS.
-        allow(BATCH_CLIENT).to receive(:submit_job)
-          .and_return(double(job_arn: "ABC"))
+        # Bulk downloads run as a K8s Job (migrated off aegea); mock the client so CI doesn't hit the API.
+        allow(KubeJobClient).to receive(:new)
+          .and_return(double(create_job: { "metadata" => { "name" => "ABC" } }))
 
         bulk_download_params = {
           # This download type is collaborator-only.
@@ -351,8 +351,8 @@ RSpec.describe BulkDownloadsController, type: :controller do
         workflow_run_one = create(:workflow_run, sample: sample_one, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded])
         workflow_run_two = create(:workflow_run, sample: sample_two, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded])
 
-        expect(BATCH_CLIENT).to receive(:submit_job)
-          .exactly(1).times.and_return(double(job_arn: "ABC"))
+        allow(KubeJobClient).to receive(:new)
+          .and_return(double(create_job: { "metadata" => { "name" => "ABC" } }))
 
         allow_any_instance_of(SfnExecution).to receive(:output_path) { |output_key| "#{@s3_path}/#{output_key}" }
 
@@ -856,9 +856,9 @@ RSpec.describe BulkDownloadsController, type: :controller do
         @public_project = create(:project, users: [@user], public_access: 1)
         @public_sample = create(:sample, project: @public_project, pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
-        # Bulk downloads submit to AWS Batch (migrated off aegea); mock the submit so CI doesn't hit AWS.
-        allow(BATCH_CLIENT).to receive(:submit_job)
-          .and_return(double(job_arn: "ABC"))
+        # Bulk downloads run as a K8s Job (migrated off aegea); mock the client so CI doesn't hit the API.
+        allow(KubeJobClient).to receive(:new)
+          .and_return(double(create_job: { "metadata" => { "name" => "ABC" } }))
 
         bulk_download_params = {
           # This download type is collaborator-only.
