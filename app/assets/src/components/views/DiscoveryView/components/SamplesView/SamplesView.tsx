@@ -59,11 +59,11 @@ import Label from "~ui/labels/Label";
 import AccordionNotification from "~ui/notifications/AccordionNotification";
 import Notification from "~ui/notifications/Notification";
 import {
+  WORKFLOW_ENTITIES,
+  WORKFLOW_TABS,
   workflowIsWorkflowRunEntity,
   WORKFLOWS,
   WorkflowType,
-  WORKFLOW_ENTITIES,
-  WORKFLOW_TABS,
 } from "~utils/workflows";
 import { DISCOVERY_DOMAIN_PUBLIC } from "../../discovery_api";
 import {
@@ -117,6 +117,7 @@ export const SamplesView = forwardRef(function SamplesView(
     mapLocationData,
     mapPreviewedLocationId,
     mapTilerKey,
+    mapStyleId,
     onActiveColumnsChange,
     onClearFilters,
     onDeleteSample,
@@ -1061,6 +1062,7 @@ export const SamplesView = forwardRef(function SamplesView(
           mapLevel={mapLevel}
           mapLocationData={mapLocationData}
           mapTilerKey={mapTilerKey}
+          mapStyleId={mapStyleId}
           onClearFilters={onClearFilters}
           onClick={onMapClick}
           onMapLevelChange={onMapLevelChange}
