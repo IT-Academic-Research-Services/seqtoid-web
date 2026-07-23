@@ -78,16 +78,18 @@ RSpec.describe BulkDownload, type: :model do
   describe "#kickoff_batch_job (success branch)" do
     let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
 
-    it "submits to Batch and records the job arn + RUNNING" do
+    it "submits to Batch (stringifying the command) and records the job arn + RUNNING" do
       expect(BATCH_CLIENT).to receive(:submit_job).with(
         hash_including(
           job_queue: BulkDownload::BULK_DOWNLOAD_BATCH_JOB_QUEUE,
           job_definition: BulkDownload::BULK_DOWNLOAD_BATCH_JOB_DEFINITION,
-          container_overrides: { command: ["python", "s3_tar_writer.py"] }
+          # The Integer element (15) must be stringified -- Batch rejects non-String command args.
+          container_overrides: { command: ["python", "s3_tar_writer.py", "--progress-delay", "15"] }
         )
       ).and_return(double("SubmitJobResponse", job_arn: "arn:aws:batch:us-west-2:1:job/xyz"))
 
-      bulk_download.kickoff_batch_job(["python", "s3_tar_writer.py"])
+      # command carries a raw Integer (like PROGRESS_UPDATE_DELAY) -- must not blow up submit_job.
+      bulk_download.kickoff_batch_job(["python", "s3_tar_writer.py", "--progress-delay", 15])
       bulk_download.reload
       expect(bulk_download.ecs_task_arn).to eq("arn:aws:batch:us-west-2:1:job/xyz")
       expect(bulk_download.status).to eq(BulkDownload::STATUS_RUNNING)
