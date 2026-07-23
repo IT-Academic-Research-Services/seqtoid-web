@@ -24,4 +24,12 @@ class AlignmentConfig < ApplicationRecord
   def self.default_name
     AppConfigHelper.get_app_config(AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME)
   end
+
+  # The id of the default alignment config (the one named by DEFAULT_ALIGNMENT_CONFIG_NAME).
+  # Restored accessor: it was dropped in an AlignmentConfig refactor, and a `rails runner` caller
+  # still referencing it crashed with `NoMethodError: undefined method 'default_ac_id'`
+  # (DEV-RAILS-PROJECT-1J). Maps to the current API by resolving the default config by name.
+  def self.default_ac_id
+    find_by(name: default_name)&.id
+  end
 end
