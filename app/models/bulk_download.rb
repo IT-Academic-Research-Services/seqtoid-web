@@ -33,6 +33,16 @@ class BulkDownload < ApplicationRecord
   BULK_DOWNLOAD_BATCH_JOB_DEFINITION = ENV["BULK_DOWNLOAD_BATCH_JOB_DEFINITION"].presence ||
                                        "seqtoid-web-#{ENV.fetch('ENVIRONMENT', 'dev')}-bulk-download"
 
+  # K8s-Job launcher target (latency: <30s on the dedicated warm bulk-download node; #846/SMP-1477).
+  # The tar runs as a Job on the tainted `seqtoid.io/pool=bulk-download` NodePool, as the IRSA SA
+  # seqtoid-web-bulk-download. Env-overridable; defaults match cypherid-web-infra.
+  BULK_DOWNLOAD_JOB_IMAGE = ENV["BULK_DOWNLOAD_JOB_IMAGE"].presence ||
+                            "#{ENV.fetch('AWS_ACCOUNT_ID', '491013321714')}.dkr.ecr.#{ENV.fetch('AWS_REGION', 'us-west-2')}.amazonaws.com/idseq-s3-tar-writer:latest"
+  BULK_DOWNLOAD_JOB_SA   = ENV["BULK_DOWNLOAD_JOB_SA"].presence || "seqtoid-web-bulk-download"
+  BULK_DOWNLOAD_POOL     = ENV["BULK_DOWNLOAD_POOL"].presence || "bulk-download"
+  BULK_DOWNLOAD_JOB_CPU  = ENV["BULK_DOWNLOAD_JOB_CPU"].presence || "2"
+  BULK_DOWNLOAD_JOB_MEM  = ENV["BULK_DOWNLOAD_JOB_MEM"].presence || "4Gi"
+
   before_save :convert_params_to_json
 
   attr_writer :params
@@ -397,6 +407,61 @@ class BulkDownload < ApplicationRecord
       bulk_download_id: id
     )
     raise KickoffError, BulkDownloadsHelper::KICKOFF_FAILURE
+  end
+
+  # Launch the s3_tar_writer as a K8s Job on the dedicated warm bulk-download node (#846/SMP-1477).
+  # Replaces the Batch submit_job: no instance cold-start (the warm-keeper holds a node), dedicated
+  # + right-sized, EKS-native. Same status semantics; stores the Job name in ecs_task_arn.
+  def kickoff_k8s_job(command_array)
+    client = KubeJobClient.new
+    result = client.create_job(build_k8s_job_manifest(command_array))
+    self.ecs_task_arn = result.dig("metadata", "name")
+    self.status = STATUS_RUNNING
+    save!
+  rescue StandardError => e
+    self.status = STATUS_ERROR
+    self.error_message = BulkDownloadsHelper::KICKOFF_FAILURE
+    save!
+    LogUtil.log_error(
+      "BulkDownloadKickoffError: K8s Job create failed for bulk download #{id}: #{e.class}: #{e.message}",
+      exception: e,
+      bulk_download_id: id
+    )
+    raise KickoffError, BulkDownloadsHelper::KICKOFF_FAILURE
+  end
+
+  # The tar Job: dedicated tainted pool, IRSA SA for S3, default priority (preempts the warm-keeper),
+  # right-sized requests, auto-cleanup via ttlSecondsAfterFinished. Command elements are stringified.
+  def build_k8s_job_manifest(command_array)
+    labels = { "app" => "bulk-download", "seqtoid.io/bulk-download-id" => id.to_s }
+    {
+      apiVersion: "batch/v1",
+      kind: "Job",
+      metadata: { name: "bulk-download-#{id}", labels: labels },
+      spec: {
+        backoffLimit: 1,
+        ttlSecondsAfterFinished: 3600,   # auto-delete the finished Job after 1h
+        activeDeadlineSeconds: 10_800,   # 3h cap
+        template: {
+          metadata: { labels: labels },
+          spec: {
+            serviceAccountName: BULK_DOWNLOAD_JOB_SA,
+            restartPolicy: "Never",
+            nodeSelector: { "seqtoid.io/pool" => BULK_DOWNLOAD_POOL },
+            tolerations: [{ key: "seqtoid.io/pool", value: BULK_DOWNLOAD_POOL, effect: "NoSchedule" }],
+            containers: [{
+              name: "s3-tar-writer",
+              image: BULK_DOWNLOAD_JOB_IMAGE,
+              command: command_array.map(&:to_s),
+              resources: {
+                requests: { cpu: BULK_DOWNLOAD_JOB_CPU, memory: BULK_DOWNLOAD_JOB_MEM },
+                limits: { cpu: BULK_DOWNLOAD_JOB_CPU, memory: BULK_DOWNLOAD_JOB_MEM },
+              },
+            }],
+          },
+        },
+      },
+    }
   end
 
   def get_param_field(key, field)
@@ -953,8 +1018,9 @@ class BulkDownload < ApplicationRecord
     if current_execution_type == ECS_EXECUTION_TYPE
       ecs_task_command = bulk_download_ecs_task_command
       unless ecs_task_command.nil?
-        # Migrated off aegea -> ECS-Fargate onto AWS Batch (#846/SMP-1477). Same command array.
-        kickoff_batch_job(ecs_task_command)
+        # Migrated off aegea -> a K8s Job on the dedicated warm bulk-download node (#846/SMP-1477).
+        # (kickoff_batch_job is kept as a fallback until the K8s path is proven, then removed.)
+        kickoff_k8s_job(ecs_task_command)
       end
     end
     if current_execution_type == RESQUE_EXECUTION_TYPE
