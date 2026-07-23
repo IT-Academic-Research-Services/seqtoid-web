@@ -56,7 +56,7 @@ RSpec.describe BulkDownloadsController, type: :controller do
                                       pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
         expect(BATCH_CLIENT).to receive(:submit_job)
-          .exactly(1).times.and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
+          .exactly(1).times.and_return(double(job_arn: "ABC"))
 
         bulk_download_params = {
           download_type: "unmapped_reads",
@@ -265,7 +265,7 @@ RSpec.describe BulkDownloadsController, type: :controller do
                                        pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
         # Bulk downloads submit to AWS Batch (migrated off aegea); mock the submit so CI doesn't hit AWS.
         allow(BATCH_CLIENT).to receive(:submit_job)
-          .and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
+          .and_return(double(job_arn: "ABC"))
 
         bulk_download_params = {
           # This download type is collaborator-only.
@@ -352,7 +352,7 @@ RSpec.describe BulkDownloadsController, type: :controller do
         workflow_run_two = create(:workflow_run, sample: sample_two, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded])
 
         expect(BATCH_CLIENT).to receive(:submit_job)
-          .exactly(1).times.and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
+          .exactly(1).times.and_return(double(job_arn: "ABC"))
 
         allow_any_instance_of(SfnExecution).to receive(:output_path) { |output_key| "#{@s3_path}/#{output_key}" }
 
@@ -858,7 +858,7 @@ RSpec.describe BulkDownloadsController, type: :controller do
 
         # Bulk downloads submit to AWS Batch (migrated off aegea); mock the submit so CI doesn't hit AWS.
         allow(BATCH_CLIENT).to receive(:submit_job)
-          .and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
+          .and_return(double(job_arn: "ABC"))
 
         bulk_download_params = {
           # This download type is collaborator-only.
