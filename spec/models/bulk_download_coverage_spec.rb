@@ -120,4 +120,50 @@ RSpec.describe BulkDownload, type: :model do
       expect { bulk_download.kickoff_batch_job(["python", "s3_tar_writer.py"]) }.to raise_error(BulkDownload::KickoffError)
     end
   end
+
+  # The live launcher: a K8s Job on the dedicated warm node (#846/SMP-1477). Same RUNNING/ERROR
+  # semantics; stores the Job name; command stringified.
+  describe "#kickoff_k8s_job (success branch)" do
+    let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
+
+    it "creates a K8s Job (stringified command) and records the Job name + RUNNING" do
+      job_client = instance_double(KubeJobClient)
+      allow(KubeJobClient).to receive(:new).and_return(job_client)
+      expect(job_client).to receive(:create_job) do |manifest|
+        cmd = manifest.dig(:spec, :template, :spec, :containers, 0, :command)
+        expect(cmd).to all(be_a(String)) # Integer args (PROGRESS_UPDATE_DELAY) must be stringified
+        { "metadata" => { "name" => "bulk-download-#{bulk_download.id}" } }
+      end
+
+      bulk_download.kickoff_k8s_job(["python", "s3_tar_writer.py", "--progress-delay", 15])
+      bulk_download.reload
+      expect(bulk_download.ecs_task_arn).to eq("bulk-download-#{bulk_download.id}")
+      expect(bulk_download.status).to eq(BulkDownload::STATUS_RUNNING)
+    end
+  end
+
+  describe "#kickoff_k8s_job (failure branch)" do
+    let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
+
+    before do
+      allow(KubeJobClient).to receive(:new).and_raise(KubeJobClient::Error, "create job -> 403 Forbidden")
+    end
+
+    it "marks the download errored and raises a typed KickoffError" do
+      allow(LogUtil).to receive(:log_error)
+      expect { bulk_download.kickoff_k8s_job(["python", "s3_tar_writer.py"]) }
+        .to raise_error(BulkDownload::KickoffError, BulkDownloadsHelper::KICKOFF_FAILURE)
+      bulk_download.reload
+      expect(bulk_download.status).to eq(BulkDownload::STATUS_ERROR)
+      expect(bulk_download.error_message).to eq(BulkDownloadsHelper::KICKOFF_FAILURE)
+    end
+
+    it "logs the underlying K8s error for debugging" do
+      expect(LogUtil).to receive(:log_error).with(
+        a_string_matching(/K8s Job create failed/),
+        hash_including(bulk_download_id: bulk_download.id)
+      )
+      expect { bulk_download.kickoff_k8s_job(["python", "s3_tar_writer.py"]) }.to raise_error(BulkDownload::KickoffError)
+    end
+  end
 end
