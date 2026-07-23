@@ -1,12 +1,12 @@
 import { Tab, Tabs } from "@czi-sds/components";
 import {
+  get as _get,
   capitalize,
   clone,
   compact,
   concat,
   escapeRegExp,
   find,
-  get as _get,
   isEmpty,
   isNull,
   isUndefined,
@@ -43,12 +43,12 @@ import {
   TempSelectedOptionsShape,
 } from "~/components/utils/urls";
 import {
+  WORKFLOW_ENTITIES,
+  WORKFLOW_TABS,
   WorkflowCount,
   workflowIsWorkflowRunEntity,
   WORKFLOWS,
   WorkflowType,
-  WORKFLOW_ENTITIES,
-  WORKFLOW_TABS,
 } from "~/components/utils/workflows";
 import { MAP_CLUSTER_ENABLED_LEVELS } from "~/components/views/DiscoveryView/components/DiscoveryMap/constants";
 import { indexOfMapLevel } from "~/components/views/DiscoveryView/components/DiscoveryMap/utils";
@@ -109,8 +109,6 @@ import {
   TAB_SAMPLES,
   TAB_VISUALIZATIONS,
 } from "./constants";
-import { DiscoveryDataLayer, ObjectCollectionView } from "./DiscoveryDataLayer";
-import { ProjectCountsType } from "./DiscoveryViewFC";
 import {
   DISCOVERY_DOMAIN_ALL_DATA,
   DISCOVERY_DOMAIN_MY_DATA,
@@ -122,6 +120,8 @@ import {
   getDiscoveryVisualizations,
 } from "./discovery_api";
 import cs from "./discovery_view.scss";
+import { DiscoveryDataLayer, ObjectCollectionView } from "./DiscoveryDataLayer";
+import { ProjectCountsType } from "./DiscoveryViewFC";
 import {
   getOrderByKeyFor,
   getOrderDirKeyFor,
@@ -1168,8 +1168,12 @@ export class DiscoveryView extends React.Component<
           workflow,
           workflowEntity: WORKFLOWS[workflow].entity,
           userDataCounts: {
-            sampleCount: sampleStats.count,
-            projectCount: sampleStats.projectCount,
+            // getDiscoveryStats resolves to {} when the stats request fails, so
+            // sampleStats can be undefined here (matching the sampleStats? guard
+            // above). Reading .count on undefined throws "can't access property
+            // count" (DEV-REACTJS-PROJECT-9).
+            sampleCount: sampleStats?.count,
+            projectCount: sampleStats?.projectCount,
           },
           ...(!isWorkflowRunTab && {
             selectableSampleIds:

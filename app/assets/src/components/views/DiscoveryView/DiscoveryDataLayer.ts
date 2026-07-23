@@ -186,7 +186,10 @@ class ObjectCollectionView<T extends { id: ID }, ID extends string | number> {
           listAllIds: this._orderedIds === null,
         });
 
-      fetchedObjects.forEach((object: $TSFixMe) => {
+      // Guard against a callback that resolves without a fetchedObjects array
+      // (e.g. the underlying API returned null/undefined). Iterating undefined
+      // here throws "can't access property forEach" (DEV-REACTJS-PROJECT-18).
+      (fetchedObjects || []).forEach((object: $TSFixMe) => {
         if (this._shouldConvertIdToString) {
           this._collection.entries.set(object.id.toString(), {
             ...object,
@@ -214,9 +217,14 @@ class ObjectCollectionView<T extends { id: ID }, ID extends string | number> {
       }
     }
 
+    // _orderedIds stays null when the fetch returns no ids (fetchedObjectIds
+    // falsy), so guard before the `in` check. `idx in null` throws
+    // "right-hand side of 'in' should be an object, got null"
+    // (DEV-REACTJS-PROJECT-16 / -13). `idx in []` is a safe no-op.
+    const orderedIds = this._orderedIds || [];
     return range(startIndex, minStopIndex + 1)
-      .filter(idx => idx in this._orderedIds)
-      .map(idx => this._collection.entries.get(this._orderedIds[idx]));
+      .filter(idx => idx in orderedIds)
+      .map(idx => this._collection.entries.get(orderedIds[idx]));
   };
 }
 

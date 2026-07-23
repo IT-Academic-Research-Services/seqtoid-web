@@ -416,10 +416,17 @@ const getDiscoveryVisualizations = async ({
     orderDir,
     listAllIds,
   });
+  // The /visualizations.json endpoint is expected to return an array, but on an
+  // error/empty response it can come back as a non-array; calling native .map on
+  // it throws "y.map is not a function" (DEV-REACTJS-PROJECT-17 / -12). Normalize
+  // to an array before mapping and before it is consumed downstream (.length).
+  const visualizationList: $TSFixMe = Array.isArray(visualizations)
+    ? visualizations
+    : [];
   return {
-    visualizations,
+    visualizations: visualizationList,
     visualizationIds: listAllIds
-      ? visualizations.map((visualization: $TSFixMe) => visualization.id)
+      ? visualizationList.map((visualization: $TSFixMe) => visualization.id)
       : null,
   };
 };
@@ -447,11 +454,11 @@ const getDiscoveryLocations = async ({
 };
 
 export {
-  DISCOVERY_DOMAINS,
-  DISCOVERY_DOMAIN_MY_DATA,
   DISCOVERY_DOMAIN_ALL_DATA,
+  DISCOVERY_DOMAIN_MY_DATA,
   DISCOVERY_DOMAIN_PUBLIC,
   DISCOVERY_DOMAIN_SNAPSHOT,
+  DISCOVERY_DOMAINS,
   getDiscoveryDimensions,
   getDiscoveryLocations,
   getDiscoveryProjects,
