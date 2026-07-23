@@ -1,0 +1,72 @@
+name: notify-cicd-failure
+# Surfaces a SILENT main-build / roll-up failure the moment it happens, by filing a Jira ticket.
+# Self-contained: uses only our Jira (no customer-IT email/Slack/infra). The gap this closes: a red
+# main build makes gitops-advance-dev skip (no green image) so DEV silently stops advancing -- and
+# we had no signal until someone dug in. This fires on the failure instead.
+on:
+  workflow_run:
+    workflows:
+      - "Build and Push Docker Images"      # the main image build that feeds dev CD
+      - "Promote integration -> main"       # the nightly/hotfix roll-up
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write   # fallback GitHub issue if Jira is not configured
+
+jobs:
+  alert:
+    # only real failures on main (skipped/cancelled are not incidents)
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: File a Jira ticket (dedup per commit)
+        env:
+          JIRA_BASE_URL: https://ucsfredesign.atlassian.net
+          JIRA_EMAIL: thomas.horvath@ucsf.edu
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os, json, base64, urllib.request, urllib.error
+          base, email, token = os.environ.get("JIRA_BASE_URL"), os.environ.get("JIRA_EMAIL"), os.environ.get("JIRA_TOKEN")
+          wf, url, sha, repo = os.environ["WF_NAME"], os.environ["RUN_URL"], os.environ["HEAD_SHA"][:8], os.environ["REPO"]
+          if not (base and email and token):
+              print("::warning::JIRA_TOKEN not set; skipping Jira ticket"); raise SystemExit(0)
+          A = "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode()
+          def call(m, p, b=None):
+              r = urllib.request.Request(base.rstrip('/')+p, data=json.dumps(b).encode() if b else None, method=m,
+                                         headers={"Authorization": A, "Accept": "application/json", "Content-Type": "application/json"})
+              try:
+                  with urllib.request.build_opener().open(r, timeout=15) as x: return x.status, json.loads(x.read() or "{}")
+              except urllib.error.HTTPError as e: return e.code, json.loads(e.read() or "{}")
+          # dedup: skip if an open ticket already exists for this repo+sha
+          st, d = call("POST", "/rest/api/3/search/jql", {"jql": f'project=SMP AND statusCategory != Done AND summary ~ "CI FAIL {repo} {sha}"', "maxResults": 1})
+          if d.get("issues"):
+              print("existing open ticket:", d["issues"][0]["key"]); raise SystemExit(0)
+          def adf(t): return {"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":t}]},
+                              {"type":"paragraph","content":[{"type":"text","text":"Failed run: "},{"type":"text","text":url,"marks":[{"type":"link","attrs":{"href":url}}]}]}]}
+          desc = (f"'{wf}' FAILED on main at commit {sha} ({repo}). A red main build makes gitops-advance-dev "
+                  f"skip, so DEV stops advancing silently -- fix the build, then dev auto-advances on the next green run.")
+          fields = {"project":{"key":"SMP"},"issuetype":{"name":"Task"},"summary":f"CI FAIL {repo} {sha}: {wf} broke on main",
+                    "description":adf(desc),"labels":["ci-cd","build-failure","auto"],"parent":{"key":"SMP-761"}}
+          st, res = call("POST", "/rest/api/3/issue", {"fields": fields})
+          print("jira:", st, res.get("key", res))
+          PY
+      - name: Fallback GitHub issue
+        if: ${{ env.HAVE_JIRA != 'true' }}
+        env:
+          HAVE_JIRA: ${{ secrets.JIRA_TOKEN != '' }}
+          GH_TOKEN: ${{ github.token }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ "${{ secrets.JIRA_TOKEN != '' }}" != "true" ]; then
+            gh issue create --repo "${{ github.repository }}" --title "CI FAIL on main: $WF_NAME" \
+              --body "A main build/roll-up failed; dev stops advancing until fixed. Run: $RUN_URL" --label ci-cd 2>&1 | tail -1 || true
+          fi
