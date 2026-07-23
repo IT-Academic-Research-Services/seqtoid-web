@@ -378,7 +378,10 @@ class BulkDownload < ApplicationRecord
       job_name: "bulk-download-#{id}",
       job_queue: BULK_DOWNLOAD_BATCH_JOB_QUEUE,
       job_definition: BULK_DOWNLOAD_BATCH_JOB_DEFINITION,
-      container_overrides: { command: command_array }
+      # Batch requires every command element to be a String. The command array can carry
+      # non-strings (e.g. PROGRESS_UPDATE_DELAY, an Integer); the old aegea path shell-joined
+      # them so this never surfaced. Stringify so submit_job param validation passes.
+      container_overrides: { command: command_array.map(&:to_s) }
     )
     # Reuse the existing column to store the Batch job ARN (no migration).
     self.ecs_task_arn = response.job_arn
