@@ -1,0 +1,62 @@
+# Lightweight LOCAL test loop -- the fast inner loop, NOT the pre-push CI gate.
+#
+#   bin/test-local                         # whole suite against your working tree
+#   bin/test-local spec/models/foo_spec.rb # just these specs
+#
+# Difference from docker-compose.ci.yml (which stays the faithful final gate, `make ci-local`):
+#   * the `test` service uses a PREBUILT image (Dockerfile.test) with apt/pip/bundle baked into layers,
+#     so nothing reinstalls per run -- only a Gemfile.lock / requirements.txt change triggers a rebuild;
+#   * the container STAYS UP (sleep infinity) so runs are `exec rspec`, not build+install+run each time;
+#   * db + redis publish their ports to localhost too, so you can ALSO run rspec straight on the host
+#     (no /etc/hosts edits needed -- see bin/test-local's env notes).
+#
+# Everything talks over the compose network, so the hostnames `db` and `redis` resolve automatically --
+# there is nothing to add to /etc/hosts.
+services:
+  db:
+    image: mysql:8.0
+    platform: linux/amd64
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+      MYSQL_DATABASE: idseq_test
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci', '--group_concat_max_len=1073741824', '--default-authentication-plugin=mysql_native_password']
+    ports:
+      - "3306:3306"   # bonus: lets you run rspec on the HOST against 127.0.0.1:3306 if you prefer
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"   # bonus: host-side rspec can hit redis://localhost:6379
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    platform: linux/amd64
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='  # dummy, test-only
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_HOST: db
+      DB_PORT: '3306'
+      REDIS_URL: redis://redis:6379
+      REDISCLOUD_URL: redis://redis:6379   # the app defaults this to host `redis`; set it so nothing needs /etc/hosts
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    working_dir: /app
+    volumes:
+      - .:/app          # your live changes -- no rebuild to test an edit
+    command: ["sleep", "infinity"]

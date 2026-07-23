@@ -1,0 +1,43 @@
+# Warm test image for the LOCAL dev loop (not CI). The point: bake the slow, rarely-changing
+# dependencies (apt system libs + the Python deps + the gem bundle) into image LAYERS so they are
+# installed ONCE and reused, instead of being reinstalled on every run the way the bare-ruby
+# docker-compose.ci.yml harness does. Your app code is bind-mounted at run time (docker-compose.test.yml),
+# so editing code needs no rebuild; only a Gemfile.lock / requirements.txt change re-runs the deps layer.
+#
+# amd64 on purpose: some Python wheels (biom-format) have no arm64 build, matching bin/ci-test. On a Linux
+# amd64 box this runs natively (fast); on Apple Silicon it emulates (slower, but correct).
+FROM --platform=linux/amd64 ruby:3.3.6
+
+# System deps -- identical set to bin/ci-test's apt line (keep in sync). Cached as one layer.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     python3-pip python3-dev build-essential nodejs default-mysql-client default-libmysqlclient-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN pip3 config set global.break-system-packages true
+
+WORKDIR /app
+
+# Gem bundle -- installs to the image default /usr/local/bundle (NOT /app/vendor/bundle), so the
+# bind-mounted /app at run time does not shadow it. Only Gemfile{,.lock} are copied here, so this
+# layer's cache invalidates only when the lockfile changes, not on every code edit.
+COPY Gemfile Gemfile.lock ./
+RUN gem install bundler:2.5.22 --no-document \
+  && bundle install --jobs 4 --retry 3
+
+# Python deps -- same steps + pins as bin/ci-test. Installs to system site-packages (also not shadowed
+# by the /app mount). Cache invalidates only when requirements.txt changes.
+COPY requirements.txt ./
+RUN pip3 install --upgrade pip \
+  && pip3 install "cython<3.0.0" \
+  && pip3 install "pyyaml==5.4.1" --no-build-isolation \
+  && pip3 install -r requirements.txt
+
+# Ruby specs load asset manifests but do not need real bundles; drop in stubs so boot does not fail.
+RUN mkdir -p app/assets/dist \
+  && for f in main.bundle.min.css main.bundle.min.js vendors.bundle.min.css vendors.bundle.min.js; do \
+       echo foo > "app/assets/dist/$f"; \
+     done
+
+# The container stays up (docker-compose.test.yml overrides command to sleep) so the dev loop is
+# "exec rspec" against a warm process, not "build + install + run" each time.
+CMD ["bash"]
