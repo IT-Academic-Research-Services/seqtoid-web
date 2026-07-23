@@ -211,10 +211,17 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --from=builder /usr/local/bin/samtools /usr/local/bin/samtools
 COPY --from=chamber-builder /out/chamber /bin/chamber
-# python packages + the awscli entrypoint (NOT /usr/local/bin wholesale — that would
-# drag node back in). pip3 (break-system-packages) installs here on bookworm.
+# python packages + the pip console-script entrypoints the app shells out to (NOT
+# /usr/local/bin wholesale — that would drag node back in). pip3 (break-system-packages)
+# installs here on bookworm. Each shelled-out CLI needs BOTH its package (in dist-packages,
+# copied above) AND its /usr/local/bin entrypoint copied explicitly:
+#   - aws   : lib/s3_tar_writer.rb (S3 uploads)
+#   - aegea : app/models/bulk_download.rb (aegea ecs run -> bulk-download ECS task).
+#             Was missing here, so `aegea` was absent from runtime PATH and every bulk
+#             download raised Errno::ENOENT (Sentry DEV-RAILS-PROJECT-23).
 COPY --from=builder /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
 COPY --from=builder /usr/local/bin/aws /usr/local/bin/aws
+COPY --from=builder /usr/local/bin/aegea /usr/local/bin/aegea
 
 WORKDIR /app
 COPY --from=builder /app /app
