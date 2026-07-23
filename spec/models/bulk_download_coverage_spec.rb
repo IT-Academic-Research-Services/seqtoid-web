@@ -72,4 +72,50 @@ RSpec.describe BulkDownload, type: :model do
       expect(bulk_download.status).to eq(BulkDownload::STATUS_RUNNING)
     end
   end
+
+  # Migration off aegea -> AWS Batch (#846/SMP-1477). kickoff now submits the s3_tar_writer
+  # command straight to Batch as a container override; same RUNNING/ERROR semantics.
+  describe "#kickoff_batch_job (success branch)" do
+    let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
+
+    it "submits to Batch and records the job arn + RUNNING" do
+      expect(BATCH_CLIENT).to receive(:submit_job).with(
+        hash_including(
+          job_queue: BulkDownload::BULK_DOWNLOAD_BATCH_JOB_QUEUE,
+          job_definition: BulkDownload::BULK_DOWNLOAD_BATCH_JOB_DEFINITION,
+          container_overrides: { command: ["python", "s3_tar_writer.py"] }
+        )
+      ).and_return(double("SubmitJobResponse", job_arn: "arn:aws:batch:us-west-2:1:job/xyz"))
+
+      bulk_download.kickoff_batch_job(["python", "s3_tar_writer.py"])
+      bulk_download.reload
+      expect(bulk_download.ecs_task_arn).to eq("arn:aws:batch:us-west-2:1:job/xyz")
+      expect(bulk_download.status).to eq(BulkDownload::STATUS_RUNNING)
+    end
+  end
+
+  describe "#kickoff_batch_job (failure branch)" do
+    let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
+
+    before do
+      allow(BATCH_CLIENT).to receive(:submit_job).and_raise(Aws::Errors::ServiceError.new(nil, "AccessDenied: not authorized"))
+    end
+
+    it "marks the download errored and raises a typed KickoffError" do
+      allow(LogUtil).to receive(:log_error)
+      expect { bulk_download.kickoff_batch_job(["python", "s3_tar_writer.py"]) }
+        .to raise_error(BulkDownload::KickoffError, BulkDownloadsHelper::KICKOFF_FAILURE)
+      bulk_download.reload
+      expect(bulk_download.status).to eq(BulkDownload::STATUS_ERROR)
+      expect(bulk_download.error_message).to eq(BulkDownloadsHelper::KICKOFF_FAILURE)
+    end
+
+    it "logs the underlying Batch error for debugging" do
+      expect(LogUtil).to receive(:log_error).with(
+        a_string_matching(/Batch submit_job failed/),
+        hash_including(bulk_download_id: bulk_download.id)
+      )
+      expect { bulk_download.kickoff_batch_job(["python", "s3_tar_writer.py"]) }.to raise_error(BulkDownload::KickoffError)
+    end
+  end
 end

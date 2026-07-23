@@ -25,6 +25,14 @@ class BulkDownload < ApplicationRecord
   # [CZID-9274] We auto-delete BulkDownload and its S3 files via DeleteOldBulkDownloads job.
   AUTO_DELETE_AFTER_NUM_DAYS = 7
 
+  # AWS Batch target for the s3_tar_writer job (migration off aegea -> EKS/Batch; #846/SMP-1477).
+  # Provisioned in cypherid-web-infra dev/batch/bulk-download.tf. Overridable per env; the defaults
+  # follow the same `${ENVIRONMENT}` naming the infra uses.
+  BULK_DOWNLOAD_BATCH_JOB_QUEUE = ENV["BULK_DOWNLOAD_BATCH_JOB_QUEUE"].presence ||
+                                  "idseq-#{ENV.fetch('ENVIRONMENT', 'dev')}-lomem"
+  BULK_DOWNLOAD_BATCH_JOB_DEFINITION = ENV["BULK_DOWNLOAD_BATCH_JOB_DEFINITION"].presence ||
+                                       "seqtoid-web-#{ENV.fetch('ENVIRONMENT', 'dev')}-bulk-download"
+
   before_save :convert_params_to_json
 
   attr_writer :params
@@ -358,6 +366,34 @@ class BulkDownload < ApplicationRecord
     if executable_file.present?
       executable_file.unlink
     end
+  end
+
+  # Submit the s3_tar_writer job to AWS Batch (replaces the aegea -> ECS-Fargate shell-out;
+  # #846/SMP-1477). The s3_tar_writer image is launcher-agnostic, so the command array is passed
+  # straight through as a Batch container override -- no local exec file, no aegea staging bucket,
+  # and no shell escaping (exec-form args are passed literally). Same status semantics as the old
+  # path: RUNNING on a successful submit, ERROR + typed KickoffError on failure.
+  def kickoff_batch_job(command_array)
+    response = BATCH_CLIENT.submit_job(
+      job_name: "bulk-download-#{id}",
+      job_queue: BULK_DOWNLOAD_BATCH_JOB_QUEUE,
+      job_definition: BULK_DOWNLOAD_BATCH_JOB_DEFINITION,
+      container_overrides: { command: command_array }
+    )
+    # Reuse the existing column to store the Batch job ARN (no migration).
+    self.ecs_task_arn = response.job_arn
+    self.status = STATUS_RUNNING
+    save!
+  rescue Aws::Errors::ServiceError => e
+    self.status = STATUS_ERROR
+    self.error_message = BulkDownloadsHelper::KICKOFF_FAILURE
+    save!
+    LogUtil.log_error(
+      "BulkDownloadKickoffError: Batch submit_job failed for bulk download #{id}: #{e.class}: #{e.message}",
+      exception: e,
+      bulk_download_id: id
+    )
+    raise KickoffError, BulkDownloadsHelper::KICKOFF_FAILURE
   end
 
   def get_param_field(key, field)
@@ -914,7 +950,8 @@ class BulkDownload < ApplicationRecord
     if current_execution_type == ECS_EXECUTION_TYPE
       ecs_task_command = bulk_download_ecs_task_command
       unless ecs_task_command.nil?
-        kickoff_ecs_task(ecs_task_command)
+        # Migrated off aegea -> ECS-Fargate onto AWS Batch (#846/SMP-1477). Same command array.
+        kickoff_batch_job(ecs_task_command)
       end
     end
     if current_execution_type == RESQUE_EXECUTION_TYPE
