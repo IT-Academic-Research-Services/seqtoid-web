@@ -17,7 +17,14 @@
 namespace :smoke do
   desc "Smoke the critical user paths in-process; non-zero exit on any failure (782 gate)."
   task critical_paths: :environment do
-    require "action_dispatch/integration"
+    # ActionDispatch::Integration::Session lives in
+    # "action_dispatch/testing/integration", not "action_dispatch/integration"
+    # (which does not exist and raised LoadError, DEV-RAILS-PROJECT-1Z). The
+    # integration session mixes in ActionController::TemplateAssertions, so load
+    # "action_controller/test_case" first to define it. Both files ship in
+    # actionpack (a runtime dependency), so this is production-safe.
+    require "action_controller/test_case"
+    require "action_dispatch/testing/integration"
 
     paths = ENV.fetch("SMOKE_PATHS", "/health_check /").split
     accepted = ENV.fetch("SMOKE_ACCEPT_STATUSES", "200 301 302").split.map(&:to_i)
