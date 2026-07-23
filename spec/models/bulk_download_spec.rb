@@ -1388,7 +1388,7 @@ describe BulkDownload, type: :model do
 
       expect(bulk_download).to receive(:execution_type).exactly(1).times.and_return(BulkDownloadTypesHelper::ECS_EXECUTION_TYPE)
       expect(bulk_download).to receive(:bulk_download_ecs_task_command).exactly(1).times.and_return("mock_ecs_command")
-      expect(bulk_download).to receive(:kickoff_ecs_task).exactly(1).times.with("mock_ecs_command")
+      expect(bulk_download).to receive(:kickoff_batch_job).exactly(1).times.with("mock_ecs_command")
 
       bulk_download.kickoff
     end

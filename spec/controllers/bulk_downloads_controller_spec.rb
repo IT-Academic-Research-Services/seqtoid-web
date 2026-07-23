@@ -55,11 +55,8 @@ RSpec.describe BulkDownloadsController, type: :controller do
         @sample_two = create(:sample, project: @project, name: "Test Sample Two",
                                       pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
-        expect(Open3).to receive(:capture3)
-          .with("aegea", "ecs", "run", a_string_starting_with("--execute"), any_args)
-          .exactly(1).times.and_return(
-            [JSON.generate("taskArn": "ABC"), "", instance_double(Process::Status, exitstatus: 0, success?: true)]
-          )
+        expect(BATCH_CLIENT).to receive(:submit_job)
+          .exactly(1).times.and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
 
         bulk_download_params = {
           download_type: "unmapped_reads",
@@ -91,9 +88,8 @@ RSpec.describe BulkDownloadsController, type: :controller do
         @sample_two = create(:sample, project: @project, name: "Test Sample Two",
                                       pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
-        expect(Open3).to receive(:capture3).exactly(1).times.and_return(
-          ["", "", instance_double(Process::Status, exitstatus: 1, success?: false)]
-        )
+        expect(BATCH_CLIENT).to receive(:submit_job).exactly(1).times
+                                                    .and_raise(Aws::Errors::ServiceError.new(nil, "AccessDenied"))
 
         bulk_download_params = {
           download_type: "unmapped_reads",
@@ -267,11 +263,9 @@ RSpec.describe BulkDownloadsController, type: :controller do
                                        project: @collaborative_project,
                                        user: @user,
                                        pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
-        # This runs "aegea ecs run", which won't succeed in CI, so we must mock it out.
-        allow(Open3).to receive(:capture3)
-          .and_return(
-            [JSON.generate("taskArn": "ABC"), "", instance_double(Process::Status, exitstatus: 0, success?: true)]
-          )
+        # Bulk downloads submit to AWS Batch (migrated off aegea); mock the submit so CI doesn't hit AWS.
+        allow(BATCH_CLIENT).to receive(:submit_job)
+          .and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
 
         bulk_download_params = {
           # This download type is collaborator-only.
@@ -357,11 +351,8 @@ RSpec.describe BulkDownloadsController, type: :controller do
         workflow_run_one = create(:workflow_run, sample: sample_one, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded])
         workflow_run_two = create(:workflow_run, sample: sample_two, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded])
 
-        expect(Open3).to receive(:capture3)
-          .with("aegea", "ecs", "run", a_string_starting_with("--execute"), any_args)
-          .exactly(1).times.and_return(
-            [JSON.generate("taskArn": "ABC"), "", instance_double(Process::Status, exitstatus: 0, success?: true)]
-          )
+        expect(BATCH_CLIENT).to receive(:submit_job)
+          .exactly(1).times.and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
 
         allow_any_instance_of(SfnExecution).to receive(:output_path) { |output_key| "#{@s3_path}/#{output_key}" }
 
@@ -865,11 +856,9 @@ RSpec.describe BulkDownloadsController, type: :controller do
         @public_project = create(:project, users: [@user], public_access: 1)
         @public_sample = create(:sample, project: @public_project, pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
 
-        # This runs "aegea ecs run", which won't succeed in CI, so we must mock it out.
-        allow(Open3).to receive(:capture3)
-          .and_return(
-            [JSON.generate("taskArn": "ABC"), "", instance_double(Process::Status, exitstatus: 0, success?: true)]
-          )
+        # Bulk downloads submit to AWS Batch (migrated off aegea); mock the submit so CI doesn't hit AWS.
+        allow(BATCH_CLIENT).to receive(:submit_job)
+          .and_return(double(job_arn: "arn:aws:batch:us-west-2:1:job/ABC"))
 
         bulk_download_params = {
           # This download type is collaborator-only.
