@@ -1,4 +1,8 @@
-import { ChecksumAlgorithm, S3Client } from "@aws-sdk/client-s3";
+import {
+  ChecksumAlgorithm,
+  PutObjectCommandInput,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import cx from "classnames";
 import { find, get, map, pick, take } from "lodash/fp";
 import React, { useCallback, useEffect, useState } from "react";
@@ -16,6 +20,10 @@ import {
   PathToFile,
   SampleForUpload,
 } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/types";
+import {
+  inputFileS3Tags,
+  s3TagsToUrlParams,
+} from "~/components/views/SampleUploadFlow/utils";
 import { MetadataBasic, Project, SampleFromApi } from "~/interface/shared";
 import Modal from "~ui/containers/Modal";
 import { UploadWorkflows } from "../../../../constants";
@@ -251,7 +259,7 @@ export const RemoteUploadProgressModal = ({
   };
 
   const uploadInputFileToS3 = async (
-    _sample: SampleForUpload,
+    sample: SampleForUpload,
     inputFile: PathToFile,
     s3Client: S3Client,
   ) => {
@@ -261,11 +269,12 @@ export const RemoteUploadProgressModal = ({
       s3_file_path: s3Key,
     } = inputFile;
 
-    const uploadParams = {
+    const uploadParams: PutObjectCommandInput = {
       Bucket: s3Bucket,
       Key: s3Key,
       Body: body,
       ChecksumAlgorithm: ChecksumAlgorithm.SHA256,
+      Tagging: s3TagsToUrlParams(inputFileS3Tags(sample.id)),
     };
 
     const fileUpload = new ResumableUpload({
