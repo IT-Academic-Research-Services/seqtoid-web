@@ -1,4 +1,8 @@
-import { ChecksumAlgorithm, S3Client } from "@aws-sdk/client-s3";
+import {
+  ChecksumAlgorithm,
+  PutObjectCommandInput,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import cx from "classnames";
 import {
   constant,
@@ -42,6 +46,10 @@ import {
   loadUploadResumeState,
   saveUploadResumeState,
 } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/uploadResumeState";
+import {
+  inputFileS3Tags,
+  s3TagsToUrlParams,
+} from "~/components/views/SampleUploadFlow/utils";
 import { MetadataBasic, Project, SampleFromApi } from "~/interface/shared";
 import Modal from "~ui/containers/Modal";
 import { UploadWorkflows } from "../../../../constants";
@@ -362,11 +370,12 @@ export const LocalUploadProgressModal = ({
       void persistFileHandle(project.id, s3Key, fileHandle);
     }
 
-    const uploadParams = {
+    const uploadParams: PutObjectCommandInput = {
       Bucket: s3Bucket,
       Key: s3Key,
       Body: body,
       ChecksumAlgorithm: ChecksumAlgorithm.SHA256,
+      Tagging: s3TagsToUrlParams(inputFileS3Tags(sample.id)),
     };
 
     updateSampleFilePercentage({

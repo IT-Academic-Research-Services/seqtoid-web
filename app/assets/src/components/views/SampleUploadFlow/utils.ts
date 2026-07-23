@@ -1,5 +1,7 @@
+import { Tag } from "@aws-sdk/client-s3";
 import { groupBy, maxBy, sortBy, sum } from "lodash/fp";
 import { openUrlInPopupWindow } from "~/components/utils/links";
+import { INPUT_FILE_S3_TAGS } from "~/components/views/SampleUploadFlow/constants";
 import { getURLParamString } from "~/helpers/url";
 import { SampleFromApi, SampleUploadType } from "~/interface/shared";
 
@@ -196,4 +198,18 @@ export const groupSamplesByLane = ({
   }
 
   return result;
+};
+
+export const inputFileS3Tags = (sampleId: number): Tag[] => {
+  return [...INPUT_FILE_S3_TAGS, { Key: "id", Value: sampleId.toString() }];
+};
+
+export const s3TagsToUrlParams = (tags: Tag[]) => {
+  return tags
+    .flatMap(({ Key, Value }) =>
+      Key && Value
+        ? `${encodeURIComponent(Key)}=${encodeURIComponent(Value)}`
+        : [],
+    )
+    .join("&");
 };
