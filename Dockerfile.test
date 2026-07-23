@@ -18,9 +18,13 @@ RUN pip3 config set global.break-system-packages true
 WORKDIR /app
 
 # Gem bundle -- installs to the image default /usr/local/bundle (NOT /app/vendor/bundle), so the
-# bind-mounted /app at run time does not shadow it. Only Gemfile{,.lock} are copied here, so this
-# layer's cache invalidates only when the lockfile changes, not on every code edit.
-COPY Gemfile Gemfile.lock ./
+# bind-mounted /app at run time does not shadow it. Copy Gemfile{,.lock} plus .ruby-version, which
+# the Gemfile reads via `ruby file: '.ruby-version'` -- without it bundler dies with ENOENT. This
+# layer's cache invalidates only when one of those files changes, not on every code edit.
+# (The base ruby image sets BUNDLE_APP_CONFIG=/usr/local/bundle, so the bind-mounted /app/.bundle/config
+# -- which pins a macOS Homebrew mysql_config path -- is NOT read; mysql2 builds against the apt
+# default-libmysqlclient-dev with no custom mysql-config.)
+COPY Gemfile Gemfile.lock .ruby-version ./
 RUN gem install bundler:2.5.22 --no-document \
   && bundle install --jobs 4 --retry 3
 

@@ -52,6 +52,7 @@ services:
       REDIS_URL: redis://redis:6379
       REDISCLOUD_URL: redis://redis:6379   # the app defaults this to host `redis`; set it so nothing needs /etc/hosts
       RAILS_ENV: test
+      SKIP_COVERAGE_MINIMUM: '1'   # dev loop runs subsets; the SimpleCov floor is enforced by make ci-local, not here
       AWS_REGION: us-west-2
       AWS_ACCOUNT_ID: test
       AWS_ACCESS_KEY_ID: test
