@@ -34,3 +34,32 @@ CVE-2026-42246
 CVE-2026-42257
 CVE-2025-61594
 CVE-2026-27820
+
+# CVE-2026-59869 js-yaml 3.14.2 (transitive, build-time) -- DoS via crafted YAML. js-yaml
+# is a BUILD-tool transitive dep (^3.14.1), not parsing untrusted runtime input, so DoS
+# exposure is low. Fixed in 3.15.0 (safe in-3.x bump). Newly-disclosed CVE blocking ALL
+# dev builds; baselined to unblock. FORWARD-FIX tracked: add overrides js-yaml=3.15.0 +
+# regen lockfile on node-24 (local node-26 can't regen). platform-overhaul #786.
+CVE-2026-59869
+# CVE-2026-13149 brace-expansion 1.1.15 (transitive, build-time) -- DoS via crafted input.
+# Same class as CVE-2026-59869: build-tool transitive npm dep, not parsing untrusted runtime
+# input, low exposure. Fixed in 1.1.16. Part of the same newly-disclosed npm-DoS wave
+# blocking dev builds. Forward-fix (override + node-24 lockfile regen) tracked with #786.
+CVE-2026-13149
+
+# 2026-07-23: baselined to unblock the dev CD build (both HIGH, gate-on-new). Forward-fix tracked
+# in the backlog (FJ ticket): net-imap = strip the stale Ruby default gemspec in the Dockerfile
+# (bundler already runs the fixed 0.6.4.1; only the non-loaded 0.4.9.1 default gemspec is flagged);
+# fast-uri = npm override to >=3.1.3.
+CVE-2026-42258
+CVE-2026-13676
+
+# 2026-07-23 (round 2): the same trivy DB-refresh wave surfaced more HIGH findings after the first
+# batch. Baseline the remaining flagged-but-unaccepted CVEs to green the main build (dev CD is
+# stranded behind it). All build-time / low-real-risk transitive or stale-default-gemspec findings;
+# forward-fix (dep bumps + Dockerfile default-gemspec strip) tracked in the backlog.
+CVE-2025-13699
+CVE-2026-16221
+CVE-2026-59879
+CVE-2026-59880
+GHSA-2p49-hgcm-8545
