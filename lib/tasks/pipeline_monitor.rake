@@ -387,7 +387,7 @@ task "pipeline_monitor", [:duration] => :environment do |_t, args|
   # spawn a new finite duration process every 60 minutes
   respawn_interval = 60 * 60
   # rate-limit status updates
-  cloud_env = ["prod", "staging"].include?(Rails.env)
+  cloud_env = %w[development prod staging].include?(Rails.env)
   checks_per_minute = cloud_env ? 4.0 : 1.0
   # make sure the system is not overwhelmed under any cirmustances
   wait_before_respawn = cloud_env ? 5 : 30

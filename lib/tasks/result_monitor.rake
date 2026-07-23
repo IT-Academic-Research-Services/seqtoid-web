@@ -122,7 +122,7 @@ task "result_monitor", [:duration] => :environment do |_t, args|
   # spawn a new finite duration process every 60 minutes
   respawn_interval = 60 * 60
   # rate-limit status updates
-  cloud_env = ["prod", "staging"].include?(Rails.env)
+  cloud_env = %w[development prod staging].include?(Rails.env)
   checks_per_minute = cloud_env ? 4.0 : 0.2
   # make sure the system is not overwhelmed under any cirmustances
   wait_before_respawn = cloud_env ? 5 : 30
@@ -143,7 +143,7 @@ task "result_monitor", [:duration] => :environment do |_t, args|
     until MonitorPipelineResults.shutdown_requested
       system("rake result_monitor[finite_duration]")
       sleep wait_before_respawn
-      unless $CHILD_STATUS.exitstatus.zero?
+      unless $CHILD_STATUS.exitstatus&.zero?
         sleep additional_wait_after_failure
       end
     end
