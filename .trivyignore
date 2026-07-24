@@ -63,3 +63,11 @@ CVE-2026-16221
 CVE-2026-59879
 CVE-2026-59880
 GHSA-2p49-hgcm-8545
+
+# CVE-2026-45623 postcss 7.0.39 (package.json) -- arbitrary file read / info disclosure. postcss
+# is a BUILD-time dev dependency (bundled by the JS toolchain), not parsing untrusted input at
+# runtime, so exposure is low. Fix requires postcss 8.5.12, a MAJOR 7->8 bump that cannot be done
+# as a drop-in and needs the JS build validated. Newly-disclosed HIGH in the DB-refresh wave,
+# hard-failing the dev image build; baselined to unblock. FORWARD-FIX: bump postcss to 8.x + rebuild
+# the JS bundle. platform-overhaul #786-adjacent (trivy HIGH wave).
+CVE-2026-45623
