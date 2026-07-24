@@ -43,28 +43,44 @@ RSpec.describe Location, type: :model do
       expect(body).to eq([])
     end
 
-    it "degrades gracefully to [false, []] on an open circuit" do
+    it "degrades gracefully to [false, ...] on an open circuit" do
       allow(HttpResilience).to receive(:request)
         .and_raise(HttpResilience::CircuitOpenError.new("open"))
-      expect(Rails.logger).to receive(:warn).with(/LocationIQ request degraded/)
+      expect(LogUtil).to receive(:log_error)
+        .with(
+          "[Location] LocationIQ request failed",
+          exception: HttpResilience::CircuitOpenError,
+          endpoint_query: "search.php?q=x"
+        )
 
-      expect(Location.location_api_request("search.php?q=x")).to eq([false, []])
+      expect(Location.location_api_request("search.php?q=x")).to eq([false, { error: "open" }])
     end
 
-    it "degrades gracefully to [false, []] on a timeout" do
+    it "degrades gracefully to [false, ...] on a timeout" do
       allow(HttpResilience).to receive(:request).and_raise(Timeout::Error)
       allow(Rails.logger).to receive(:warn)
+      expect(LogUtil).to receive(:log_error)
+        .with(
+          "[Location] LocationIQ request failed",
+          exception: Timeout::Error,
+          endpoint_query: "search.php?q=x"
+        )
 
-      expect(Location.location_api_request("search.php?q=x")).to eq([false, []])
+      expect(Location.location_api_request("search.php?q=x")).to eq([false, { error: "Timeout::Error" }])
     end
 
-    it "degrades gracefully to [false, []] on malformed JSON" do
+    it "degrades gracefully to [false, ...] on malformed JSON" do
       resp = instance_double(Net::HTTPOK, body: "not json")
       allow(resp).to receive(:is_a?).and_return(true)
       allow(HttpResilience).to receive(:request).and_return(resp)
-      allow(Rails.logger).to receive(:warn)
+      expect(LogUtil).to receive(:log_error)
+        .with(
+          "[Location] LocationIQ request failed",
+          exception: JSON::ParserError,
+          endpoint_query: "search.php?q=x"
+        )
 
-      expect(Location.location_api_request("search.php?q=x")).to eq([false, []])
+      expect(Location.location_api_request("search.php?q=x")).to eq([false, { error: "unexpected token 'not' at line 1 column 1" }])
     end
   end
 

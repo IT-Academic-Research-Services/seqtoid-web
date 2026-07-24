@@ -33,7 +33,12 @@ RSpec.describe LocationsController, type: :controller do
       allow(Location).to receive(:geo_search_request_base).and_return([false, "429 Too Many Requests"])
       # resp present -> the `msg += ": #{resp}"` arm fires; the composed message carries the body.
       expect(LogUtil).to receive(:log_error)
-        .with(a_string_including("429 Too Many Requests"), any_args)
+        .with(
+          LocationsController::GEOSEARCH_ERR_MSG,
+          exception: have_attributes(message: 'Geosearch failed. Check API rate limits: [action autocomplete]: 429 Too Many Requests'),
+          limit: nil,
+          query: "UCSF"
+        )
 
       get :external_search, params: { query: "UCSF" }
       expect(response).to have_http_status(:internal_server_error)
@@ -44,7 +49,12 @@ RSpec.describe LocationsController, type: :controller do
       # resp nil -> the append arm is skipped; the message is EXACTLY the constant
       # (not prefix-matched), so inverting the `if resp` guard would break this.
       expect(LogUtil).to receive(:log_error)
-        .with(LocationsController::GEOSEARCH_RATE_LIMIT_ERR, any_args)
+        .with(
+          LocationsController::GEOSEARCH_ERR_MSG,
+          exception: have_attributes(message: 'Geosearch failed. Check API rate limits: [action autocomplete]'),
+          limit: nil,
+          query: "UCSF"
+        )
 
       get :external_search, params: { query: "UCSF" }
       expect(response).to have_http_status(:internal_server_error)

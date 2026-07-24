@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import LiveSearchPopBox, {
   SearchResults,
-} from "~/components/ui/controls/LiveSearchPopBox";
+} from "../app/assets/src/components/ui/controls/LiveSearchPopBox";
 
 // Regression test for the geosearch stale-closure bug: the debounced search read the
 // `inputValue` state captured by its closure, which lagged one keystroke behind — so
@@ -26,6 +26,7 @@ describe("LiveSearchPopBox", () => {
     jest.useFakeTimers();
     plainTextSearch.mockClear();
   });
+
   afterEach(() => {
     jest.runOnlyPendingTimers();
     jest.useRealTimers();
@@ -48,11 +49,9 @@ describe("LiveSearchPopBox", () => {
     );
     const input = screen.getByPlaceholderText(PLACEHOLDER);
 
-    // Two rapid keystrokes: the second lands before the first's debounce fires.
-    type(input, "franc");
-    type(input, "france");
-
     await act(async () => {
+      type(input, "franc");
+      type(input, "france");
       jest.advanceTimersByTime(300); // past the 200ms debounce
       await Promise.resolve(); // flush the async onSearchTriggered
     });
@@ -63,5 +62,141 @@ describe("LiveSearchPopBox", () => {
     expect(plainTextSearch).toHaveBeenCalled();
     expect(plainTextSearch).toHaveBeenLastCalledWith("france");
     expect(plainTextSearch).not.toHaveBeenLastCalledWith("franc");
+  });
+
+  it("renders correctly with default props", () => {
+    const { container } = render(
+      React.createElement(LiveSearchPopBox, {
+        value: "initial value",
+        onSearchTriggered: jest.fn(),
+      }),
+    );
+    expect(container).toBeTruthy();
+  });
+
+  it("triggers onResultSelect with correct SearchResult format on keypress of Enter when inputMode is true", () => {
+    const onResultSelectMock = jest.fn();
+    render(
+      React.createElement(LiveSearchPopBox, {
+        value: "test-query",
+        inputMode: true,
+        onResultSelect: onResultSelectMock,
+        onSearchTriggered: jest.fn(),
+      }),
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.keyPress(input, { key: "Enter", code: "Enter", charCode: 13 });
+
+    expect(onResultSelectMock).toHaveBeenCalledWith({
+      currentEvent: expect.any(Object),
+      result: {
+        title: "test-query",
+        name: "test-query",
+      },
+    });
+  });
+
+  it("triggers onResultSelect with correct SearchResult format on blur when value is untouched (does not trigger)", () => {
+    const onResultSelectMock = jest.fn();
+    render(
+      React.createElement(LiveSearchPopBox, {
+        value: "initial",
+        onResultSelect: onResultSelectMock,
+        onSearchTriggered: jest.fn(),
+      }),
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.blur(input);
+
+    expect(onResultSelectMock).not.toHaveBeenCalled();
+  });
+
+  it("trims the value and triggers onResultSelect with correct SearchResult format on keypress of Enter when inputMode is true", () => {
+    const onResultSelectMock = jest.fn();
+    render(
+      React.createElement(LiveSearchPopBox, {
+        value: "  test-query  ",
+        inputMode: true,
+        onResultSelect: onResultSelectMock,
+        onSearchTriggered: jest.fn(),
+      }),
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.keyPress(input, { key: "Enter", code: "Enter", charCode: 13 });
+
+    expect(onResultSelectMock).toHaveBeenCalledWith({
+      currentEvent: expect.any(Object),
+      result: {
+        title: "test-query",
+        name: "test-query",
+      },
+    });
+  });
+
+  it("trims the value and triggers onResultSelect on blur when value has changed and no suggestion was picked", () => {
+    const onResultSelectMock = jest.fn();
+    render(
+      React.createElement(LiveSearchPopBox, {
+        value: "original",
+        onResultSelect: onResultSelectMock,
+        onSearchTriggered: jest.fn(),
+      }),
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.change(input, { target: { value: "  new-value  " } });
+    fireEvent.blur(input);
+
+    expect(onResultSelectMock).toHaveBeenCalledWith({
+      result: {
+        title: "new-value",
+        name: "new-value",
+      },
+    });
+  });
+
+  it("does not trigger onResultSelect on blur if a suggestion has already been selected", async () => {
+    const onResultSelectMock = jest.fn();
+    const onSearchTriggeredMock = jest.fn().mockResolvedValue({
+      testCat: {
+        name: "Category",
+        results: [{ title: "San Francisco", name: "SF" }],
+      },
+    });
+
+    render(
+      React.createElement(LiveSearchPopBox, {
+        value: "",
+        onResultSelect: onResultSelectMock,
+        onSearchTriggered: onSearchTriggeredMock,
+      }),
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "San" } });
+      jest.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+
+    const suggestion = screen.getByText("San Francisco");
+    expect(suggestion).toBeTruthy();
+
+    fireEvent.mouseDown(suggestion);
+
+    expect(onResultSelectMock).toHaveBeenCalledWith({
+      currentEvent: expect.any(Object),
+      result: { title: "San Francisco", name: "SF" },
+    });
+
+    onResultSelectMock.mockClear();
+
+    fireEvent.blur(input);
+
+    expect(onResultSelectMock).not.toHaveBeenCalled();
   });
 });

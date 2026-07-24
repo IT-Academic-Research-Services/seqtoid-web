@@ -35,8 +35,8 @@ import {
 } from "~/interface/shared";
 import MultipleDropdown from "~ui/controls/dropdowns/MultipleDropdown";
 import { AUTO_POPULATE_FIELDS, COLUMN_HEADER_TOOLTIPS } from "./constants";
-import MetadataInput from "./MetadataInput";
 import cs from "./metadata_manual_input.scss";
+import MetadataInput from "./MetadataInput";
 import { MetadataManualInputProps, MetadataManualInputState } from "./types";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -440,7 +440,7 @@ class MetadataManualInputCC extends React.Component<
                   className={inputClasses}
                   value={this.getMetadataValue(sample, column)}
                   onResultSelect={({ result }) => {
-                    this.updateHostGenome(result.name || result, sample);
+                    this.updateHostGenome(result.name, sample);
                   }}
                   hostGenomes={this.props.hostGenomes || []}
                 />

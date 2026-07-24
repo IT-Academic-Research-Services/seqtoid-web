@@ -66,7 +66,7 @@ RSpec.describe Location, type: :model do
   describe ".geosearch_by_osm_id" do
     it "capitalizes the first letter of the osm type and builds a reverse query" do
       expect(Location).to receive(:location_api_request)
-        .with(a_string_including("osm_id=123").and(including("osm_type=R")))
+        .with("lookup?osm_ids=R123")
         .and_return([true, []])
       Location.geosearch_by_osm_id(123, "relation")
     end

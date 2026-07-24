@@ -11,8 +11,8 @@ import GeoSearchInputBox, {
 import Input from "~ui/controls/Input";
 import Toggle from "~ui/controls/Toggle";
 import { IconAlertSmall } from "~ui/icons";
-import MetadataAgeInput from "./MetadataAgeInput";
 import cs from "./metadata_input.scss";
+import MetadataAgeInput from "./MetadataAgeInput";
 import { MetadataInputProps } from "./types";
 import { ensureDefinedValue } from "./utils";
 
@@ -53,8 +53,7 @@ const MetadataInput = ({
         className={className}
         value={typeof value === "string" ? value : ""}
         onResultSelect={({ result }) => {
-          // Result can be plain text or a match. We treat them the same.
-          onChange(metadataType.key, result.name || result, true);
+          onChange(metadataType.key, result.name, true);
         }}
         taxaCategory={taxaCategory}
         // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
