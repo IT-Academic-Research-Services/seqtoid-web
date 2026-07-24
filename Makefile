@@ -275,6 +275,10 @@ local-setup-admin-user: .env.localdev ## Set up a user for local development; Us
 	$(docker_compose) run --rm web sh -c 'bin/rails local_user_creation:admin["$(user_email)","$(user_name)"]'
 	make -C ./e2e set-local-credentials username='$(user_email)' password='$(user_password)'
 
+.PHONY: test-local
+test-local: ## Fast local test loop: warm container (deps baked), runs specs vs your working tree. Args: make test-local args="spec/models/foo_spec.rb"
+	./bin/test-local $(args)
+
 .PHONY: ci-local
 ci-local: ## Run the full CI test suite locally in Docker (Postgres) — green this before pushing
 	./bin/ci-local

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# One-command LOCAL test loop -- spins up db + redis + a warm test container (deps baked into the
+# image, so no apt/pip/bundle reinstall per run) and runs your spec(s) against your working tree.
+#
+#   bin/test-local                          # whole suite
+#   bin/test-local spec/models/foo_spec.rb  # just these specs (any rspec args pass through)
+#   bin/test-local --prepare                # force a fresh test-DB schema reload, then run
+#
+# First run builds Dockerfile.test (a few minutes; native on Linux amd64, emulated on Apple Silicon)
+# and loads the schema. Every run after is just RSpec against the warm container -- seconds to start.
+# No /etc/hosts edits and no manual port wiring: the container reaches db/redis over the compose network.
+#
+# This is the fast DEV loop, not the final gate. Before pushing, still run `make ci-local` (the faithful
+# mirror of GitHub Actions).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+COMPOSE=(docker compose -f docker-compose.test.yml)
+
+FORCE_PREPARE=0
+if [ "${1:-}" = "--prepare" ]; then
+  FORCE_PREPARE=1
+  shift
+fi
+
+echo ">> starting db + redis + warm test container (builds the image on first run)..."
+"${COMPOSE[@]}" up -d --build --wait db redis test
+
+# Load the test schema only when it is missing (first run) or when explicitly asked. A normal edit-run
+# loop reuses the already-loaded schema, which is what keeps repeat runs fast.
+schema_loaded="$("${COMPOSE[@]}" exec -T test bash -lc \
+  'bundle exec rails runner "print ActiveRecord::Base.connection.tables.include?(%q(schema_migrations))" 2>/dev/null' || echo false)"
+
+if [ "$FORCE_PREPARE" = "1" ] || [ "$schema_loaded" != "true" ]; then
+  echo ">> loading test-DB schema (idseq_test)..."
+  "${COMPOSE[@]}" exec -T test bash -lc 'bundle exec rails db:drop db:create db:schema:load 2>&1 | tail -3'
+fi
+
+echo ">> running rspec..."
+if [ "$#" -eq 0 ]; then
+  "${COMPOSE[@]}" exec -T test env SAMPLES_BUCKET_NAME=idseq-samples-development bundle exec rspec
+else
+  "${COMPOSE[@]}" exec -T test env SAMPLES_BUCKET_NAME=idseq-samples-development bundle exec rspec "$@"
+fi

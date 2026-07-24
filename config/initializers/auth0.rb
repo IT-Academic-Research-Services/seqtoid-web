@@ -1,7 +1,15 @@
 require 'digest/sha1'
 
 Rails.application.config.middleware.use Warden::Manager do |manager|
-  manager.failure_app = proc { |_env| ['401', { 'Content-Type' => 'application/json' }, { error: 'Unauthorized', code: 401 }] }
+  # A Rack response is [Integer status, headers, body] where body responds to #each and yields
+  # STRINGS. This previously returned a String status ('401') and a raw Hash body. Hash#each yields
+  # [key, value] ARRAYS, so puma's fast_write_response called .bytesize on an Array and blew up with
+  # NoMethodError (Sentry DEV-RAILS-PROJECT-27) -- and the client received the hash pairs rendered as
+  # `[:error, "Unauthorized"][:code, 401]` instead of JSON, which surfaced as an unhandled promise
+  # rejection in the frontend (Sentry DEV-REACTJS-PROJECT-1R). Serialize to JSON and wrap in an array.
+  manager.failure_app = proc do |_env|
+    [401, { 'Content-Type' => 'application/json' }, [{ error: 'Unauthorized', code: 401 }.to_json]]
+  end
 end
 
 Warden::Manager.serialize_into_session do |user|

@@ -166,4 +166,28 @@ RSpec.describe BulkDownload, type: :model do
       expect { bulk_download.kickoff_k8s_job(["python", "s3_tar_writer.py"]) }.to raise_error(BulkDownload::KickoffError)
     end
   end
+
+  # Sentry DEV-RAILS-PROJECT-28 (#851): access_token is single-use -- the success/error callbacks null
+  # it once the download is terminal. Rebuilding the callback urls then generated a path with a nil
+  # token, which cannot match the :access_token route segment -> opaque UrlGenerationError.
+  describe "callback urls when the access_token has been nulled" do
+    let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
+
+    before { allow(bulk_download).to receive(:server_host).and_return("https://dev.example.org") }
+
+    it "returns working urls while the token is present" do
+      expect(bulk_download.access_token).to be_present
+      expect(bulk_download.success_url).to include("https://dev.example.org")
+      expect(bulk_download.error_url).to be_present
+      expect(bulk_download.progress_url).to be_present
+    end
+
+    it "returns nil instead of raising UrlGenerationError once the token is nulled" do
+      bulk_download.update!(access_token: nil)
+      expect { bulk_download.success_url }.not_to raise_error
+      expect(bulk_download.success_url).to be_nil
+      expect(bulk_download.error_url).to be_nil
+      expect(bulk_download.progress_url).to be_nil
+    end
+  end
 end

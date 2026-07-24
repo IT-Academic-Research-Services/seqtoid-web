@@ -28,7 +28,13 @@ SimpleCov.start 'rails' do
   # naturally far below the whole-suite floor -- enforcing here would red every
   # shard. The floor is instead enforced once on the COLLATED result in
   # bin/collate-coverage. A serial/local run (no SHARD_INDEX) still enforces here.
-  minimum_coverage line: 61, branch: 46 unless ENV["SHARD_INDEX"]
+  #
+  # SKIP_COVERAGE_MINIMUM is set only by the fast local dev loop (bin/test-local via
+  # docker-compose.test.yml), where you routinely run a single spec file -- a partial
+  # run is always far below the whole-suite floor, so enforcing it would red every run.
+  # The real pre-push gate (make ci-local / docker-compose.ci.yml) does NOT set it, so
+  # the floor is still enforced there.
+  minimum_coverage line: 61, branch: 46 unless ENV["SHARD_INDEX"] || ENV["SKIP_COVERAGE_MINIMUM"]
 
   # Exclude mostly manual tasks for now:
   add_filter "/lib/tasks"
