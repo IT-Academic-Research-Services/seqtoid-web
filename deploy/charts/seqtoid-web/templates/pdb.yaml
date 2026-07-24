@@ -20,3 +20,4 @@ spec:
     matchLabels:
       {{- include "seqtoid-web.selectorLabels" . | nindent 6 }}
 {{- end }}
+# CI validation touch: exercises the chart / AppProject kinds check. Reverted with this branch.
