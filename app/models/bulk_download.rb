@@ -192,23 +192,29 @@ class BulkDownload < ApplicationRecord
     end
   end
 
+  # The callback routes embed the access_token as a path segment, so generating one with a nil token
+  # raises an opaque ActionController::UrlGenerationError rather than returning a url (Sentry
+  # DEV-RAILS-PROJECT-28). access_token is single-use: success_with_token / error_with_token null it
+  # once the download reaches a terminal state, so ANY path that rebuilds the task command for an
+  # already-finished download hits nil. Guard it the same way server_host is guarded, and return nil.
+
   # The Rails success url that the s3_tar_writer task can ping once it succeeds.
   def success_url
-    return nil if server_host.blank?
+    return nil if server_host.blank? || access_token.blank?
 
     "#{server_host}#{bulk_downloads_success_path(access_token: access_token, id: id)}"
   end
 
   # The Rails error url that the s3_tar_writer task can ping if it fails.
   def error_url
-    return nil if server_host.blank?
+    return nil if server_host.blank? || access_token.blank?
 
     "#{server_host}#{bulk_downloads_error_path(access_token: access_token, id: id)}"
   end
 
   # The Rails progress url that the s3_tar_writer task can ping to update progress.
   def progress_url
-    return nil if server_host.blank?
+    return nil if server_host.blank? || access_token.blank?
 
     "#{server_host}#{bulk_downloads_progress_path(access_token: access_token, id: id)}"
   end
