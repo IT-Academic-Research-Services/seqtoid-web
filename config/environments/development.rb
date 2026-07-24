@@ -210,8 +210,21 @@ Rails.application.configure do
   # This setting prevents Rails from blocking requests to the ngrok endpoint
   config.hosts << ENV["SERVER_DOMAIN"].sub("https://", "") if ENV["SERVER_DOMAIN"]
 
-  # Deployed logging configuration
-  config.log_level = :debug
+  # Deployed logging configuration.
+  #
+  # Overridable via RAILS_LOG_LEVEL, defaulting to :debug so a local `development`
+  # boot is unchanged. The deployed dev environment sets it to "info".
+  #
+  # At :debug, ActiveRecord echoes every statement WITH its bound values. On the
+  # resque worker that means whole `INSERT INTO contigs` statements including the
+  # `sequence` column: measured single log lines up to 484 KB, a 12 KB mean against
+  # a 106 B median, and roughly three quarters of all container log bytes in the dev
+  # cluster from this one process. Two problems, not one -- the volume, and the fact
+  # that sample sequence content is written verbatim into a log stream that ships to
+  # an aggregator (and, if enabled, to a third-party log vendor).
+  #
+  # Only `development` had this: sandbox/staging/prod already run :info.
+  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
   config.lograge.enabled = true
   config.lograge.formatter = Lograge::Formatters::Json.new
   config.lograge.logger = ActiveSupport::Logger.new(STDOUT)

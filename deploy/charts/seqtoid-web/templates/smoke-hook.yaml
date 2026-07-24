@@ -61,6 +61,18 @@ spec:
               value: {{ .Values.smoke.paths | join " " | quote }}
             - name: SMOKE_ACCEPT_STATUSES
               value: {{ .Values.smoke.gate.acceptStatuses | quote }}
+            # Probe as a host the app permits. An integration session defaults to
+            # "www.example.com", which no deployed env lists in config.hosts, so
+            # host-authorization returns 403 for every path and the gate fails a good
+            # build. smoke.host wins if set; otherwise use this release's ingress host
+            # (for a preview that is pr-<N>.dev.seqtoid.org, matched by the
+            # ".seqtoid.org" entry in config.hosts). If neither is set the task falls
+            # back to SERVER_DOMAIN.
+            {{- $smokeHost := .Values.smoke.host | default (.Values.ingress).host }}
+            {{- if $smokeHost }}
+            - name: SMOKE_HOST
+              value: {{ $smokeHost | quote }}
+            {{- end }}
             # A migrate-style hook does not run the scheduler; keep Rails from writing the
             # Resque schedule at boot (mirrors the migrate hook).
             {{- if .Values.preview.redis.enabled }}
