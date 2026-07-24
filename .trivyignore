@@ -71,3 +71,9 @@ GHSA-2p49-hgcm-8545
 # hard-failing the dev image build; baselined to unblock. FORWARD-FIX: bump postcss to 8.x + rebuild
 # the JS bundle. platform-overhaul #786-adjacent (trivy HIGH wave).
 CVE-2026-45623
+
+# GHSA-r28c-9q8g-f849 -- the GitHub-advisory alias of CVE-2026-45623 (same postcss 7.0.39
+# build-time arbitrary-file-read). Trivy matches a vuln under BOTH its CVE and GHSA IDs and
+# ignores them independently, so the CVE baseline alone did not clear the gate. Same
+# justification and forward-fix as CVE-2026-45623 (bump postcss to 8.x).
+GHSA-r28c-9q8g-f849
