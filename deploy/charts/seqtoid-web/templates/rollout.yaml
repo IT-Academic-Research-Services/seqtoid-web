@@ -108,6 +108,40 @@ spec:
               {{- include "seqtoid-web.selectorLabels" . | nindent 14 }}
         {{- end }}
       {{- end }}
+      {{- if .Values.scratchVolume.enabled }}
+      # Chaos-testability (E5 IOChaos): give the pod a REAL mount for its temp writes. See the
+      # scratchVolume comment in values.yaml for the full rationale -- in short, IOChaos can only
+      # inject a FUSE layer over a volume mount, never over the container's overlay filesystem,
+      # so without this the web pod cannot be tested for local-disk faults at all.
+      #
+      # This init container exists because the kubelet creates an emptyDir mount 0777 root:root
+      # with NO sticky bit, and Ruby's Dir.tmpdir refuses a world-writable non-sticky directory --
+      # it would fall through to "." (the app root, on the overlay), silently moving every
+      # Tempfile off the volume. Creating a private 0700 dir inside the volume and pointing
+      # TMPDIR at it keeps the app's behavior identical AND keeps the writes on the mount.
+      # Runs as the image's default non-root appuser: the emptyDir is world-writable, so no
+      # root and no chmod of the mount point itself is needed.
+      initContainers:
+        - name: init-scratch
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - mkdir -p "$TMPDIR" && chmod 0700 "$TMPDIR"
+          env:
+            - name: TMPDIR
+              value: {{ printf "%s/%s" (trimSuffix "/" .Values.scratchVolume.mountPath) .Values.scratchVolume.tmpdirSubPath | quote }}
+          volumeMounts:
+            - name: scratch
+              mountPath: {{ .Values.scratchVolume.mountPath }}
+          resources:
+            {{- toYaml .Values.scratchVolume.initResources | nindent 12 }}
+      volumes:
+        - name: scratch
+          emptyDir:
+            sizeLimit: {{ .Values.scratchVolume.sizeLimit }}
+      {{- end }}
       containers:
         - name: rails
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -119,6 +153,13 @@ spec:
               containerPort: {{ .Values.containerPort }}
           env:
             {{- include "seqtoid-web.commonEnv" . | nindent 12 }}
+            {{- if .Values.scratchVolume.enabled }}
+            # Point Ruby's Dir.tmpdir at the private 0700 dir the init container made inside
+            # the scratch volume. Without this, Dir.tmpdir rejects the world-writable,
+            # non-sticky emptyDir mount and falls back to the app root (see values.yaml).
+            - name: TMPDIR
+              value: {{ printf "%s/%s" (trimSuffix "/" .Values.scratchVolume.mountPath) .Values.scratchVolume.tmpdirSubPath | quote }}
+            {{- end }}
           lifecycle:
             preStop:
               exec:
@@ -142,3 +183,8 @@ spec:
             failureThreshold: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.scratchVolume.enabled }}
+          volumeMounts:
+            - name: scratch
+              mountPath: {{ .Values.scratchVolume.mountPath }}
+          {{- end }}

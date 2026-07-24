@@ -182,6 +182,56 @@ ingress:
   annotations: {}
   healthCheckPath: /health_check
 
+# Ephemeral scratch volume for the WEB pod's temp directory.
+#
+# WHY THIS EXISTS: the web pod otherwise has no volume at all -- its only volumes are the
+# projected service-account tokens, so /tmp is part of the container's writable overlay
+# layer. That is fine for the app, but it makes the pod untestable for local-disk faults:
+# Chaos Mesh IOChaos works by injecting a FUSE layer over a VOLUME MOUNT and cannot
+# intercept a container's overlay/root filesystem, so the E5 IOChaos experiment
+# (cypherid-web-infra deploy/chaos/experiments/e5-io.yaml) has nothing to attach to.
+# Mounting an emptyDir at /tmp gives it a real mount without changing what the app writes
+# or where it writes it.
+#
+# WHY /tmp: it is where this app's runtime disk writes actually go. TMPDIR is unset in the
+# image, so Ruby's Dir.tmpdir resolves to /tmp and every Tempfile lands there (phylo tree
+# export, AMR BAI/BAM slicing, mngs read-stats load, bulk-download assembly), as does Rack's
+# multipart buffering. Several code paths also hardcode /tmp (PipelineRun::LOCAL_JSON_PATH
+# stages result JSON from S3 to local disk; the bulk-download TSV/BIOM writers). So latency
+# injected here exercises real code, not a synthetic path.
+#
+# tmpdirSubPath: NOT cosmetic -- it is required for correctness. The kubelet creates an
+# emptyDir mount as 0777 root:root with NO sticky bit (verified on czid-dev-eks), and
+# Ruby's Dir.tmpdir REFUSES a world-writable directory that is not sticky
+# (tmpdir.rb: `stat.world_writable? && !stat.sticky?` -> skip). Mounting a bare emptyDir at
+# /tmp would therefore make Dir.tmpdir silently fall through to "." -- the app root, back on
+# the overlay -- which both changes app behavior and defeats the mount. So an init container
+# (running as the image's non-root appuser, no root anywhere) creates a private 0700
+# subdirectory inside the volume and TMPDIR points at it. Dir.tmpdir accepts that, the
+# tempfiles stay on the volume, and the hardcoded /tmp writers land on the volume too.
+# Being one level down also guarantees the experiment's `/tmp/**/*` glob matches them.
+#
+# Default OFF: only the environment being chaos-tested needs it.
+scratchVolume:
+  enabled: false
+  # Mount point. Keep /tmp unless you have re-pointed the app's temp writes.
+  mountPath: /tmp
+  # Subdirectory created 0700 by the init container; TMPDIR is set to mountPath/subPath.
+  tmpdirSubPath: app
+  # emptyDir sizeLimit. The web tier's temp writes are small (export/slice tempfiles), and
+  # the large bulk-download assembly runs in the resque workers, not here. Sized with plenty
+  # of headroom: exceeding sizeLimit gets the POD EVICTED, and today these same writes are
+  # unbounded against node ephemeral storage, so this cap must not be tight.
+  sizeLimit: 2Gi
+  # The init container is a `mkdir && chmod` on the same image, so it costs a few hundred
+  # millicores for a moment and nothing steady-state.
+  initResources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
 # Graceful drain so a promotion/scale-down doesn't drop in-flight requests.
 gracefulDrain:
   preStopSleepSeconds: 15
