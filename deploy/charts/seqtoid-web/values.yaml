@@ -109,6 +109,12 @@ blueGreen:
 # Smoke check the AnalysisTemplate runs against the PREVIEW color before promotion.
 smoke:
   image: curlimages/curl:8.10.1
+  # Host the in-process PreSync gate probes as. Empty means "use ingress.host", which is
+  # correct for dev/staging/prod and for previews (pr-<N>.dev.seqtoid.org). Set this only
+  # for an env whose served host differs from its ingress host. It must be a host present
+  # in config.hosts, or host-authorization 403s every path before routing and the gate
+  # fails a healthy build.
+  host: ""
   # Critical user paths the smoke checks. Used by BOTH the blueGreen AnalysisTemplate
   # (curls the -preview color) AND the pingpong PreSync gate (in-process app.get). Keep
   # these to pages that must render or cleanly redirect: health, homepage/landing, the

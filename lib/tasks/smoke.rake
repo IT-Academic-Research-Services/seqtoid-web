@@ -30,6 +30,18 @@ namespace :smoke do
     accepted = ENV.fetch("SMOKE_ACCEPT_STATUSES", "200 301 302").split.map(&:to_i)
 
     session = ActionDispatch::Integration::Session.new(Rails.application)
+
+    # An integration session defaults to host "www.example.com", which is NOT in
+    # config.hosts for any deployed env -- so host-authorization middleware answers 403
+    # to every path before routing, and the gate fails a perfectly good build. Note that
+    # /health_check is EXCLUDED from host authorization, so it returns 200 while every
+    # real path 403s: the gate looks half-broken rather than misconfigured, which is what
+    # made this hard to spot. Probe as the host the app actually serves.
+    smoke_host = ENV["SMOKE_HOST"].presence ||
+                 ENV["SERVER_DOMAIN"].presence&.sub(%r{\Ahttps?://}, "")&.sub(%r{/\z}, "")
+    session.host!(smoke_host) if smoke_host
+    puts "smoke: probing as host #{smoke_host || session.host} (Rails.env=#{Rails.env})"
+
     failures = []
 
     paths.each do |path|
