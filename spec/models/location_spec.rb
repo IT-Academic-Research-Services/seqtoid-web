@@ -135,7 +135,7 @@ RSpec.describe Location, type: :model do
       loc_info = { country_name: "USA", osm_id: 123, osm_type: "Relation" }
 
       expect(Location).to receive(:geosearch_by_osm_id).with(123, "Relation").exactly(1).times
-                                                       .and_return([true, "mock_response"])
+                                                       .and_return([true, ["mock_response"]])
       expect(LocationHelper).to receive(:adapt_location_iq_response).with("mock_response").exactly(1).times
                                                                     .and_return(country_name: "Mock Country", osm_id: 123, osm_type: "Relation")
 
@@ -150,7 +150,7 @@ RSpec.describe Location, type: :model do
       loc_info = { country_name: "USA", state_name: "California", osm_id: 123, osm_type: "Relation" }
 
       expect(Location).to receive(:geosearch_by_osm_id).with(123, "Relation").exactly(1).times
-                                                       .and_return([true, "mock_response"])
+                                                       .and_return([true, ["mock_response"]])
       expect(LocationHelper).to receive(:adapt_location_iq_response).with("mock_response").exactly(1).times
                                                                     .and_return(country_name: "USA", osm_id: 123, osm_type: "Relation")
 

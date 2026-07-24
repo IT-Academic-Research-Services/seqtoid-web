@@ -78,8 +78,12 @@ class Location < ApplicationRecord
     success = resp.is_a?(Net::HTTPSuccess) || resp.is_a?(Net::HTTPNotFound)
     [success, JSON.parse(resp.body)]
   rescue HttpResilience::CircuitOpenError, Timeout::Error, SocketError, SystemCallError, IOError, JSON::ParserError => err
-    Rails.logger.warn("[Location] LocationIQ request degraded: #{err.class}: #{err.message}")
-    [false, []]
+    LogUtil.log_error(
+      "[Location] LocationIQ request failed",
+      exception: err,
+      endpoint_query: endpoint_query
+    )
+    [false, { error: err.message }]
   end
 
   # Search request to Location IQ API by freeform query.
@@ -109,7 +113,7 @@ class Location < ApplicationRecord
                  else
                    GEOSEARCH_BASE_QUERY
                  end
-    endpoint_query = "#{base_query}&q=#{query}"
+    endpoint_query = "#{base_query}&q=#{Addressable::URI.encode(query)}"
     endpoint_query += "&limit=#{limit}" if limit.present?
     location_api_request(endpoint_query)
   end
@@ -117,9 +121,9 @@ class Location < ApplicationRecord
   # Search request to Location IQ API by country, state, and subdivision (or left subset)
   def self.geosearch_by_levels(country_name, state_name = "", subdivision_name = "")
     # NOTE: Don't use field="" because provider results differ vs. not including the param at all.
-    endpoint_query = "#{GEOSEARCH_BASE_QUERY}&country=#{country_name}"
-    endpoint_query += "&state=#{state_name}" if state_name.present?
-    endpoint_query += "&county=#{subdivision_name}" if subdivision_name.present?
+    endpoint_query = "#{GEOSEARCH_BASE_QUERY}&country=#{Addressable::URI.encode(country_name)}"
+    endpoint_query += "&state=#{Addressable::URI.encode(state_name)}" if state_name.present?
+    endpoint_query += "&county=#{Addressable::URI.encode(subdivision_name)}" if subdivision_name.present?
     location_api_request(endpoint_query)
   end
 
@@ -137,7 +141,9 @@ class Location < ApplicationRecord
   # Geosearch by OpenStreetMap ID and type
   def self.geosearch_by_osm_id(osm_id, osm_type)
     osm_type = osm_type[0].capitalize # (N)ode, (W)ay, or (R)elation
-    endpoint_query = "reverse.php?osm_id=#{osm_id}&osm_type=#{osm_type}"
+    # The URL for OpenStreetMapID search has changed from osm_id=12345&osm_type=R to R12345
+    # endpoint_query = "reverse.php?osm_id=#{osm_id}&osm_type=#{osm_type}"
+    endpoint_query = "lookup?osm_ids=#{osm_type}#{osm_id}"
     location_api_request(endpoint_query)
   end
 
@@ -161,7 +167,7 @@ class Location < ApplicationRecord
         return new_from_params(loc_info)
       end
 
-      location_fields = LocationHelper.adapt_location_iq_response(resp)
+      location_fields = LocationHelper.adapt_location_iq_response(resp[0])
 
       # Surprisingly, it is possible that adapt_location_iq_response returns location_fields
       # that are different from loc_info above (where loc_info is passed in from the front-end).
@@ -216,7 +222,7 @@ class Location < ApplicationRecord
       location[:state_name],
       location[:subdivision_name]
     )
-    unless success && !resp.empty?
+    unless success && resp.is_a?(Array) && !resp.empty?
       raise "Couldn't find #{location[:country_name]}, #{location[:state_name]}, #{location[:subdivision_name]} (country, state, subdivision)"
     end
 
@@ -238,7 +244,7 @@ class Location < ApplicationRecord
         success, resp = geosearch_by_levels(location.country_name, location.state_name)
       end
 
-      unless success && !resp.empty?
+      unless success && resp.is_a?(Array) && !resp.empty?
         query = "#{location.country_name} #{level == STATE_LEVEL ? location.state_name : nil}"
         raise "Geosearch for parent level failed: #{query}"
       end

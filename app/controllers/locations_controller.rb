@@ -28,10 +28,11 @@ class LocationsController < ApplicationController
     MetricUtil.log_analytics_event(EventDictionary::LOCATION_GEOSEARCHED, current_user, { query: query }, request)
     render json: results
   rescue StandardError => err
+    LogUtil.log_error(GEOSEARCH_ERR_MSG, exception: err, query: query, limit: limit)
     render json: {
       status: "failed",
       message: GEOSEARCH_ERR_MSG,
-      errors: [err],
+      # errors: [err],
     }, status: :internal_server_error
   end
 
@@ -80,10 +81,11 @@ class LocationsController < ApplicationController
       end
     end
   rescue StandardError => err
+    LogUtil.log_error(LOCATION_LOAD_ERR_MSG, exception: err, domain: domain, samples: samples)
     render json: {
       status: "failed",
       message: LOCATION_LOAD_ERR_MSG,
-      errors: [err],
+      # errors: [err],
     }, status: :internal_server_error
   end
 
@@ -108,14 +110,8 @@ class LocationsController < ApplicationController
     else
       # Unsuccessful request. Likely Net::HTTPTooManyRequests.
       # Monitor if users run up against geosearch API rate limits / record any other errs.
-      msg = GEOSEARCH_RATE_LIMIT_ERR
+      msg = "#{GEOSEARCH_RATE_LIMIT_ERR}: [action #{action}]"
       msg += ": #{resp}" if resp
-      LogUtil.log_error(
-        msg,
-        action: action,
-        query: query,
-        limit: limit
-      )
       raise msg
     end
   end

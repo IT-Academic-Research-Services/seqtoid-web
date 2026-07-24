@@ -5,11 +5,14 @@ import {
   sortResults,
 } from "~/components/views/SampleUploadFlow/utils";
 import { HostGenome } from "~/interface/shared";
-import LiveSearchPopBox, { SearchResults } from "~ui/controls/LiveSearchPopBox";
+import LiveSearchPopBox, {
+  SearchResult,
+  SearchResults,
+} from "~ui/controls/LiveSearchPopBox";
 
 interface HostOrganismSearchBoxProps {
   className?: string;
-  onResultSelect(params: any): void;
+  onResultSelect(params: { result: SearchResult }): void;
   value?: string;
   hostGenomes: HostGenome[];
 }
