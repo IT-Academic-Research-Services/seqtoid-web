@@ -190,4 +190,52 @@ RSpec.describe BulkDownload, type: :model do
       expect(bulk_download.progress_url).to be_nil
     end
   end
+
+  # A nil/blank source url would be stringified to "" by the SMP-1488 Batch/K8s `.map(&:to_s)` and
+  # silently produce a broken/incomplete archive. s3_tar_writer_command refuses to build such a
+  # command -- and, crucially, LOGS which outputs are missing so the underlying "run has no output
+  # S3 path" bug can be found and fixed, rather than hidden behind a clean failure.
+  describe "#s3_tar_writer_command src/tar validation (surface the bug, don't hide it)" do
+    let(:bulk_download) { create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_WAITING) }
+
+    before { allow(bulk_download).to receive(:server_host).and_return("https://dev.example.org") }
+
+    it "logs the missing output files (by tar name) and raises INCOMPLETE_SRC_URLS when a src url is nil" do
+      expect(LogUtil).to receive(:log_error).with(
+        a_string_matching(/BulkDownloadIncompleteSrcUrls/),
+        hash_including(bulk_download_id: bulk_download.id, missing_output_files: ["sampleB.fasta"])
+      )
+
+      expect { bulk_download.s3_tar_writer_command(["s3://b/a.fasta", nil], ["sampleA.fasta", "sampleB.fasta"], "s3://b/out.tar.gz") }
+        .to raise_error(RuntimeError, BulkDownloadsHelper::INCOMPLETE_SRC_URLS)
+    end
+
+    it "raises INCOMPLETE_SRC_URLS when a src url is blank" do
+      allow(LogUtil).to receive(:log_error)
+      expect { bulk_download.s3_tar_writer_command(["s3://b/a.fasta", ""], ["a.fasta", "b.fasta"], "s3://b/out.tar.gz") }
+        .to raise_error(RuntimeError, BulkDownloadsHelper::INCOMPLETE_SRC_URLS)
+    end
+
+    it "raises INCOMPLETE_SRC_URLS when there are no src urls at all" do
+      allow(LogUtil).to receive(:log_error)
+      expect { bulk_download.s3_tar_writer_command([], [], "s3://b/out.tar.gz") }
+        .to raise_error(RuntimeError, BulkDownloadsHelper::INCOMPLETE_SRC_URLS)
+    end
+
+    it "logs the counts and raises SRC_TAR_NAME_MISMATCH when src and tar counts differ" do
+      expect(LogUtil).to receive(:log_error).with(
+        a_string_matching(/BulkDownloadSrcTarMismatch/),
+        hash_including(bulk_download_id: bulk_download.id, src_url_count: 2, tar_name_count: 1)
+      )
+
+      expect { bulk_download.s3_tar_writer_command(["s3://b/a.fasta", "s3://b/b.fasta"], ["a.fasta"], "s3://b/out.tar.gz") }
+        .to raise_error(RuntimeError, BulkDownloadsHelper::SRC_TAR_NAME_MISMATCH)
+    end
+
+    it "builds the command when every src url is present and the counts line up" do
+      cmd = bulk_download.s3_tar_writer_command(["s3://b/a.fasta"], ["a.fasta"], "s3://b/out.tar.gz")
+      expect(cmd).to include("--src-urls", "s3://b/a.fasta")
+      expect(cmd).to include("--tar-names", "a.fasta")
+    end
+  end
 end
