@@ -283,6 +283,37 @@ class BulkDownload < ApplicationRecord
     error_url: self.error_url,
     progress_url: self.progress_url
   )
+    # Fail fast on a malformed src/tar mapping before it reaches the tar job. A nil/blank src url
+    # gets stringified to "" downstream (the SMP-1488 Batch/K8s `.map(&:to_s)`) and would silently
+    # produce a broken or incomplete archive; a src/tar length mismatch mis-maps file contents to
+    # file names. Rather than hide that behind a clean failure, log exactly which outputs are missing
+    # (tar name -> sample/project) so the ROOT cause -- a selected run with no output S3 path -- can
+    # be found and fixed, then raise a clear typed error (same style as SUCCESS_URL_REQUIRED).
+    if src_urls.blank? || src_urls.any?(&:blank?)
+      missing = tar_names.each_with_index.select { |_name, i| src_urls[i].blank? }.map(&:first)
+      LogUtil.log_error(
+        "BulkDownloadIncompleteSrcUrls: bulk download #{id} (#{download_type}) has missing source files; " \
+        "refusing to launch a tar job that would yield a broken archive.",
+        bulk_download_id: id,
+        download_type: download_type,
+        src_url_count: src_urls&.length,
+        tar_name_count: tar_names&.length,
+        missing_output_files: missing
+      )
+      raise BulkDownloadsHelper::INCOMPLETE_SRC_URLS
+    end
+    if src_urls.length != tar_names.length
+      LogUtil.log_error(
+        "BulkDownloadSrcTarMismatch: bulk download #{id} (#{download_type}) built #{src_urls.length} source " \
+        "urls but #{tar_names.length} tar names; file contents would be mis-mapped to file names.",
+        bulk_download_id: id,
+        download_type: download_type,
+        src_url_count: src_urls.length,
+        tar_name_count: tar_names.length
+      )
+      raise BulkDownloadsHelper::SRC_TAR_NAME_MISMATCH
+    end
+
     command = ["python", "s3_tar_writer.py",
                "--src-urls", *src_urls,
                # these can be based on user generated strings so we need to strip leading - to prevent
