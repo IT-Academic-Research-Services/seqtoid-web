@@ -19,6 +19,19 @@ def safe_habtm_append(model_associations, associated_model_instance_arr)
   end
 end
 
+# Idempotency guard. This generated seed does hundreds of plain `.create`s inside a single
+# transaction, so on an ALREADY-SEEDED database the first duplicate key aborts the whole
+# transaction and `db:seed` fails. That matters because the chart runs `db:seed` in the migrate
+# PreSync hook on every deploy: a fresh env needs it, but a reconstitute restored from a data
+# snapshot (or any redeploy onto a populated DB) already has this data, so re-seeding must be a
+# no-op instead of a failure that blocks the deploy. `db:seed` is a one-time fresh-DB bootstrap;
+# skip it when the canonical first record (the `launched_features` AppConfig) is already present.
+if AppConfig.where(key: "launched_features").exists?
+  logger = defined?(Rails) ? Rails.logger : Logger.new($stdout)
+  logger.info("db/seeds.rb: database already seeded (launched_features present) -- skipping (idempotent)")
+  return
+end
+
 ActiveRecord::Base.transaction do
   account_id = ENV["AWS_ACCOUNT_ID"]
   environment_name = ENV["ENVIRONMENT"]
