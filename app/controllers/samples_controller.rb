@@ -801,6 +801,12 @@ class SamplesController < ApplicationController
           {
             multipart_upload_id: input_file.multipart_upload_id,
             s3_path: input_file.s3_path,
+            # The stored object name is obfuscated (hash_name, to keep PII out of S3 keys),
+            # so s3_path's basename no longer matches the file the client uploaded. Return the
+            # original source name -- the CLI correlates each returned input file back to a
+            # local file by source (the web response above does the same with :source). Without
+            # this, the CLI cannot map its files to the created input files and upload fails.
+            source: input_file.source,
           }
         end
         {
