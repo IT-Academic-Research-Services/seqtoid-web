@@ -311,6 +311,36 @@ RSpec.describe "Sample request", type: :request do
             expect(resp_input_file["s3_file_path"]).to eq(input_file.file_path)
           end
         end
+
+        # Regression: input file names are obfuscated on the server (hash_name, to keep PII out
+        # of S3 keys), so the s3_path basename no longer equals the file the client uploaded. The
+        # CLI (client != "web") correlates each returned input file back to a local file, so the
+        # v2 response must include the original :source. Without it the CLI cannot map its files
+        # and every upload fails after sample creation.
+        it "returns :source for CLI clients so files can be correlated despite obfuscated names" do
+          allow(S3Util).to receive(:latest_multipart_upload).and_return("test-multipart-upload-id")
+
+          post "/samples/bulk_upload_with_metadata", params: { samples: [@sample_params], metadata: @metadata_params, client: "6.0.0", format: :json }
+
+          expect(response).to have_http_status(:ok)
+          json_response = JSON.parse(response.body)
+
+          resp_input_files = json_response["samples"][0]["input_files"]
+          expect(resp_input_files).not_to be_empty
+
+          resp_input_files.each do |resp_input_file|
+            expect(resp_input_file).to have_key("s3_path")
+            expect(resp_input_file).to have_key("multipart_upload_id")
+            expect(resp_input_file).to have_key("source")
+
+            input_file = InputFile.find_by(source: resp_input_file["source"])
+            expect(input_file).to be_present
+            expect(resp_input_file["source"]).to eq(input_file.source)
+            expect(resp_input_file["s3_path"]).to eq(input_file.s3_path)
+            # The upload target is the obfuscated path; its basename is NOT the original source.
+            expect(File.basename(resp_input_file["s3_path"])).not_to eq(resp_input_file["source"])
+          end
+        end
       end
 
       it "should keep pipeline_execution_strategy flag nil in the sample when no flag is passed" do
