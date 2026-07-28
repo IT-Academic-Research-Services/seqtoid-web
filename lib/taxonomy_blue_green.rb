@@ -40,6 +40,13 @@ module TaxonomyBlueGreen
     "#{LIVE_TABLE}_v#{slug(version)}_#{timestamp}".downcase
   end
 
+  # The fresh, concrete ES index a rollback reindexes into when no retained index can be reused.
+  # Same lowercase requirement as index_name -- the timestamp's uppercase T/Z would otherwise make
+  # create_index 400 with invalid_index_name_exception (DB rollback succeeds, ES rebuild dies).
+  def rollback_index_name(timestamp)
+    "#{LIVE_TABLE}_rollback_#{timestamp}".downcase
+  end
+
   # Atomic swap: stage table becomes live, live becomes the backup -- one statement, no window where
   # `taxon_lineages` is absent.
   def swap_sql(staging, backup)

@@ -19,6 +19,11 @@ RSpec.describe TaxonomyBlueGreen do
       expect(described_class.index_name("2026-07-09", "20260720T0148Z"))
         .to eq("taxon_lineages_v2026_07_09_20260720t0148z")
     end
+
+    it "downcases the rollback reindex name too (uppercase T/Z would 400 in OpenSearch)" do
+      expect(described_class.rollback_index_name("20260720T0148Z"))
+        .to eq("taxon_lineages_rollback_20260720t0148z")
+    end
   end
 
   describe ".swap_sql / .rollback_sql" do

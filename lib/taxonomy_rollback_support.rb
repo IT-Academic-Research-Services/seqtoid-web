@@ -79,7 +79,7 @@ module TaxonomyRollbackSupport
       move_alias(client, to: match, from: current)
       "ES alias #{BG::ALIAS_NAME} -> #{match} (retained index, doc_count matched #{restored_row_count}); fast path"
     else
-      fresh = "#{BG::LIVE_TABLE}_rollback_#{Time.now.utc.strftime('%Y%m%dT%H%MZ')}"
+      fresh = BG.rollback_index_name(Time.now.utc.strftime("%Y%m%dT%H%MZ"))
       TaxonLineage.__elasticsearch__.create_index!(index: fresh)
       TaxonLineage.__elasticsearch__.import(index: fresh, refresh: true)
       move_alias(client, to: fresh, from: current)

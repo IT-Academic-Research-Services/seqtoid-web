@@ -79,10 +79,7 @@ class SamplesController < ApplicationController
   MAX_PAGE_SIZE_V2 = 100
   MAX_BINS = 34
   MIN_CLI_VERSION = '6.0.0'.freeze
-  # TODO(REBRAND): append the SeqToID CLI install URL once the distribution channel (Homebrew tap or
-  # public releases) is decided -- see RELEASING.md in IT-Academic-Research-Services/seqtoid-cli. The
-  # old czid-cli install link is dropped rather than left pointing users at CZ ID's repo.
-  CLI_DEPRECATION_MSG = "Outdated command line client. Please install a new version of seqtoid-cli.".freeze
+  CLI_DEPRECATION_MSG = "Outdated command line client. Please install a new version of seqtoid-cli. See installation instructions: https://seqtoid.org/cli_user_instructions".freeze
   SAMPLE_UPLOAD_LIMIT = 500
 
   SAMPLE_DEFAULT_FIELDS = [
