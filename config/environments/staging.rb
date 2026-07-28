@@ -1,107 +1,80 @@
+# Staging (fresh seqtoid pre-prod, account 030998640247) mirrors the DEVELOPMENT environment, not the
+# legacy czid staging config.
+#
+# The legacy staging.rb was a Rails-7.0, production-shaped file that does not boot a fresh seqtoid env:
+# (1) `config.session_store = ...` aborts under Rails 7.1 ("Cannot assign to `session_store`"); (2)
+# force_ssl=true risks a redirect loop (the ALB terminates TLS and the app sees http via
+# X-Forwarded-Proto); (3) it derived hosts from Rails.env -> `staging.seqtoid.org`, which is the LIVE
+# legacy infra's host (Jay's) and would host-auth-block our env-staging.seqtoid.org. So, exactly like
+# sandbox.rb (#215), this is a self-contained, DEV-LIKE, env-driven config for the isolated env:
+# secret_key_base + host come from ENV/Chamber, logs go to stdout, no force_ssl, forgiving errors. The
+# local-only dev gems (Bullet, web-console) are omitted (they are not loaded when RAILS_ENV=staging).
 require "active_support/core_ext/integer/time"
 
 Rails.application.configure do
-  # Settings specified here will take precedence over those in config/application.rb.
+  # Settings specified here take precedence over config/application.rb.
 
-  # secret_key_base -- sourced from ENV instead of the deprecated config/secrets.yml
-  # (Rails.application.secrets was deprecated in 7.1, removed in 7.2). This is the same
-  # value the app already used: secrets.yml read `<%= ENV["SECRET_KEY_BASE"] %>`, and
-  # Rails already resolves ENV["SECRET_KEY_BASE"] ahead of secrets.yml -- no change to
-  # the deployed key, just off the deprecated path.
+  # secret_key_base from ENV (Chamber injects SECRET_KEY_BASE). Dev hardcodes a literal; a deployed
+  # env must not, so this is the one deliberate divergence from development.rb.
   config.secret_key_base = ENV["SECRET_KEY_BASE"]
 
-  # Code is not reloaded between requests.
   config.cache_classes = true
-
-  # Eager load code on boot. This eager loads most of Rails and
-  # your application in memory, allowing both threaded web servers
-  # and those relying on copy on write to perform better.
-  # Rake tasks automatically ignore this option for performance.
   config.eager_load = true
 
-  # Full error reports are disabled and caching is turned on.
-  config.consider_all_requests_local       = false
-  config.action_controller.perform_caching = true
-  config.cache_store = :redis_cache_store,
-                       {
-                         url: ENV['REDISCLOUD_URL'] + '/0/cache',
-                         # Needed for redis to evict keys in volatile-lru mode
-                         expires_in: 30.days,
-                       }
-  config.session_store = :cookie_store, {
-    key: '_czid_session',
-  }
-  # Ensures that a master key has been made available in either ENV["RAILS_MASTER_KEY"]
-  # or in config/master.key. This key is used to decrypt credentials (and other encrypted files).
-  # config.require_master_key = true
+  # Dev-like: show full error reports (this is a pre-prod rehearsal env, not customer-facing prod).
+  config.consider_all_requests_local = true
 
-  # Disable serving static files from the `/public` folder by default since
-  # Apache or NGINX already handles this.
-  config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
+  # Caching off, null store -- mirrors development.rb's default branch, no local toggle-file dependency.
+  config.action_controller.perform_caching = false
+  config.cache_store = :null_store
 
-  # Don't add an asset compressor here because we already minimize with webpack.
-  # Check out webpack.config.prod.js.
+  config.public_file_server.enabled = ENV["RAILS_SERVE_STATIC_FILES"].present?
   config.assets.debug = true
-  # Suppress logger output for asset requests.
   config.assets.quiet = true
+  # #544: serve the stylesheet dynamically instead of raising AssetNotPrecompiledError (no precompile
+  # step in the image). Same reason dev sets this.
+  config.assets.check_precompiled_asset = false
 
-  # Do not fallback to assets pipeline if a precompiled asset is missed.
-  # config.assets.compile = true
-
-  # Specifies the header that your server uses for sending files.
-  # config.action_dispatch.x_sendfile_header = 'X-Sendfile' # for Apache
-  # config.action_dispatch.x_sendfile_header = 'X-Accel-Redirect' # for NGINX
-
-  # Store uploaded files on the local file system (see config/storage.yml for options).
   config.active_storage.service = :local
 
-  # Mount Action Cable outside main process or domain
-  # config.action_cable.mount_path = nil
-  # config.action_cable.url = 'wss://example.com/cable'
-  # config.action_cable.allowed_request_origins = [ 'http://example.com', /http:\/\/example.*/ ]
+  # Dev-like: do NOT force SSL. The ALB terminates TLS and issues the https redirect (ingress
+  # ssl-redirect annotation); the app sees http via X-Forwarded-Proto. force_ssl here would risk a
+  # redirect loop.
+  config.force_ssl = false
 
-  # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  config.force_ssl = true
-  config.ssl_options = { redirect: { exclude: ->(request) { request.path =~ /health_check/ } } }
-
-  # Include generic and useful information about system operation, but avoid logging too much
-  # information to avoid inadvertent exposure of personally identifiable information (PII).
   config.log_level = :info
-
-  # Prepend all log lines with the following tags.
   config.log_tags = [:request_id]
 
-  # Use a different cache store in production.
-  # config.cache_store = :mem_cache_store
+  config.action_mailer.raise_delivery_errors = false
+  config.action_mailer.default_url_options = { host: "env-staging.seqtoid.org" }
 
-  # Use a real queuing backend for Active Job (and separate queues per environment).
-  # config.active_job.queue_adapter     = :resque
-  # config.active_job.queue_name_prefix = "idseq-#{Rails.env}"
+  # Host authorization: allow this env's host. Chamber sets SERVER_DOMAIN; honor it too (mirrors
+  # development.rb's SERVER_DOMAIN handling) so the reachable host is always allow-listed.
+  config.hosts << "env-staging.seqtoid.org"
+  config.hosts << ENV["SERVER_DOMAIN"].sub("https://", "") if ENV["SERVER_DOMAIN"]
 
-  config.action_mailer.default_url_options = { host: "#{Rails.env}.seqtoid.org" }
+  # Leave asset_host unset unless a CDN endpoint is configured (relative URLs otherwise) -- as in dev.
+  config.asset_host = ENV["CZID_CLOUDFRONT_ENDPOINT"]
 
-  config.hosts << "#{Rails.env}.seqtoid.org"
-  # Enable serving of images, stylesheets, and JavaScripts from an asset server.
-  # We configure IDseq to use cloudfront CDN when available.
-  config.asset_host = ENV['CZID_CLOUDFRONT_ENDPOINT'] || "#{Rails.env}.seqtoid.org"
-  # Custom config for idseq to enable CORS headers by environment. See rack_cors.rb.
+  # CORS origins for this env's own hosts. See rack_cors.rb.
   config.allowed_cors_origins = [
-    "https://#{Rails.env}.seqtoid.org",
-    "https://www.#{Rails.env}.seqtoid.org",
-    "https://assets.#{Rails.env}.seqtoid.org",
+    "https://env-staging.seqtoid.org",
+    "https://www.env-staging.seqtoid.org",
+    "https://assets.env-staging.seqtoid.org",
   ]
 
-  config.middleware.use Rack::HostRedirect, "www.#{Rails.env}.seqtoid.org" => "#{Rails.env}.seqtoid.org"
+  config.middleware.use Rack::HostRedirect, "www.env-staging.seqtoid.org" => "env-staging.seqtoid.org"
 
-  # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
-  # the I18n.default_locale when a translation cannot be found).
   config.i18n.fallbacks = true
+  config.active_support.deprecation = :log
+  config.active_support.report_deprecations = false
 
-  # Send deprecation notices to registered listeners.
-  config.active_support.deprecation = :notify
+  # Rails 7.1 removed the `config.session_store = ...` assignment form (it routes through
+  # Railtie::Configuration#method_missing and raises "Cannot assign to `session_store`, it is a
+  # configuration method"). Use the supported method-call form (same as prod.rb/sandbox.rb).
+  config.session_store :cookie_store, key: "_czid_session"
 
-  # Deployed logging configuration
-  config.log_level = :info
+  # Deployed logging: JSON lograge to stdout.
   config.lograge.enabled = true
   config.lograge.formatter = Lograge::Formatters::Json.new
   config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
@@ -115,12 +88,11 @@ Rails.application.configure do
   end
   config.colorize_logging = false
   config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-  ActiveRecord::Base.logger.level = 1 if ActiveRecord::Base.logger
+  ActiveRecord::Base.logger = Logger.new(STDOUT)
 
-  # Do not dump schema after migrations.
+  # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
 
-  # Set the logging destination(s)
   logger           = ActiveSupport::Logger.new(STDOUT)
   logger.formatter = config.log_formatter
   config.logger    = ActiveSupport::TaggedLogging.new(logger)
