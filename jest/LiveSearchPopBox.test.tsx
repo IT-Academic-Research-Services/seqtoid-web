@@ -199,4 +199,34 @@ describe("LiveSearchPopBox", () => {
 
     expect(onResultSelectMock).not.toHaveBeenCalled();
   });
+
+  it("handles plain text option correctly", async () => {
+    const onResultSelectMock = jest.fn();
+    render(
+      React.createElement(LiveSearchPopBox, {
+        placeholder: PLACEHOLDER,
+        onSearchTriggered: plainTextSearch,
+        onResultSelect: onResultSelectMock,
+        inputMode: true,
+      }),
+    );
+    const input = screen.getByPlaceholderText(PLACEHOLDER);
+
+    await act(async () => {
+      type(input, "Atlantis");
+      jest.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+
+    const plainTextOption = screen.getByText("Atlantis");
+    fireEvent.mouseDown(plainTextOption);
+
+    expect(onResultSelectMock).toHaveBeenCalledWith({
+      currentEvent: expect.any(Object),
+      result: {
+        name: "Atlantis",
+        title: "Atlantis",
+      },
+    });
+  });
 });

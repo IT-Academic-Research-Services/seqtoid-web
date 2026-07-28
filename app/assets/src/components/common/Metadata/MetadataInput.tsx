@@ -2,7 +2,7 @@ import cx from "classnames";
 import { isArray } from "lodash/fp";
 import React, { useState } from "react";
 import SampleTypeSearchBox from "~/components/common/SampleTypeSearchBox";
-import { MetadataValue } from "~/interface/shared";
+import { LocationObject, MetadataValue } from "~/interface/shared";
 import Dropdown from "~ui/controls/dropdowns/Dropdown";
 import GeoSearchInputBox, {
   getLocationWarning,
@@ -118,11 +118,15 @@ const MetadataInput = ({
           inputClassName={cx(warning && value && "warning")}
           // Calls save on selection
           onResultSelect={({ result: selection }) => {
-            const result = processLocationSelection(
-              selection,
-              taxaCategory === "human",
-            );
-            onChange(metadataType.key, result, true);
+            if ("geo_level" in selection) {
+              const result = processLocationSelection(
+                selection as LocationObject,
+                taxaCategory === "human",
+              );
+              onChange(metadataType.key, result, true);
+            } else {
+              onChange(metadataType.key, selection.name, true);
+            }
           }}
           value={typeof value === "number" ? value.toString() : value}
         />
