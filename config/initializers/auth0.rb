@@ -1,4 +1,5 @@
 require 'digest/sha1'
+require_relative '../../lib/auth0_login_config'
 
 Rails.application.config.middleware.use Warden::Manager do |manager|
   # A Rack response is [Integer status, headers, body] where body responds to #each and yields
@@ -50,21 +51,18 @@ module ActionDispatch::Routing
 end
 
 Rails.application.config.middleware.use OmniAuth::Builder do
-  # Auth0 now uses a custom DNS domain (auth.<env>.seqtoid.org) that differs from the Auth0
-  # tenant domain, so login must request the correct `audience` for Management API (/api/v2/)
-  # calls to be authorized. Ports jsims 95f2dbd98 (itars/development). Guarded on presence so
-  # login is unchanged in any environment where AUTH0_CLI_AUDIENCE has not been provisioned yet
-  # (the audience must be set per-env in chamber/SSM -- ops half of the same change).
-  auth0_authorize_params = { scope: 'openid email' }
-  auth0_authorize_params[:audience] = ENV["AUTH0_CLI_AUDIENCE"] if ENV["AUTH0_CLI_AUDIENCE"].present?
-
+  # Authorize params for the WEB user login. The optional `audience` comes ONLY from the dedicated
+  # AUTH0_LOGIN_AUDIENCE var (unset in every env today, so login is unchanged) -- it is intentionally
+  # NOT keyed off AUTH0_CLI_AUDIENCE. AUTH0_CLI_AUDIENCE is a CLI-token-verification value only;
+  # coupling it here previously injected an invalid audience into web login and broke sign-in for all
+  # users (dev outage 2026-07-28). See Auth0LoginConfig for the guardrail + spec.
   provider(
     :auth0,
     ENV["AUTH0_CLIENT_ID"],
     ENV["AUTH0_CLIENT_SECRET"],
     ENV["AUTH0_DOMAIN"],
     callback_path: '/auth/auth0/callback',
-    authorize_params: auth0_authorize_params
+    authorize_params: Auth0LoginConfig.authorize_params
   )
 end
 
