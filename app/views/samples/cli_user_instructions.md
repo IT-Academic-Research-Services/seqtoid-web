@@ -303,7 +303,7 @@ seqtoid-cli can be configured with environment variables or files. By default co
 
 This project is not seeking contributions at this time. It is tighly coupled to the SeqToID Web App, it's features, it's APIs, and it's development goals. Please feel free to raise issues for feature requests or bugs.
 
-This project adheres to the Contributor Covenant [code of conduct](https://www.contributor-covenant.org/). By participating, you are expected to uphold this code. Please report unacceptable behavior to opensource@chanzuckerberg.com.
+This project adheres to the Contributor Covenant [code of conduct](https://www.contributor-covenant.org/). By participating, you are expected to uphold this code. Please report unacceptable behavior to SeqtoID-Support@ucsf.edu.
 
 ## Reporting Security Issues
 
