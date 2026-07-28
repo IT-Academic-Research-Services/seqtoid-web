@@ -72,6 +72,32 @@ RSpec.describe Location, type: :model do
           expect(location_resp).to eq([true, {}])
         end
       end
+
+      # Regression: Net::HTTP requires a stdlib URI. Building the request from an
+      # Addressable::URI leaves the request target as an Addressable object, and Net::HTTP
+      # then calls String#split on it -> NoMethodError under Ruby 3.3, surfacing as a 500
+      # from LocationsController#external_search on every geosearch (web UI + CLI upload).
+      # The other examples stub HttpResilience.request and so never exercise the request
+      # object itself; this one captures it and asserts the target Net::HTTP will accept.
+      context "request construction" do
+        it "hands Net::HTTP a plain String request path, not an Addressable::URI" do
+          captured_request = nil
+          resp = double("Net::HTTPSuccess")
+          allow(resp).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+          allow(resp).to receive(:is_a?).with(Net::HTTPNotFound).and_return(false)
+          allow(resp).to receive(:body).and_return("[]")
+          allow(HttpResilience).to receive(:request) do |request, _origin, **_opts|
+            captured_request = request
+            resp
+          end
+
+          Location.location_api_request(query)
+
+          expect(captured_request).to be_a(Net::HTTP::Get)
+          expect(captured_request.path).to be_a(String)
+          expect(captured_request.path).to include("q=UCSF")
+        end
+      end
     end
   end
 

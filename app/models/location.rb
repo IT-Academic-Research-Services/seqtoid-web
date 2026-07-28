@@ -62,7 +62,12 @@ class Location < ApplicationRecord
     raise "No location API key" unless ENV["LOCATION_IQ_API_KEY"]
 
     query_url = "#{LOCATION_IQ_BASE_URL}/#{endpoint_query}&key=#{ENV['LOCATION_IQ_API_KEY']}&format=json"
-    uri = Addressable::URI.parse(query_url)
+    # Addressable encodes the free-form query text (spaces, commas, etc.) that callers pass
+    # through unescaped. Net::HTTP, however, requires a stdlib URI: Net::HTTP::Get stores the
+    # request target as-is and later calls String#split on it, which an Addressable::URI does
+    # not implement (raising NoMethodError under Ruby 3.3). So normalize/encode with Addressable,
+    # then hand Net::HTTP a stdlib URI it can consume.
+    uri = URI.parse(Addressable::URI.parse(query_url).normalize.to_s)
     request = Net::HTTP::Get.new(uri)
 
     resp = HttpResilience.breaker(:location_iq).run do
