@@ -64,6 +64,15 @@ serviceAccount:
   name: ""
   roleArn: ""
 
+# Bulk-download launcher RBAC (Role + RoleBinding letting the app SA create the
+# tar Job in its own namespace). OFF by default: the shared dev/staging/prod
+# namespaces get this from Terraform (bulk-download-warmpool-rbac.tf). Per-PR
+# preview namespaces have no Terraform, so they set this true in preview-base.yaml
+# to avoid "jobs.batch is forbidden" 403s (SMP-1496). See templates/bulk-download-rbac.yaml.
+bulkDownload:
+  rbac:
+    create: false
+
 # Secrets: least-change path is Chamber-in-container (the image ENTRYPOINT already
 # runs `chamber exec idseq-<env>-web`). ESO is a later swap (#325). When chamber is
 # enabled the pod just needs the IRSA role with SSM read; no envFrom needed.

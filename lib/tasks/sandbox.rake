@@ -226,6 +226,14 @@ namespace :sandbox do
       scoped["SAMPLES_BUCKET_NAME"] = sandbox_bucket
       scoped["SAMPLES_BUCKET_NAME_V1"] = sandbox_bucket
 
+      # Bulk-download tar Job SA. The app default (seqtoid-web-bulk-download) exists only in the
+      # dev namespace (its IRSA trust is pinned to seqtoid-dev), so in a per-PR preview namespace the
+      # Job would be stamped with a non-existent SA and never schedule. Run the tar as the preview web
+      # SA (seqtoid-web) instead: it already carries the seqtoid-web-preview role, which grants
+      # read+write on the preview samples/download bucket (SSE-S3, no KMS). Pairs with the
+      # bulkDownload.rbac chart Role that lets this SA create the Job (SMP-1496 / DEV-RAILS-PROJECT-2C).
+      scoped["BULK_DOWNLOAD_JOB_SA"] = "seqtoid-web"
+
       # The sandbox serves on its OWN host, so it must serve its OWN compiled assets -- same
       # principle as SERVER_DOMAIN and HEATMAP_ES_ADDRESS below (inheriting dev's endpoint is the
       # bug, not a safe default). The shared dev config sets CZID_CLOUDFRONT_ENDPOINT to dev's
