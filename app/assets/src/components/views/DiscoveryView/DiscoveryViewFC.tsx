@@ -6,7 +6,7 @@ import { fetchQuery, graphql } from "relay-runtime";
 import RelayModernEnvironment from "relay-runtime/lib/store/RelayModernEnvironment";
 import { getProjects } from "~/api";
 import { UserContext } from "~/components/common/UserContext";
-import { logError } from "~/components/utils/logUtil";
+import { isTransientNetworkError, logError } from "~/components/utils/logUtil";
 import { sampleErrorInfo } from "~/components/utils/sample";
 import { checkExhaustive, isNotNullish } from "~/components/utils/typeUtils";
 import { WorkflowCount, WorkflowType } from "~/components/utils/workflows";
@@ -20,45 +20,45 @@ import { formatSemanticVersion } from "~/helpers/strings";
 import { Conditions, DiscoveryViewProps } from "~/interface/discoveryView";
 import { STATUS_TYPE } from "../../common/TableRenderers/TableRenderers";
 import {
-  CgEntityRow,
-  CgRow,
-  Metadata,
-  ReferenceAccession,
-  WorkflowRunRow,
-} from "./components/SamplesView/SamplesView";
-import { DiscoveryView } from "./DiscoveryView";
-import {
-  DISCOVERY_DOMAIN_ALL_DATA,
-  formatWetlabProtocol,
-} from "./discovery_api";
-import {
-  DiscoveryViewFCConsensusGenomeIdsQuery as DiscoveryViewFCConsensusGenomeIdsQueryType,
   DiscoveryViewFCConsensusGenomeIdsQuery$data,
+  DiscoveryViewFCConsensusGenomeIdsQuery as DiscoveryViewFCConsensusGenomeIdsQueryType,
   queryInput_fedConsensusGenomes_input_Input,
   queryInput_fedConsensusGenomes_input_orderBy_items_Input,
 } from "./__generated__/DiscoveryViewFCConsensusGenomeIdsQuery.graphql";
 import {
-  DiscoveryViewFCFedWorkflowRunsAggregateQuery as DiscoveryViewFCFedWorkflowRunsAggregateQueryType,
   DiscoveryViewFCFedWorkflowRunsAggregateQuery$data,
+  DiscoveryViewFCFedWorkflowRunsAggregateQuery as DiscoveryViewFCFedWorkflowRunsAggregateQueryType,
 } from "./__generated__/DiscoveryViewFCFedWorkflowRunsAggregateQuery.graphql";
 import {
-  DiscoveryViewFCFedWorkflowsTotalCountQuery as DiscoveryViewFCFedWorkflowsTotalCountQueryType,
-  DiscoveryViewFCFedWorkflowsTotalCountQuery$data,
   IntListInFilter as AggregateTotalCountIntListInFilter,
+  DiscoveryViewFCFedWorkflowsTotalCountQuery$data,
+  DiscoveryViewFCFedWorkflowsTotalCountQuery as DiscoveryViewFCFedWorkflowsTotalCountQueryType,
 } from "./__generated__/DiscoveryViewFCFedWorkflowsTotalCountQuery.graphql";
 import {
-  DiscoveryViewFCSequencingReadIdsQuery as DiscoveryViewFCSequencingReadIdsQueryType,
   DiscoveryViewFCSequencingReadIdsQuery$data,
+  DiscoveryViewFCSequencingReadIdsQuery as DiscoveryViewFCSequencingReadIdsQueryType,
   queryInput_fedSequencingReads_input_Input,
   queryInput_fedSequencingReads_input_orderByArray_items_Input,
 } from "./__generated__/DiscoveryViewFCSequencingReadIdsQuery.graphql";
 import { DiscoveryViewFCSequencingReadsQuery as DiscoveryViewFCSequencingReadsQueryType } from "./__generated__/DiscoveryViewFCSequencingReadsQuery.graphql";
 import {
   DiscoveryViewFCWorkflowsQuery as DiscoveryViewFCWorkflowsQueryType,
+  IntListInFilter,
   queryInput_fedWorkflowRuns_input_Input,
   queryInput_fedWorkflowRuns_input_orderByArray_items_Input,
-  IntListInFilter,
 } from "./__generated__/DiscoveryViewFCWorkflowsQuery.graphql";
+import {
+  CgEntityRow,
+  CgRow,
+  Metadata,
+  ReferenceAccession,
+  WorkflowRunRow,
+} from "./components/SamplesView/SamplesView";
+import {
+  DISCOVERY_DOMAIN_ALL_DATA,
+  formatWetlabProtocol,
+} from "./discovery_api";
+import { DiscoveryView } from "./DiscoveryView";
 
 /**
  * Categorizations of legacy column keys by NextGen query that they come from:
@@ -1327,6 +1327,13 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
       setCgWorkflowRunIds(workflowRuns.map(run => run.id));
       fetchCgPage(/* offset */ 0);
     } catch (error) {
+      if (isTransientNetworkError(error)) {
+        // A client connectivity blip on the underlying REST fetch (axios
+        // ERR_NETWORK on GET /projects.json, or a canceled request) is not an
+        // application error -- do not report it to Sentry as a DiscoveryViewError.
+        // The CG rows are left reset; the user can retry. (SMP-1494)
+        return;
+      }
       logError({
         message: "[DiscoveryViewError] fetchCgFilteredWorkflowRuns() failed",
         details: { error },
