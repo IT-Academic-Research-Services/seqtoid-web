@@ -5,6 +5,10 @@ module Types
     include GraphQL::Types::Relay::HasNodesField
     include ParameterSanitization
     include SamplesHelper
+    # Public snapshot-share ("/pub/:share_id") authorization for the report-page resolvers
+    # (SampleForReport / SampleMetadata / MetadataFields), which run unauthenticated for a shared
+    # link and must authorize via the SnapshotLink instead of current_power (SMP-1457).
+    include Queries::Concerns::SnapshotSampleAuthorization
     include Queries::PathogenListQuery
     include Queries::ProjectQuery
     include Queries::SampleQuery

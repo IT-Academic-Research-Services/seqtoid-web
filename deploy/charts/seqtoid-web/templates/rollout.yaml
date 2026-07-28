@@ -173,14 +173,19 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+          # Liveness = "is the process wedged / should it be restarted?" -- NOT "are deps healthy?".
+          # It targets the SHALLOW /up (static 200, no DB/cache/ES) and is deliberately tolerant, so a
+          # transient dependency brownout (which briefly starves the Puma pool) can never trip 6
+          # consecutive failures and restart the pod. Readiness (above) stays on the deep /health_check
+          # and, if it fails, only pulls the pod from the LB -- no restart (SMP-1473).
           livenessProbe:
             httpGet:
-              path: {{ .Values.ingress.healthCheckPath }}
+              path: {{ .Values.ingress.livenessPath | default "/up" }}
               port: http
             initialDelaySeconds: 45
-            periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 5
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- if .Values.scratchVolume.enabled }}
