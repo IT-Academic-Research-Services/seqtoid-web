@@ -4,6 +4,7 @@ import Dropzone, { FileWithPreview } from "react-dropzone";
 import { MAX_FILE_SIZE } from "~/components/views/SampleUploadFlow/constants";
 import Icon from "../icons/Icon";
 import cs from "./file_picker.scss";
+import { getFilesFromDropEvent } from "./getFilesFromDropEvent";
 
 interface FilePickerProps {
   className?: string;
@@ -75,6 +76,9 @@ const FilePicker = ({
       minSize={1}
       onDrop={onChange || defaultOnChange}
       onDropRejected={onRejected || defaultOnRejected}
+      // Recurse into dropped subfolders (react-dropzone's default reads only the flat FileList, so
+      // top-level files only). Feature-detected, falls back to the default behavior (SMP-1454).
+      getDataTransferItems={getFilesFromDropEvent}
       className={cx(cs.filePicker, className, getFile() && cs.active)}
       data-testid="drop-sample-files"
     >
