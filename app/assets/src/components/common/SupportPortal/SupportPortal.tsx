@@ -9,6 +9,7 @@ import {
   collectDiagnostics,
   collectQuickReport,
   Diagnostics,
+  getRunFailure,
   QuickReport,
   recordClientError,
 } from "./collectDiagnostics";
@@ -123,7 +124,22 @@ const SupportPortal = () => {
     if (!quickReport || !diagnostics) return;
     setStatus("submitting");
     try {
-      await createSupportRequest({ description, quickReport, diagnostics });
+      // When the report is about a failed run, pass the run handle so the server can
+      // attach (support-only) L1 pipeline-failure detail, access-controlled.
+      const failure = getRunFailure();
+      const runContext = failure
+        ? {
+            sampleId: failure.sampleId,
+            runId: failure.runId,
+            workflow: failure.workflow,
+          }
+        : undefined;
+      await createSupportRequest({
+        description,
+        quickReport,
+        diagnostics,
+        runContext,
+      });
       setStatus("success");
     } catch (error) {
       logError({

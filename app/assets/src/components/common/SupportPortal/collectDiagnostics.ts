@@ -42,6 +42,32 @@ export const recordClientError = (error: string) => {
 
 export const getLastClientError = (): string | null => lastClientError;
 
+// The failed run the current view is about, recorded by views that know it (e.g.
+// SampleView) so the support report can be about a PIPELINE failure, not just a
+// front-end JS error. Mirrors recordClientError: a small module-level store the
+// portal reads at report time. `userFacing` is the friendly one-liner shown to the
+// user in the modal; `sampleId`/`runId`/`workflow` are the handle the server uses to
+// pull the (support-only) L1 failure detail. Views clear it on unmount.
+export interface RunFailureContext {
+  sampleId: number;
+  runId?: number;
+  workflow?: string;
+  status?: string;
+  userFacing: string;
+}
+
+let currentRunFailure: RunFailureContext | null = null;
+
+export const recordRunFailure = (ctx: RunFailureContext | null): void => {
+  currentRunFailure = ctx;
+};
+
+export const clearRunFailure = (): void => {
+  currentRunFailure = null;
+};
+
+export const getRunFailure = (): RunFailureContext | null => currentRunFailure;
+
 // Distil a raw error string (which may include "@ file:line:col" location noise)
 // down to a short, human-readable error name for the quick-report popup. Falls
 // back to a friendly "No error detected" when nothing has been captured.
@@ -120,8 +146,13 @@ export const collectQuickReport = (
     typeof window !== "undefined"
       ? window.location.pathname + window.location.search
       : "";
+  // A recorded pipeline failure is the point of the report, so it takes precedence
+  // over an incidental client-side JS error in the user-facing Error row.
+  const runFailure = getRunFailure();
   return {
-    errorName: deriveErrorName(getLastClientError()),
+    errorName: runFailure
+      ? runFailure.userFacing
+      : deriveErrorName(getLastClientError()),
     task: deriveTask(route),
     project: deriveProject(route),
     accountName: deriveAccountName(userContext),
