@@ -30,7 +30,15 @@ RSpec.describe "Authorization flows", type: :request do
       # run here. We pin the real behavior: a 401 JSON response, not a data leak.
       expect(response).to have_http_status(:unauthorized)
       expect(response.media_type).to eq("application/json")
-      expect(response.body).to include("Unauthorized")
+      # Assert the body is WELL-FORMED JSON, not just that it contains the word
+      # "Unauthorized". The regression this guards (SMP-1490 / DEV-RAILS-PROJECT-27)
+      # was a failure_app that returned a raw Ruby Hash (and a String status) as the
+      # Rack body: Hash#each yields [k, v] Arrays, so Puma's fast_write_response
+      # raised `NoMethodError: undefined method 'bytesize' for an Array`, and the
+      # client got the hash pairs rendered as text. A bare `include("Unauthorized")`
+      # matched that malformed body and let the bug ship; JSON.parse does not.
+      parsed = JSON.parse(response.body)
+      expect(parsed).to eq("error" => "Unauthorized", "code" => 401)
     end
 
     it "redirects an unauthenticated HTML request to the auth0 login flow" do
