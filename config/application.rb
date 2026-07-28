@@ -67,8 +67,9 @@ module Czid
     config.hosts << '.seqtoid.org'
     # TODO: Is this necessary? Might not work if this is removed.
     config.hosts << '.us-west-2.elb.amazonaws.com'
-    # Exclude health_check so that load balancer checks are allowed:
-    config.host_authorization = { exclude: ->(request) { request.path =~ /health_check/ } }
+    # Exclude the probe paths so LB/kubelet checks (which use the pod IP as Host) aren't 403'd:
+    # /health_check (readiness) and the shallow /up liveness path (SMP-1473).
+    config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ } }
     config.x.constants.default_background = 26
   end
 end

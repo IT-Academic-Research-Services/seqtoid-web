@@ -371,6 +371,13 @@ Rails.application.routes.draw do
   # See health_check gem
   get 'health_check' => "health_check/health_check#index"
 
+  # Shallow liveness probe. Rails' built-in health check renders a static 200 with NO DB / cache /
+  # dependency touch (unlike /health_check, which runs standard_checks). The k8s livenessProbe uses
+  # this so a dependency brownout can never restart the pod -- liveness proves the PROCESS is up;
+  # readiness (/health_check) proves deps are reachable (SMP-1473). Excluded from host authorization
+  # in config/application.rb so the kubelet's pod-IP Host header isn't 403'd.
+  get 'up' => "rails/health#show", as: :rails_health_check
+
   # Chaos Engine accuracy-gate integrity probe (#810/#815) -- in-cluster only, bearer-token gated,
   # DISABLED unless CHAOS_INTEGRITY_TOKEN is set. See Internal::ChaosController.
   namespace :internal do

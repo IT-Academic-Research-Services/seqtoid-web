@@ -195,7 +195,12 @@ ingress:
   certificateArn: ""              # per-env ACM cert
   # Extra alb.ingress.kubernetes.io/* annotations (subnets, etc.) merged in per-env.
   annotations: {}
+  # Readiness + the ALB target-group health check use the DEEP /health_check (database+cache).
   healthCheckPath: /health_check
+  # Liveness uses the SHALLOW /up (Rails' built-in static 200, no deps) so a dependency brownout
+  # can restart nothing -- liveness = "is the process wedged?", readiness = "should it get traffic?"
+  # (SMP-1473). Overridable per env.
+  livenessPath: /up
 
 # Ephemeral scratch volume for the WEB pod's temp directory.
 #
