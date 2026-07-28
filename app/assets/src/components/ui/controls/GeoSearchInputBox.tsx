@@ -2,7 +2,10 @@ import { compact, get, isString } from "lodash/fp";
 import React from "react";
 import { getGeoSearchSuggestions } from "~/api/locations";
 import { LocationObject } from "~/interface/shared";
-import LiveSearchPopBox, { SearchResults } from "~ui/controls/LiveSearchPopBox";
+import LiveSearchPopBox, {
+  SearchResult,
+  SearchResults,
+} from "~ui/controls/LiveSearchPopBox";
 
 export const LOCATION_PRIVACY_WARNING =
   "Changed to county/district level for personal privacy.";
@@ -68,7 +71,7 @@ export const getLocationWarning = result => {
 interface GeoSearchInputBoxProps {
   className?: string;
   inputClassName?: string;
-  onResultSelect?(params: any): void;
+  onResultSelect(params: { result: SearchResult }): void;
   value?: { name: string } | string | null;
 }
 
@@ -125,16 +128,12 @@ const GeoSearchInputBox = ({
     return categories;
   };
 
-  const handleResultSelected = ({ result }) => {
-    onResultSelect && onResultSelect({ result });
-  };
-
   return (
     <LiveSearchPopBox
       className={className}
       inputClassName={inputClassName}
       inputMode
-      onResultSelect={handleResultSelected}
+      onResultSelect={onResultSelect}
       onSearchTriggered={handleSearchTriggered}
       placeholder="Enter a city, region or country"
       rectangular
