@@ -172,7 +172,7 @@ export const CG_WETLAB_DISPLAY_NAMES = {
   artic_v5: "ARTIC v5.3.2",
 };
 
-// WARNING: If you are adding an option here, you probably also want to add it to: https://github.com/chanzuckerberg/czid-cli
+// WARNING: If you are adding an option here, you probably also want to add it to: https://github.com/IT-Academic-Research-Services/seqtoid-cli
 export const CG_WETLAB_OPTIONS = [
   {
     text: CG_WETLAB_DISPLAY_NAMES.artic_v4,
@@ -224,7 +224,7 @@ export const CG_WETLAB_OPTIONS = [
   },
 ];
 
-// WARNING: If you are adding an option here, you probably also want to add it to: https://github.com/chanzuckerberg/czid-cli
+// WARNING: If you are adding an option here, you probably also want to add it to: https://github.com/IT-Academic-Research-Services/seqtoid-cli
 export const CG_NANOPORE_WETLAB_OPTIONS = [
   {
     text: CG_WETLAB_DISPLAY_NAMES.artic,
