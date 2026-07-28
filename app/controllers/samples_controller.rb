@@ -79,7 +79,7 @@ class SamplesController < ApplicationController
   MAX_PAGE_SIZE_V2 = 100
   MAX_BINS = 34
   MIN_CLI_VERSION = '6.0.0'.freeze
-  CLI_DEPRECATION_MSG = "Outdated command line client. Please install a new version of czid-cli. See installation instructions: https://github.com/chanzuckerberg/czid-cli".freeze
+  CLI_DEPRECATION_MSG = "Outdated command line client. Please install a new version of seqtoid-cli. See installation instructions: https://seqtoid.org/cli_user_instructions".freeze
   SAMPLE_UPLOAD_LIMIT = 500
 
   SAMPLE_DEFAULT_FIELDS = [
