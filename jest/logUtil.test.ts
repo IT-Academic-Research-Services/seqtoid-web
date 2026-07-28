@@ -1,6 +1,10 @@
 // CZID-462 (#586) coverage: app/assets/src/components/utils/logUtil.ts
 import * as Sentry from "@sentry/browser";
-import { logError } from "../app/assets/src/components/utils/logUtil";
+import { AxiosError } from "axios";
+import {
+  isTransientNetworkError,
+  logError,
+} from "../app/assets/src/components/utils/logUtil";
 
 jest.mock("@sentry/browser", () => ({
   captureException: jest.fn(),
@@ -34,5 +38,38 @@ describe("logUtil.ts logError", () => {
     expect(Sentry.captureMessage).toHaveBeenCalledWith("no details", {
       extra: {},
     });
+  });
+});
+
+// SMP-1494 (DEV-REACTJS-PROJECT-5): the discovery view caught EVERY error from
+// fetchCgFilteredWorkflowRuns() and reported it to Sentry, including transient
+// client network blips (axios ERR_NETWORK on GET /projects.json). Only genuine
+// errors should be reported.
+describe("logUtil.ts isTransientNetworkError", () => {
+  it("is true for an axios ERR_NETWORK error (the SMP-1494 case)", () => {
+    expect(
+      isTransientNetworkError(new AxiosError("Network Error", "ERR_NETWORK")),
+    ).toBe(true);
+  });
+
+  it("is true for a canceled request", () => {
+    expect(
+      isTransientNetworkError(new AxiosError("canceled", "ERR_CANCELED")),
+    ).toBe(true);
+  });
+
+  it("is false for a generic application error", () => {
+    expect(isTransientNetworkError(new Error("boom"))).toBe(false);
+  });
+
+  it("is false for an axios error with a real HTTP response (a 4xx/5xx, not a network failure)", () => {
+    expect(
+      isTransientNetworkError(new AxiosError("Bad Request", "ERR_BAD_REQUEST")),
+    ).toBe(false);
+  });
+
+  it("is false for null/undefined", () => {
+    expect(isTransientNetworkError(null)).toBe(false);
+    expect(isTransientNetworkError(undefined)).toBe(false);
   });
 });

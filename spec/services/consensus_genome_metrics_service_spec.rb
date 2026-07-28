@@ -107,11 +107,13 @@ RSpec.describe ConsensusGenomeMetricsService, type: :service do
       end
     end
 
-    it "handles a missing SFN description as an expected condition (info log, not a Sentry error)" do
+    it "handles a missing SFN description as an expected condition (plain info log, no Sentry capture)" do
       expect(subject).to receive(:add_primary_metrics).and_raise(SfnExecution::SfnDescriptionNotFoundError, "fake_path")
-      # An aged-out SFN description is expected, not an error: log at info level
-      # via log_message and never capture an exception to Sentry.
-      expect(LogUtil).to receive(:log_message)
+      # An aged-out SFN description is expected, not an error: it must leave a plain
+      # info breadcrumb and NOT reach Sentry. log_message forwards to
+      # Sentry.capture_message, so it must not be used here (DEV-RAILS-PROJECT-1Y).
+      expect(Rails.logger).to receive(:info).with(/SFN description aged out/)
+      expect(LogUtil).not_to receive(:log_message)
       expect(LogUtil).not_to receive(:log_error)
 
       expect(subject.send(:generate)).to eq(nil)

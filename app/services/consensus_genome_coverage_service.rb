@@ -29,10 +29,10 @@ class ConsensusGenomeCoverageService
     # A missing SFN description is expected for old workflow runs whose Step
     # Functions execution history has aged out (~90 days) and were never
     # archived to S3: the coverage viz is simply unavailable, not an application
-    # error. Log at info level instead of capturing an exception to Sentry so
-    # this does not surface as an error (DEV-RAILS-PROJECT-H / -J). Matches the
-    # handling already in ConsensusGenomeMetricsService (#135).
-    LogUtil.log_message("ConsensusGenomeCoverageService: Cannot generate coverage viz when the SFN description is not found", workflow_run_id: @workflow_run.id)
+    # error. Emit a plain info breadcrumb only -- NOT LogUtil.log_message, which
+    # forwards to Sentry.capture_message and kept re-opening this as a live Sentry
+    # issue (DEV-RAILS-PROJECT-2B) even though the condition is handled here.
+    Rails.logger.info("ConsensusGenomeCoverageService: coverage viz unavailable (SFN description aged out) for workflow_run_id=#{@workflow_run.id}")
     return nil
   end
 

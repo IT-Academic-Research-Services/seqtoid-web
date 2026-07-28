@@ -1,0 +1,48 @@
+{{- if .Values.bulkDownload.rbac.create -}}
+# Namespace-scoped RBAC letting the app ServiceAccount launch the bulk-download
+# tar Job in its OWN namespace. KubeJobClient (app/lib/kube_job_client.rb) POSTs
+# to batch/v1 jobs as the web pod's ServiceAccount, so that SA needs create on
+# jobs.batch (+ read-only pods / pods/log for status/debugging).
+#
+# In the shared dev namespace this Role/RoleBinding is provisioned out-of-band by
+# Terraform (cypherid-web-infra .../eks-v2/bulk-download-warmpool-rbac.tf), so dev
+# leaves this OFF (bulkDownload.rbac.create=false, the chart default) to avoid a
+# duplicate "bulk-download-launcher" Role. Per-PR preview namespaces have no such
+# Terraform, so they enable it here (preview-base.yaml) -- otherwise the web pod's
+# SA gets "jobs.batch is forbidden" 403s and bulk downloads never launch there
+# (SMP-1496 / DEV-RAILS-PROJECT-2C). Rules mirror the Terraform Role exactly.
+#
+# Deny-by-default preserved: only jobs (managed) plus read-only pods/logs, and only
+# in this single namespace via a RoleBinding (never a ClusterRole).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bulk-download-launcher
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bulk-download-launcher
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bulk-download-launcher
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "seqtoid-web.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
