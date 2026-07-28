@@ -7,10 +7,14 @@
 # message via LogUtil so the report lands next to the user's client-side errors.
 #
 # This class exists as a SEAM: the destination is expected to move to DataDog or
-# ServiceNow later. When it does, those become additional adapters registered here
-# -- the controller keeps calling SupportRouter.call and never changes. Each sink is
-# best-effort and isolated: a sink that raises is logged and skipped so one bad sink
-# can never break the submission or starve the others.
+# ServiceNow later. When it does, those become additional adapters here -- the
+# controller keeps calling SupportRouter.call and never changes.
+#
+# Failure contract: the PRIMARY sink (the durable Grafana/Loki record) must NOT be
+# swallowed. If it raises, the failure propagates so the controller renders a clean
+# 500 -- we never tell the user "recorded" when the report was not actually recorded.
+# FUTURE secondary sinks (DataDog/ServiceNow) will each be wrapped best-effort so a
+# secondary outage can never fail the submit; only the primary record is load-bearing.
 class SupportRouter
   include Callable
 
@@ -20,26 +24,18 @@ class SupportRouter
   end
 
   def call
-    sinks.each do |name, sink|
-      sink.call
-    rescue StandardError => e
-      # A sink failure must never break the submit or the other sinks.
-      LogUtil.log_error("Support router sink '#{name}' failed", exception: e)
-    end
+    # Primary, load-bearing sink -- raises on failure (controller turns it into 500).
+    grafana_log_sink
+
+    # Secondary sinks go here, each best-effort (own rescue), on the DataDog/ServiceNow
+    # cutover so one cannot fail the submit. None yet.
     nil
   end
 
   private
 
-  # name => callable. Add DataDog / ServiceNow adapters here on cutover (they read
-  # the same @payload); the Grafana log sink stays until then.
-  def sinks
-    {
-      grafana_log: -> { grafana_log_sink },
-    }
-  end
-
-  # The current durable + greppable record (Loki -> Grafana) and the Sentry mirror.
+  # The current durable + greppable record (Loki -> Grafana Support Inbox) and the
+  # Sentry mirror so the report lands next to the user's client-side errors.
   def grafana_log_sink
     Rails.logger.info("[support_request] #{@payload.to_json}")
     LogUtil.log_message(

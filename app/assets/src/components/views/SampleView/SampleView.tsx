@@ -447,7 +447,7 @@ const SampleViewComponent = ({
           amr: "antimicrobial resistance",
         }[String(workflow)] ?? "analysis";
       recordRunFailure({
-        sampleId: sample.id,
+        sampleId: Number(sample.id),
         runId: runId != null ? Number(runId) : undefined,
         workflow: String(workflow),
         status,
