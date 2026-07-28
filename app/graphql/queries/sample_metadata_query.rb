@@ -31,12 +31,18 @@ module Queries
 
     def resolve_sample_metadata(sample_id: nil, snapshot_link_id: nil, input: nil)
       current_power = context[:current_power]
-      sample = current_power.viewable_samples.find(sample_id.to_i)
+      # Public snapshot-share viewer: authorize via the SnapshotLink, never via the empty
+      # current_power, and never editable (SMP-1457). Session path unchanged.
+      if snapshot_link_id.present?
+        sample = snapshot_authorized_sample(sample_id, snapshot_link_id)
+        editable = false
+      else
+        sample = current_power.viewable_samples.find(sample_id.to_i)
+        editable = current_power.updatable_sample?(sample)
+      end
 
       pipeline_version = input&.pipeline_version
       pr = select_pipeline_run(sample, pipeline_version)
-
-      editable = current_power.updatable_sample?(sample)
       pr_display = nil
       ercc_comparison = nil
       summary_stats = nil

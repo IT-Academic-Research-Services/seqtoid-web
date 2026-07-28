@@ -5,8 +5,9 @@ module Queries
   # GET /samples/:id.json. Mirrors SamplesController#show's JSON, then applies the
   # federation's id-stringification (pipeline_runs/workflow_runs/default_pipeline_run/project).
   #
-  # snapshotLinkId is accepted for query parity but unused -- the federation resolver read
-  # the sample via the session and ignored it.
+  # snapshotLinkId authorizes a public shared-link ("/pub/:share_id") view: the viewer is
+  # unauthenticated, so the sample is loaded via the SnapshotLink instead of current_power
+  # (SMP-1457). See Queries::Concerns::SnapshotSampleAuthorization.
   module SampleForReportQuery
     extend ActiveSupport::Concern
 
@@ -22,7 +23,15 @@ module Queries
     end
 
     def resolve_sample_for_report(rails_sample_id: nil, snapshot_link_id: nil)
-      sample = current_power.samples.find(rails_sample_id.to_i)
+      # A public snapshot-share viewer is unauthenticated (current_power is empty), so authorize via
+      # the SnapshotLink and never let them edit. The normal (session) path is unchanged (SMP-1457).
+      if snapshot_link_id.present?
+        sample = snapshot_authorized_sample(rails_sample_id, snapshot_link_id)
+        editable = false
+      else
+        sample = current_power.samples.find(rails_sample_id.to_i)
+        editable = current_power.updatable_sample?(sample)
+      end
 
       sample_info = sample.as_json(
         only: SamplesController::SAMPLE_DEFAULT_FIELDS,
@@ -30,7 +39,7 @@ module Queries
       ).merge(
         "default_background_id" => sample.default_background_id,
         "default_pipeline_run_id" => sample.first_pipeline_run.present? ? sample.first_pipeline_run.id : nil,
-        "editable" => current_power.updatable_sample?(sample),
+        "editable" => editable,
         "pipeline_runs" => sample.pipeline_runs_info,
         "workflow_runs" => sample.workflow_runs_info
       ).as_json # uniform string keys + JSON-typed values (Times -> ISO strings)
