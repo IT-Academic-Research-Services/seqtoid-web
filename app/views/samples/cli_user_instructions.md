@@ -34,8 +34,8 @@ There are lots of options to install on Linux.
 ##### Other Linux: Install via Homebrew for Linux
 
 1. Make sure you have [Homebrew for Linux](https://docs.brew.sh/Homebrew-on-Linux)
-1. Add the chanzuckerberg tap: `brew tap chanzuckerberg/tap`
-1. Install the package: `brew install seqtoid-cli`
+1. Add the SeqToID tap: `brew tap IT-Academic-Research-Services/tap`
+1. Install the package: `brew install seqtoid`
 
 ##### Other Linux: Without Homebrew
 
@@ -48,8 +48,8 @@ seqtoid-cli is available via homebrew and natively supports Apple Silicon! (via 
 ##### Install via Homebrew
 
 1. Make sure you have [Homebrew for Linux](https://docs.brew.sh/Homebrew-on-Linux)
-1. Add the chanzuckerberg tap: `brew tap chanzuckerberg/tap`
-1. Install the package: `brew install seqtoid-cli`
+1. Add the SeqToID tap: `brew tap IT-Academic-Research-Services/tap`
+1. Install the package: `brew install seqtoid`
 
 ##### Without Homebrew
 
