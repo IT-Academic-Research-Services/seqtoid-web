@@ -128,6 +128,11 @@ class SupportRequestsController < ApplicationController
     # without touching this controller.
     SupportRouter.call(payload: support_payload, user: current_user)
 
+    # Phase 2 (L2/L3): if this report is about a failed run, kick off async deep
+    # enrichment (SFN cause + CloudWatch tail via the least-privilege lambda). Inert
+    # until the lambda is deployed; guarded so it can never affect the response.
+    enqueue_deep_enrichment(correlation_id, pipeline_failure)
+
     render json: { status: "ok", correlation_id: correlation_id }, status: :created
   rescue StandardError => e
     LogUtil.log_error("Failed to record support request", exception: e)
@@ -162,6 +167,28 @@ class SupportRequestsController < ApplicationController
     )
   rescue StandardError => e
     LogUtil.log_error("Support pipeline-failure enrichment failed", exception: e)
+    nil
+  end
+
+  # Enqueue the async L2/L3 enrichment for a failed run. No-op unless the enrichment
+  # lambda is configured and we have an execution ARN to hand it. Best-effort: an
+  # enqueue failure must never affect the support submission the user just made.
+  def enqueue_deep_enrichment(correlation_id, pipeline_failure)
+    return if pipeline_failure.blank?
+    return unless SupportEnrichmentLambda.enabled?
+
+    arn = pipeline_failure[:sfn_execution_arn]
+    return if arn.blank?
+
+    Resque.enqueue(
+      SupportEnrichmentJob,
+      correlation_id,
+      arn,
+      pipeline_failure[:run_type],
+      pipeline_failure[:run_id]
+    )
+  rescue StandardError => e
+    LogUtil.log_error("Failed to enqueue support deep enrichment", exception: e)
     nil
   end
 
