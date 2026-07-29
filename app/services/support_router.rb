@@ -32,6 +32,20 @@ class SupportRouter
     nil
   end
 
+  # Routes the async L2/L3 enrichment (already redacted lambda-side) to the same sink,
+  # correlated to the original report by correlation_id so the support inbox stitches
+  # them together. Called from SupportEnrichmentJob after the lambda returns. Raises on
+  # failure so the job's retry/dead-letter handles it (the L1 report is already durable).
+  def self.route_enrichment(correlation_id:, detail:)
+    payload = {
+      event: "support_request_enrichment",
+      correlation_id: correlation_id,
+      enrichment: detail,
+    }
+    Rails.logger.info("[support_request_enrichment] #{payload.to_json}")
+    LogUtil.log_message("Support enrichment for #{correlation_id}", **payload)
+  end
+
   private
 
   # The current durable + greppable record (Loki -> Grafana Support Inbox) and the
