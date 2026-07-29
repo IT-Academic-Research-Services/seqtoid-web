@@ -26,6 +26,7 @@ export interface SamplesViewProps {
   mapLocationData?: Record<string, unknown>;
   mapPreviewedLocationId?: number;
   mapTilerKey?: string;
+  mapStyleId?: string;
   numOfMngsSamples?: number;
   onActiveColumnsChange?(activeColumns: string[]): void;
   onClearFilters?(): void;

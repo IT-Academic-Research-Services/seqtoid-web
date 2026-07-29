@@ -14,6 +14,7 @@ export interface DiscoveryViewProps extends RouteComponentProps {
   admin?: boolean;
   domain: string;
   mapTilerKey?: string;
+  mapStyleId?: string;
   projectId?: string;
   snapshotProjectDescription?: string;
   snapshotProjectName?: string;
