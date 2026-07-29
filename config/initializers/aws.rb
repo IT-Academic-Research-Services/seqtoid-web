@@ -19,6 +19,7 @@ module AwsClient
     s3: lambda {
       Aws::S3::Client.new(
         stub_responses: stub_responses,
+        retry_mode: 'standard',
         max_attempts: 10
       )
     },

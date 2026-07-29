@@ -390,7 +390,7 @@ class Sample < ApplicationRecord
     return unless status == STATUS_CREATED
 
     self.upload_error = nil
-    stderr_array = []
+    tags = { type: "sample", id: id.to_s }
     total_reads_json_path = nil
     # The AppConfig setting is the max file size in gigabytes; default 100; multiply by 10^9 to get bytes
     s3_upload_file_size_limit = (get_app_config(AppConfig::S3_SAMPLE_UPLOAD_FILE_SIZE_LIMIT) || 100).to_i
@@ -409,42 +409,30 @@ class Sample < ApplicationRecord
           raise SampleUploadErrors.max_file_size_exceeded(input_file_size, max_file_size)
         end
       end
-      # Retry s3 cp up to 3 times
-      max_tries = 3
-      try = 0
-      while try < max_tries
-        _stdout, stderr, status = Open3.capture3(
-          "aws", "s3", "cp", fastq, input_file.s3_path
-        )
-        if status.success?
-          break
-        else
-          # Try again
-          Rails.logger.error("Try ##{try}: Upload of S3 sample '#{name}' (#{id}) file '#{fastq}' failed with: #{stderr}")
-          try += 1
-          # Record final stderr if exceeding max tries
-          stderr_array << stderr if try == max_tries
-          sleep(Sample::SLEEP_SECONDS_BETWEEN_RETRIES)
-        end
-      end
+      Rails.logger.info("Uploading S3 Input File for sample '#{name}' (#{id}) from '#{fastq}' to '#{input_file.s3_path}'")
+      S3Util.copy_with_tags(fastq, input_file.s3_path, tags)
+      Rails.logger.info("Successfully uploaded S3 Input File for sample '#{name}' (#{id}) from '#{fastq}' to '#{input_file.s3_path}'")
     end
 
     if total_reads_json_path.present?
       # For samples where we are only given fastas post host filtering, we need to input the total reads (before host filtering) from this file.
-      _stdout, _stderr, status = Open3.capture3("aws", "s3", "cp", total_reads_json_path, "#{sample_input_s3_path}/#{TOTAL_READS_JSON}")
-      # We don't have a good way to know if this file should be present or not, so we just try to upload it
-      # and if it fails, we try one more time;  if that fails too, it's okay, the file is optional.
-      unless status.exitstatus.zero?
-        sleep(1.0)
-        _stdout, _stderr, _status = Open3.capture3("aws", "s3", "cp", total_reads_json_path, "#{sample_input_s3_path}/#{TOTAL_READS_JSON}")
+      Rails.logger.debug("Uploading S3 total-reads json '#{total_reads_json_path}' -> '#{sample_input_s3_path}/#{TOTAL_READS_JSON}'")
+      begin
+        # We don't have a good way to know if this file should be present or not, so we just try to upload it.
+        # If that fails, it's okay, the file is optional.
+        S3Util.copy_with_tags(total_reads_json_path, "#{sample_input_s3_path}/#{TOTAL_READS_JSON}")
+        Rails.logger.debug("Successfully uploaded S3 total-reads json '#{total_reads_json_path}' -> '#{sample_input_s3_path}/#{TOTAL_READS_JSON}'")
+      rescue StandardError => e
+        Rails.logger.debug("[Ignored] Failed to upload S3 total-reads json '#{total_reads_json_path}' -> '#{sample_input_s3_path}/#{TOTAL_READS_JSON}' => #{e}")
       end
     end
     if s3_preload_result_path.present? && s3_preload_result_path[0..4] == 's3://'
+      Rails.logger.debug("Uploading S3 preload results recursively from '#{s3_preload_result_path}' to '#{sample_output_s3_path}'")
       _stdout, stderr, status = Open3.capture3("aws", "s3", "cp", s3_preload_result_path.to_s, sample_output_s3_path.to_s, "--recursive")
-      stderr_array << stderr unless status.exitstatus.zero?
-    end
+      raise stderr unless status.exitstatus&.zero?
 
-    raise stderr_array.join(" ") unless stderr_array.empty?
+      Rails.logger.debug("Successfully uploaded S3 preload results recursively from '#{s3_preload_result_path}' to '#{sample_output_s3_path}'")
+    end
 
     self.status = STATUS_UPLOADED
     save! # this triggers pipeline command

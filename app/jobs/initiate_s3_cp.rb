@@ -11,7 +11,7 @@ class InitiateS3Cp
     sample = Sample.find(sample_id)
     Rails.logger.info("Start copying sample #{sample.id}")
     output = sample.initiate_fastq_files_s3_cp(unlimited_size)
-    Rails.logger.info(output)
+    Rails.logger.info("Finished copying sample #{sample.id} success=#{output}")
 
     WorkflowRun.handle_sample_upload_restart(sample)
   end
