@@ -16,20 +16,19 @@ RSpec.describe Sample, type: :model do
 
   # --- #initiate_fastq_files_s3_cp -------------------------------------------
   describe "#initiate_fastq_files_s3_cp" do
-    let(:ok_status)  { instance_double(Process::Status, success?: true, exitstatus: 0) }
-    let(:bad_status) { instance_double(Process::Status, success?: false, exitstatus: 1) }
+    let(:ok_status) { instance_double(Process::Status, success?: true, exitstatus: 0) }
 
     it "returns early when the sample is not in the CREATED status (guard arm)" do
       sample = sample_with(status: Sample::STATUS_CHECKED)
-      expect(Open3).not_to receive(:capture3)
+      expect(S3Util).not_to receive(:copy_with_tags)
       expect(sample.initiate_fastq_files_s3_cp).to be_nil
     end
 
     it "copies fastqs, uploads the total-reads file and marks the sample UPLOADED (happy arms)" do
       sample = sample_with(status: Sample::STATUS_CREATED)
-      allow(S3Util).to receive(:parse_s3_path).and_return(["bucket", "key"])
+      allow(S3Util).to receive(:parse_s3_path).and_return(%w[bucket key])
       allow(S3Util).to receive(:get_file_size).and_return(100)
-      allow(Open3).to receive(:capture3).and_return(["", "", ok_status])
+      allow(S3Util).to receive(:copy_with_tags)
       # Avoid the real before_save cascade; we assert the status set just before save.
       allow(sample).to receive(:save!).and_return(true)
 
@@ -40,15 +39,15 @@ RSpec.describe Sample, type: :model do
     end
 
     it "also copies an s3 preload result path when configured (s3_preload arm)" do
-      sample = sample_with(status: Sample::STATUS_CREATED)
-      sample.update_column(:s3_preload_result_path, "s3://preload/results")
-      allow(S3Util).to receive(:parse_s3_path).and_return(["bucket", "key"])
+      sample = sample_with(status: Sample::STATUS_CREATED, s3_preload_result_path: "s3://preload/results")
+      allow(S3Util).to receive(:parse_s3_path).and_return(%w[bucket key])
       allow(S3Util).to receive(:get_file_size).and_return(100)
       allow(sample).to receive(:save!).and_return(true)
+      allow(AwsClient[:s3]).to receive(:list_objects_v2).and_return(double(contents: [double(key: "a/b.txt")]))
+      expect(S3Util).to receive(:copy_with_tags).at_least(:once)
       expect(Open3).to receive(:capture3)
         .with("aws", "s3", "cp", "s3://preload/results", sample.sample_output_s3_path.to_s, "--recursive")
         .and_return(["", "", ok_status])
-      allow(Open3).to receive(:capture3).and_return(["", "", ok_status])
 
       sample.initiate_fastq_files_s3_cp
 
@@ -57,7 +56,7 @@ RSpec.describe Sample, type: :model do
 
     it "fails closed when an input file exceeds the max size (size-guard + rescue arms)" do
       sample = sample_with(status: Sample::STATUS_CREATED)
-      allow(S3Util).to receive(:parse_s3_path).and_return(["bucket", "key"])
+      allow(S3Util).to receive(:parse_s3_path).and_return(%w[bucket key])
       # Larger than the default 100 GB limit (100 * 10**9).
       allow(S3Util).to receive(:get_file_size).and_return(200 * (10**9))
       allow(WorkflowRun).to receive(:handle_sample_upload_failure)
@@ -73,9 +72,9 @@ RSpec.describe Sample, type: :model do
 
     it "retries then fails with the generic S3 upload error when every copy fails (retry + rescue arms)" do
       sample = sample_with(status: Sample::STATUS_CREATED)
-      allow(S3Util).to receive(:parse_s3_path).and_return(["bucket", "key"])
+      allow(S3Util).to receive(:parse_s3_path).and_return(%w[bucket key])
       allow(S3Util).to receive(:get_file_size).and_return(100)
-      allow(Open3).to receive(:capture3).and_return(["", "boom", bad_status])
+      allow(S3Util).to receive(:copy_with_tags).and_raise(Aws::S3::Errors::ServiceError.new(nil, "boom"))
       allow(sample).to receive(:sleep) # skip the retry backoff
       allow(WorkflowRun).to receive(:handle_sample_upload_failure)
       allow(sample).to receive(:save!).and_return(true)
@@ -98,8 +97,8 @@ RSpec.describe Sample, type: :model do
 
     it "concatenates multi-part local input files and cleans up (multi-part arm)" do
       sample = sample_with(status: Sample::STATUS_CREATED)
-      sample.update_column(:status, Sample::STATUS_UPLOADED)
-      sample.input_files.each { |f| f.update_column(:parts, "part_a.fastq.gz, part_b.fastq.gz") }
+      sample.assign_attributes(status: Sample::STATUS_UPLOADED)
+      sample.input_files.each { |f| f.assign_attributes(parts: "part_a.fastq.gz, part_b.fastq.gz") }
       allow(Syscall).to receive(:run)
       allow(Syscall).to receive(:run_in_dir)
 
@@ -110,11 +109,11 @@ RSpec.describe Sample, type: :model do
 
     it "skips single-part files and non-local sources (next arms)" do
       sample = sample_with(status: Sample::STATUS_CREATED)
-      sample.update_column(:status, Sample::STATUS_UPLOADED)
+      sample.assign_attributes(status: Sample::STATUS_UPLOADED)
       # First file: single part (parts.length <= 1). Second: non-local source_type.
       files = sample.input_files.to_a
-      files[0].update_column(:parts, "only_one_part.fastq.gz")
-      files[1].update_columns(parts: "a, b", source_type: InputFile::SOURCE_TYPE_S3)
+      files[0].assign_attributes(parts: "only_one_part.fastq.gz")
+      files[1].assign_attributes(parts: "a, b", source_type: InputFile::SOURCE_TYPE_S3)
 
       expect(Syscall).not_to receive(:run)
       expect(Syscall).not_to receive(:run_in_dir)
@@ -123,8 +122,8 @@ RSpec.describe Sample, type: :model do
 
     it "rescues and logs when a Syscall raises (rescue arm)" do
       sample = sample_with(status: Sample::STATUS_CREATED)
-      sample.update_column(:status, Sample::STATUS_UPLOADED)
-      sample.input_files.each { |f| f.update_column(:parts, "part_a.fastq.gz, part_b.fastq.gz") }
+      sample.assign_attributes(status: Sample::STATUS_UPLOADED)
+      sample.input_files.each { |f| f.assign_attributes(parts: "part_a.fastq.gz, part_b.fastq.gz") }
       allow(Syscall).to receive(:run).and_raise(StandardError.new("s3 down"))
       expect(LogUtil).to receive(:log_error).with(/Failed to concatenate input parts/, hash_including(:sample_id))
 

@@ -181,6 +181,9 @@ Rails/UnknownEnv:
 Style/AccessModifierDeclarations:
   Enabled: false
 
+Naming/VariableNumber:
+  Enabled: false
+
 # TODO: Add back after manual fixes
 Naming/MethodParameterName:
   Enabled: false
