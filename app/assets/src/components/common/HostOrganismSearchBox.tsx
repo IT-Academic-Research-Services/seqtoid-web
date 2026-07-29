@@ -44,13 +44,7 @@ const HostOrganismSearchBox = ({
   };
 
   const buildResults = (sortedHostGenomes: HostGenome[], query: string) => {
-    const formatResult = (
-      result: HostGenome,
-    ): {
-      title: string;
-      name: number;
-      description?: string;
-    } => {
+    const formatResult = (result: HostGenome): SearchResult => {
       const hostGenome = hostGenomes.find(hg => hg.id === result.id);
       return {
         title: result.name,

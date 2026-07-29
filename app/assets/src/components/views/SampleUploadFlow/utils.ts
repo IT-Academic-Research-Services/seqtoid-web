@@ -3,7 +3,7 @@ import { groupBy, maxBy, sortBy, sum } from "lodash/fp";
 import { openUrlInPopupWindow } from "~/components/utils/links";
 import { INPUT_FILE_S3_TAGS } from "~/components/views/SampleUploadFlow/constants";
 import { getURLParamString } from "~/helpers/url";
-import { SampleFromApi, SampleUploadType } from "~/interface/shared";
+import { NameId, SampleFromApi, SampleUploadType } from "~/interface/shared";
 
 const BASESPACE_OAUTH_URL = "https://basespace.illumina.com/oauth/authorize";
 const BASESPACE_OAUTH_WINDOW_NAME = "BASESPACE_OAUTH_WINDOW";
@@ -40,10 +40,10 @@ export const doesResultMatch = (result: $TSFixMe, query: $TSFixMe) => {
 };
 
 // Sort matches by position of match. If no position, by func.
-export const sortResults = (
-  matchedResults: $TSFixMe,
-  query: $TSFixMe,
-  func: $TSFixMe,
+export const sortResults = <T extends NameId>(
+  matchedResults: T[],
+  query: string,
+  func: (__: T) => any,
 ) => {
   let sortedResults = sortBy(func, matchedResults);
   if (query !== "") {

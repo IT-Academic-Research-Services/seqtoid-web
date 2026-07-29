@@ -12,15 +12,15 @@
 //   * blur after an explicit selection (the `!selectedRef.current` guard).
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import LiveSearchPopBox, {
+  SearchResult,
   SearchResults,
 } from "~/components/ui/controls/LiveSearchPopBox";
 
 const PLACEHOLDER = "Search here";
 
-const oneResult = (result: Record<string, unknown>): SearchResults =>
-  ({
-    Places: { name: "Places", results: [result] },
-  } as unknown as SearchResults);
+const oneResult = (result: SearchResult): SearchResults => ({
+  Places: { name: "Places", results: [result] },
+});
 
 const type = (input: HTMLElement, value: string) =>
   fireEvent.change(input, { target: { value } });
@@ -82,7 +82,7 @@ describe("LiveSearchPopBox key handling", () => {
 describe("LiveSearchPopBox selected-result display fallbacks", () => {
   // Renders the dropdown for a single suggestion and clicks it. The suggestion
   // is located by its description so results with no title are still clickable.
-  const selectSuggestion = async (result: Record<string, unknown>) => {
+  const selectSuggestion = async (result: SearchResult) => {
     const onResultSelect = jest.fn();
     const onSearchTriggered = jest.fn(async () => oneResult(result));
     render(

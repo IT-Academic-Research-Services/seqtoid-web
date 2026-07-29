@@ -92,7 +92,10 @@ describe("LiveSearchPopBox branches", () => {
     type(input, "  berlin  ");
     fireEvent.keyPress(input, { key: "Enter", charCode: 13 });
     expect(onResultSelect).toHaveBeenCalledWith({
-      result: "berlin",
+      result: {
+        name: "berlin",
+        title: "berlin",
+      },
       currentEvent: {},
     });
   });
@@ -101,7 +104,12 @@ describe("LiveSearchPopBox branches", () => {
     const { onResultSelect, input } = renderBox();
     type(input, "tokyo");
     fireEvent.blur(input);
-    expect(onResultSelect).toHaveBeenCalledWith({ result: "tokyo" });
+    expect(onResultSelect).toHaveBeenCalledWith({
+      result: {
+        name: "tokyo",
+        title: "tokyo",
+      },
+    });
   });
 
   it("does not re-commit on blur when the typed value already matches the value prop", () => {
@@ -140,14 +148,13 @@ describe("LiveSearchPopBox branches", () => {
 
   it("resets the input when the value prop changes", () => {
     const { rerender } = (() => {
-      const r = render(
+      return render(
         React.createElement(LiveSearchPopBox, {
           placeholder: PLACEHOLDER,
           onSearchTriggered: search,
           value: "first",
         }),
       );
-      return r;
     })();
 
     expect(

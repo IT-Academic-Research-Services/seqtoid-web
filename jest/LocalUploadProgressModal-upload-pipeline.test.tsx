@@ -274,6 +274,7 @@ describe("LocalUploadProgressModal happy-path transfer", () => {
       Key: "alpha/R1.fastq",
       Body: { size: 100 },
       ChecksumAlgorithm: "SHA256",
+      Tagging: "type=sample&id=5",
     });
     // No persisted uploadId for a fresh upload.
     expect(mockUploads[0].uploadId).toBeUndefined();
