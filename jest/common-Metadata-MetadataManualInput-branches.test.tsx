@@ -64,7 +64,7 @@ jest.mock("~/components/common/HostOrganismSearchBox", () => {
           "button",
           {
             "data-testid": "host-pick-id",
-            onClick: () => onResultSelect({ result: 1 }),
+            onClick: () => onResultSelect({ result: { name: 1 } }),
           },
           value || "unset",
         ),
@@ -72,7 +72,7 @@ jest.mock("~/components/common/HostOrganismSearchBox", () => {
           "button",
           {
             "data-testid": "host-pick-unknown-id",
-            onClick: () => onResultSelect({ result: 987 }),
+            onClick: () => onResultSelect({ result: { name: 987 } }),
           },
           "unknown",
         ),

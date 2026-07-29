@@ -172,7 +172,7 @@ const LiveSearchPopBox = ({
         placeholder={placeholder}
         onChange={handleSearchChange}
         onKeyPress={handleKeyDown}
-        value={selectedResult.title}
+        value={selectedResult.title || selectedResult.name || ""}
         disableAutocomplete
       />
     </div>

@@ -376,7 +376,7 @@ export interface Background {
   alignment_config_names: string[];
 }
 
-export interface SampleTypeProps {
+export interface SampleTypeProps extends NameId {
   name: string;
   group: string;
   insect_only: boolean;
