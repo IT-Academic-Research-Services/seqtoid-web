@@ -60,6 +60,10 @@ class SupportRequestsController < ApplicationController
     error_text = quick_report[:errorName].to_s
     route_text = diagnostics[:route].to_s.presence || quick_report[:task].to_s
 
+    # L1 pipeline-failure enrichment: DB-only detail about the failed run this report
+    # is about (nil when there is no accessible failed run). Support-only.
+    pipeline_failure = pipeline_failure_detail(request_params[:run_context])
+
     # (CZID-472) Pull this user's recent OTel action-log trail from the backend so
     # the operator gets a step-by-step of what the user did. Gated + best-effort:
     # nil when SUPPORT_LOG_GROUP is unset or the query fails (never breaks submit).
@@ -105,6 +109,12 @@ class SupportRequestsController < ApplicationController
       # known funnels before dropping. Pure transform over action_log_steps -- no
       # extra query, nil when there is no trail. Operator-only, like the rest of B.
       journey: build_journey(action_log_steps),
+      # L1 pipeline-failure detail (support-only): the failed run this report is
+      # about -- failed stage, raw error_message, versions, SFN ARN, S3 prefix --
+      # resolved through the user's Power (access-controlled). nil when the report
+      # is not about an accessible failed run. Its `user_facing` sub-key is the
+      # friendly one-liner the user already saw in the modal.
+      pipeline_failure: pipeline_failure,
       # Full browser/session diagnostics (support-only).
       diagnostics: diagnostics,
       environment: Rails.env,
@@ -112,14 +122,16 @@ class SupportRequestsController < ApplicationController
       submitted_at: now.iso8601,
     }
 
-    # Structured log line is the durable, greppable record for operators, and
-    # LogUtil.log_message forwards it to Sentry so it lands next to the user's
-    # client-side errors.
-    Rails.logger.info("[support_request] #{support_payload.to_json}")
-    LogUtil.log_message(
-      "Support request from user #{current_user.id} (#{correlation_id})",
-      **support_payload
-    )
+    # Route the payload to its sink(s) through the SupportRouter seam. Today that is
+    # the durable structured log ("[support_request]" -> Loki -> Grafana Support
+    # Inbox) + Sentry; DataDog / ServiceNow become additional adapters there later
+    # without touching this controller.
+    SupportRouter.call(payload: support_payload, user: current_user)
+
+    # Phase 2 (L2/L3): if this report is about a failed run, kick off async deep
+    # enrichment (SFN cause + CloudWatch tail via the least-privilege lambda). Inert
+    # until the lambda is deployed; guarded so it can never affect the response.
+    enqueue_deep_enrichment(correlation_id, pipeline_failure)
 
     render json: { status: "ok", correlation_id: correlation_id }, status: :created
   rescue StandardError => e
@@ -131,12 +143,53 @@ class SupportRequestsController < ApplicationController
 
   def support_request_params
     # quick_report and diagnostics are free-form client-collected objects; permit
-    # them as open hashes.
+    # them as open hashes. run_context is the optional pipeline-failure handle the
+    # frontend attaches when the report is opened from (or on) a failed run.
     params.permit(
       :description,
       quick_report: {},
-      diagnostics: {}
+      diagnostics: {},
+      run_context: {}
     )
+  end
+
+  # L1 pipeline-failure enrichment (DB-only, best-effort). Resolves the run through
+  # the user's Power so access control is enforced, and returns nil when there is no
+  # accessible failed run. Deeper SFN/CloudWatch detail (L2/L3) is added later by an
+  # async, least-privilege enrichment lambda -- never read from the web tier here.
+  def pipeline_failure_detail(run_context)
+    ctx = (run_context || {}).to_h.symbolize_keys
+    SupportPipelineFailure.call(
+      user_power: current_power,
+      sample_id: ctx[:sample_id] || ctx[:sampleId],
+      run_id: ctx[:run_id] || ctx[:runId],
+      workflow: ctx[:workflow]
+    )
+  rescue StandardError => e
+    LogUtil.log_error("Support pipeline-failure enrichment failed", exception: e)
+    nil
+  end
+
+  # Enqueue the async L2/L3 enrichment for a failed run. No-op unless the enrichment
+  # lambda is configured and we have an execution ARN to hand it. Best-effort: an
+  # enqueue failure must never affect the support submission the user just made.
+  def enqueue_deep_enrichment(correlation_id, pipeline_failure)
+    return if pipeline_failure.blank?
+    return unless SupportEnrichmentLambda.enabled?
+
+    arn = pipeline_failure[:sfn_execution_arn]
+    return if arn.blank?
+
+    Resque.enqueue(
+      SupportEnrichmentJob,
+      correlation_id,
+      arn,
+      pipeline_failure[:run_type],
+      pipeline_failure[:run_id]
+    )
+  rescue StandardError => e
+    LogUtil.log_error("Failed to enqueue support deep enrichment", exception: e)
+    nil
   end
 
   # Guard against unbounded/huge diagnostics payloads being logged verbatim.

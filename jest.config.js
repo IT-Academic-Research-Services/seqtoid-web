@@ -89,10 +89,10 @@ module.exports = {
   // nothing; these honest floors replace that fiction.
   coverageThreshold: {
     global: {
-      branches: 13,
-      functions: 14,
-      lines: 17,
-      statements: 17,
+      branches: 90,
+      functions: 90,
+      lines: 90,
+      statements: 90,
     },
   },
   globals: {},

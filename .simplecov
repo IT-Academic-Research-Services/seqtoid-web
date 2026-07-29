@@ -34,7 +34,7 @@ SimpleCov.start 'rails' do
   # run is always far below the whole-suite floor, so enforcing it would red every run.
   # The real pre-push gate (make ci-local / docker-compose.ci.yml) does NOT set it, so
   # the floor is still enforced there.
-  minimum_coverage line: 61, branch: 46 unless ENV["SHARD_INDEX"] || ENV["SKIP_COVERAGE_MINIMUM"]
+  minimum_coverage line: 90, branch: 90 unless ENV["SHARD_INDEX"] || ENV["SKIP_COVERAGE_MINIMUM"]
 
   # Exclude mostly manual tasks for now:
   add_filter "/lib/tasks"

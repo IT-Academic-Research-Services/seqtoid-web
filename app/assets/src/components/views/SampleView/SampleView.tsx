@@ -63,6 +63,10 @@ import {
   WORKFLOW_TABS,
 } from "~/components/utils/workflows";
 import {
+  clearRunFailure,
+  recordRunFailure,
+} from "~/components/common/SupportPortal/collectDiagnostics";
+import {
   ActionType,
   createAction,
   GlobalContext,
@@ -416,6 +420,52 @@ const SampleViewComponent = ({
       toast.dismiss();
     };
   }, []);
+
+  // Record the current run's failure (if any) so the "Report an issue" portal can be
+  // about a PIPELINE failure, not just a front-end JS error, and so the server can
+  // attach access-controlled L1 failure detail. Covers mNGS (pipeline run status) and
+  // CG/AMR/long-read (workflow run status). Cleared when not failed or on unmount.
+  useEffect(() => {
+    if (!sample?.id) {
+      clearRunFailure();
+      return;
+    }
+
+    const workflow = getWorkflowTypeFromLabel(currentTab);
+    const isMngs = isMngsWorkflow(workflow);
+    const status = isMngs
+      ? reportMetadata?.pipelineRunStatus
+      : workflowRun?.status;
+    const runId = isMngs ? pipelineRun?.id : workflowRun?.id;
+
+    if (status && /fail/i.test(status)) {
+      const label =
+        {
+          "short-read-mngs": "metagenomics",
+          "long-read-mngs": "nanopore metagenomics",
+          "consensus-genome": "consensus genome",
+          amr: "antimicrobial resistance",
+        }[String(workflow)] ?? "analysis";
+      recordRunFailure({
+        sampleId: Number(sample.id),
+        runId: runId != null ? Number(runId) : undefined,
+        workflow: String(workflow),
+        status,
+        userFacing: `Your ${label} run did not finish - it failed during processing.`,
+      });
+    } else {
+      clearRunFailure();
+    }
+
+    return () => clearRunFailure();
+  }, [
+    sample?.id,
+    currentTab,
+    pipelineRun?.id,
+    workflowRun?.id,
+    workflowRun?.status,
+    reportMetadata?.pipelineRunStatus,
+  ]);
 
   useEffect(() => {
     if (!sample) {
