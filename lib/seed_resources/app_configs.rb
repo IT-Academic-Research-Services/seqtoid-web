@@ -33,12 +33,16 @@ module SeedResource
       # Derive the stage from ENV["ENVIRONMENT"] (the same var db/seeds.rb already uses), defaulting
       # to "dev" so local/dev seeding behaviour is unchanged.
       stage = ENV["ENVIRONMENT"].presence || "dev"
-      find_or_create(:app_config, key: AppConfig::SFN_SINGLE_WDL_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{stage}-default-wdl")
+      # SWIPE app_name namespace. Legacy is idseq-swipe-<stage>; a fresh seqtoid env whose swipe is
+      # named seqtoid-swipe-<stage> (isolated from a live legacy idseq-swipe-<stage> in the same
+      # account) sets SWIPE_APP_NAME via Chamber. Default keeps existing envs byte-identical.
+      swipe_app_name = ENV["SWIPE_APP_NAME"].presence || "idseq-swipe-#{stage}"
+      find_or_create(:app_config, key: AppConfig::SFN_SINGLE_WDL_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-default-wdl")
       find_or_create(:app_config, key: AppConfig::ENABLE_SFN_NOTIFICATIONS, value: "1")
 
-      find_or_create(:app_config, key: AppConfig::SFN_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{stage}-short-read-mngs-wdl")
-      find_or_create(:app_config, key: AppConfig::SFN_MNGS_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{stage}-short-read-mngs-wdl")
-      find_or_create(:app_config, key: AppConfig::SFN_CG_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{stage}-default-wdl")
+      find_or_create(:app_config, key: AppConfig::SFN_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-short-read-mngs-wdl")
+      find_or_create(:app_config, key: AppConfig::SFN_MNGS_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-short-read-mngs-wdl")
+      find_or_create(:app_config, key: AppConfig::SFN_CG_ARN, value: "arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-default-wdl")
     end
 
     def workflow_versions

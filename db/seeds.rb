@@ -35,6 +35,11 @@ end
 ActiveRecord::Base.transaction do
   account_id = ENV["AWS_ACCOUNT_ID"]
   environment_name = ENV["ENVIRONMENT"]
+  # SWIPE state-machine namespace. The pipeline SFN ARNs below must match the swipe app_name the infra
+  # creates. Legacy default is idseq-swipe-<env>; a fresh seqtoid env whose swipe is named
+  # seqtoid-swipe-<env> (to avoid colliding with a live legacy idseq-swipe-<env> in the same account)
+  # sets SWIPE_APP_NAME via Chamber. Default keeps every existing env byte-identical.
+  swipe_app_name = ENV["SWIPE_APP_NAME"].presence || "idseq-swipe-#{environment_name}"
 
   # Fail loud rather than seed a broken ARN. A blank AWS_ACCOUNT_ID interpolates to
   # `arn:aws:states:us-west-2::stateMachine:...` (empty account segment), which is
@@ -61,15 +66,15 @@ ActiveRecord::Base.transaction do
 
   AppConfig.create({"key"=>"long-read-mngs-version", "value"=>"0.7.12"})
 
-  AppConfig.create({"key"=>"sfn_single_wdl_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-default-wdl"})
+  AppConfig.create({"key"=>"sfn_single_wdl_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-default-wdl"})
 
   AppConfig.create({"key"=>"enable_sfn_notifications", "value"=>"1"})
 
-  AppConfig.create({"key"=>"sfn_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-short-read-mngs-wdl"})
+  AppConfig.create({"key"=>"sfn_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-short-read-mngs-wdl"})
 
-  AppConfig.create({"key"=>"sfn_mngs_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-short-read-mngs-wdl"})
+  AppConfig.create({"key"=>"sfn_mngs_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-short-read-mngs-wdl"})
 
-  AppConfig.create({"key"=>"sfn_cg_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-#{environment_name}-default-wdl"})
+  AppConfig.create({"key"=>"sfn_cg_arn", "value"=>"arn:aws:states:us-west-2:#{account_id}:stateMachine:#{swipe_app_name}-default-wdl"})
 
   AppConfig.create({"key"=>"default_alignment_config_name", "value"=>"2024-02-06"})
 
