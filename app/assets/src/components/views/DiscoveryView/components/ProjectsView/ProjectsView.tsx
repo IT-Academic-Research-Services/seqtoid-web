@@ -30,6 +30,7 @@ interface ProjectsViewProps {
   mapLocationData?: Record<string, unknown>;
   mapPreviewedLocationId?: number;
   mapTilerKey?: string;
+  mapStyleId?: string;
   onClearFilters?: $TSFixMeFunction;
   onDisplaySwitch?: $TSFixMeFunction;
   onLoadRows: $TSFixMeFunction;
@@ -270,6 +271,7 @@ export class ProjectsView extends React.Component<ProjectsViewProps> {
       mapLocationData,
       mapPreviewedLocationId,
       mapTilerKey,
+      mapStyleId,
       onClearFilters,
       onMapClick,
       onMapLevelChange,
@@ -304,6 +306,7 @@ export class ProjectsView extends React.Component<ProjectsViewProps> {
               mapLevel={mapLevel}
               mapLocationData={mapLocationData}
               mapTilerKey={mapTilerKey}
+              mapStyleId={mapStyleId}
               onClearFilters={onClearFilters}
               onClick={onMapClick}
               onMapLevelChange={onMapLevelChange}

@@ -3,6 +3,7 @@
     domain: "all_data",
     admin: <%= current_user.admin %>,
     projectId: <%= raw(@project_id ? "\"#{@project_id}\"" : "null") %>,
-    mapTilerKey: '<%= ENV["MAPTILER_API_KEY"] %>',
+    mapTilerKey: <%= raw escape_json(ENV["MAPTILER_API_KEY"].to_s.strip) %>,
+    mapStyleId: <%= raw escape_json(ENV["MAP_STYLE_ID"].to_s.strip) %>,
   }, 'page_content', JSON.parse('<%= raw escape_json(user_context)%>'));
 <% end %>
