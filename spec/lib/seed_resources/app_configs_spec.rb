@@ -21,10 +21,12 @@ RSpec.describe SeedResource::AppConfigs do
     around do |example|
       original_account = ENV["AWS_ACCOUNT_ID"]
       original_environment = ENV["ENVIRONMENT"]
+      original_swipe_app_name = ENV["SWIPE_APP_NAME"]
       ENV["AWS_ACCOUNT_ID"] = account_id
       example.run
       ENV["AWS_ACCOUNT_ID"] = original_account
       ENV["ENVIRONMENT"] = original_environment
+      ENV["SWIPE_APP_NAME"] = original_swipe_app_name
     end
 
     context "when ENVIRONMENT is set (e.g. staging)" do
@@ -71,6 +73,38 @@ RSpec.describe SeedResource::AppConfigs do
 
         expect(AppConfigHelper.get_app_config(AppConfig::SFN_ARN))
           .to eq("arn:aws:states:us-west-2:#{account_id}:stateMachine:idseq-swipe-dev-short-read-mngs-wdl")
+      end
+    end
+
+    # A fresh seqtoid env (e.g. env-staging) whose swipe is named seqtoid-swipe-<env> to avoid
+    # colliding with the live legacy idseq-swipe-<env> in the same account sets SWIPE_APP_NAME via
+    # Chamber. The seeded ARNs must follow it, not the idseq-swipe default (else the app would dispatch
+    # onto the legacy state machine -- a cross-env leak).
+    context "when SWIPE_APP_NAME is set (isolated seqtoid env)" do
+      before do
+        ENV["ENVIRONMENT"] = "staging"
+        ENV["SWIPE_APP_NAME"] = "seqtoid-swipe-staging"
+      end
+
+      it "seeds ARNs that follow SWIPE_APP_NAME, not the idseq-swipe default" do
+        sfn_configs
+
+        expect(AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN))
+          .to eq("arn:aws:states:us-west-2:#{account_id}:stateMachine:seqtoid-swipe-staging-default-wdl")
+        expect(AppConfigHelper.get_app_config(AppConfig::SFN_ARN))
+          .to eq("arn:aws:states:us-west-2:#{account_id}:stateMachine:seqtoid-swipe-staging-short-read-mngs-wdl")
+        expect(AppConfigHelper.get_app_config(AppConfig::SFN_MNGS_ARN))
+          .to eq("arn:aws:states:us-west-2:#{account_id}:stateMachine:seqtoid-swipe-staging-short-read-mngs-wdl")
+        expect(AppConfigHelper.get_app_config(AppConfig::SFN_CG_ARN))
+          .to eq("arn:aws:states:us-west-2:#{account_id}:stateMachine:seqtoid-swipe-staging-default-wdl")
+      end
+
+      it "does not seed any idseq-swipe-named state machine" do
+        sfn_configs
+
+        [AppConfig::SFN_SINGLE_WDL_ARN, AppConfig::SFN_ARN, AppConfig::SFN_MNGS_ARN, AppConfig::SFN_CG_ARN].each do |key|
+          expect(AppConfigHelper.get_app_config(key)).not_to include("idseq-swipe-")
+        end
       end
     end
   end
