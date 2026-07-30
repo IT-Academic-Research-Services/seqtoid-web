@@ -113,6 +113,27 @@ jobs:
     uses: ./.github/workflows/security-scan.yml
     secrets: inherit
 
+  # ---- Tier 1b: self-contained data/contract gates (folded in from nightly-full-regime.yml). ----
+  # No candidate env needed (Rails + throwaway MySQL), but gated on provision like the other tiers so
+  # a candidate that cannot even deploy short-circuits the whole gauntlet. Both are HARD gates.
+  data_integrity:
+    # Reference-data integrity gate (#741): the identical reusable tier the nightly regime runs. A red
+    # here is a reference-data slice that would break staging pipelines -- must never promote.
+    needs: provision
+    permissions:
+      contents: read
+    uses: ./.github/workflows/data-integrity.yml
+    secrets: inherit
+
+  contract_api:
+    # API/contract gate (#742): GraphQL SDL + REST route drift. A red here is a broken client contract
+    # that would break staging's frontend -- must never promote.
+    needs: provision
+    permissions:
+      contents: read
+    uses: ./.github/workflows/contract-api.yml
+    secrets: inherit
+
   # ---- Tier 2: live candidate env. run-all (fail-fast: false across categories). ----
   browser_e2e:
     # Gated behind tiers 0/1 (fail-fast between tiers), but the categories run-all among themselves.
@@ -139,10 +160,99 @@ jobs:
       should-run-with-feature-flags: true
     secrets: inherit
 
+  # ---- Tier 3: extended regime tiers folded in from nightly-full-regime.yml. -----------------
+  # Broadens coverage toward "every conceivable test". The REAL leg (pipeline AUPR, when enabled)
+  # gates promotion; the STUBS are honest, marked placeholders (mirroring the regime) that become
+  # real gates as their tooling lands. Load/DAST finally have a dedicated deployed target here -- the
+  # isolated candidate URL -- which the nightly regime never had. Stubs are NOT in attest's gate (a
+  # no-op green must not be mistaken for coverage); wire each into attest.needs when it goes real.
+  pipeline_e2e_aupr:
+    # Real, EXPENSIVE, opt-in (same var + token as the nightly regime). Enabled + failing AUPR blocks
+    # promotion; disabled -> skipped and non-blocking (see attest's skip-tolerant if:).
+    needs: provision
+    if: ${{ vars.NIGHTLY_PIPELINE_E2E_ENABLED == 'true' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pipeline-aupr.yml
+    secrets: inherit
+
+  integration_suite:
+    name: Cross-component integration (#736) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #736: service-level integration across MySQL8 +"
+          echo "OpenSearch + Redis/Resque + S3 (LocalStack). Marked placeholder -- not yet a gate."
+
+  load_soak:
+    name: Load / performance / soak (#739) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      CANDIDATE_URL: ${{ needs.provision.outputs.url }}
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #739: k6/Locust load + latency SLOs against the candidate"
+          echo "at ${CANDIDATE_URL} (the gauntlet finally gives load a dedicated deployed target)."
+          echo "Marked placeholder -- not yet a gate."
+
+  dast_zap:
+    name: DAST (OWASP ZAP) (#740) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      CANDIDATE_URL: ${{ needs.provision.outputs.url }}
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #740 (DAST half): OWASP ZAP baseline/full scan against the"
+          echo "candidate at ${CANDIDATE_URL}. The SAST half (gitleaks/trivy/brakeman) is REAL in"
+          echo "security_scan. Marked placeholder -- not yet a gate."
+
+  chaos_resilience:
+    name: Chaos / resilience (#743) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #743: Karpenter evict / OpenSearch loss / DB failover"
+          echo "against the candidate. Marked placeholder -- not yet a gate."
+
+  observability_alerting:
+    name: Observability / alerting (#744) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #744: synthetic signals prove alerts fire (LGTM + Sentry)."
+          echo "Marked placeholder -- not yet a gate."
+
   attest:
-    # 100% green -> cosign-attest the DIGEST as gauntlet-passed. build-docker-image.yml already
-    # `cosign sign`s the digest; this adds the attestation the promote gate + admission policy require.
-    needs: [unit_coverage, security_scan, browser_e2e]
+    # 100% green across the REAL gates -> cosign-attest the DIGEST as gauntlet-passed.
+    # build-docker-image.yml already `cosign sign`s the digest; this adds the attestation the promote
+    # gate + admission policy require. Gate = every REAL tier green; pipeline_e2e_aupr must be green OR
+    # skipped (opt-in). STUBS are excluded on purpose (a no-op green is not coverage). if: always() so
+    # a skipped pipeline leg does not itself skip attest.
+    needs:
+      - unit_coverage
+      - security_scan
+      - browser_e2e
+      - data_integrity
+      - contract_api
+      - pipeline_e2e_aupr
+    if: >-
+      ${{ always()
+      && needs.unit_coverage.result == 'success'
+      && needs.security_scan.result == 'success'
+      && needs.browser_e2e.result == 'success'
+      && needs.data_integrity.result == 'success'
+      && needs.contract_api.result == 'success'
+      && (needs.pipeline_e2e_aupr.result == 'success' || needs.pipeline_e2e_aupr.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -172,7 +282,9 @@ jobs:
 
   teardown:
     # Always reap the candidate env if it came up (the ApplicationSet TTL reaper is the backstop).
-    needs: [provision, attest]
+    # Depends on attest (which transitively waits for the code/e2e gates) PLUS the candidate-consuming
+    # tiers (load/DAST) so we never reap the env out from under a job still hitting it.
+    needs: [provision, attest, load_soak, dast_zap]
     if: ${{ always() && needs.provision.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:

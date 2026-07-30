@@ -82,100 +82,12 @@ jobs:
   data_integrity:
     name: Data-integrity / reference-data (#741)
     needs: guard
-    runs-on: ubuntu-latest
-    container: ruby:3.3.6
-    env:
-      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
-      DB_USERNAME: root
-      DB_PASSWORD: ''
-      DB_HOST: db
-      RAILS_ENV: test
-      AWS_REGION: us-west-2
-      AWS_ACCOUNT_ID: test
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-    services:
-      redis:
-        image: redis
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      db:
-        image: bitnamilegacy/mysql:8.0
-        options: >-
-          --health-cmd "mysqladmin ping -h localhost"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          ALLOW_EMPTY_PASSWORD: yes
-          MYSQL_DATABASE: idseq_test
-          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
-          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
-      - name: Determine Kernel Version
-        run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
-      - name: Cache Ruby Dependencies
-        uses: actions/cache@v5
-        with:
-          path: vendor/bundle
-          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
-      - name: Install system + Ruby deps
-        run: |
-          set -euo pipefail
-          apt-get update && apt-get install -y build-essential default-libmysqlclient-dev default-mysql-client
-          gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
-          bundle config path vendor/bundle
-          bundle install --jobs 4 --retry 3
-      - name: Prepare test schema
-        run: bundle exec rake db:create db:schema:load
-
-      # (1) Unit-level: the integrity checker's logic, driven by factories (green today).
-      - name: Integrity spec (check logic)
-        run: bundle exec rspec spec/lib/tasks/reference_data_integrity_spec.rb
-
-      # (2) End-to-end of the rake GATE itself: seed a known-good reference dataset, then
-      # assert `reference_data:integrity_check` exits 0. This exercises the actual CLI
-      # entrypoint, the versioned_lineages query, and the abort/exit contract that the
-      # (future) live-dev run relies on -- not just the pure methods.
-      - name: Seed known-good reference data
-        run: |
-          bundle exec rails runner '
-            AppConfig.find_or_create_by!(key: AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME) { |c| c.value = "nightly-selftest" }
-            AlignmentConfig.find_or_create_by!(name: "nightly-selftest") do |c|
-              c.lineage_version = "2024-02-06"
-              %w[s3_nt_db_path s3_nt_loc_db_path s3_nr_db_path s3_nr_loc_db_path s3_lineage_path s3_accession2taxid_path s3_deuterostome_db_path s3_nt_info_db_path].each { |p| c[p] = "s3://selftest/#{p}" }
-            end
-            TaxonLineage.find_or_create_by!(taxid: 694009) { |t| t.tax_name = "sars-cov-selftest"; t.version_start = "2024-02-06"; t.version_end = "2024-02-06" }
-          '
-      - name: Integrity gate PASSES on known-good data
-        run: bundle exec rake reference_data:integrity_check
-
-      # (3) Negative control: prove the gate actually GATES. Remove the sentinel lineage
-      # row (the #528 incomplete-slice scenario) and assert the rake now exits non-zero.
-      - name: Integrity gate FAILS on an incomplete slice (negative control)
-        run: |
-          set +e
-          bundle exec rails runner 'TaxonLineage.where(taxid: 694009).delete_all'
-          bundle exec rake reference_data:integrity_check
-          rc=$?
-          set -e
-          if [ "$rc" -eq 0 ]; then
-            echo "BUG: integrity gate returned 0 on a known-incomplete slice -- it is not gating."
-            exit 1
-          fi
-          echo "OK: integrity gate correctly failed (rc=$rc) on the incomplete slice."
-
-      # TODO(#741): run this same task against the LIVE dev reference DB (mirror
-      # bin/manual_deploy_scripts/refresh-reference-data.sh: assume DEV_AWS_ROLE, invoke
-      # rake on the deployed task definition). That validates the REAL deployed slice, not
-      # a seeded fixture. Needs DEV_AWS_ROLE + the ECS-exec path; env-gated like refresh.
+    # Extracted to a reusable workflow so the staging promotion gauntlet runs the identical tier
+    # (no drift). Same behavior as before; non-blocking here via the report job.
+    uses: ./.github/workflows/data-integrity.yml
+    permissions:
+      contents: read
+    secrets: inherit
 
   security_scan:
     name: Deep security SAST (#740)
@@ -246,62 +158,14 @@ jobs:
     # czecs-task-rake job: assume secrets.DEV_AWS_ROLE (OIDC) and invoke it on the running dev task
     # definition. That needs live AWS (dev role + SFN/Batch/ECR) and is intentionally left out of the
     # wired path so this workflow never kicks off a costly cloud benchmark by accident.
+    # Extracted to a reusable workflow so the staging gauntlet runs the identical tier (no drift).
+    # The guard stays here at the caller; the reusable reads secrets.WORKFLOWS_DISPATCH_TOKEN via
+    # secrets: inherit. Same behavior as before.
     if: ${{ vars.NIGHTLY_PIPELINE_E2E_ENABLED == 'true' }}
-    runs-on: ubuntu-latest
-    env:
-      # Cross-repo target for the CI-native viral benchmark + the AUPR floor we expect it to enforce.
-      WORKFLOWS_REPO: IT-Academic-Research-Services/seqtoid-workflows
-      BENCHMARK_WORKFLOW: short-read-mngs-viral-benchmarks.yml
-      BENCHMARK_REF: integration
-      EXPECTED_MIN_AUPR: '0.98'
-    steps:
-      - name: Preconditions
-        env:
-          # Needs actions:write on seqtoid-workflows to dispatch + actions:read to poll. A missing
-          # token is a hard, explicit failure (not a silent green) so an enabled-but-unconfigured
-          # regime is obvious in the report.
-          WORKFLOWS_DISPATCH_TOKEN: ${{ secrets.WORKFLOWS_DISPATCH_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${WORKFLOWS_DISPATCH_TOKEN}" ]; then
-            echo "::error::NIGHTLY_PIPELINE_E2E_ENABLED=true but secrets.WORKFLOWS_DISPATCH_TOKEN is unset."
-            echo "This leg dispatches the ${BENCHMARK_WORKFLOW} benchmark on ${WORKFLOWS_REPO}; it needs a"
-            echo "token with actions:write (dispatch) + actions:read (poll) on that repo. Also set"
-            echo "SHORT_READ_MNGS_MIN_AUPR=${EXPECTED_MIN_AUPR} on ${WORKFLOWS_REPO} so its harvest.py AUPR gate bites."
-            exit 1
-          fi
-          echo "Preconditions OK -- will dispatch ${BENCHMARK_WORKFLOW} on ${WORKFLOWS_REPO}@${BENCHMARK_REF}."
-
-      - name: Dispatch viral benchmark + gate on its AUPR result
-        env:
-          GH_TOKEN: ${{ secrets.WORKFLOWS_DISPATCH_TOKEN }}
-        run: |
-          set -euo pipefail
-          # Timestamp BEFORE dispatch so we can identify the run we just started (gh workflow run does
-          # not return a run id). Dispatching this workflow forces a full benchmark run (its has-diff
-          # job treats workflow_dispatch as a full-run trigger).
-          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          gh workflow run "${BENCHMARK_WORKFLOW}" --repo "${WORKFLOWS_REPO}" --ref "${BENCHMARK_REF}"
-
-          echo "Dispatched; locating the run created at/after ${since}..."
-          run_id=""
-          for _ in $(seq 1 12); do
-            sleep 10
-            run_id="$(gh run list --repo "${WORKFLOWS_REPO}" --workflow "${BENCHMARK_WORKFLOW}" \
-              --event workflow_dispatch --created ">=${since}" --limit 1 --json databaseId \
-              --jq '.[0].databaseId // empty')"
-            [ -n "${run_id}" ] && break
-          done
-          if [ -z "${run_id}" ]; then
-            echo "::error::Could not locate the dispatched ${BENCHMARK_WORKFLOW} run on ${WORKFLOWS_REPO}."
-            exit 1
-          fi
-
-          echo "Watching ${WORKFLOWS_REPO} run ${run_id} to completion (AUPR gate is enforced inside it)..."
-          # --exit-status makes gh return non-zero if the run concluded failure -- i.e. if the viral
-          # benchmark's harvest.py --min-aupr gate (SHORT_READ_MNGS_MIN_AUPR) tripped, this leg goes red.
-          gh run watch "${run_id}" --repo "${WORKFLOWS_REPO}" --exit-status --interval 30
-          echo "Pipeline E2E benchmark run ${run_id} passed (AUPR gate included)."
+    uses: ./.github/workflows/pipeline-aupr.yml
+    permissions:
+      contents: read
+    secrets: inherit
 
   load_soak:
     name: Load / performance / soak (#739) [STUB]
@@ -327,88 +191,12 @@ jobs:
   contract_api:
     name: Contract / API tests (#742)
     needs: guard
-    # REAL, runs today (no deployed env / AWS needed). Locks the API surface external clients depend
-    # on: the Rails-native GraphQL schema (the frontend contract after the federation collapse) and a
-    # curated allowlist of key REST endpoints. Any breaking drift (a renamed/removed field or route)
-    # fails this leg so it has to be intentional + the committed snapshot regenerated and reviewed.
-    runs-on: ubuntu-latest
-    container: ruby:3.3.6
-    env:
-      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
-      DB_USERNAME: root
-      DB_PASSWORD: ''
-      DB_HOST: db
-      RAILS_ENV: test
-      AWS_REGION: us-west-2
-      AWS_ACCOUNT_ID: test
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-    services:
-      redis:
-        image: redis
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      db:
-        image: bitnamilegacy/mysql:8.0
-        options: >-
-          --health-cmd "mysqladmin ping -h localhost"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          ALLOW_EMPTY_PASSWORD: yes
-          MYSQL_DATABASE: idseq_test
-          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
-          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
-      - name: Determine Kernel Version
-        run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
-      - name: Cache Ruby Dependencies
-        uses: actions/cache@v5
-        with:
-          path: vendor/bundle
-          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
-      - name: Install system + Ruby deps
-        run: |
-          set -euo pipefail
-          apt-get update && apt-get install -y build-essential default-libmysqlclient-dev default-mysql-client git
-          gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
-          bundle config path vendor/bundle
-          bundle install --jobs 4 --retry 3
-      - name: Prepare test schema
-        run: bundle exec rake db:create db:schema:load
-
-      # (1) GraphQL contract: the live IdseqSchema must match the committed SDL
-      # (graphql_schema/czid_rails_schema.graphql). Reuses the existing CZID-158 spec.
-      - name: GraphQL schema contract (SDL drift)
-        run: bundle exec rspec spec/graphql/schema_contract_spec.rb
-
-      # (2) REST contract: the curated key REST endpoints must still route to the same
-      # controller#action (platform-overhaul #742).
-      - name: REST endpoints contract
-        run: bundle exec rspec spec/contract/rest_endpoints_contract_spec.rb
-
-      # (3) Snapshot-diff belt-and-suspenders: regenerate BOTH committed artifacts
-      # (czid_rails_schema.graphql AND .json) from the live schema and fail if either drifts.
-      # The spec above catches SDL drift; this additionally guards the committed .json the
-      # client tooling reads, and proves `rake graphql:schema:dump` still round-trips clean.
-      - name: Regenerate + diff committed schema snapshots
-        run: |
-          set -euo pipefail
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          bundle exec rake graphql:schema:dump
-          if ! git diff --exit-code -- graphql_schema/; then
-            echo "::error::Committed GraphQL schema snapshot is stale. Run 'bundle exec rake graphql:schema:dump' and commit graphql_schema/*.graphql + *.json (breaking-drift review, #742)."
-            exit 1
-          fi
-          echo "OK: committed GraphQL schema snapshots are in sync."
+    # Extracted to a reusable workflow so the staging promotion gauntlet runs the identical tier
+    # (no drift). Same behavior as before; non-blocking here via the report job.
+    uses: ./.github/workflows/contract-api.yml
+    permissions:
+      contents: read
+    secrets: inherit
 
   chaos_resilience:
     name: Chaos / resilience (#743) [STUB]
