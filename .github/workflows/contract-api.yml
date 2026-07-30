@@ -1,0 +1,98 @@
+name: Contract / API tests
+
+# Reusable contract/API tier (platform-overhaul #742). Locks the API surface external clients depend
+# on: the Rails-native GraphQL schema (the frontend contract after the federation collapse) and a
+# curated allowlist of key REST endpoints. Any breaking drift (a renamed/removed field or route)
+# fails this leg so it has to be intentional + the committed snapshot regenerated and reviewed.
+# Self-contained (no deployed env / AWS needed).
+#
+# Extracted from nightly-full-regime.yml so BOTH the nightly regime and the staging promotion
+# gauntlet run the identical tier from one definition (no drift). The nightly regime reports it
+# non-blocking; the gauntlet treats a red here as a hard promotion blocker (a broken client contract
+# must never reach env-staging).
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    container: ruby:3.3.6
+    env:
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_HOST: db
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      db:
+        image: bitnamilegacy/mysql:8.0
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: idseq_test
+          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
+          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Determine Kernel Version
+        run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
+      - name: Cache Ruby Dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
+      - name: Install system + Ruby deps
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y build-essential default-libmysqlclient-dev default-mysql-client git
+          gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
+          bundle config path vendor/bundle
+          bundle install --jobs 4 --retry 3
+      - name: Prepare test schema
+        run: bundle exec rake db:create db:schema:load
+
+      # (1) GraphQL contract: the live IdseqSchema must match the committed SDL
+      # (graphql_schema/czid_rails_schema.graphql). Reuses the existing CZID-158 spec.
+      - name: GraphQL schema contract (SDL drift)
+        run: bundle exec rspec spec/graphql/schema_contract_spec.rb
+
+      # (2) REST contract: the curated key REST endpoints must still route to the same
+      # controller#action (platform-overhaul #742).
+      - name: REST endpoints contract
+        run: bundle exec rspec spec/contract/rest_endpoints_contract_spec.rb
+
+      # (3) Snapshot-diff belt-and-suspenders: regenerate BOTH committed artifacts
+      # (czid_rails_schema.graphql AND .json) from the live schema and fail if either drifts.
+      # The spec above catches SDL drift; this additionally guards the committed .json the
+      # client tooling reads, and proves `rake graphql:schema:dump` still round-trips clean.
+      - name: Regenerate + diff committed schema snapshots
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bundle exec rake graphql:schema:dump
+          if ! git diff --exit-code -- graphql_schema/; then
+            echo "::error::Committed GraphQL schema snapshot is stale. Run 'bundle exec rake graphql:schema:dump' and commit graphql_schema/*.graphql + *.json (breaking-drift review, #742)."
+            exit 1
+          fi
+          echo "OK: committed GraphQL schema snapshots are in sync."

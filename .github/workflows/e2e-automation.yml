@@ -18,6 +18,15 @@ on:
         description: "Run with feature flags?"
         required: false
         default: false
+      base-url:
+        type: string
+        description: >-
+          Override the config baseURL at runtime (exported as GAUNTLET_BASE_URL). Used by the staging
+          promotion gauntlet with node-environment=gauntlet to point the suite at the ephemeral
+          candidate env. Leave empty for the built-in envs (staging/sandbox), whose configs hardcode
+          their own baseURL.
+        required: false
+        default: ""
 
   workflow_dispatch:
     inputs:
@@ -59,6 +68,9 @@ jobs:
       CZID_USERNAME: ${{secrets.CZID_USERNAME}}
       CZID_PASSWORD: ${{secrets.CZID_PASSWORD}}
       NODE_ENV: ${{inputs.node-environment}}
+      # Consumed by gauntlet.config.ts to retarget the whole suite at the ephemeral candidate env.
+      # Empty for the built-in envs, whose configs hardcode their own baseURL and ignore this.
+      GAUNTLET_BASE_URL: ${{inputs.base-url}}
       BASESPACE_USERNAME: ${{secrets.BASESPACE_USERNAME}}
       BASESPACE_PASSWORD: ${{secrets.BASESPACE_PASSWORD}}
 

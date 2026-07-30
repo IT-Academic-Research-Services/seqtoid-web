@@ -1,0 +1,113 @@
+name: Data-integrity / reference-data
+
+# Reusable data-integrity tier (platform-overhaul #741). Runs the reference_data:integrity_check
+# rake GATE and its spec against a throwaway MySQL 8, with a seeded known-good slice AND a negative
+# control that proves the gate actually gates. Self-contained (no deployed env / AWS): it exercises
+# the checker's logic + the real CLI entrypoint + the abort/exit contract.
+#
+# Extracted from nightly-full-regime.yml so BOTH the nightly regime and the staging promotion
+# gauntlet run the identical tier from one definition (no drift). Callers add their own name/needs
+# and decide blocking vs non-blocking: the nightly regime reports it non-blocking; the gauntlet
+# treats a red here as a hard promotion blocker.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    container: ruby:3.3.6
+    env:
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_HOST: db
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      db:
+        image: bitnamilegacy/mysql:8.0
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: idseq_test
+          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
+          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Determine Kernel Version
+        run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
+      - name: Cache Ruby Dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
+      - name: Install system + Ruby deps
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y build-essential default-libmysqlclient-dev default-mysql-client
+          gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
+          bundle config path vendor/bundle
+          bundle install --jobs 4 --retry 3
+      - name: Prepare test schema
+        run: bundle exec rake db:create db:schema:load
+
+      # (1) Unit-level: the integrity checker's logic, driven by factories (green today).
+      - name: Integrity spec (check logic)
+        run: bundle exec rspec spec/lib/tasks/reference_data_integrity_spec.rb
+
+      # (2) End-to-end of the rake GATE itself: seed a known-good reference dataset, then
+      # assert `reference_data:integrity_check` exits 0. This exercises the actual CLI
+      # entrypoint, the versioned_lineages query, and the abort/exit contract that the
+      # (future) live-dev run relies on -- not just the pure methods.
+      - name: Seed known-good reference data
+        run: |
+          bundle exec rails runner '
+            AppConfig.find_or_create_by!(key: AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME) { |c| c.value = "nightly-selftest" }
+            AlignmentConfig.find_or_create_by!(name: "nightly-selftest") do |c|
+              c.lineage_version = "2024-02-06"
+              %w[s3_nt_db_path s3_nt_loc_db_path s3_nr_db_path s3_nr_loc_db_path s3_lineage_path s3_accession2taxid_path s3_deuterostome_db_path s3_nt_info_db_path].each { |p| c[p] = "s3://selftest/#{p}" }
+            end
+            TaxonLineage.find_or_create_by!(taxid: 694009) { |t| t.tax_name = "sars-cov-selftest"; t.version_start = "2024-02-06"; t.version_end = "2024-02-06" }
+          '
+      - name: Integrity gate PASSES on known-good data
+        run: bundle exec rake reference_data:integrity_check
+
+      # (3) Negative control: prove the gate actually GATES. Remove the sentinel lineage
+      # row (the #528 incomplete-slice scenario) and assert the rake now exits non-zero.
+      - name: Integrity gate FAILS on an incomplete slice (negative control)
+        run: |
+          set +e
+          bundle exec rails runner 'TaxonLineage.where(taxid: 694009).delete_all'
+          bundle exec rake reference_data:integrity_check
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "BUG: integrity gate returned 0 on a known-incomplete slice -- it is not gating."
+            exit 1
+          fi
+          echo "OK: integrity gate correctly failed (rc=$rc) on the incomplete slice."
+
+      # TODO(#741): run this same task against the LIVE dev reference DB (mirror
+      # bin/manual_deploy_scripts/refresh-reference-data.sh: assume DEV_AWS_ROLE, invoke
+      # rake on the deployed task definition). That validates the REAL deployed slice, not
+      # a seeded fixture. Needs DEV_AWS_ROLE + the ECS-exec path; env-gated like refresh.

@@ -1,0 +1,300 @@
+name: Staging promotion gauntlet
+
+# Gates a KNOWN-GOOD dev image (immutable sha-<commit>) before it may be promoted to
+# env-staging (env-staging.seqtoid.org). It provisions an ISOLATED, staging-shaped candidate
+# env in the DEV cluster from that exact image, runs the full test regime against it
+# (fail-fast BETWEEN tiers, run-all WITHIN the expensive tier), and on a 100% green board
+# writes a cosign `gauntlet-passed` attestation on the image DIGEST. Only an attested digest
+# may be promoted: gitops-promote.yml checks the attestation and the sigstore admission policy
+# enforces it in env-staging. This NEVER targets staging.seqtoid.org (Jay's untouched legacy env).
+#
+# Coupled companion pieces (tracked, land alongside this):
+#   1. cypherid-web-infra: the `seqtoid-gauntlet-candidate` ApplicationSet (dev cluster) that
+#      `bin/gauntlet_env` drives here (own ns/DB/SSM, taxon-load seed, PreSync smoke), plus the
+#      gitops-promote.yml attestation gate + the env-staging sigstore admission policy.
+#   2. seqtoid-web: a `gauntlet` Playwright node-environment (setup/gauntlet.config.ts) pointed at
+#      the candidate URL. The E2E tier uses `node-environment: gauntlet` -- NEVER `staging`.
+#
+# v1 lands the spine (guard -> provision -> unit+security -> browser E2E -> attest -> teardown).
+# The remaining regime tiers (pipeline_e2e / load_soak / dast_zap / contract_api, all already in
+# nightly-full-regime.yml) are added next, pointed at the same candidate URL.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Candidate image tag to vet -- immutable sha-<commit> of a built dev image"
+        required: true
+        type: string
+      confirm_target:
+        description: "Type the target host to confirm. Must be exactly: env-staging.seqtoid.org"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # One gauntlet per candidate sha; never cancel a running gauntlet mid-flight.
+  group: staging-gauntlet-${{ inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    # Canonical repo only (a repo VARIABLE, not the fork flag -- GitHub reports IT-ARS/seqtoid-web
+    # as isFork=true, so the fork flag would be backwards; see nightly-full-regime #692). Plus a hard
+    # guard that we target env-staging and can NEVER resolve to Jay's legacy staging.seqtoid.org.
+    if: ${{ vars.STAGING_GAUNTLET_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate candidate + refuse Jay's legacy host
+        env:
+          SHA: ${{ inputs.sha }}
+          CONFIRM: ${{ inputs.confirm_target }}
+        run: |
+          set -euo pipefail
+          case "$SHA" in
+            sha-[0-9a-f][0-9a-f]*) : ;;
+            *) echo "::error::candidate must be an immutable sha-<commit> tag (got '$SHA')"; exit 1 ;;
+          esac
+          if [ "$CONFIRM" != "env-staging.seqtoid.org" ]; then
+            echo "::error::confirm_target must be exactly env-staging.seqtoid.org (got '$CONFIRM')"; exit 1
+          fi
+          if [ "$CONFIRM" = "staging.seqtoid.org" ]; then
+            echo "::error::refusing: staging.seqtoid.org is Jay's legacy env and must never be targeted"; exit 1
+          fi
+          echo "guard OK -- vetting $SHA for promotion to env-staging.seqtoid.org"
+
+  provision:
+    # Deploy the candidate image into an isolated, staging-shaped env in the DEV cluster via the
+    # seqtoid-gauntlet-candidate ApplicationSet (companion #1). Own namespace/DB/SSM, seeded, smoke-gated.
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      env_name: ${{ steps.up.outputs.env_name }}
+      url: ${{ steps.up.outputs.url }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure AWS (dev account provision role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_PROVISION_ROLE || 'czid-dev-gh-actions-preview-build' }}
+          aws-region: us-west-2
+      - name: Bring up the candidate env
+        id: up
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          ENV_NAME="gauntlet-${SHA}"
+          # COMPANION #1 (cypherid-web-infra): the seqtoid-gauntlet-candidate ApplicationSet renders a
+          # staging-shaped env for ENV_NAME pinned to image tag SHA; this triggers it and waits healthy.
+          ./bin/gauntlet_env up "$ENV_NAME" "$SHA"
+          echo "env_name=${ENV_NAME}" >> "$GITHUB_OUTPUT"
+          echo "url=https://${ENV_NAME}.dev.seqtoid.org" >> "$GITHUB_OUTPUT"
+
+  # ---- Tiers 0/1: self-contained (code + image at the candidate). fail-fast. ----
+  unit_coverage:
+    needs: provision
+    permissions:
+      contents: read
+    uses: ./.github/workflows/nightly-test-suite.yml
+    secrets: inherit
+
+  security_scan:
+    needs: provision
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
+    uses: ./.github/workflows/security-scan.yml
+    secrets: inherit
+
+  # ---- Tier 1b: self-contained data/contract gates (folded in from nightly-full-regime.yml). ----
+  # No candidate env needed (Rails + throwaway MySQL), but gated on provision like the other tiers so
+  # a candidate that cannot even deploy short-circuits the whole gauntlet. Both are HARD gates.
+  data_integrity:
+    # Reference-data integrity gate (#741): the identical reusable tier the nightly regime runs. A red
+    # here is a reference-data slice that would break staging pipelines -- must never promote.
+    needs: provision
+    permissions:
+      contents: read
+    uses: ./.github/workflows/data-integrity.yml
+    secrets: inherit
+
+  contract_api:
+    # API/contract gate (#742): GraphQL SDL + REST route drift. A red here is a broken client contract
+    # that would break staging's frontend -- must never promote.
+    needs: provision
+    permissions:
+      contents: read
+    uses: ./.github/workflows/contract-api.yml
+    secrets: inherit
+
+  # ---- Tier 2: live candidate env. run-all (fail-fast: false across categories). ----
+  browser_e2e:
+    # Gated behind tiers 0/1 (fail-fast between tiers), but the categories run-all among themselves.
+    needs: [provision, unit_coverage, security_scan]
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every Playwright category defined by the projects in setup/gauntlet.config.ts (which reuses
+        # staging.config.ts's project set). `smoke` is the fast confidence check; `e2e` is the full
+        # functional suite. fail-fast:false so a red in one category still runs the other -- the
+        # gauntlet wants the WHOLE board, not the first failure.
+        category: [smoke, e2e]
+    uses: ./.github/workflows/e2e-automation.yml
+    with:
+      # `gauntlet` config (setup/gauntlet.config.ts) points Playwright at the ephemeral candidate via
+      # base-url below -> GAUNTLET_BASE_URL. NEVER 'staging' -- the whole gate exists so the suite runs
+      # against the isolated candidate, not real env-staging.
+      node-environment: gauntlet
+      base-url: ${{ needs.provision.outputs.url }}
+      test-category: ${{ matrix.category }}
+      should-run-with-feature-flags: true
+    secrets: inherit
+
+  # ---- Tier 3: extended regime tiers folded in from nightly-full-regime.yml. -----------------
+  # Broadens coverage toward "every conceivable test". The REAL leg (pipeline AUPR, when enabled)
+  # gates promotion; the STUBS are honest, marked placeholders (mirroring the regime) that become
+  # real gates as their tooling lands. Load/DAST finally have a dedicated deployed target here -- the
+  # isolated candidate URL -- which the nightly regime never had. Stubs are NOT in attest's gate (a
+  # no-op green must not be mistaken for coverage); wire each into attest.needs when it goes real.
+  pipeline_e2e_aupr:
+    # Real, EXPENSIVE, opt-in (same var + token as the nightly regime). Enabled + failing AUPR blocks
+    # promotion; disabled -> skipped and non-blocking (see attest's skip-tolerant if:).
+    needs: provision
+    if: ${{ vars.NIGHTLY_PIPELINE_E2E_ENABLED == 'true' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pipeline-aupr.yml
+    secrets: inherit
+
+  integration_suite:
+    name: Cross-component integration (#736) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #736: service-level integration across MySQL8 +"
+          echo "OpenSearch + Redis/Resque + S3 (LocalStack). Marked placeholder -- not yet a gate."
+
+  load_soak:
+    name: Load / performance / soak (#739) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      CANDIDATE_URL: ${{ needs.provision.outputs.url }}
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #739: k6/Locust load + latency SLOs against the candidate"
+          echo "at ${CANDIDATE_URL} (the gauntlet finally gives load a dedicated deployed target)."
+          echo "Marked placeholder -- not yet a gate."
+
+  dast_zap:
+    name: DAST (OWASP ZAP) (#740) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      CANDIDATE_URL: ${{ needs.provision.outputs.url }}
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #740 (DAST half): OWASP ZAP baseline/full scan against the"
+          echo "candidate at ${CANDIDATE_URL}. The SAST half (gitleaks/trivy/brakeman) is REAL in"
+          echo "security_scan. Marked placeholder -- not yet a gate."
+
+  chaos_resilience:
+    name: Chaos / resilience (#743) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #743: Karpenter evict / OpenSearch loss / DB failover"
+          echo "against the candidate. Marked placeholder -- not yet a gate."
+
+  observability_alerting:
+    name: Observability / alerting (#744) [STUB]
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO
+        run: |
+          echo "STUB for platform-overhaul #744: synthetic signals prove alerts fire (LGTM + Sentry)."
+          echo "Marked placeholder -- not yet a gate."
+
+  attest:
+    # 100% green across the REAL gates -> cosign-attest the DIGEST as gauntlet-passed.
+    # build-docker-image.yml already `cosign sign`s the digest; this adds the attestation the promote
+    # gate + admission policy require. Gate = every REAL tier green; pipeline_e2e_aupr must be green OR
+    # skipped (opt-in). STUBS are excluded on purpose (a no-op green is not coverage). if: always() so
+    # a skipped pipeline leg does not itself skip attest.
+    needs:
+      - unit_coverage
+      - security_scan
+      - browser_e2e
+      - data_integrity
+      - contract_api
+      - pipeline_e2e_aupr
+    if: >-
+      ${{ always()
+      && needs.unit_coverage.result == 'success'
+      && needs.security_scan.result == 'success'
+      && needs.browser_e2e.result == 'success'
+      && needs.data_integrity.result == 'success'
+      && needs.contract_api.result == 'success'
+      && (needs.pipeline_e2e_aupr.result == 'success' || needs.pipeline_e2e_aupr.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure AWS (dev account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_ATTEST_ROLE || 'czid-dev-gh-actions-preview-build' }}
+          aws-region: us-west-2
+      - uses: sigstore/cosign-installer@v3
+      - name: Resolve digest and attest gauntlet-passed
+        env:
+          SHA: ${{ inputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          REG=491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+          aws ecr get-login-password --region us-west-2 | cosign login "$REG" -u AWS --password-stdin
+          DIGEST=$(aws ecr describe-images --repository-name seqtoid-web --region us-west-2 \
+            --image-ids imageTag="$SHA" --query 'imageDetails[0].imageDigest' --output text)
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "None" ]; then echo "::error::no digest for tag $SHA"; exit 1; fi
+          printf '{"gauntlet":"staging","result":"passed","sha":"%s","run":"%s"}\n' "$SHA" "$RUN_URL" > /tmp/pred.json
+          cosign attest --yes --type custom --predicate /tmp/pred.json "${REG}@${DIGEST}"
+          echo "attested ${REG}@${DIGEST} as gauntlet-passed -- promotable to env-staging"
+
+  teardown:
+    # Always reap the candidate env if it came up (the ApplicationSet TTL reaper is the backstop).
+    # Depends on attest (which transitively waits for the code/e2e gates) PLUS the candidate-consuming
+    # tiers (load/DAST) so we never reap the env out from under a job still hitting it.
+    needs: [provision, attest, load_soak, dast_zap]
+    if: ${{ always() && needs.provision.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure AWS (dev account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_PROVISION_ROLE || 'czid-dev-gh-actions-preview-build' }}
+          aws-region: us-west-2
+      - name: Tear down the candidate env
+        run: ./bin/gauntlet_env down "${{ needs.provision.outputs.env_name }}"
