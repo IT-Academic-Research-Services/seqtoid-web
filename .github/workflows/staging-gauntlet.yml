@@ -155,9 +155,9 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          REG=491013321714.dkr.ecr.us-west-2.amazonaws.com/idseq-web
+          REG=491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
           aws ecr get-login-password --region us-west-2 | cosign login "$REG" -u AWS --password-stdin
-          DIGEST=$(aws ecr describe-images --repository-name idseq-web --region us-west-2 \
+          DIGEST=$(aws ecr describe-images --repository-name seqtoid-web --region us-west-2 \
             --image-ids imageTag="$SHA" --query 'imageDetails[0].imageDigest' --output text)
           [ -n "$DIGEST" ] && [ "$DIGEST" != "None" ] || { echo "::error::no digest for tag $SHA"; exit 1; }
           printf '{"gauntlet":"staging","result":"passed","sha":"%s","run":"%s"}\n' "$SHA" "$RUN_URL" > /tmp/pred.json
