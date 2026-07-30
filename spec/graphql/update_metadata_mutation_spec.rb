@@ -42,15 +42,36 @@ GQL
     end
 
     it "passes a location object (string-keyed) through to the model" do
+      location_data = { "name" => "San Francisco", "geo_level" => "city", "locationiq_id" => "123" }
       expect_any_instance_of(Sample).to receive(:metadatum_add_or_update)
-        .with("collection_location_v2", hash_including("name" => "San Francisco", "geo_level" => "city"))
+        .with("collection_location_v2", location_data.to_json)
         .and_return(status: "ok")
 
       post_mutation(
         sampleId: sample.id.to_s,
         input: {
           field: "collection_location_v2",
-          value: { query_SampleMetadata_metadata_items_location_validated_value_oneOf_1_Input: { name: "San Francisco", geo_level: "city" } },
+          value: { query_SampleMetadata_metadata_items_location_validated_value_oneOf_1_Input: location_data },
+          authenticityToken: "t",
+        }
+      )
+
+      parsed = JSON.parse(response.body)
+      expect(parsed["errors"]).to(be_nil, "GraphQL errors: #{parsed['errors']}")
+      expect(parsed.dig("data", "UpdateMetadata", "status")).to eq("success")
+    end
+
+    it "passes a plain-text location as a string" do
+      location_data = { name: "Just a string", title: "Just a string" }
+      expect_any_instance_of(Sample).to receive(:metadatum_add_or_update)
+        .with("collection_location_v2", "Just a string")
+        .and_return(status: "ok")
+
+      post_mutation(
+        sampleId: sample.id.to_s,
+        input: {
+          field: "collection_location_v2",
+          value: { query_SampleMetadata_metadata_items_location_validated_value_oneOf_1_Input: location_data },
           authenticityToken: "t",
         }
       )
