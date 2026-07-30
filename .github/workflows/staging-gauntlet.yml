@@ -275,7 +275,7 @@ jobs:
           aws ecr get-login-password --region us-west-2 | cosign login "$REG" -u AWS --password-stdin
           DIGEST=$(aws ecr describe-images --repository-name seqtoid-web --region us-west-2 \
             --image-ids imageTag="$SHA" --query 'imageDetails[0].imageDigest' --output text)
-          [ -n "$DIGEST" ] && [ "$DIGEST" != "None" ] || { echo "::error::no digest for tag $SHA"; exit 1; }
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "None" ]; then echo "::error::no digest for tag $SHA"; exit 1; fi
           printf '{"gauntlet":"staging","result":"passed","sha":"%s","run":"%s"}\n' "$SHA" "$RUN_URL" > /tmp/pred.json
           cosign attest --yes --type custom --predicate /tmp/pred.json "${REG}@${DIGEST}"
           echo "attested ${REG}@${DIGEST} as gauntlet-passed -- promotable to env-staging"
