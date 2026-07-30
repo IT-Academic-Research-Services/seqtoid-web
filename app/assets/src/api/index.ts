@@ -107,6 +107,11 @@ const rerunPipeline = (sampleId: number) =>
 const rerunWorkflowRun = (workflowRunId: number) =>
   putWithCSRF(`/workflow_runs/${workflowRunId}/rerun.json`, {});
 
+// Bounded auto-retry for TRANSIENT network failures on the idempotent S3 chunk PUT (SMP-1569).
+// A momentary blip (e.g. Safari "TypeError: Load failed", ERR_NETWORK) previously went straight to
+// onError and marked the sample failed, forcing a manual retry. S3 PUT of the same URL+body is
+// idempotent, so we retry a couple times with backoff first. Only pure network errors retry
+// (err.response === undefined and not a user cancel); a real S3 4xx/5xx is surfaced immediately.
 const uploadFileToUrl = async (
   file: $TSFixMe,
   url: $TSFixMe,
@@ -116,7 +121,22 @@ const uploadFileToUrl = async (
     onUploadProgress,
   };
 
-  return axios.put(url, file, config).then(onSuccess).catch(onError);
+  const MAX_ATTEMPTS = 3;
+  const isTransientNetworkError = (err: $TSFixMe) =>
+    !axios.isCancel(err) && !!err && err.response === undefined;
+
+  let lastErr: $TSFixMe;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return onSuccess(await axios.put(url, file, config));
+    } catch (err) {
+      lastErr = err;
+      if (attempt === MAX_ATTEMPTS || !isTransientNetworkError(err)) break;
+      // exponential backoff before re-PUTting the same chunk: 0.5s, then 1s.
+      await new Promise(resolve => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+    }
+  }
+  return onError(lastErr);
 };
 
 const getTaxonDescriptions = (taxonList: $TSFixMe) =>
