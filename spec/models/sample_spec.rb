@@ -37,6 +37,69 @@ describe Sample, type: :model do
   let(:amr) { WorkflowRun::WORKFLOW[:amr] }
   let(:nanopore) { PipelineRun::TECHNOLOGY_INPUT[:nanopore] }
 
+  context "#metadatum_add_or_update" do
+    let!(:api_geosearch_response) do
+      [{
+        "place_id" => "89640023",
+        "osm_type" => "relation",
+        "osm_id" => "34324395",
+        "lat" => 37.76,
+        "lon" => -122.45,
+        "display_name" => "University of California, San Francisco, Parnassus Avenue, Inner Sunset, San Francisco, San Francisco City and County, California, 94131, USA",
+        "address" => {
+          "university" => "University of California, San Francisco",
+          "city" => "San Francisco",
+          "county" => "San Francisco City and County",
+          "state" => "California",
+          "country" => "USA",
+          "country_code" => "us",
+        },
+      }]
+    end
+
+    before do
+      project = create(:public_project)
+      @sample = create(:sample, project: project, user: @joe)
+      @sample.host_genome.update(name: "NotHuman")
+      @sample.reload
+      @metadata_field = create(:metadata_field, name: "collection_location_v2", base_type: MetadataField::LOCATION_TYPE)
+      @sample.project.metadata_fields << @metadata_field
+      @sample.host_genome.metadata_fields << @metadata_field
+
+      allow(Location).to receive(:geosearch_by_osm_id).and_return([true, api_geosearch_response])
+      allow(Location).to receive(:check_and_fetch_parents) { |loc|
+        loc.id = 1313
+        loc
+      }
+    end
+
+    it "handles a full location object" do
+      location_data = {
+        name: "San Francisco",
+        geo_level: "city",
+        locationiq_id: 89_640_023,
+        osm_id: 34_324_395,
+        osm_type: "relation",
+      }.to_json
+      result = @sample.metadatum_add_or_update("collection_location_v2", location_data)
+      expect(result[:status]).to eq("ok")
+      metadatum = @sample.metadata.find_by(key: "collection_location_v2")
+      expect(metadatum.raw_value).to be_nil
+      expect(metadatum.string_validated_value).to be_nil
+      expect(metadatum.location_id).to eq(1313)
+    end
+
+    it "handles a plain-text location" do
+      location_data = { name: "Just a string", title: "Just a string" }.to_json
+      result = @sample.metadatum_add_or_update("collection_location_v2", location_data)
+      expect(result[:status]).to eq("ok")
+      metadatum = @sample.metadata.find_by(key: "collection_location_v2")
+      expect(metadatum.raw_value).to be_nil
+      expect(metadatum.string_validated_value).to eq("Just a string")
+      expect(metadatum.location_id).to be_nil
+    end
+  end
+
   context "#transfer_basespace_fastq_files" do
     before do
       project = create(:public_project)

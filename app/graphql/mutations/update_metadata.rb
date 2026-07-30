@@ -32,9 +32,18 @@ module Mutations
     # location branch is passed through as a string-keyed hash (the shape
     # metadatum_add_or_update expects from the original REST params).
     def metadata_value(value_input)
+      Rails.logger.debug("metadata_value: #{value_input&.inspect}")
       return value_input.string_value unless value_input.string_value.nil?
 
-      value_input.location_value&.to_h&.deep_stringify_keys
+      location = value_input.location_value&.to_h&.deep_stringify_keys
+      return nil unless location
+
+      # If the location is a plain-text entry, just use the name.
+      if location.keys.sort == ["name", "title"]
+        location["name"]
+      else
+        location.to_json
+      end
     end
   end
 end
