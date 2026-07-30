@@ -47,7 +47,6 @@ export const sortResults = <T extends NameId>(
 ) => {
   let sortedResults = sortBy(func, matchedResults);
   if (query !== "") {
-    // @ts-expect-error ts-migrate(2322) FIXME: Type 'never[]' is not assignable to type 'LodashSo... Remove this comment to see the full error message
     sortedResults = sortBy(
       result => sortResultsByMatch(result, query),
       sortedResults,

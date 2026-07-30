@@ -25,7 +25,6 @@ const HostOrganismSearchBox = ({
   hostGenomes,
 }: HostOrganismSearchBoxProps) => {
   const handleSearchTriggered = (query: string) => {
-    // @ts-expect-error Argument of type 'LodashSortBy1x2<unknown>' is not assignable to parameter of type 'HostGenome[]'
     return buildResults(getMatchesByCategory(query), query);
   };
 
