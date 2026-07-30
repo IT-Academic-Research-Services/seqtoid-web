@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+#
+# gauntlet_env -- provision / tear down an isolated, staging-shaped gauntlet-candidate env in the
+# DEV cluster, driven by the seqtoid-web-gauntlet-candidate ApplicationSet (cypherid-web-infra). It
+# writes/removes a git-directory element file; Argo CD renders/deletes the candidate Application.
+# Called by .github/workflows/staging-gauntlet.yml.
+#
+#   bin/gauntlet_env up   <envName> <imageTag>   # write element, commit, wait until Healthy/Synced
+#   bin/gauntlet_env down <envName>              # remove element, commit (finalizer reaps the env)
+#
+# Env:
+#   GITOPS_TOKEN | GH_TOKEN  a token that can push to the infra repo (required)
+#   INFRA_REPO               default IT-Academic-Research-Services/cypherid-web-infra
+#   INFRA_BRANCH             default main
+#   EKS_CLUSTER              default czid-dev-eks-v2  (for the Healthy/Synced wait; needs EKS access)
+#   AWS_REGION               default us-west-2
+#   WAIT_TIMEOUT_SECS        default 1800 (30m) for the candidate to go Healthy/Synced
+set -euo pipefail
+
+CMD="${1:-}"; ENV_NAME="${2:-}"; IMAGE_TAG="${3:-}"
+INFRA_REPO="${INFRA_REPO:-IT-Academic-Research-Services/cypherid-web-infra}"
+INFRA_BRANCH="${INFRA_BRANCH:-main}"
+EKS_CLUSTER="${EKS_CLUSTER:-czid-dev-eks-v2}"
+AWS_REGION="${AWS_REGION:-us-west-2}"
+WAIT_TIMEOUT_SECS="${WAIT_TIMEOUT_SECS:-1800}"
+CAND_DIR="deploy/argocd/gauntlet-candidates"
+TOKEN="${GITOPS_TOKEN:-${GH_TOKEN:-}}"
+
+die() { echo "gauntlet_env: $*" >&2; exit 1; }
+
+# --- names + guards -------------------------------------------------------------------------------
+# DNS-safe env name (lowercase, [a-z0-9-]), and matching DB/chamber names.
+sanitize() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | sed -E 's/-+/-/g; s/^-|-$//g'; }
+
+[ -n "$CMD" ] && [ -n "$ENV_NAME" ] || die "usage: gauntlet_env up <envName> <imageTag> | down <envName>"
+ENV_NAME="$(sanitize "$ENV_NAME")"
+HOST="${ENV_NAME}.dev.seqtoid.org"
+# Hard guard: a candidate lives ONLY in dev. The positive `.dev.seqtoid.org` check below is the real
+# enforcement (a `<envName>.dev.seqtoid.org` host can never BE a protected host); the denylist is
+# belt-and-suspenders in case that ever changes.
+case "$HOST" in
+  env-staging.seqtoid.org | staging.seqtoid.org)
+    die "refusing: candidate host '${HOST}' is a protected staging host" ;;
+esac
+[ "${HOST%.dev.seqtoid.org}" != "$HOST" ] || die "refusing: candidate host '${HOST}' is not under .dev.seqtoid.org"
+DB_SLUG="$(printf '%s' "$ENV_NAME" | tr '-' '_')"
+CHAMBER_SERVICE="idseq-${ENV_NAME}-web"
+DB_NAME="idseq_${DB_SLUG}"
+
+[ -n "$TOKEN" ] || die "GITOPS_TOKEN / GH_TOKEN not set (needed to push the candidate element)"
+
+# --- shallow infra checkout (throwaway) -----------------------------------------------------------
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+git clone -q --depth 1 --branch "$INFRA_BRANCH" \
+  "https://x-access-token:${TOKEN}@github.com/${INFRA_REPO}.git" "$WORK/infra"
+cd "$WORK/infra"
+git config user.name  "seqtoid-gitops"
+git config user.email "gitops@seqtoid.local"
+mkdir -p "$CAND_DIR"
+ELEMENT="${CAND_DIR}/${ENV_NAME}.yaml"
+
+commit_push() { # <message>
+  git add -A "$CAND_DIR"
+  if git diff --cached --quiet; then echo "gauntlet_env: no change (${ELEMENT})"; return 0; fi
+  git commit -q -m "$1"
+  git push -q origin "HEAD:${INFRA_BRANCH}"
+}
+
+case "$CMD" in
+  up)
+    [ -n "$IMAGE_TAG" ] || die "up needs an <imageTag> (e.g. sha-abc12345)"
+    case "$IMAGE_TAG" in sha-*) : ;; *) die "imageTag must be an immutable sha-<commit> (got '$IMAGE_TAG')";; esac
+    GIT_REV="${IMAGE_TAG#sha-}" # the commit the chart renders at (matches the image)
+    cat > "$ELEMENT" <<YAML
+# Managed by seqtoid-web bin/gauntlet_env -- do not hand-edit. One gauntlet-candidate env.
+envName: ${ENV_NAME}
+imageTag: ${IMAGE_TAG}
+gitRevision: ${GIT_REV}
+host: ${HOST}
+chamberService: ${CHAMBER_SERVICE}
+dbName: ${DB_NAME}
+YAML
+    commit_push "gauntlet(up): candidate ${ENV_NAME} (${IMAGE_TAG})"
+    echo "gauntlet_env: waiting for Argo Application seqtoid-${ENV_NAME} to be Healthy/Synced (<=${WAIT_TIMEOUT_SECS}s)"
+    aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION" >/dev/null
+    deadline=$(( $(date +%s) + WAIT_TIMEOUT_SECS ))
+    while :; do
+      health="$(kubectl get application "seqtoid-${ENV_NAME}" -n argocd -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+      sync="$(kubectl get application "seqtoid-${ENV_NAME}" -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+      [ "$health" = "Healthy" ] && [ "$sync" = "Synced" ] && { echo "gauntlet_env: candidate ready (${HOST})"; break; }
+      [ "$health" = "Degraded" ] && die "candidate seqtoid-${ENV_NAME} went Degraded"
+      [ "$(date +%s)" -ge "$deadline" ] && die "timed out waiting for seqtoid-${ENV_NAME} (health=${health:-?} sync=${sync:-?})"
+      sleep 15
+    done
+    ;;
+  down)
+    rm -f "$ELEMENT"
+    commit_push "gauntlet(down): reap candidate ${ENV_NAME}"
+    echo "gauntlet_env: removed ${ELEMENT} -- Argo will delete seqtoid-${ENV_NAME} (finalizer reaps ns/DB/SSM)"
+    ;;
+  *) die "unknown command '${CMD}' (expected up|down)";;
+esac
