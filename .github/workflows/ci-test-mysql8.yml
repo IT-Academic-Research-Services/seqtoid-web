@@ -20,8 +20,16 @@ on:
     branches: [main]   # gate main post-merge; PR branches are gated via pull_request (avoids a duplicate, concurrency-cancelled run on every PR)
   workflow_dispatch:
 
+# Scope the concurrency group by PR number (or ref for push/dispatch), NEVER by commit SHA.
+# A main->integration sync branch points at main's exact HEAD commit, so the push-to-main run
+# and the sync PR's pull_request run land on the SAME sha. A sha-keyed group made those two
+# collapse into one group and cancel-in-progress killed whichever started second; the cancelled
+# run's required contexts then lingered red and blocked the PR forever (a push run and a PR run
+# are distinct gates and must never cancel each other). Keying on pull_request.number || github.ref
+# keeps the intended dedup -- a new push to the SAME PR/branch still cancels that PR/branch's older
+# in-flight run -- while making a PR run and a push run structurally unable to share a group.
 concurrency:
-  group: ci-test-mysql8-${{ github.event.pull_request.head.sha || github.sha }}
+  group: ci-test-mysql8-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
