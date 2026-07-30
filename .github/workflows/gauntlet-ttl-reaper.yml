@@ -1,0 +1,112 @@
+name: Gauntlet candidate TTL reaper
+
+# Backstop cleanup for the seqtoid staging promotion gauntlet (SMP). The gauntlet's own teardown job
+# removes a candidate's element file when a run finishes, and Argo then reaps the env (finalizer +
+# the chart PostDelete hook drop the namespace, DB schema, and SSM path). But if a gauntlet CI run
+# DIES before teardown (cancelled, runner crash, force-failure), its element file is left behind and
+# the candidate env lingers in the dev cluster forever. This reaper is the safety net: on a schedule,
+# it removes any gauntlet-candidate element file older than a TTL, which triggers the exact same Argo
+# reap path as a normal teardown.
+#
+# WHY A WORKFLOW (not a k8s CronJob mirroring the preview reaper): the gauntlet is driven by a
+# git-directory ApplicationSet, so the reap trigger is removing the git ELEMENT FILE -- not removing a
+# PR label like the preview pullRequest generator. That is precisely what `bin/gauntlet_env down`
+# already does, so this reuses it (single source of truth for the reap path) with the same GITOPS_TOKEN,
+# and needs no in-cluster secret/RBAC. Staleness is read from each element file's last-commit time
+# (gauntlet_env writes the file on `up`), which also catches a file whose Application never rendered.
+
+on:
+  schedule:
+    # Hourly at :43 (offset from other repo crons). An orphaned candidate is reaped within an hour of
+    # crossing the TTL; the pass is idempotent, so running it hourly is harmless.
+    - cron: '43 * * * *'
+  workflow_dispatch:
+    inputs:
+      ttl_hours:
+        description: "Reap candidates whose element file is older than this many hours (default: var GAUNTLET_CANDIDATE_TTL_HOURS or 24)."
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: "List what would be reaped without removing anything."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two reaper passes push to the infra repo at once.
+  group: gauntlet-ttl-reaper
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    # Canonical + enabled only (same master switch as the gauntlet). Forks/disabled repos leave this
+    # unset -> no-op. NOTE: disabling the gauntlet also disables the reaper, so drain any live
+    # candidates before turning STAGING_GAUNTLET_ENABLED off.
+    if: ${{ vars.STAGING_GAUNTLET_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      INFRA_REPO: IT-Academic-Research-Services/cypherid-web-infra
+      INFRA_BRANCH: main
+      CAND_DIR: deploy/argocd/gauntlet-candidates
+      GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+      TTL_HOURS: ${{ github.event.inputs.ttl_hours || vars.GAUNTLET_CANDIDATE_TTL_HOURS || '24' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+    steps:
+      - name: Check out seqtoid-web (for bin/gauntlet_env)
+        uses: actions/checkout@v6
+
+      - name: Reap stale gauntlet-candidate elements
+        run: |
+          set -euo pipefail
+          if [ -z "${GITOPS_TOKEN}" ]; then
+            echo "::error::secrets.GITOPS_TOKEN is required (a token that can push element removals to ${INFRA_REPO})"
+            exit 1
+          fi
+
+          # Shallow-history clone (blobless) of the infra repo -- enough to read each element file's
+          # last-commit time without pulling every blob of a large gitops repo.
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+          git clone -q --filter=blob:none --branch "${INFRA_BRANCH}" \
+            "https://x-access-token:${GITOPS_TOKEN}@github.com/${INFRA_REPO}.git" "$WORK/infra"
+
+          now="$(date -u +%s)"
+          ttl_s="$(( TTL_HOURS * 3600 ))"
+          stale=()
+          shopt -s nullglob
+          for f in "$WORK/infra/${CAND_DIR}"/*.yaml; do
+            base="$(basename "$f")"
+            env_name="${base%.yaml}"
+            ts="$(git -C "$WORK/infra" log -1 --format=%ct -- "${CAND_DIR}/${base}" || true)"
+            if [ -z "$ts" ]; then
+              echo "WARN: no commit time for ${base}; skipping"
+              continue
+            fi
+            age="$(( now - ts ))"
+            age_h="$(( age / 3600 ))"
+            if [ "$age" -ge "$ttl_s" ]; then
+              echo "STALE: ${env_name} (element age ${age_h}h >= ${TTL_HOURS}h)"
+              stale+=("$env_name")
+            else
+              echo "live:  ${env_name} (element age ${age_h}h < ${TTL_HOURS}h)"
+            fi
+          done
+
+          if [ "${#stale[@]}" -eq 0 ]; then
+            echo "No stale gauntlet candidates to reap."
+            exit 0
+          fi
+
+          for env_name in "${stale[@]}"; do
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "[dry-run] would reap ${env_name}"
+              continue
+            fi
+            echo "reaping ${env_name} via bin/gauntlet_env down (removes element -> Argo reaps env/DB/SSM)"
+            ./bin/gauntlet_env down "${env_name}"
+          done
+          echo "reaper done (${#stale[@]} candidate(s) processed)"
