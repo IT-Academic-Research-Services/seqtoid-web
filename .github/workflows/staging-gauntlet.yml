@@ -123,12 +123,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # v1 = smoke; COMPANION #2 expands this to every Playwright category (from setup/*.config.ts).
-        category: [smoke]
+        # Every Playwright category defined by the projects in setup/gauntlet.config.ts (which reuses
+        # staging.config.ts's project set). `smoke` is the fast confidence check; `e2e` is the full
+        # functional suite. fail-fast:false so a red in one category still runs the other -- the
+        # gauntlet wants the WHOLE board, not the first failure.
+        category: [smoke, e2e]
     uses: ./.github/workflows/e2e-automation.yml
     with:
-      # `gauntlet` config points Playwright at the candidate URL (companion #2). NEVER 'staging'.
+      # `gauntlet` config (setup/gauntlet.config.ts) points Playwright at the ephemeral candidate via
+      # base-url below -> GAUNTLET_BASE_URL. NEVER 'staging' -- the whole gate exists so the suite runs
+      # against the isolated candidate, not real env-staging.
       node-environment: gauntlet
+      base-url: ${{ needs.provision.outputs.url }}
       test-category: ${{ matrix.category }}
       should-run-with-feature-flags: true
     secrets: inherit
