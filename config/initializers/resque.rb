@@ -1,7 +1,18 @@
 require 'resque/server'
 require 'resque/scheduler/server' # Enables 'Schedule' tab (/resque/schedule)
 
-Resque.redis = Redis.new(url: REDISCLOUD_URL)
+# Preventive hardening (SMP-1564): Resque forks a child per job, and a transient non-blocking
+# connect can surface as `Errno::EALREADY: Operation already in progress - connect(2)` on the
+# redis socket. Give the client a bounded reconnect policy + a connect timeout so a momentary
+# connect blip retries with backoff instead of bubbling up and failing the worker/job. redis 4.8.1
+# options: reconnect_attempts / reconnect_delay(_max) (seconds) / connect_timeout (seconds).
+Resque.redis = Redis.new(
+  url: REDISCLOUD_URL,
+  reconnect_attempts: 3,
+  reconnect_delay: 0.5,
+  reconnect_delay_max: 2.0,
+  connect_timeout: 5.0,
+)
 
 Dir[Rails.root.join('app', 'jobs', '*.rb')].sort.each { |file| require file }
 
