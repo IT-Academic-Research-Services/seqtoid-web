@@ -3,7 +3,7 @@ import { groupBy, maxBy, sortBy, sum } from "lodash/fp";
 import { openUrlInPopupWindow } from "~/components/utils/links";
 import { INPUT_FILE_S3_TAGS } from "~/components/views/SampleUploadFlow/constants";
 import { getURLParamString } from "~/helpers/url";
-import { NameId, SampleFromApi, SampleUploadType } from "~/interface/shared";
+import { HasName, SampleFromApi, SampleUploadType } from "~/interface/shared";
 
 const BASESPACE_OAUTH_URL = "https://basespace.illumina.com/oauth/authorize";
 const BASESPACE_OAUTH_WINDOW_NAME = "BASESPACE_OAUTH_WINDOW";
@@ -33,14 +33,11 @@ export const doesResultMatch = (result: $TSFixMe, query: $TSFixMe) => {
   // Match chars in any position. Good for acronyms. Ignore spaces.
   const noSpaces = query.replace(/\s*/gi, "");
   const regex = new RegExp(noSpaces.split("").join(".*"), "gi");
-  if (regex.test(result.name)) {
-    return true;
-  }
-  return false;
+  return regex.test(result.name);
 };
 
 // Sort matches by position of match. If no position, by func.
-export const sortResults = <T extends NameId>(
+export const sortResults = <T extends HasName>(
   matchedResults: T[],
   query: string,
   func: (__: T) => any,
