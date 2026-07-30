@@ -45,30 +45,35 @@ if [ -n "${SHARD_INDEX:-}" ] && [ -n "${SHARD_TOTAL:-}" ]; then
   # GitHub Actions matrix job; SimpleCov results are collated afterward
   # (bin/collate-coverage). Off by default, so a plain local/serial run
   # (no SHARD_INDEX) keeps the identical behavior below -- the SSOT holds.
-  echo "::group::Shard ${SHARD_INDEX}/${SHARD_TOTAL}: create + load all ${SHARD_TOTAL} parallel schemas"
-  # Prepare every parallel schema (idseq_test, idseq_test2 .. idseq_test<N>) on this
-  # runner, exactly like the non-sharded parallel path below. --only-group runs a
-  # single process, but parallel_tests picks that process's TEST_ENV_NUMBER (hence its
-  # DB) internally; preparing all N makes the shard robust to that numbering rather
-  # than guessing it. Reuses the proven parallel:* rake tasks. Each shard has its own
-  # fresh MySQL service container, so this cannot collide across shards.
-  bundle exec rake "parallel:drop[${SHARD_TOTAL}]" \
-                   "parallel:create[${SHARD_TOTAL}]" \
-                   "parallel:load_schema[${SHARD_TOTAL}]"
+  # Load ONLY this shard's own schema (not all SHARD_TOTAL). Each shard is its own runner with its
+  # own MySQL service container running a SINGLE --only-group process, so it needs exactly one DB.
+  # parallel_tests numbers group I's process TEST_ENV_NUMBER='' for I=1 else I; config/database.yml
+  # resolves that to idseq_test<TEST_ENV_NUMBER> (idseq_test, idseq_test2, ...). Loading just this
+  # DB keeps per-shard setup CONSTANT as SHARD_TOTAL grows -- previously every shard loaded all N
+  # schemas (O(N) per shard, O(N^2) total), which erased the gains of higher shard counts.
+  # db:create is idempotent (the service container pre-creates idseq_test); fresh containers per
+  # shard mean there is nothing stale to drop first.
+  SHARD_TEN=$([ "${SHARD_INDEX}" = "1" ] && echo "" || echo "${SHARD_INDEX}")
+  echo "::group::Shard ${SHARD_INDEX}/${SHARD_TOTAL}: load only this shard's schema (idseq_test${SHARD_TEN})"
+  TEST_ENV_NUMBER="${SHARD_TEN}" bundle exec bin/rails db:create db:schema:load
   echo "::endgroup::"
 
-  # --only-group runs just this shard's slice. --group-by runtime balances by the
-  # committed timing log (tmp/parallel_runtime_rspec.log), but parallel_tests reads
-  # that log eagerly and aborts (Errno::ENOENT) the moment the flag is passed without
-  # one. The log lives under tmp/, which is gitignored (/tmp/*), so it is absent on a
-  # fresh CI checkout -- passing --group-by runtime unconditionally hard-fails every
-  # shard. Only enable it when the log actually exists; otherwise let parallel_tests
-  # use its default grouping (runtime-if-present, filesize fallback), which is exactly
-  # what the non-sharded parallel path below relies on. parallel_rspec prints one final
-  # "N examples, M failures" line for this shard's slice; the collate job sums those.
+  # --only-group runs just this shard's slice. --group-by runtime balances the split by the timing
+  # log (tmp/parallel_runtime_rspec.log, parallel_tests' default read path), which the CI runtime-log
+  # cache restores from the previous run (see .github/workflows/ci-test-mysql8.yml). Recording is set up
+  # in .rspec_parallel (the ParallelTests RuntimeLogger formatter, which parallel_rspec auto-loads via
+  # -O); each shard writes its slice timings, and the collate job merges every shard's fragment into the
+  # full-suite log and re-caches it. So bin/ci-test does not pass any formatter here.
+  #
+  # Guard on a NON-EMPTY log (-s, not -f): on a cold cache the file is absent, but a stale/empty cache
+  # can restore a 0-line file -- passing --group-by runtime on that raises RuntimeLogTooSmallError and
+  # fails the shard. --allowed-missing 100 additionally lets a PARTIAL log (e.g. specs added since the
+  # last recording) degrade to filesize for the unknown files instead of aborting. Absent/empty log ->
+  # plain filesize grouping (parallel_tests' default), identical to the non-sharded path below.
+  mkdir -p tmp
   group_by_args=()
-  if [ -f tmp/parallel_runtime_rspec.log ]; then
-    group_by_args=(--group-by runtime)
+  if [ -s tmp/parallel_runtime_rspec.log ]; then
+    group_by_args=(--group-by runtime --allowed-missing 100)
   fi
   echo "::group::RSpec (shard ${SHARD_INDEX} of ${SHARD_TOTAL})"
   SAMPLES_BUCKET_NAME=idseq-samples-development \

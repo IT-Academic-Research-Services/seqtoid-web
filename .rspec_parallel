@@ -1,0 +1,8 @@
+# Extra RSpec options for parallel_tests runs only (parallel_rspec auto-loads this via `-O`; a plain
+# serial `rspec` ignores it). Records per-process test run-times to tmp/parallel_runtime_rspec.log via
+# the ParallelTests RuntimeLogger formatter, so the CI shard jobs can merge + cache the full-suite timing
+# and split future runs with `--group-by runtime` (see .github/workflows/ci-test-mysql8.yml + bin/ci-test).
+# `--format progress` is kept so the human-readable "N examples, M failures" summary still prints to stdout
+# (bin/aggregate-rspec-summary parses it); RuntimeLogger only writes the timing file.
+--format progress
+--format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log

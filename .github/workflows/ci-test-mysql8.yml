@@ -25,9 +25,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Modest shard count (2-4): diminishing returns + rising per-run infra-flake
-  # probability past ~4, since each shard re-pays container pull / mysql boot.
-  SHARD_TOTAL: 4
+  # Shard count. Raised 4 -> 8 (CZID-542 follow-up) once two enabling fixes landed: (1) each shard
+  # loads only its OWN schema (bin/ci-test) instead of all N -- so per-shard setup no longer grows with
+  # SHARD_TOTAL; (2) the rspec runtime-log cache (restore below + save in collate) makes the split
+  # runtime-balanced instead of by filesize, so wall-clock tracks total/N rather than the slowest shard.
+  # 8 is the sweet spot: past it the fixed per-shard floor (container init + apt/pip deps ~1.5-2m) starts
+  # to dominate and runner cost / flake surface doubles for <1m of wall-clock. Keep in sync with the matrix.
+  SHARD_TOTAL: 8
 
 jobs:
   ruby_test_mysql8:
@@ -40,7 +44,8 @@ jobs:
       # merging a partial set.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # Keep this list in sync with SHARD_TOTAL above.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       # Dummy secret -- test only.
       AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='
@@ -90,6 +95,17 @@ jobs:
           key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
+      - name: Restore rspec runtime timing log (enables --group-by runtime balancing)
+        # Read-only restore of the merged timing log saved by the previous run's collate job. All
+        # shards restore the SAME latest cache (restore-keys prefix), so every shard computes an
+        # IDENTICAL runtime-balanced grouping -> the --only-group slices stay a disjoint partition.
+        # Cold cache (first run after this lands) -> no file -> bin/ci-test falls back to filesize.
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/parallel_runtime_rspec.log
+          key: rspec-runtime-log-${{ github.run_id }}
+          restore-keys: |
+            rspec-runtime-log-
       - name: Run CI test suite (shard ${{ matrix.shard }} of ${{ env.SHARD_TOTAL }})
         # SINGLE SOURCE OF TRUTH: bin/ci-test (deps + schema load + rspec) is the exact
         # same script the local harness runs (bin/ci-local). Local and CI can't drift. (CZID-109.)
@@ -110,6 +126,9 @@ jobs:
           mkdir -p shard-out
           cp coverage/.resultset.json shard-out/resultset.json 2>/dev/null || echo '{}' > shard-out/resultset.json
           cp "$RUNNER_TEMP/suite.log" shard-out/suite.log 2>/dev/null || true
+          # This shard's slice timings (--runtime-log); the collate job merges all shards' into the
+          # full-suite log and re-caches it so the NEXT run's shards split runtime-balanced.
+          cp tmp/parallel_runtime_rspec.log shard-out/runtime.log 2>/dev/null || true
       - name: Upload shard results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -138,6 +157,23 @@ jobs:
         with:
           path: shard-artifacts
           pattern: shard-results-*
+      - name: Merge shard runtime logs (full-suite timing for next run's balancing)
+        # Each shard's --only-group ran a DISJOINT slice, so the per-shard runtime.log fragments
+        # together cover the whole suite. Concatenate + dedup by spec path (last wins) into one log.
+        shell: bash
+        run: |
+          mkdir -p tmp
+          find shard-artifacts -name runtime.log -exec cat {} + 2>/dev/null \
+            | awk -F: 'NF>=2 && $NF ~ /^[0-9.]+$/ { line[$1]=$0 } END { for (k in line) print line[k] }' \
+            | sort > tmp/parallel_runtime_rspec.log || true
+          echo "merged $(wc -l < tmp/parallel_runtime_rspec.log 2>/dev/null || echo 0) spec timings"
+      - name: Save merged runtime log (consumed by the next run's shards)
+        # Rotating key (per run) + the shards' restore-keys prefix = shards always pick up the latest.
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/parallel_runtime_rspec.log
+          key: rspec-runtime-log-${{ github.run_id }}
       - name: Collate coverage (fail-closed on a missing shard)
         # Merges every shard's SimpleCov resultset into coverage/.last_run.json and
         # re-applies the whole-suite minimum floor. Exits non-zero if fewer than
