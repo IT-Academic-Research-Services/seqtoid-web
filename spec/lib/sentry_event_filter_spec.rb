@@ -57,4 +57,78 @@ RSpec.describe SentryEventFilter do
       expect(chain.size).to be <= SentryEventFilter::MAX_CAUSE_DEPTH
     end
   end
+
+  # NUL-separated exec argv, the way /proc/self/cmdline presents it.
+  def cmdline(*tokens)
+    tokens.join("\0")
+  end
+
+  def tty
+    double("stdin", tty?: true)
+  end
+
+  def not_tty
+    double("stdin", tty?: false)
+  end
+
+  describe ".runner_invocation?" do
+    it "matches `bin/rails runner`" do
+      expect(described_class.runner_invocation?(cmdline("bin/rails", "runner", "User.count"))).to be(true)
+    end
+
+    it "matches the `rails r` short alias and `bundle exec rails runner`" do
+      expect(described_class.runner_invocation?(cmdline("/app/bin/rails", "r", "x"))).to be(true)
+      expect(described_class.runner_invocation?(cmdline("bundle", "exec", "rails", "runner", "x"))).to be(true)
+    end
+
+    it "does NOT match rails server, rake, resque, or a bare rails console token" do
+      expect(described_class.runner_invocation?(cmdline("bin/rails", "server"))).to be(false)
+      expect(described_class.runner_invocation?(cmdline("bin/rake", "reference_data:integrity_check"))).to be(false)
+      expect(described_class.runner_invocation?(cmdline("resque:work"))).to be(false)
+      expect(described_class.runner_invocation?(cmdline("bin/rails", "console"))).to be(false)
+    end
+
+    it "is FALSE when the argv is unreadable (nil cmdline)" do
+      expect(described_class.runner_invocation?(nil)).to be(false)
+    end
+  end
+
+  describe ".interactive_cli_session?" do
+    it "is TRUE for a rails console session (regardless of runner argv)" do
+      expect(described_class.interactive_cli_session?(console: true, cmdline: nil, stdin: not_tty)).to be(true)
+    end
+
+    it "is TRUE for a hand-typed `rails runner` one-liner (runner argv + a TTY)" do
+      expect(
+        described_class.interactive_cli_session?(
+          console: false, cmdline: cmdline("bin/rails", "runner", "User.where(bogus: 1)"), stdin: tty
+        )
+      ).to be(true)
+    end
+
+    it "is FALSE for an AUTOMATED `rails runner` (runner argv but NO TTY) -- CI / cron / Argo still report" do
+      expect(
+        described_class.interactive_cli_session?(
+          console: false, cmdline: cmdline("bundle", "exec", "rails", "runner", "TaxonLineage..."), stdin: not_tty
+        )
+      ).to be(false)
+    end
+
+    it "is FALSE for a web / rake / Resque process even on a TTY (not a runner or console)" do
+      expect(
+        described_class.interactive_cli_session?(
+          console: false, cmdline: cmdline("bin/rails", "server"), stdin: tty
+        )
+      ).to be(false)
+      expect(
+        described_class.interactive_cli_session?(
+          console: false, cmdline: cmdline("bin/rake", "some:task"), stdin: tty
+        )
+      ).to be(false)
+    end
+
+    it "is FALSE when the argv cannot be read and it is not a console (fail OPEN -- genuine errors report)" do
+      expect(described_class.interactive_cli_session?(console: false, cmdline: nil, stdin: tty)).to be(false)
+    end
+  end
 end
