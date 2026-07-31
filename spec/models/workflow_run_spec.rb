@@ -224,11 +224,34 @@ describe WorkflowRun, type: :model do
         expect(@second_workflow_running.status).to eq(WorkflowRun::STATUS[:failed])
       end
 
+      it "logs the bounded auto-restart to the app log only, never the Sentry error project (SMP-1622)" do
+        # The bounded consensus-genome auto-restart is operational INFO -- the self-heal
+        # working as designed -- so it must route to the structured app log with
+        # to_sentry: false and mint no issue in the Sentry error project
+        # (SMP-1622 / DEV-RAILS-PROJECT-29). Let log_message run for real so a regression
+        # to to_sentry: true would actually reach Sentry and fail this spec.
+        @mock_aws_clients[:states].stub_responses(:describe_execution, fake_failed_sfn_execution_description)
+        @mock_aws_clients[:states].stub_responses(:get_execution_history, fake_error_sfn_execution_history)
+        allow(@second_workflow_running).to receive(:rerun)
+
+        expect(LogUtil).to receive(:log_message).with(
+          a_string_including("Auto-restarting WorkflowRun"),
+          to_sentry: false,
+          workflow_run_id: @second_workflow_running.id
+        ).and_call_original
+        expect(Sentry).not_to receive(:capture_message)
+
+        @second_workflow_running.update_status
+      end
+
       it "does not auto-restart once the sample+workflow has already hit the budget" do
         # @workflow_running's sample already has @workflow_failed -> not eligible
         @mock_aws_clients[:states].stub_responses(:describe_execution, fake_failed_sfn_execution_description)
         @mock_aws_clients[:states].stub_responses(:get_execution_history, fake_error_sfn_execution_history)
         expect(@workflow_running).not_to receive(:rerun)
+        # Genuine (budget-exhausted) failure must STILL be reported as an error, and the
+        # benign auto-restart notice must not be emitted at all (SMP-1622).
+        expect(LogUtil).not_to receive(:log_message)
         expect(Rails.logger).to receive(:error).with(match(/SampleFailedEvent/))
 
         @workflow_running.update_status
