@@ -3,13 +3,13 @@
   <script>
     window.SENTRY_DSN_FRONTEND = "<%= ENV["SENTRY_DSN_FRONTEND"] %>";
     window.ENVIRONMENT = "<%= Rails.env %>";
-    <%# Prefer GIT_VERSION -- baked fresh into every image from the build's GIT_COMMIT ARG
-        (Dockerfile) and used by the backend config.release (config/initializers/sentry.rb), so
-        the frontend release always matches the deployed image. ENV["GIT_RELEASE_SHA"] is a
-        legacy value the retired ECS bin/deploy wrote to SSM (/idseq-<env>-web/GIT_RELEASE_SHA);
-        the Argo/gitops CD advances image.tag but not that param, so chamber was injecting a stale
-        SHA (frozen 2026-07-02) and every frontend Sentry event was mis-attributed to it. Fall
-        back to the SSM value only when GIT_VERSION is absent (e.g. local docker-compose). %>
-    window.GIT_RELEASE_SHA = "<%= ENV["GIT_VERSION"].presence || ENV["GIT_RELEASE_SHA"] %>";
+    <%# Frontend Sentry release = GIT_VERSION, baked into every image from the build's GIT_COMMIT
+        ARG (Dockerfile) and shared with the backend config.release (config/initializers/sentry.rb).
+        The digest-based rollup promotes the SAME image artifact dev->staging->prod, so this baked
+        value is correct in every tier with zero per-env bookkeeping. We deliberately do NOT read the
+        legacy ENV["GIT_RELEASE_SHA"] (an SSM param the retired ECS bin/deploy wrote per-env): the
+        Argo/gitops CD never updates it, so it drifted stale (frozen 2026-07-02) and mis-attributed
+        every frontend Sentry event. The window global keeps its name (consumed by index.tsx). %>
+    window.GIT_RELEASE_SHA = "<%= ENV["GIT_VERSION"] %>";
   </script>
 <% end %>

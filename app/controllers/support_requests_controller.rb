@@ -118,7 +118,9 @@ class SupportRequestsController < ApplicationController
       # Full browser/session diagnostics (support-only).
       diagnostics: diagnostics,
       environment: Rails.env,
-      git_release_sha: ENV["GIT_RELEASE_SHA"],
+      # Report the deployed commit from GIT_VERSION (baked into the image), NOT the legacy
+      # per-env SSM GIT_RELEASE_SHA, which the Argo CD leaves stale (see _sentry_monitoring).
+      git_release_sha: ENV["GIT_VERSION"],
       submitted_at: now.iso8601,
     }
 
