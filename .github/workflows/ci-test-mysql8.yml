@@ -42,8 +42,85 @@ env:
   SHARD_TOTAL: 8
 
 jobs:
+  # SMP-1582: skip the duplicated full suite on a main->integration back-sync PR. That branch
+  # head IS main's exact HEAD commit, so ci-test already ran (and, if green, posted successful
+  # required check runs) on this identical SHA from the push-to-main gate. Re-running the full
+  # 8-shard suite + collate on the same SHA is pure duplicated runner cost.
+  #
+  # FAIL-CLOSED by construction:
+  #   (1) Only pull_request events are eligible to skip; push / workflow_dispatch NEVER skip
+  #       (the decide step is guarded on github.event_name, so its output stays empty otherwise).
+  #   (2) skip=true is emitted ONLY after positively proving that EVERY required ci-test context
+  #       (all 8 shards + collate) already concluded "success" on this exact head SHA. Any API
+  #       error, missing context, or non-success conclusion leaves skip=false -> full suite runs.
+  #   (3) The downstream jobs gate on `!cancelled() && needs.preflight.outputs.skip != 'true'`,
+  #       so even an unexpected preflight failure (output empty) still runs the full suite.
+  #
+  # Required contexts stay GREEN on a skipped run: branch protection evaluates the required
+  # status contexts against the PR head SHA, and the earlier push-to-main run already recorded
+  # SUCCESS check runs under those exact names on this same commit. Skipping this run therefore
+  # either leaves those successes as the latest conclusion, or (if a skipped matrix job posts a
+  # "skipped" leg) adds a conclusion that branch protection treats as passing -- never a failure.
+  preflight:
+    name: Preflight (skip duplicate same-SHA suite)
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - name: Decide whether this exact SHA already has a green ci-test suite
+        id: decide
+        # Only PR runs can ever skip; push/dispatch fall through with no output (-> full suite).
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          # FAIL-CLOSED: default skip=false; only prove-then-skip. Read-only checks API query.
+          set -uo pipefail
+          skip=false
+          required=(
+            "Ruby Test (MySQL 8) shard 1"
+            "Ruby Test (MySQL 8) shard 2"
+            "Ruby Test (MySQL 8) shard 3"
+            "Ruby Test (MySQL 8) shard 4"
+            "Ruby Test (MySQL 8) shard 5"
+            "Ruby Test (MySQL 8) shard 6"
+            "Ruby Test (MySQL 8) shard 7"
+            "Ruby Test (MySQL 8) shard 8"
+            "Collate coverage + regression gate"
+          )
+          # Names of completed, SUCCESSFUL check runs on this exact commit. "skipped"/"neutral"
+          # conclusions are intentionally NOT accepted -- a skip must be backed by a real green run.
+          successes="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100" \
+            --paginate \
+            --jq '.check_runs[] | select(.status == "completed" and .conclusion == "success") | .name' \
+            2>/dev/null || true)"
+          if [ -z "$successes" ]; then
+            echo "No successful check runs found for ${HEAD_SHA} (or API error) -- running full suite."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          all_present=true
+          for ctx in "${required[@]}"; do
+            if ! grep -Fxq -- "$ctx" <<< "$successes"; then
+              echo "Missing prior green context: ${ctx} -- running full suite."
+              all_present=false
+            fi
+          done
+          if [ "$all_present" = "true" ]; then
+            skip=true
+            echo "All required ci-test contexts already green on ${HEAD_SHA} -- skipping duplicate suite."
+          fi
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+
   ruby_test_mysql8:
     name: Ruby Test (MySQL 8) shard ${{ matrix.shard }}
+    # SMP-1582: run unless a prior green suite on this exact SHA lets preflight set skip=true.
+    # `!cancelled()` keeps this fail-closed -- an errored/empty preflight output still runs.
+    needs: preflight
+    if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     container: ruby:3.3.6
     strategy:
@@ -147,10 +224,12 @@ jobs:
 
   collate:
     name: Collate coverage + regression gate
-    needs: ruby_test_mysql8
+    needs: [preflight, ruby_test_mysql8]
     # Run on success OR a shard's test failure, but not on cancellation. A failed shard
     # already reds the run; collate still produces the collated coverage + regression check.
-    if: ${{ !cancelled() }}
+    # SMP-1582: also stand down when preflight proved a prior green suite on this exact SHA
+    # (skip=true) -- the push-to-main run's collate success already covers this commit.
+    if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     container: ruby:3.3.6
     steps:
