@@ -454,6 +454,13 @@ RSpec.describe "Samples (coverage2) request", type: :request do
       sign_in @joe
       allow_any_instance_of(User).to receive(:can_upload).and_return(true)
       err = Aws::S3::Errors::AccessDenied.new(nil, "denied")
+      # A real S3 AccessDenied always carries code "AccessDenied" (from the HTTP response), which
+      # is what the controller branches on (`case e.code`). A hand-built aws-sdk error does NOT
+      # reliably derive its code -- depending on whether the error class was resolved as a dynamic
+      # vs modeled error (test-load-order dependent), `err.code` can come back empty, dropping the
+      # controller into its generic `else` branch. Pin the code so this exercises the AccessDenied
+      # arm deterministically regardless of shard/test order.
+      allow(err).to receive(:code).and_return("AccessDenied")
       allow_any_instance_of(SamplesController).to receive(:parsed_samples_for_s3_path).and_raise(err)
       # LogUtil.log_error(exception:) is the single capture point -> Rails.logger.error (CloudWatch) +
       # Sentry.capture_exception (Sentry). Pin that the S3 error reaches it (not swallowed).
