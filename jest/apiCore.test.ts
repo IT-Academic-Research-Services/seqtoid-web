@@ -74,6 +74,38 @@ describe("api/core.ts", () => {
       mockedAxios.get.mockRejectedValueOnce({ response: { data: "nope" } });
       await expect(get("/baz")).rejects.toBe("nope");
     });
+
+    // SMP-1589: transient network errors on the idempotent GET are retried with backoff.
+    it("retries a transient network error (no response) then succeeds", async () => {
+      jest.useFakeTimers();
+      const netErr = { message: "Network Error", response: undefined };
+      mockedAxios.get
+        .mockRejectedValueOnce(netErr)
+        .mockResolvedValueOnce({ data: { ok: true } });
+      const p = get("/baz");
+      await jest.advanceTimersByTimeAsync(600);
+      await expect(p).resolves.toEqual({ ok: true });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+      jest.useRealTimers();
+    });
+
+    it("does NOT retry a real HTTP error -- rejects on the first attempt", async () => {
+      mockedAxios.get.mockRejectedValueOnce({ response: { data: "boom" } });
+      await expect(get("/baz")).rejects.toBe("boom");
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("gives up after 3 transient attempts and rejects", async () => {
+      jest.useFakeTimers();
+      const netErr = { message: "Network Error", response: undefined };
+      mockedAxios.get.mockRejectedValue(netErr);
+      const p = get("/baz");
+      p.catch(() => undefined); // avoid unhandled-rejection noise before we await
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(p).rejects.toBe(netErr);
+      expect(mockedAxios.get).toHaveBeenCalledTimes(3);
+      jest.useRealTimers();
+    });
   });
 
   describe("deleteWithCSRF", () => {
