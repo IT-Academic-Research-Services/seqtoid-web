@@ -121,12 +121,13 @@ RSpec.describe SamplesHelper, type: :helper do
       expect(Rails.logger).to have_received(:info).with(/tried to list more than #{SamplesHelper::S3_OBJECT_LIMIT} objects/)
     end
 
-    it "returns nil when S3 denies the listing" do
+    it "logs and RE-RAISES when S3 denies the listing (so the controller can surface it)" do
       objects = stub_bucket_listing([])
       allow(objects).to receive(:limit).and_raise(Aws::S3::Errors::AccessDenied.new(nil, "denied"))
       allow(Rails.logger).to receive(:info)
 
-      expect(helper.parsed_samples_for_s3_path("s3://bucket/dir", project.id, host_genome.id)).to be_nil
+      expect { helper.parsed_samples_for_s3_path("s3://bucket/dir", project.id, host_genome.id) }
+        .to raise_error(Aws::S3::Errors::AccessDenied)
       expect(Rails.logger).to have_received(:info).with(/Aws::S3::Errors::ServiceError/)
     end
   end
