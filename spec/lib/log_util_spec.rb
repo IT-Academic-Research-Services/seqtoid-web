@@ -44,8 +44,21 @@ RSpec.describe LogUtil do
     end
 
     it "should log message with details" do
+      allow(Rails.logger).to receive(:info)
       expect(Sentry).to receive(:capture_message).with(message, hash_including(level: "info", extra: details))
       subject.log_message(message, **details)
+    end
+
+    it "always writes the message to the structured app log (for monitoring)" do
+      allow(Sentry).to receive(:capture_message)
+      expect(Rails.logger).to receive(:info).with(a_string_including(message))
+      subject.log_message(message)
+    end
+
+    it "does NOT send to Sentry when to_sentry: false, but still logs to the app log (SMP-1596/1597/1598)" do
+      expect(Rails.logger).to receive(:info).with(a_string_including(message))
+      expect(Sentry).not_to receive(:capture_message)
+      subject.log_message(message, to_sentry: false, **details)
     end
   end
 end

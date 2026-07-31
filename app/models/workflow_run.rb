@@ -326,9 +326,13 @@ class WorkflowRun < ApplicationRecord
           error_message: parse_yaml_error_message,
           status: STATUS[:failed]
         )
+        # Operational self-heal notice: goes to the structured app log for monitoring, but
+        # NOT to the Sentry error project -- an intended, bounded auto-restart is not an
+        # application error (SMP-1597 / DEV-RAILS-2D,29).
         LogUtil.log_message(
           "Auto-restarting WorkflowRun #{id} (#{workflow}) after a transient SFN failure " \
           "(bounded to #{WORKFLOW_AUTO_RESTART_LIMIT} per sample+workflow).",
+          to_sentry: false,
           workflow_run_id: id
         )
         rerun
