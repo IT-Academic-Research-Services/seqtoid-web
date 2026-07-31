@@ -122,7 +122,27 @@ jobs:
     needs: preflight
     if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
-    container: ruby:3.3.6
+    # SMP-1579: run each shard in the PREBAKED CI base image instead of bare ruby:3.3.6, so the apt+pip
+    # deps (~162s of cold install re-paid by every shard) are already present. The image is FROM
+    # ruby:3.3.6 (same Debian/ruby ABI) and sets CI_TEST_PREBAKED=1, which makes bin/ci-test skip the
+    # apt/pip groups (and fail-closed if a baked tool is missing). Built + pushed by
+    # .github/workflows/ci-test-base-image.yml, which must publish :latest BEFORE this consumes it.
+    # The MySQL/redis service containers below are reachable by service name (DB_HOST: db) from a job
+    # container exactly as they were under bare ruby:3.3.6 -- the image swap does not change networking.
+    # credentials let the shard pull the GHCR package with the built-in token. The package is kept
+    # PRIVATE deliberately (a CI base image exposes our build toolchain + dependency versions and has no
+    # reason to be public even though this repo's source is). A same-repo push/branch build's GITHUB_TOKEN
+    # can read the private package, so internal CI works as-is. Trade-off: an EXTERNAL fork PR gets a
+    # read-only token that cannot pull a private org package, so its shards would fail the image pull --
+    # acceptable, since fork PRs are not part of the internal flow.
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/it-academic-research-services/seqtoid-web-ci-base:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       # Never cancel sibling shards on one shard's failure -- we want every shard's
       # result (and coverage artifact) so the collate job stays fail-closed rather than
