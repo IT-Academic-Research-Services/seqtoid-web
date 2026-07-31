@@ -1,0 +1,19 @@
+---
+# Brakeman configuration. Brakeman auto-loads this file from config/brakeman.yml
+# (no -c flag is needed), so both security-scan.yml gates
+#   brakeman --no-pager -w3 -z -q
+#   brakeman --no-pager -w2 -i config/brakeman.ignore -z -q
+# and the check.yml mirror pick it up automatically.
+#
+# safe_methods: methods whose return value Brakeman treats as safe output, so it
+# will not raise Cross-Site Scripting warnings on their result anywhere.
+#
+# escape_json (app/helpers/application_helper.rb) runs json_escape (ERB::Util)
+# over the value's .to_json, neutralizing <, >, &, </script> and U+2028/U+2029.
+# Its output is therefore safe to embed in an inline <script> mount point, which
+# is exactly how every `raw escape_json(...)` call site uses it. Registering it
+# here is the durable replacement for the per-occurrence Cross-Site Scripting
+# entries that previously lived in config/brakeman.ignore (SMP-1584 / #263),
+# which have been removed in this change (SMP-1601).
+:safe_methods:
+  - :escape_json

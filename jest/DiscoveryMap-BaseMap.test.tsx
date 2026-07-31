@@ -7,10 +7,20 @@
 // onLoad callbacks. The assertions land on the clamping logic in updateViewport
 // (limitToRange against the default viewBounds) and the compact-attribution DOM
 // side effect.
+//
+// BaseMap only mounts <MapGL> once its container reports a non-zero size, so it
+// never renders into a degenerate (0x0) viewport (SMP-1603). jsdom reports
+// clientWidth/clientHeight as 0 and ships no ResizeObserver, so both are stubbed
+// here: a non-zero prototype size lets the map mount, and a capturable
+// ResizeObserver drives the "renders once sized" transition.
 import { act, render, screen } from "@testing-library/react";
 
 let capturedMapProps: $TSFixMe = null;
 let capturedNavProps: $TSFixMe = null;
+
+// The last ResizeObserver callback BaseMap registered, so a test can simulate
+// the container resizing from 0x0 to a real box.
+let resizeObserverCb: (() => void) | null = null;
 
 jest.mock("react-map-gl", () => {
   const ReactLib = require("react");
@@ -35,10 +45,72 @@ import BaseMap, {
   MAP_STYLE_ID,
 } from "~/components/views/DiscoveryView/components/DiscoveryMap/components/BaseMap/BaseMap";
 
+// Override the jsdom clientWidth/clientHeight (always 0) on the prototype so the
+// internally-created container measures a real box. beforeEach/afterEach save
+// and restore the original descriptors.
+let originalClientWidth: PropertyDescriptor | undefined;
+let originalClientHeight: PropertyDescriptor | undefined;
+
+function setContainerSize(width: number, height: number) {
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => width,
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get: () => height,
+  });
+}
+
 beforeEach(() => {
   capturedMapProps = null;
   capturedNavProps = null;
+  resizeObserverCb = null;
   document.body.innerHTML = "";
+
+  originalClientWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  originalClientHeight = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientHeight",
+  );
+
+  // jsdom has no ResizeObserver; capture the callback so tests can fire it.
+  (global as $TSFixMe).ResizeObserver = class {
+    constructor(cb: () => void) {
+      resizeObserverCb = cb;
+    }
+    observe() {} // eslint-disable-line @typescript-eslint/no-empty-function
+    unobserve() {} // eslint-disable-line @typescript-eslint/no-empty-function
+    disconnect() {} // eslint-disable-line @typescript-eslint/no-empty-function
+  };
+
+  // Default: a real container box so the map mounts for the existing suites.
+  setContainerSize(800, 600);
+});
+
+afterEach(() => {
+  if (originalClientWidth) {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      "clientWidth",
+      originalClientWidth,
+    );
+  } else {
+    delete (HTMLElement.prototype as $TSFixMe).clientWidth;
+  }
+  if (originalClientHeight) {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      "clientHeight",
+      originalClientHeight,
+    );
+  } else {
+    delete (HTMLElement.prototype as $TSFixMe).clientHeight;
+  }
+  delete (global as $TSFixMe).ResizeObserver;
 });
 
 describe("BaseMap render", () => {
@@ -168,5 +240,45 @@ describe("BaseMap compact attribution", () => {
   it("is a no-op when there is no attribution tag in the DOM", () => {
     render(<BaseMap mapTilerKey="k" />);
     expect(() => act(() => capturedMapProps.onLoad())).not.toThrow();
+  });
+});
+
+describe("BaseMap zero-size viewport guard (SMP-1603)", () => {
+  it("does not mount MapGL while the container is 0x0", () => {
+    setContainerSize(0, 0);
+    render(<BaseMap mapTilerKey="k" />);
+    // A degenerate viewport would throw "Pixel project matrix not invertible",
+    // so the map must stay unmounted until the container has a real box.
+    expect(screen.queryByTestId("map-gl")).toBeNull();
+    expect(capturedMapProps).toBeNull();
+  });
+
+  it("does not mount MapGL when only one dimension is zero", () => {
+    setContainerSize(800, 0);
+    render(<BaseMap mapTilerKey="k" />);
+    expect(screen.queryByTestId("map-gl")).toBeNull();
+    expect(capturedMapProps).toBeNull();
+  });
+
+  it("mounts MapGL once the container resizes to a non-zero box", () => {
+    setContainerSize(0, 0);
+    render(<BaseMap mapTilerKey="k" />);
+    expect(screen.queryByTestId("map-gl")).toBeNull();
+
+    // The container gets laid out; the ResizeObserver reports the new size.
+    setContainerSize(800, 600);
+    act(() => resizeObserverCb && resizeObserverCb());
+
+    expect(screen.getByTestId("map-gl")).toBeTruthy();
+    // Behavior once sized is unchanged: the viewport still carries the "100%"
+    // width/height that lets react-map-gl size itself against the container.
+    expect(capturedMapProps.width).toBe("100%");
+    expect(capturedMapProps.height).toBe("100%");
+  });
+
+  it("mounts MapGL immediately when the container is already laid out", () => {
+    // Default beforeEach size is 800x600; the map mounts on first render.
+    render(<BaseMap mapTilerKey="k" />);
+    expect(screen.getByTestId("map-gl")).toBeTruthy();
   });
 });
