@@ -321,8 +321,12 @@ module SamplesHelper
       # ignore illumina Undetermined FASTQ files (ex: "Undetermined_AAA_R1_001.fastq.gz")
       entries = entries.reject { |line| line.include? "Undetermined" }
     rescue Aws::S3::Errors::ServiceError => e # Covers all S3 access errors (AccessDenied/NoSuchBucket/AllAccessDisabled)
+      # Log the context, then RE-RAISE so the caller (samples_controller#bulk_import) can surface a specific,
+      # actionable message. Previously this swallowed the error and returned nil, which the controller then
+      # rendered as the generic "no valid samples ... permissions or file format" -- making a real IAM/bucket
+      # problem indistinguishable from an empty/misnamed path (it hid the env-staging cross-account gap).
       Rails.logger.info("parsed_samples_for_s3_path Aws::S3::Errors::ServiceError. s3_path: #{s3_path}, error_class: #{e.class.name}, error_message: #{e.message} ")
-      return
+      raise
     end
 
     samples = {}

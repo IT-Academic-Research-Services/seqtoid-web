@@ -656,13 +656,33 @@ class SamplesController < ApplicationController
 
     @host_genome_id = params[:host_genome_id]
     @bulk_path = params[:bulk_path]
-    @samples = parsed_samples_for_s3_path(@bulk_path, @project_id, @host_genome_id)
+    begin
+      @samples = parsed_samples_for_s3_path(@bulk_path, @project_id, @host_genome_id)
+    rescue Aws::S3::Errors::ServiceError => e
+      # The S3 listing itself failed (permissions / missing bucket / wrong region). Surface a SPECIFIC,
+      # actionable message per error code instead of the old generic "no valid samples" (which hid real
+      # IAM/bucket gaps -- e.g. a cross-account bucket the web role or bucket policy hadn't granted).
+      LogUtil.log_error("bulk_import: S3 listing failed", exception: e, bulk_path: @bulk_path, error_code: e.code)
+      message =
+        case e.code
+        when "NoSuchBucket"
+          "We couldn’t find that S3 bucket for “#{@bulk_path}”. Double-check the bucket name and region."
+        when "AccessDenied", "AllAccessDisabled", "Forbidden"
+          "Access was denied reading “#{@bulk_path}”. Make sure the bucket exists and has granted our upload account read access, then try again (see the “More Info” link)."
+        else
+          "We couldn’t read “#{@bulk_path}” (#{e.code}). Check the path and bucket permissions, then try again (see the “More Info” link)."
+        end
+      render json: { status: message }, status: :unprocessable_content
+      return
+    end
+
     respond_to do |format|
       format.json do
         if @samples.present?
           render json: { samples: @samples }
         else
-          render json: { status: "Sorry, we couldn’t find any valid samples in this s3 bucket. There may be an issue with permissions or the file format. Click the \"More Info\" link above for more detailed instructions." }, status: :unprocessable_content
+          # Listing succeeded but nothing matched -- a genuine empty/misnamed path, NOT a permissions problem.
+          render json: { status: "We connected to “#{@bulk_path}” but found no valid FASTQ files there. Check the path and that files are named like Sample_R1.fastq.gz (see the \"More Info\" link)." }, status: :unprocessable_content
         end
       end
     end
