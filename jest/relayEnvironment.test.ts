@@ -67,12 +67,18 @@ describe("generateFetchFn Sentry noise (CZID-391)", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("does NOT send a Sentry event when the response contains GraphQL errors", async () => {
-    await invokeFetch({
-      data: null,
+  it("does NOT send a Sentry event on a PARTIAL error (field-level errors alongside usable data)", async () => {
+    // Partial/field-level errors ride with valid `data` (permission-filtered fields,
+    // deprecations). CZID-391: these are not application failures -- console only, no Sentry,
+    // and (SMP-1494) no throw, since the caller still has usable data to render.
+    const result = await invokeFetch({
+      data: { node: { id: "1" } },
       errors: [{ message: "Field 'foo' doesn't exist" }],
     });
-    // The whole point of CZID-391: this used to fire captureMessage at Info level.
+    expect(result).toEqual({
+      data: { node: { id: "1" } },
+      errors: [{ message: "Field 'foo' doesn't exist" }],
+    });
     expect(mockCaptureMessage).not.toHaveBeenCalled();
     expect(mockCaptureException).not.toHaveBeenCalled();
     // Debug value is retained locally via console.error.
@@ -82,5 +88,31 @@ describe("generateFetchFn Sentry noise (CZID-391)", () => {
         errors: [{ message: "Field 'foo' doesn't exist" }],
       }),
     );
+  });
+
+  // SMP-1494: a FATAL response (errors present AND no usable `data`) must THROW so Relay
+  // rejects the operation and the caller's catch reports the ACTUAL GraphQL errors to Sentry
+  // -- instead of the caller throwing an opaque "Missing data: {}" with the real cause lost
+  // to the console. generateFetchFn itself still never calls Sentry (CZID-391 preserved).
+  it("THROWS with the query name + errors on a FATAL response (data: null)", async () => {
+    await expect(
+      invokeFetch({ data: null, errors: [{ message: "Field 'foo' doesn't exist" }] }),
+    ).rejects.toThrow(/SomeThingQuery/);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[GQL Error]"),
+      expect.objectContaining({
+        errors: [{ message: "Field 'foo' doesn't exist" }],
+      }),
+    );
+  });
+
+  it("THROWS on a FATAL response where data collapsed to {} (the DEV-REACTJS-5 shape)", async () => {
+    await expect(
+      invokeFetch({ data: {}, errors: [{ message: "fedWorkflowRuns resolver failed" }] }),
+    ).rejects.toThrow(/fedWorkflowRuns resolver failed/);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
   });
 });
