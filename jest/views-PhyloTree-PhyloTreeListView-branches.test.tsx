@@ -98,6 +98,7 @@ jest.mock("~/components/common/DetailsSidebar", () => ({
   },
 }));
 
+import { saveVisualization } from "~/api";
 import { UserContext } from "~/components/common/UserContext";
 import PhyloTreeListView from "~/components/views/PhyloTree/PhyloTreeListView";
 
@@ -236,6 +237,28 @@ describe("PhyloTreeListView branch coverage", () => {
     // vestigial: it takes the false leg and the next line still dereferences
     // the missing tree.
     expect(() => instance.renderVisualization()).toThrow(TypeError);
+  });
+
+  it("saves without throwing when sampleDetailsByNodeName is missing (SMP-1621)", async () => {
+    renderView({ selectedPhyloTreeNgId: 5 });
+    await screen.findByTestId("phylo-tree-vis");
+    const instance = getInstance();
+
+    // The phylo tree API response can omit sampleDetailsByNodeName; before the
+    // guard, Object.values(undefined) threw inside the async handler and surfaced
+    // as an unhandled promise rejection.
+    act(() =>
+      instance.setState({
+        currentTree: { ...NG_TREE, sampleDetailsByNodeName: undefined },
+      }),
+    );
+
+    await expect(instance.handleSaveClick()).resolves.toBeUndefined();
+    // Missing details yield an empty sampleIds set rather than a throw.
+    expect(saveVisualization).toHaveBeenCalledWith(
+      "phylo_tree",
+      expect.objectContaining({ sampleIds: new Set() }),
+    );
   });
 
   it("swaps the notification class when the old-tree warning is dismissed", async () => {
