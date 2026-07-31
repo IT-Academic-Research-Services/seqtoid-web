@@ -474,14 +474,16 @@ describe("LocalUploadProgressModal error handling", () => {
 
     renderModal();
 
-    // Generous timeout: under parallel jest workers the async upload -> throw -> retry re-render can
-    // exceed findBy's 1s default, so the suite flakes even though it passes in isolation.
-    expect(
-      await screen.findByText("Upload failed", undefined, { timeout: 5000 }),
-    ).toBeTruthy();
+    // The failure lands over two commits: recording the error status renders the
+    // "Upload failed" row and the header, and only the *next* commit -- once the
+    // completion effect flips uploadComplete -- renders the "Retry failed upload"
+    // footer button. Await that last element so every earlier one is guaranteed
+    // committed before the synchronous assertions; querying "Retry failed upload"
+    // synchronously off the "Upload failed" commit is what made this flake.
+    expect(await screen.findByText("Retry failed upload")).toBeTruthy();
+    expect(screen.getByText("Upload failed")).toBeTruthy();
     expect(screen.getByText("All uploads failed")).toBeTruthy();
     expect(screen.getByText(/1 upload has failed/)).toBeTruthy();
-    expect(screen.getByText("Retry failed upload")).toBeTruthy();
     expect(mockLogError).toHaveBeenCalledWith(
       expect.objectContaining({
         message:
