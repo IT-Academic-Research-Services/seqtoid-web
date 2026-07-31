@@ -1204,11 +1204,20 @@ const parseTotalCounts = (
     rawWorkflowsTotalCountData?.fedWorkflowRunsAggregateTotalCount?.aggregate;
 
   if (!totalCounts) {
-    throw new Error(
-      `Missing project workflows total count data: ${JSON.stringify(
+    // SMP-1619: An empty project (or a partial, non-error GraphQL response)
+    // arrives here with a missing aggregate (e.g. `{}`). This is benign - the
+    // view already treats an undefined WorkflowCount as "zero counts" - so we
+    // return undefined instead of throwing, which previously crashed
+    // DiscoveryView on /my_data. Note this is distinct from a FATAL GraphQL
+    // error, which is surfaced separately at the relay layer (see SMP-1494 in
+    // relay/environment.ts); we only warn locally for debugging here and do
+    // not report the benign empty case to Sentry.
+    console.warn(
+      `No project workflows total count data (treating as empty): ${JSON.stringify(
         rawWorkflowsTotalCountData,
       )}`,
     );
+    return undefined;
   }
 
   const workflowCounts = {};
