@@ -74,6 +74,46 @@ describe("api/core.ts", () => {
       mockedAxios.get.mockRejectedValueOnce({ response: { data: "nope" } });
       await expect(get("/baz")).rejects.toBe("nope");
     });
+
+    it("does NOT retry a real HTTP error -- rejects on the first attempt", async () => {
+      mockedAxios.get.mockRejectedValueOnce({ response: { data: "boom" } });
+      await expect(get("/baz")).rejects.toBe("boom");
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    // SMP-1589: transient network errors on the idempotent GET are retried with
+    // backoff. This repo is on Jest 26, which has no jest.advanceTimersByTimeAsync;
+    // instead of fake timers we stub setTimeout to invoke the scheduled callback
+    // immediately, so the backoff runs instantly and the test stays deterministic
+    // (no wall-clock waits, no timer-API version coupling).
+    describe("transient-network retry", () => {
+      const netErr = { message: "Network Error", response: undefined };
+      let setTimeoutSpy: jest.SpyInstance;
+
+      beforeEach(() => {
+        setTimeoutSpy = jest
+          .spyOn(global, "setTimeout")
+          .mockImplementation((cb: (...args: unknown[]) => void) => {
+            cb();
+            return 0 as unknown as ReturnType<typeof setTimeout>;
+          });
+      });
+      afterEach(() => setTimeoutSpy.mockRestore());
+
+      it("retries a transient network error (no response) then succeeds", async () => {
+        mockedAxios.get
+          .mockRejectedValueOnce(netErr)
+          .mockResolvedValueOnce({ data: { ok: true } });
+        await expect(get("/baz")).resolves.toEqual({ ok: true });
+        expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+      });
+
+      it("gives up after 3 transient attempts and rejects with the network error", async () => {
+        mockedAxios.get.mockRejectedValue(netErr);
+        await expect(get("/baz")).rejects.toBe(netErr);
+        expect(mockedAxios.get).toHaveBeenCalledTimes(3);
+      });
+    });
   });
 
   describe("deleteWithCSRF", () => {
@@ -107,10 +147,11 @@ describe("api/core.ts", () => {
       mockedAxios.put.mockRejectedValueOnce(netErr);
       await expect(putWithCSRF("/bar")).rejects.toBe(netErr);
     });
-    it("get rejects with the error, not a TypeError", async () => {
-      mockedAxios.get.mockRejectedValueOnce(netErr);
-      await expect(get("/baz")).rejects.toBe(netErr);
-    });
+    // NOTE: `get` also rejects with the raw network error rather than a TypeError,
+    // but since SMP-1589 it does so only after retrying the transient error -- that
+    // path is covered by the "transient-network retry" describe above (which stubs
+    // the backoff), so it is intentionally not repeated here to avoid a real-timer
+    // wait. post/put/delete are NOT retried, so they still reject on first attempt.
     it("delete rejects with the error, not a TypeError", async () => {
       mockedAxios.delete.mockRejectedValueOnce(netErr);
       await expect(deleteWithCSRF("/qux")).rejects.toBe(netErr);

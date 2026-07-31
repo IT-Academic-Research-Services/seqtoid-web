@@ -22,7 +22,23 @@ class LogUtil
   end
 
   # If you want to report a message rather than an exception you can use the log_message method.
-  def self.log_message(message, **details)
+  #
+  # The message is ALWAYS written to the structured app log (Rails.logger.info -> stdout ->
+  # CloudWatch/Loki/Grafana), so the operational signal is durably captured for monitoring.
+  # Sentry capture is opt-OUT via `to_sentry:`: purely-operational INFO (self-heal notices,
+  # support-request summaries, periodic job rollups) should live in the logs, not create issues
+  # in the Sentry ERROR project. Default true preserves existing callers; pass to_sentry: false
+  # for operational messages that are not application errors (SMP-1596/1597/1598).
+  def self.log_message(message, to_sentry: true, **details)
+    # A logging helper must never raise and disturb its caller. Guard the JSON encode
+    # (a detail value could be non-serializable) and fall back to inspect.
+    begin
+      Rails.logger.info({ message: message, details: details }.to_json)
+    rescue StandardError
+      Rails.logger.info("#{message} #{details.inspect}")
+    end
+    return unless to_sentry
+
     Sentry.capture_message(
       message,
       level: "info",

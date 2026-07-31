@@ -39,14 +39,23 @@ if ENV['SENTRY_DSN_BACKEND']
     # ApplicationController#set_sentry_context.
     config.send_default_pii = false
 
-    # Drop benign shutdown-time noise before it reports (platform-overhaul 727).
-    # Today this filters only the resque-scheduler SIGTERM race where releasing the
-    # Redis master lock hits a mid-connect socket (Errno::EALREADY caused by the
-    # shutdown Interrupt). SentryEventFilter is deliberately narrow so real Redis
-    # outages still report -- see lib/sentry_event_filter.rb.
+    # Drop noise that is not a product defect before it reports. Two narrow rules,
+    # both in lib/sentry_event_filter.rb (unit-tested there):
+    #   1. Interactive rails CLI sessions -- a person's `rails console` typo or a
+    #      hand-typed `rails runner` one-liner at a dev pod (SMP-1583). Automated
+    #      `rails runner` (CI / cron / Argo, all non-TTY), rake, Resque and web
+    #      errors are NOT matched and still report.
+    #   2. The benign resque-scheduler SIGTERM race where releasing the Redis
+    #      master lock hits a mid-connect socket (Errno::EALREADY caused by the
+    #      shutdown Interrupt) -- platform-overhaul 727. Real Redis outages still
+    #      report.
     config.before_send = lambda do |event, hint|
-      exception = hint && hint[:exception]
-      SentryEventFilter.shutdown_connect_race?(exception) ? nil : event
+      if SentryEventFilter.interactive_cli_session?
+        nil
+      else
+        exception = hint && hint[:exception]
+        SentryEventFilter.shutdown_connect_race?(exception) ? nil : event
+      end
     end
   end
 

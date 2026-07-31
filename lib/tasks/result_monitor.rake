@@ -52,8 +52,14 @@ class MonitorPipelineResults
   def self.fail_stalled_uploads!
     samples = Sample.current_stalled_local_uploads(18.hours)
     unless samples.empty?
+      # Routine cleanup sweep, not an application error: the stalled local uploads are marked
+      # failed in the DB just below (UPLOAD_ERROR_LOCAL_UPLOAD_FAILED) and handled. Log to the
+      # structured app log for rate monitoring (Loki/Grafana), but do NOT mint a Sentry error
+      # (SMP-1594 / DEV-RAILS-14). The upload PUT already retries transient blips (SMP-1569);
+      # an 18h stall is client abandonment, not a code defect.
       LogUtil.log_message(
         "UploadFailedEvent: Failed to upload local samples after 18 hours",
+        to_sentry: false,
         samples: samples.pluck(:id)
       )
       WorkflowRun.handle_sample_upload_failure(samples)

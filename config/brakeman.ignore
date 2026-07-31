@@ -1061,8 +1061,120 @@
         79
       ],
       "note": "False positive (CZID-189 triage 2026-07-08). Value is emitted via the escape_json helper (app/helpers/application_helper.rb), which calls json_escape (ERB::Util) and neutralizes <, >, &, </script> and U+2028/U+2029, making the JSON safe to embed in an inline <script>. Any interpolated id is an integer. Not injectable."
+    },
+    {
+      "warning_type": "Cross-Site Scripting",
+      "warning_code": 2,
+      "fingerprint": "0e8c5d7612e65fce27ded73c7442cdd0642cae878d94ae581e6bd8717dc728d6",
+      "check_name": "CrossSiteScripting",
+      "message": "Unescaped model attribute",
+      "file": "app/views/home/snapshot.html.erb",
+      "line": 7,
+      "link": "https://brakemanscanner.org/docs/warning_types/cross_site_scripting",
+      "code": "escape_json(SnapshotLink.find_by(:share_id => snapshot_links_params[:share_id]).project_id.to_s)",
+      "render_path": [
+        {
+          "type": "controller",
+          "class": "SnapshotLinksController",
+          "method": "show",
+          "line": 21,
+          "file": "app/controllers/snapshot_links_controller.rb",
+          "rendered": {
+            "name": "home/snapshot",
+            "file": "app/views/home/snapshot.html.erb"
+          }
+        }
+      ],
+      "location": {
+        "type": "template",
+        "template": "home/snapshot"
+      },
+      "user_input": "SnapshotLink.find_by(:share_id => snapshot_links_params[:share_id]).project_id",
+      "confidence": "Weak",
+      "cwe_id": [
+        79
+      ],
+      "note": "False positive (SMP-1584 / brakeman triage 2026-07-31). Value is emitted via the escape_json helper (app/helpers/application_helper.rb), which runs json_escape (ERB::Util) over the value's .to_json -- neutralizing <, >, &, </script> and U+2028/U+2029 -- so it is safe to embed in the inline mount <script>. A hostile project name, user name, or project id cannot break out of the script tag or inject. Not injectable."
+    },
+    {
+      "warning_type": "Cross-Site Scripting",
+      "warning_code": 2,
+      "fingerprint": "2e14db36d00c96f91449a5c40886d6dd0855e50e5448fd604433b32eb8197795",
+      "check_name": "CrossSiteScripting",
+      "message": "Unescaped model attribute",
+      "file": "app/views/home/snapshot.html.erb",
+      "line": 5,
+      "link": "https://brakemanscanner.org/docs/warning_types/cross_site_scripting",
+      "code": "escape_json(Project.find(SnapshotLink.find_by(:share_id => snapshot_links_params[:share_id]).project_id).name)",
+      "render_path": [
+        {
+          "type": "controller",
+          "class": "SnapshotLinksController",
+          "method": "show",
+          "line": 21,
+          "file": "app/controllers/snapshot_links_controller.rb",
+          "rendered": {
+            "name": "home/snapshot",
+            "file": "app/views/home/snapshot.html.erb"
+          }
+        }
+      ],
+      "location": {
+        "type": "template",
+        "template": "home/snapshot"
+      },
+      "user_input": "Project.find(SnapshotLink.find_by(:share_id => snapshot_links_params[:share_id]).project_id).name",
+      "confidence": "Weak",
+      "cwe_id": [
+        79
+      ],
+      "note": "False positive (SMP-1584 / brakeman triage 2026-07-31). Value is emitted via the escape_json helper (app/helpers/application_helper.rb), which runs json_escape (ERB::Util) over the value's .to_json -- neutralizing <, >, &, </script> and U+2028/U+2029 -- so it is safe to embed in the inline mount <script>. A hostile project name, user name, or project id cannot break out of the script tag or inject. Not injectable."
+    },
+    {
+      "warning_type": "Cross-Site Scripting",
+      "warning_code": 2,
+      "fingerprint": "720f74af522630cb38e30529d69d2f6e60bd538a39fd64f13fb1b34f195d6b20",
+      "check_name": "CrossSiteScripting",
+      "message": "Unescaped model attribute",
+      "file": "app/views/layouts/_page_header.html.erb",
+      "line": 34,
+      "link": "https://brakemanscanner.org/docs/warning_types/cross_site_scripting",
+      "code": "escape_json(current_user.name.to_s)",
+      "render_path": [
+        {
+          "type": "controller",
+          "class": "AmrHeatmapController",
+          "method": "index",
+          "line": 6,
+          "file": "app/controllers/amr_heatmap_controller.rb",
+          "rendered": {
+            "name": "layouts/application",
+            "file": "app/views/layouts/application.html.erb"
+          }
+        },
+        {
+          "type": "template",
+          "name": "layouts/application",
+          "line": 43,
+          "file": "app/views/layouts/application.html.erb",
+          "rendered": {
+            "name": "layouts/_page_header",
+            "file": "app/views/layouts/_page_header.html.erb"
+          }
+        }
+      ],
+      "location": {
+        "type": "template",
+        "template": "layouts/_page_header"
+      },
+      "user_input": "current_user.name.to_s",
+      "confidence": "Weak",
+      "cwe_id": [
+        79
+      ],
+      "note": "False positive (SMP-1584 / brakeman triage 2026-07-31). Value is emitted via the escape_json helper (app/helpers/application_helper.rb), which runs json_escape (ERB::Util) over the value's .to_json -- neutralizing <, >, &, </script> and U+2028/U+2029 -- so it is safe to embed in the inline mount <script>. A hostile project name, user name, or project id cannot break out of the script tag or inject. Not injectable."
     }
   ],
-  "updated": "2026-07-08 00:00:00 +0000",
+  "updated": "2026-07-31 00:00:00 -0700",
   "brakeman_version": "6.1.2"
 }

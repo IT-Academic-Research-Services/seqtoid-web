@@ -43,17 +43,22 @@ class SupportRouter
       enrichment: detail,
     }
     Rails.logger.info("[support_request_enrichment] #{payload.to_json}")
-    LogUtil.log_message("Support enrichment for #{correlation_id}", **payload)
+    # Support enrichment is durably captured in the structured log (-> Loki -> Grafana
+    # Support Inbox) above; do not mirror it into the Sentry error project (SMP-1596).
+    LogUtil.log_message("Support enrichment for #{correlation_id}", to_sentry: false, **payload)
   end
 
   private
 
-  # The current durable + greppable record (Loki -> Grafana Support Inbox) and the
-  # Sentry mirror so the report lands next to the user's client-side errors.
+  # The durable + greppable record (Loki -> Grafana Support Inbox). A support request is
+  # NOT an application error, so it is no longer mirrored into the Sentry error project
+  # (SMP-1596 / DEV-RAILS-2E,1V): that only cluttered error triage. The Support Inbox in
+  # Grafana remains the monitoring surface for these.
   def grafana_log_sink
     Rails.logger.info("[support_request] #{@payload.to_json}")
     LogUtil.log_message(
       "Support request from user #{@user.id} (#{@payload[:correlation_id]})",
+      to_sentry: false,
       **@payload
     )
   end
