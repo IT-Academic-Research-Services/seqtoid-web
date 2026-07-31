@@ -30,7 +30,13 @@ class LogUtil
   # in the Sentry ERROR project. Default true preserves existing callers; pass to_sentry: false
   # for operational messages that are not application errors (SMP-1596/1597/1598).
   def self.log_message(message, to_sentry: true, **details)
-    Rails.logger.info({ message: message, details: details }.to_json)
+    # A logging helper must never raise and disturb its caller. Guard the JSON encode
+    # (a detail value could be non-serializable) and fall back to inspect.
+    begin
+      Rails.logger.info({ message: message, details: details }.to_json)
+    rescue StandardError
+      Rails.logger.info("#{message} #{details.inspect}")
+    end
     return unless to_sentry
 
     Sentry.capture_message(
