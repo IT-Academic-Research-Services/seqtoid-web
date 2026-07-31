@@ -1226,7 +1226,7 @@ export class DiscoveryView extends React.Component<
         value: TAB_PROJECTS,
       },
       {
-        label: renderTab("Samples", filteredSampleStats.count ?? "-"),
+        label: renderTab("Samples", filteredSampleStats?.count ?? "-"),
         value: TAB_SAMPLES,
       },
       domain !== DISCOVERY_DOMAIN_PUBLIC &&
