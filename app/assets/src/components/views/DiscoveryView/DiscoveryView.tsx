@@ -126,6 +126,7 @@ import {
   getOrderByKeyFor,
   getOrderDirKeyFor,
   getSessionOrderFieldsKeys,
+  handleDiscoveryLoadError,
   prepareFilters,
   prepareNextGenFilters,
 } from "./utils";
@@ -341,12 +342,23 @@ export class DiscoveryView extends React.Component<
         WorkflowType.CONSENSUS_GENOME,
       ),
     );
-    this.samples.loadPage(0);
+    // SMP-1620: these preloads are fire-and-forget, so an expired-session 401 from
+    // the underlying loaders rejected uncaught (DEV-REACTJS-PROJECT-1R). Route the
+    // rejection through handleDiscoveryLoadError so a 401 re-authenticates gracefully
+    // and genuine failures still propagate/report. Wrap in Promise.resolve so a caller
+    // that does not return a promise (e.g. a mocked loadPage in tests) is tolerated.
+    Promise.resolve(this.samples.loadPage(0)).catch(handleDiscoveryLoadError);
     if (domain !== DISCOVERY_DOMAIN_SNAPSHOT) {
-      this.projects.loadPage(0);
-      this.visualizations.loadPage(0);
-      this.amrWorkflowRuns.loadPage(0);
-      this.longReadMngsSamples.loadPage(0);
+      Promise.resolve(this.projects.loadPage(0)).catch(handleDiscoveryLoadError);
+      Promise.resolve(this.visualizations.loadPage(0)).catch(
+        handleDiscoveryLoadError,
+      );
+      Promise.resolve(this.amrWorkflowRuns.loadPage(0)).catch(
+        handleDiscoveryLoadError,
+      );
+      Promise.resolve(this.longReadMngsSamples.loadPage(0)).catch(
+        handleDiscoveryLoadError,
+      );
     }
 
     this.updateBrowsingHistory("replace");
@@ -1186,11 +1198,15 @@ export class DiscoveryView extends React.Component<
         },
       );
     });
-    getDiscoveryVisualizations({ domain }).then(({ visualizations }) => {
-      this.setState({
-        visualizationCount: visualizations.length ?? 0,
-      });
-    });
+    // SMP-1620: getDiscoveryVisualizations does not swallow its own errors, so an
+    // expired-session 401 here would reject uncaught (see handleDiscoveryLoadError).
+    getDiscoveryVisualizations({ domain })
+      .then(({ visualizations }) => {
+        this.setState({
+          visualizationCount: visualizations.length ?? 0,
+        });
+      })
+      .catch(handleDiscoveryLoadError);
     fetchTotalWorkflowCounts(projectId).then(
       (workflowCounts: WorkflowCount) => {
         this.setState({
