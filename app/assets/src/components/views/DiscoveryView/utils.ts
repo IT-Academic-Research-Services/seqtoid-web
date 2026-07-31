@@ -114,6 +114,47 @@ export const prepareFilters = (
   return preparedFilters;
 };
 
+///
+// SMP-1620: expired-session (HTTP 401) handling for the discovery data loaders
+///
+
+// The /auth0/login entry point used elsewhere in the app (e.g. LandingHeaderV1) to
+// (re)start the authentication flow.
+const LOGIN_URL = "/auth0/login";
+
+// The discovery loaders (samples/projects/visualizations/workflow runs) are preloaded
+// fire-and-forget on /my_data (DiscoveryView loadPage/loadUserDataStats), with no catch.
+// api/core.ts rejects an expired-session request with the Rails response body -- e.g.
+// { error: "Unauthorized", code: 401 } -- a plain (non-Error) object. That surfaced as
+// an uncaught "UnhandledRejection: Non-Error promise rejection captured with value:
+// [error, Unauthorized][code, 401]" (DEV-REACTJS-PROJECT-1R) plus Sentry noise. A 401
+// here is an EXPECTED auth-expiry condition, not a product defect.
+export const isUnauthorizedError = (error: $TSFixMe): boolean => {
+  if (error == null || typeof error !== "object") {
+    return false;
+  }
+  // api/core.ts unwraps to the response body ({ code, error }); also tolerate a raw
+  // axios error (error.response.status) in case a caller does not unwrap it first.
+  return (
+    error.code === 401 ||
+    error.status === 401 ||
+    error.error === "Unauthorized" ||
+    error.response?.status === 401
+  );
+};
+
+// Catch handler for the fire-and-forget discovery load promises. An expired-session
+// 401 is handled gracefully -- send the user back through the login flow to re-auth --
+// and swallowed, so it is neither an unhandled rejection nor Sentry noise. Any other
+// (genuine) failure is re-thrown so it still propagates and is reported.
+export const handleDiscoveryLoadError = (error: $TSFixMe): void => {
+  if (isUnauthorizedError(error)) {
+    window.location.href = LOGIN_URL;
+    return;
+  }
+  throw error;
+};
+
 export const prepareNextGenFilters = (
   filters: SelectedFilters | Record<string, never>,
 ): NextGenFilters => {
