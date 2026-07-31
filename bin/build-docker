@@ -1,6 +1,6 @@
 #!/bin/bash
-# NOTE: We push all created tags to the Docker repo, but only the commit, branch, and latest tags matter.
-# Cache and compose are noise.
+# NOTE: We push all created tags to the Docker repo, but only the commit (sha-<commit>), the SemVer
+# version (SMP-1464), and latest tags matter. Cache and compose are noise.
 #
 # CZID-76: the ECR repo is being reconciled from the legacy `idseq-web` name to the go-forward
 # `seqtoid-web` name (the GitOps values reference `czid-<env>/seqtoid-web`). We do NOT rename the
@@ -47,14 +47,27 @@ PLATFORMS="${PLATFORMS:-linux/amd64}"
 CACHE_MODE="${CACHE_MODE:-read}"
 
 BRANCH="$1"
-BRANCH_CLEANED=$(echo "$BRANCH" | sed 's/\//-/g')
 COMMIT="$2"
+
+# SMP-1464: tag the ECR image with a SemVer, not the experiment/branch name. The version comes from
+# the single source of versioning truth (CZID-392) -- bin/compute-version.sh -- so the ECR tag matches
+# the SemVer stamped into the OCI labels + published to GHCR, and promote-image.yml can promote a
+# build by its `vX.Y.Z...` tag. compute-version.sh emits an OCI-safe tag (SemVer with '+' -> '_') as
+# the 2nd whitespace-delimited field on stdout. Run it with GITHUB_OUTPUT unset for THIS call so it
+# writes to /dev/null instead of truncating the workflow step's real $GITHUB_OUTPUT (it opens the file
+# with '>'); this build step declares no step outputs, but keep it side-effect-free regardless.
+VERSION_TAG="$(GITHUB_OUTPUT="" "$(dirname "$0")/compute-version.sh" | awk '{print $2}')"
+if [ -z "$VERSION_TAG" ]; then
+    echo "Error: could not derive a SemVer image tag from bin/compute-version.sh" >&2
+    exit 1
+fi
 
 # The first repo name is the canonical build/cache repo; the rest are additional tag targets.
 PRIMARY_REPO="$REGISTRY/$(echo "$ECR_REPO_NAMES" | awk '{print $1}')"
 
 echo "Branch    $BRANCH"
 echo "Commit    $COMMIT"
+echo "Version   $VERSION_TAG"
 echo "Repos     $ECR_REPO_NAMES"
 echo "Platforms $PLATFORMS"
 echo "CacheMode $CACHE_MODE"
@@ -87,11 +100,16 @@ docker buildx inspect seqtoid-cache-builder >/dev/null 2>&1 \
 docker buildx use seqtoid-cache-builder
 
 # Assemble the full set of `-t` tag targets across every repo name.
+# `sha-<commit>` is LOAD-BEARING and stays: gitops-advance-dev.yml pins dev's image.tag to
+# `sha-<sha8>` and Argo pulls that exact tag, so it must keep being pushed.
+# SMP-1464: the `branch-<name>` tag is REPLACED by the SemVer `$VERSION_TAG` -- images are now
+# identified by version, not by the experiment/branch that happened to build them. Nothing in the
+# repo consumes `branch-<name>` (deploy/gitops/promote reference sha, digest, or version tags).
 TAG_ARGS=()
 for NAME in $ECR_REPO_NAMES; do
     REPO="$REGISTRY/$NAME"
     TAG_ARGS+=(-t "$REPO:sha-$COMMIT")
-    TAG_ARGS+=(-t "$REPO:branch-$BRANCH_CLEANED")
+    TAG_ARGS+=(-t "$REPO:$VERSION_TAG")
     if [ "$BRANCH" == "main" ]; then
         TAG_ARGS+=(-t "$REPO:latest")
     fi

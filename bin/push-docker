@@ -1,6 +1,13 @@
 #!/bin/bash
-# NOTE: We push all created tags to the Docker repo, but only the commit, branch, and latest tags matter.
-# Cache and compose are noise.
+# NOTE: We push all created tags to the Docker repo, but only the commit (sha-<commit>) and latest
+# tags matter here. Cache and compose are noise.
+#
+# SMP-1464: images are identified by SemVer, not by the experiment/branch name -- the `branch-<name>`
+# tag was dropped. This legacy push path (reachable only via build-and-test.yml -> reusable-build-
+# docker-image.yml, a workflow_dispatch-only job) does NOT re-push the SemVer tag: that tag carries
+# per-build metadata (timestamp/run-id) from bin/compute-version.sh, so only the build step that
+# computed it can pin it -- and bin/build-docker already `--push`es it directly. So push only the
+# deterministic sha-<commit> tag (+ latest on main); build-docker owns the SemVer tag.
 #
 # CZID-76: dual-push the same image to BOTH the legacy `idseq-web` repo and the go-forward
 # `seqtoid-web` repo during the transition (see bin/build-docker). ECR_REPO_NAMES drives the set;
@@ -12,10 +19,12 @@ set -euo pipefail
 ECR_REPO_NAMES="${ECR_REPO_NAMES:-idseq-web seqtoid-web}"
 REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-BRANCH="branch-$1"
+# $1 is the branch name, retained only to detect `main` (for the `latest` tag). The image itself is
+# identified by the sha-<commit> tag below (SMP-1464: no branch tag).
+BRANCH="$1"
 COMMIT="sha-$2"
 
-echo "$BRANCH"
+echo "Branch $BRANCH"
 echo "$COMMIT"
 echo "Repos $ECR_REPO_NAMES"
 echo '--'
@@ -28,8 +37,8 @@ push_repo() {
     while [ $run -eq 1 ] ; do
         echo "Trying Amazon ECR push to $repo ..."
         # NOTE: Pushing without a tag no longer pushes all tags. It only pushes latest.
-        if docker push "$repo:$COMMIT" && docker push "$repo:$BRANCH" &&
-           { [ "$BRANCH" != "branch-main" ] || docker push "$repo:latest"; }; then
+        if docker push "$repo:$COMMIT" &&
+           { [ "$BRANCH" != "main" ] || docker push "$repo:latest"; }; then
             run=0
             break
         fi
