@@ -9,12 +9,11 @@ export interface DropdownOption {
   value: string | number;
 }
 
-interface NumberId {
-  name: string;
+export interface HasNumberId {
   id: number;
 }
 
-export interface NameId extends NumberId {
+export interface HasName {
   name: string;
 }
 

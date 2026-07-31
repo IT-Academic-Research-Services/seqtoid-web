@@ -34,7 +34,15 @@ module Mutations
     def metadata_value(value_input)
       return value_input.string_value unless value_input.string_value.nil?
 
-      value_input.location_value&.to_h&.deep_stringify_keys
+      location = value_input.location_value&.to_h&.deep_stringify_keys
+      return nil unless location
+
+      # If the location is a plain-text entry, just use the name.
+      if location.keys.sort == ["name", "title"]
+        location["name"]
+      else
+        location.to_json
+      end
     end
   end
 end

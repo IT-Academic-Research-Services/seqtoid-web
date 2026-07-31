@@ -5,14 +5,17 @@ import {
   sortResults,
 } from "~/components/views/SampleUploadFlow/utils";
 import { SampleTypeProps } from "~/interface/shared";
-import LiveSearchPopBox, { SearchResults } from "~ui/controls/LiveSearchPopBox";
+import LiveSearchPopBox, {
+  SearchResult,
+  SearchResults,
+} from "~ui/controls/LiveSearchPopBox";
 
 const SUGGESTED = "SUGGESTED";
 const ALL = "ALL";
 
 interface SampleTypeSearchBoxProps {
   className: string;
-  onResultSelect(params: any): void;
+  onResultSelect(params: { result: SearchResult }): void;
   value: string;
   sampleTypes: SampleTypeProps[];
   taxaCategory: string;

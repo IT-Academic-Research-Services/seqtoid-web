@@ -6,7 +6,7 @@ import {
 } from "~/components/views/SampleUploadFlow/constants";
 import { ThresholdFilterData } from "../dropdown";
 import { WorkflowRun } from "../sample";
-import { BooleanNums, DateString, NameId } from "./generic";
+import { BooleanNums, DateString, HasName, HasNumberId } from "./generic";
 export interface AccessionData {
   best_accessions: AccessionsSummary[];
   num_accessions: number;
@@ -97,7 +97,7 @@ export type GenomeVizShape = $TSFixMe;
 
 export type HistogramShape = $TSFixMe;
 
-export interface HostGenome extends NameId {
+export interface HostGenome extends HasName, HasNumberId {
   samples_count: number;
   ercc_only: boolean;
   showAsOption: boolean;
@@ -376,8 +376,7 @@ export interface Background {
   alignment_config_names: string[];
 }
 
-export interface SampleTypeProps {
-  name: string;
+export interface SampleTypeProps extends HasName {
   group: string;
   insect_only: boolean;
   human_only: boolean;

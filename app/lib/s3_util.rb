@@ -147,4 +147,18 @@ module S3Util
       AwsClient[:s3].delete_objects({ bucket: bucket, delete: { objects: objects } })
     end
   end
+
+  def self.copy_with_tags(source_path, dest_path, tags = {})
+    source_bucket, source_key = parse_s3_path(source_path)
+    dest_bucket, dest_key = parse_s3_path(dest_path)
+    Rails.logger.debug("Copying S3 [#{source_bucket}/#{source_key}] -> [#{dest_bucket}/#{dest_key}] tags [#{URI.encode_www_form(tags)}]")
+
+    AwsClient[:s3].copy_object(
+      copy_source: "#{source_bucket}/#{source_key}",
+      bucket: dest_bucket,
+      key: dest_key,
+      tagging_directive: "REPLACE",
+      tagging: URI.encode_www_form(tags)
+    )
+  end
 end

@@ -8,6 +8,7 @@ import {
   MetadataValue,
   SampleFromApi,
   SampleType,
+  SampleTypeProps,
   StringNameId,
 } from "~/interface/shared";
 
@@ -153,11 +154,4 @@ export interface Row {
   "Host Organism"?: string;
   // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2411
   "Sample Name"?: string;
-}
-
-interface SampleTypeProps {
-  name: string;
-  group: string;
-  insect_only: boolean;
-  human_only: boolean;
 }

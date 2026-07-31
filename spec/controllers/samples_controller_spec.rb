@@ -768,6 +768,7 @@ RSpec.describe SamplesController, type: :controller do
         action = [
           "s3:GetObject",
           "s3:PutObject",
+          "s3:PutObjectTagging",
           "s3:CreateMultipartUpload",
           "s3:AbortMultipartUpload",
           "s3:ListMultipartUploadParts",
@@ -1298,7 +1299,7 @@ RSpec.describe SamplesController, type: :controller do
       # @collaborator has project view access but did not create the sample.
       @project = create(:project, users: [@joe, @collaborator])
       @sample = create(:sample, project: @project, user: @joe,
-                       pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_FAILED }])
+                                pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_FAILED }])
     end
 
     describe "PUT retry_pipeline_run (cheap retry)" do
@@ -1341,7 +1342,7 @@ RSpec.describe SamplesController, type: :controller do
       it "enforces the daily re-run cap for the owner" do
         sign_in @joe
         capped_sample = create(:sample, project: @project, user: @joe,
-                               pipeline_runs_data: Array.new(SamplesController::RERUN_DAILY_LIMIT) do
+                                        pipeline_runs_data: Array.new(SamplesController::RERUN_DAILY_LIMIT) do
                                  { finalized: 1, job_status: PipelineRun::STATUS_CHECKED }
                                end)
         put :kickoff_pipeline, params: { id: capped_sample.id, format: :json }

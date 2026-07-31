@@ -232,6 +232,7 @@ describe("GeoSearchInputBox rendering", () => {
     expect(onResultSelect).toHaveBeenCalledTimes(1);
     expect(onResultSelect.mock.calls[0][0].result).toEqual({
       name: "Mars Base One",
+      title: "Mars Base One",
     });
   });
 });

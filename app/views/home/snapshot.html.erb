@@ -2,8 +2,8 @@
   react_component('DiscoveryViewRouter', {
     domain: "snapshot",
     snapshotShareId: '<%= @share_id %>',
-    snapshotProjectName: '<%= @project_name %>',
+    snapshotProjectName: <%= raw escape_json(@project_name) %>,
     snapshotProjectDescription: JSON.parse('<%= raw escape_json(@project_description) %>'),
-    projectId: <%= raw("\"#{@project_id}\"") %>,
+    projectId: <%= raw escape_json(@project_id&.to_s) %>,
   }, 'page_content', JSON.parse('<%= raw escape_json(user_context)%>'));
 <% end %>

@@ -1,7 +1,9 @@
+import { Tag } from "@aws-sdk/client-s3";
 import { groupBy, maxBy, sortBy, sum } from "lodash/fp";
 import { openUrlInPopupWindow } from "~/components/utils/links";
+import { INPUT_FILE_S3_TAGS } from "~/components/views/SampleUploadFlow/constants";
 import { getURLParamString } from "~/helpers/url";
-import { SampleFromApi, SampleUploadType } from "~/interface/shared";
+import { HasName, SampleFromApi, SampleUploadType } from "~/interface/shared";
 
 const BASESPACE_OAUTH_URL = "https://basespace.illumina.com/oauth/authorize";
 const BASESPACE_OAUTH_WINDOW_NAME = "BASESPACE_OAUTH_WINDOW";
@@ -31,21 +33,17 @@ export const doesResultMatch = (result: $TSFixMe, query: $TSFixMe) => {
   // Match chars in any position. Good for acronyms. Ignore spaces.
   const noSpaces = query.replace(/\s*/gi, "");
   const regex = new RegExp(noSpaces.split("").join(".*"), "gi");
-  if (regex.test(result.name)) {
-    return true;
-  }
-  return false;
+  return regex.test(result.name);
 };
 
 // Sort matches by position of match. If no position, by func.
-export const sortResults = (
-  matchedResults: $TSFixMe,
-  query: $TSFixMe,
-  func: $TSFixMe,
+export const sortResults = <T extends HasName>(
+  matchedResults: T[],
+  query: string,
+  func: (__: T) => any,
 ) => {
   let sortedResults = sortBy(func, matchedResults);
   if (query !== "") {
-    // @ts-expect-error ts-migrate(2322) FIXME: Type 'never[]' is not assignable to type 'LodashSo... Remove this comment to see the full error message
     sortedResults = sortBy(
       result => sortResultsByMatch(result, query),
       sortedResults,
@@ -196,4 +194,18 @@ export const groupSamplesByLane = ({
   }
 
   return result;
+};
+
+export const inputFileS3Tags = (sampleId: number): Tag[] => {
+  return [...INPUT_FILE_S3_TAGS, { Key: "id", Value: sampleId.toString() }];
+};
+
+export const s3TagsToUrlParams = (tags: Tag[]) => {
+  return tags
+    .flatMap(({ Key, Value }) =>
+      Key && Value
+        ? `${encodeURIComponent(Key)}=${encodeURIComponent(Value)}`
+        : [],
+    )
+    .join("&");
 };

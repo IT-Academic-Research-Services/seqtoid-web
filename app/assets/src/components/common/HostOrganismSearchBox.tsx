@@ -5,11 +5,14 @@ import {
   sortResults,
 } from "~/components/views/SampleUploadFlow/utils";
 import { HostGenome } from "~/interface/shared";
-import LiveSearchPopBox, { SearchResults } from "~ui/controls/LiveSearchPopBox";
+import LiveSearchPopBox, {
+  SearchResult,
+  SearchResults,
+} from "~ui/controls/LiveSearchPopBox";
 
 interface HostOrganismSearchBoxProps {
   className?: string;
-  onResultSelect(params: any): void;
+  onResultSelect(params: { result: SearchResult }): void;
   value?: string;
   hostGenomes: HostGenome[];
 }
@@ -22,7 +25,6 @@ const HostOrganismSearchBox = ({
   hostGenomes,
 }: HostOrganismSearchBoxProps) => {
   const handleSearchTriggered = (query: string) => {
-    // @ts-expect-error Argument of type 'LodashSortBy1x2<unknown>' is not assignable to parameter of type 'HostGenome[]'
     return buildResults(getMatchesByCategory(query), query);
   };
 
@@ -41,13 +43,7 @@ const HostOrganismSearchBox = ({
   };
 
   const buildResults = (sortedHostGenomes: HostGenome[], query: string) => {
-    const formatResult = (
-      result: HostGenome,
-    ): {
-      title: string;
-      name: number;
-      description?: string;
-    } => {
+    const formatResult = (result: HostGenome): SearchResult => {
       const hostGenome = hostGenomes.find(hg => hg.id === result.id);
       return {
         title: result.name,

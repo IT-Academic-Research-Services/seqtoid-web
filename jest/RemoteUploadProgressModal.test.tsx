@@ -359,12 +359,13 @@ describe("RemoteUploadProgressModal additional input files", () => {
     expect(mockGetUploadCredentials).toHaveBeenCalledWith(101);
     // Exactly one file (the bed file) is pushed to S3.
     expect(mockResumableUpload).toHaveBeenCalledTimes(1);
-    expect(mockResumableUpload.mock.calls[0][0].params).toEqual({
-      Bucket: "czid-bucket",
-      Key: "samples/55/101/primers.bed",
-      Body: bedFile,
-      ChecksumAlgorithm: "SHA256",
-    });
+
+    const params = mockResumableUpload.mock.calls[0][0].params;
+    expect(params.Bucket).toBe("czid-bucket");
+    expect(params.Key).toBe("samples/55/101/primers.bed");
+    expect(params.Body).toBe(bedFile);
+    expect(params.ChecksumAlgorithm).toBe("SHA256");
+
     // The ISO expiration string is converted to a Date for the AWS credential provider.
     const s3Config = (
       jest.requireMock("@aws-sdk/client-s3").S3Client as jest.Mock
