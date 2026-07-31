@@ -3,6 +3,13 @@
   <script>
     window.SENTRY_DSN_FRONTEND = "<%= ENV["SENTRY_DSN_FRONTEND"] %>";
     window.ENVIRONMENT = "<%= Rails.env %>";
-    window.GIT_RELEASE_SHA = "<%= ENV["GIT_RELEASE_SHA"] %>";
+    <%# Frontend Sentry release = GIT_VERSION, baked into every image from the build's GIT_COMMIT
+        ARG (Dockerfile) and shared with the backend config.release (config/initializers/sentry.rb).
+        The digest-based rollup promotes the SAME image artifact dev->staging->prod, so this baked
+        value is correct in every tier with zero per-env bookkeeping. We deliberately do NOT read the
+        legacy ENV["GIT_RELEASE_SHA"] (an SSM param the retired ECS bin/deploy wrote per-env): the
+        Argo/gitops CD never updates it, so it drifted stale (frozen 2026-07-02) and mis-attributed
+        every frontend Sentry event. The window global keeps its name (consumed by index.tsx). %>
+    window.GIT_RELEASE_SHA = "<%= ENV["GIT_VERSION"] %>";
   </script>
 <% end %>
