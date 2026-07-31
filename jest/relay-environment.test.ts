@@ -91,7 +91,10 @@ describe("generateFetchFn request shape", () => {
     global.fetch = jest.fn().mockResolvedValue({
       json: jest
         .fn()
-        .mockResolvedValue({ data: null, errors: [{ message: "boom" }] }),
+        .mockResolvedValue({
+          data: { node: { id: "1" } },
+          errors: [{ message: "boom" }],
+        }),
     }) as unknown as typeof global.fetch;
 
     await runFetch(null);
@@ -106,7 +109,10 @@ describe("generateFetchFn request shape", () => {
     global.fetch = jest.fn().mockResolvedValue({
       json: jest
         .fn()
-        .mockResolvedValue({ data: null, errors: [{ message: "boom" }] }),
+        .mockResolvedValue({
+          data: { node: { id: "1" } },
+          errors: [{ message: "boom" }],
+        }),
     }) as unknown as typeof global.fetch;
 
     // No "query <Name>(" prefix, so QUERY_NAME_REGEX finds nothing.
@@ -122,7 +128,10 @@ describe("generateFetchFn request shape", () => {
     global.fetch = jest.fn().mockResolvedValue({
       json: jest
         .fn()
-        .mockResolvedValue({ data: null, errors: [{ message: "boom" }] }),
+        .mockResolvedValue({
+          data: { node: { id: "1" } },
+          errors: [{ message: "boom" }],
+        }),
     }) as unknown as typeof global.fetch;
 
     await runFetch(
