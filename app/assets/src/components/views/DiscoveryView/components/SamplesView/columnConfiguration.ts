@@ -615,6 +615,13 @@ const extractBenchmarkAdditionalInfo = ({ dataKey, rowData }) => {
 };
 
 const computeMetadataColumns = metadataFields => {
+  // SMP-1618: defensive guard against a non-array metadataFields value from the
+  // API (null/undefined/non-array). Calling .filter on such a value throws
+  // "t.filter is not a function" and error-boundaries out the whole SamplesView.
+  // Same defect class as the SMP-1462..1465 null/non-array API guards; treat a
+  // missing/malformed value as "no additional metadata columns".
+  const safeMetadataFields = Array.isArray(metadataFields) ? metadataFields : [];
+
   // The following metadata fields are hard-coded in fixedColumns
   // and will always be available on the samples table.
   const fixedMetadata = [
@@ -625,7 +632,7 @@ const computeMetadataColumns = metadataFields => {
     "ct_value",
   ];
 
-  const additionalMetadata = metadataFields.filter(
+  const additionalMetadata = safeMetadataFields.filter(
     mf => !fixedMetadata.includes(mf["key"]),
   );
 
