@@ -1,0 +1,88 @@
+name: ci-test base image
+
+# Builds + pushes the prebaked CI base image consumed by ci-test-mysql8.yml's shard jobs
+# (SMP-1579). The image bakes the apt (system) + pip (python) deps so each of the x8 shards
+# skips ~162s of cold dependency install. See .github/docker/ci-test-base.Dockerfile.
+#
+# REGISTRY: GHCR (ghcr.io/<owner>/seqtoid-web-ci-base). GHCR needs only the built-in
+# GITHUB_TOKEN with packages:write -- no AWS/ECR OIDC role wiring -- which is why it is chosen
+# over ECR for a CI-only convenience image that carries no app code or secrets.
+#
+# BOOTSTRAP ORDER (chicken-and-egg): ci-test-mysql8.yml pulls this image by :latest. That tag
+# must EXIST before the first ci-test run consumes it. When this change lands on integration/main
+# the push paths-filter below triggers a build automatically; if it does not (e.g. the pin files
+# did not change in the merge commit), run this workflow once via workflow_dispatch BEFORE relying
+# on the updated ci-test-mysql8. Until :latest exists the shard jobs cannot pull the container.
+#
+# The published GHCR package should be set to PUBLIC once (package settings) so PRs from forks --
+# whose GITHUB_TOKEN cannot read a private org package -- can still pull it. The image contains
+# only public apt/pip deps, so public visibility is safe.
+
+on:
+  push:
+    branches: [integration, main]
+    paths:
+      # Refresh the image whenever a baked pin input changes. Keep this list in sync with the
+      # content-hash computed below and with bin/ci-test's dep groups.
+      - 'requirements.txt'
+      - 'Gemfile.lock'
+      - '.github/docker/ci-test-base.Dockerfile'
+      - '.github/workflows/ci-test-base-image.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-test-base-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-push:
+    name: Build + push CI base image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Compute content-addressed tag (hash of the pin inputs)
+        id: tag
+        shell: bash
+        run: |
+          # Tag by a stable hash of the exact files that determine the baked contents + bin/ci-test's
+          # dep pins. Any change to a pin input yields a new tag; the paths filter above guarantees
+          # this workflow re-runs to publish it. Owner is lower-cased -- GHCR repository references
+          # must be lowercase (the org name has uppercase letters).
+          hash="$(cat requirements.txt Gemfile.lock .github/docker/ci-test-base.Dockerfile | sha256sum | cut -c1-16)"
+          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          echo "image=${REGISTRY}/${owner}/seqtoid-web-ci-base" >> "$GITHUB_OUTPUT"
+          echo "tag=deps-${hash}" >> "$GITHUB_OUTPUT"
+          echo "Base image: ${REGISTRY}/${owner}/seqtoid-web-ci-base:deps-${hash} (+ :latest)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push (content-hash tag + latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .github/docker/ci-test-base.Dockerfile
+          # amd64 only: biom-format has no arm64 wheel (matches bin/ci-test / Dockerfile.test), and
+          # the GitHub-hosted runners that consume this image are amd64.
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.tag.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
