@@ -30,7 +30,7 @@ import {
   CurrentTabSample,
   DBType,
 } from "~/interface/sampleView";
-import { SampleId, Taxon } from "~/interface/shared";
+import { AnnotationType, SampleId, Taxon } from "~/interface/shared";
 import { getIlluminaColumns } from "./components/columns/illuminaColumns";
 import { getNanoporeColumns } from "./components/columns/nanoporeColumns";
 import { getNonNumericColumns } from "./components/columns/nonNumericColumns";
@@ -67,7 +67,10 @@ interface ReportTableProps {
   isConsensusGenomeEnabled: boolean;
   isFastaDownloadEnabled: boolean;
   isPhyloTreeAllowed: boolean;
-  onAnnotationUpdate: () => void;
+  onAnnotationUpdate: (
+    taxId: number,
+    annotationType: AnnotationType | null,
+  ) => void;
   onBlastClick: (params: BlastData) => void;
   onConsensusGenomeClick: (params: ConsensusGenomeClick) => void;
   onCoverageVizClick: (newCoverageVizParams: CoverageVizParamsRaw) => void;

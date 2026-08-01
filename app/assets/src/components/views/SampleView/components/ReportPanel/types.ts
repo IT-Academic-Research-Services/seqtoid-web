@@ -11,7 +11,12 @@ import {
   Lineage,
   SampleReportViewMode,
 } from "~/interface/sampleView";
-import { Background, PipelineRun, Taxon } from "~/interface/shared";
+import {
+  AnnotationType,
+  Background,
+  PipelineRun,
+  Taxon,
+} from "~/interface/shared";
 import { DispatchSelectedOptionsType } from "../../utils";
 
 export interface ReportPanelProps {
@@ -23,7 +28,10 @@ export interface ReportPanelProps {
   clearAllFilters: () => void;
   enableMassNormalizedBackgrounds: boolean;
   filteredReportData: Taxon[];
-  handleAnnotationUpdate: () => void;
+  handleAnnotationUpdate: (
+    taxId: number,
+    annotationType: AnnotationType | null,
+  ) => void;
   handleBlastClick: (x: BlastData) => void;
   handleConsensusGenomeClick: (x: ConsensusGenomeClick, sample: Sample) => void;
   handleCoverageVizClick: (newCoverageVizParams: CoverageVizParamsRaw) => void;

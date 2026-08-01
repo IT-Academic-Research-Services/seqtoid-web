@@ -17,7 +17,7 @@ import {
   ConsensusGenomeClick,
   CurrentTabSample,
 } from "~/interface/sampleView";
-import { SampleId, Taxon } from "~/interface/shared";
+import { AnnotationType, SampleId, Taxon } from "~/interface/shared";
 import { PhyloTreeModalParamsType } from "../../../ReportTable";
 import { AnnotationMenu } from "../components/AnnotationMenu";
 import { GenusLevelPreview } from "../components/GenusLevelPreview";
@@ -39,7 +39,10 @@ export const getNameRenderer = (
   handlePhyloTreeModalOpen: (
     phyloTreeModalParams: PhyloTreeModalParamsType,
   ) => void,
-  onAnnotationUpdate: () => void,
+  onAnnotationUpdate: (
+    taxId: number,
+    annotationType: AnnotationType | null,
+  ) => void,
   onBlastClick: (params: BlastData) => void,
   onConsensusGenomeClick: (options: ConsensusGenomeClick) => void,
   onPreviousConsensusGenomeClick: (params: ConsensusGenomeClick) => void,

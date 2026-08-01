@@ -17,7 +17,10 @@ import { AnnotationType } from "~/interface/shared";
 import cs from "./annotation_menu.scss";
 
 interface AnnotationMenuProps {
-  onAnnotationUpdate: () => void;
+  onAnnotationUpdate: (
+    taxId: number,
+    annotationType: AnnotationType | null,
+  ) => void;
   pipelineRunId: number | string | null;
   taxonId: number;
   currentLabelType?: "hit" | "not_a_hit" | "inconclusive" | "none";
@@ -53,13 +56,16 @@ export const AnnotationMenu = ({
     setAnchorEl(null);
   };
 
-  const handleAnnotationCreation = (annotationType: AnnotationType) => {
+  const handleAnnotationCreation = (annotationType: AnnotationType | null) => {
     createAnnotation({
       pipelineRunId,
       taxId: taxonId,
       annotationType,
     }).then(() => {
-      onAnnotationUpdate();
+      // Optimistically update just this taxon's annotation in local report
+      // state so the label renders immediately, instead of blocking on a full
+      // report refetch (SMP-1605). "None" arrives as null and clears the label.
+      onAnnotationUpdate(taxonId, annotationType);
     });
   };
 
