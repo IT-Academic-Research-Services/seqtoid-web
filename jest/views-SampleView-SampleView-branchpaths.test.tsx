@@ -449,19 +449,17 @@ describe("SampleView -- background compatibility warnings", () => {
     expect(text).toContain("2021-01-22");
   });
 
-  it("re-fetches the report with no explicit background on an annotation update", async () => {
+  it("does not re-fetch the report on an annotation update", async () => {
     await renderSampleView();
     await waitFor(() => expect(mockedGetSampleReportData).toHaveBeenCalled());
     mockedGetSampleReportData.mockClear();
 
-    // handleAnnotationUpdate calls fetchSampleReportData() with no argument at
-    // all, exercising its default parameter.
-    await act(async () => {
-      await childProps.report.handleAnnotationUpdate();
-    });
+    // SMP-1605: setting an annotation is now an optimistic local update
+    // (setReportData), not a full report refetch, so getSampleReportData must
+    // not be called again. taxId 300 is present in the mocked report.
+    act(() => childProps.report.handleAnnotationUpdate(300, "hit"));
 
-    expect(mockedGetSampleReportData).toHaveBeenCalledTimes(1);
-    expect(mockedGetSampleReportData.mock.calls[0][0].sampleId).toBe(1);
+    expect(mockedGetSampleReportData).not.toHaveBeenCalled();
   });
 });
 

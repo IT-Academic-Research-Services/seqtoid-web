@@ -468,13 +468,18 @@ describe("SampleView -- background compatibility guards", () => {
 
   it("passes an explicit backgroundId straight through to the report fetch", async () => {
     await renderSampleView();
+    await waitFor(() => expect(mockedGetSampleReportData).toHaveBeenCalled());
     mockedGetSampleReportData.mockClear();
 
-    // handleAnnotationUpdate is fetchSampleReportData; calling it with an
-    // explicit id takes the `backgroundId || ...` short-circuit.
-    await act(async () => {
-      await childProps.report.handleAnnotationUpdate({ backgroundId: 5 });
-    });
+    // Selecting a compatible background (id 5 is owned + not mass-normalized)
+    // drives the report-fetch effect, which threads selectedOptions.background
+    // into getSampleReportData.
+    await act(async () =>
+      childProps.report.dispatchSelectedOptions({
+        type: "optionChanged",
+        payload: { key: "background", value: 5 },
+      }),
+    );
 
     await waitFor(() => expect(mockedGetSampleReportData).toHaveBeenCalled());
     const lastCall =
@@ -485,16 +490,13 @@ describe("SampleView -- background compatibility guards", () => {
   });
 
   it("falls back to no background when the sample has none selected", async () => {
+    // With no ?background param and no backgrounds available, the fetch effect
+    // runs with the default (null) background and sends null to the endpoint.
     mockedGetBackgrounds.mockResolvedValue({
       owned_backgrounds: [],
       other_backgrounds: [],
     });
     await renderSampleView();
-    mockedGetSampleReportData.mockClear();
-
-    await act(async () => {
-      await childProps.report.handleAnnotationUpdate({});
-    });
 
     await waitFor(() => expect(mockedGetSampleReportData).toHaveBeenCalled());
     const lastCall =
@@ -502,6 +504,17 @@ describe("SampleView -- background compatibility guards", () => {
         mockedGetSampleReportData.mock.calls.length - 1
       ][0];
     expect(lastCall.background).toBeNull();
+  });
+
+  it("does not re-fetch the report on an annotation update", async () => {
+    // SMP-1605: setting an annotation is now an optimistic local update, not a
+    // full report refetch, so it must not call getSampleReportData again.
+    await renderSampleView();
+    mockedGetSampleReportData.mockClear();
+
+    act(() => childProps.report.handleAnnotationUpdate(301, "hit"));
+
+    expect(mockedGetSampleReportData).not.toHaveBeenCalled();
   });
 });
 

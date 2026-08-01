@@ -90,6 +90,7 @@ import {
 } from "~/interface/sampleView";
 import {
   AccessionData,
+  AnnotationType,
   Background,
   ConsensusGenomeData,
   PipelineRun,
@@ -743,6 +744,46 @@ const SampleViewComponent = ({
       pipelineRun,
       processRawSampleReportData,
     ],
+  );
+
+  // Optimistically apply an annotation to the matching taxon in local report
+  // state instead of blocking on a full report refetch (SMP-1605). The backend
+  // mutation (createAnnotation) has already persisted the change, so the report
+  // stays correct across refreshes; here we only need the label to render
+  // immediately. reportData is a list of genus-level rows, each with a nested
+  // `species` array, so the annotated taxon may be a genus row or one of its
+  // species children. Producing a new reportData reference re-runs the
+  // filterReportData effect keyed on reportData, which refreshes the displayed
+  // filteredReportData (and annotation-derived counts/filters) automatically.
+  // "None" arrives as a null annotationType and clears the taxon's annotation,
+  // matching how the renderer treats a falsy annotation as ANNOTATION_NONE.
+  const handleAnnotationUpdate = useCallback(
+    (taxId: number, annotationType: AnnotationType | null) => {
+      const nextAnnotation = annotationType ?? undefined;
+      setReportData(prevReportData =>
+        prevReportData.map(genusRow => {
+          if (genusRow.taxId === taxId) {
+            return { ...genusRow, annotation: nextAnnotation };
+          }
+          const species = genusRow.species;
+          if (
+            Array.isArray(species) &&
+            species.some(speciesRow => speciesRow.taxId === taxId)
+          ) {
+            return {
+              ...genusRow,
+              species: species.map(speciesRow =>
+                speciesRow.taxId === taxId
+                  ? { ...speciesRow, annotation: nextAnnotation }
+                  : speciesRow,
+              ),
+            };
+          }
+          return genusRow;
+        }),
+      );
+    },
+    [],
   );
 
   const persistNewBackgroundModelSelection = useCallback(
@@ -1399,7 +1440,7 @@ const SampleViewComponent = ({
             dispatchSelectedOptions={dispatchSelectedOptions}
             enableMassNormalizedBackgrounds={enableMassNormalizedBackgrounds}
             filteredReportData={filteredReportData}
-            handleAnnotationUpdate={fetchSampleReportData}
+            handleAnnotationUpdate={handleAnnotationUpdate}
             handleBlastClick={handleBlastClick}
             handleConsensusGenomeClick={handleConsensusGenomeClick}
             handleCoverageVizClick={handleCoverageVizClick}
