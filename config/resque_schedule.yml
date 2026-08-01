@@ -40,3 +40,8 @@ ResolveScreeningHolds:
   class: ResolveScreeningHolds
   queue: resolve_screening_holds
   description: "Polls Descartes IMTimeStampSearch for restricted-party adjudication verdicts and releases or keeps holds. Self-skips when Descartes screening is disabled."
+EnforceDataRetention:
+  cron: "0 2 * * *" # 2:00am PT daily (spaced out from other daily jobs)
+  class: EnforceDataRetention
+  queue: enforce_data_retention
+  description: "CZID-520 enforces the data retention policy: purges expired sample outputs/intermediates. Dry-run by default; only deletes when the ENABLE_DATA_RETENTION_ENFORCEMENT AppConfig flag is set."
