@@ -128,6 +128,22 @@ describe("computeColumnsByWorkflow metadata columns", () => {
     const custom = withMeta.find(c => c.dataKey === "custom_field");
     expect(custom.label).toBe("Custom Field");
   });
+
+  // SMP-1618: a null/undefined/non-array metadataFields value from the API must
+  // not throw ("t.filter is not a function"); it should yield only the fixed
+  // columns instead of error-boundarying out the whole SamplesView.
+  it("does not throw and appends no metadata columns for undefined/null/non-array metadataFields", () => {
+    const fixedKeys = keysOf(build(WorkflowType.SHORT_READ_MNGS));
+
+    for (const badValue of [undefined, null, "not-an-array", 42, {}]) {
+      expect(() =>
+        build(WorkflowType.SHORT_READ_MNGS, { metadataFields: badValue }),
+      ).not.toThrow();
+      expect(
+        keysOf(build(WorkflowType.SHORT_READ_MNGS, { metadataFields: badValue })),
+      ).toEqual(fixedKeys);
+    }
+  });
 });
 
 describe("computeColumnsByWorkflow cell data getters", () => {

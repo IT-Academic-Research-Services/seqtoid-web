@@ -5,14 +5,45 @@
 # Redis, RAILS_ENV=test, dummy AWS_* env.
 set -euo pipefail
 
-echo "::group::System deps"
-# python3-dev + build-essential are required to compile biom-format's C
-# extension (Python.h); without them the pip step fails. nodejs for asset bits,
-# default-mysql-client for the mysql CLI, default-libmysqlclient-dev for the
-# mysql2 native gem build.
-apt-get update && apt-get install -y python3-pip python3-dev build-essential nodejs default-mysql-client default-libmysqlclient-dev
-pip3 config set global.break-system-packages true
-echo "::endgroup::"
+# SMP-1579: the apt + pip groups below are the fixed per-shard cost of the x8 MySQL 8 CI gate.
+# They are PRE-BAKED into a CI base image (.github/docker/ci-test-base.Dockerfile, built by
+# .github/workflows/ci-test-base-image.yml) which ci-test-mysql8.yml points its shard containers
+# at. That image sets CI_TEST_PREBAKED=1, so when this script runs inside it we SKIP the installs.
+# Local/serial runs (bin/ci-local on bare ruby:3.3.6) leave CI_TEST_PREBAKED unset and install
+# normally -- the SSOT script still works everywhere. The apt/pip sets here and in the Dockerfile
+# MUST stay identical (the fail-closed check below catches a stale base image).
+if [ -n "${CI_TEST_PREBAKED:-}" ]; then
+  echo "::group::System + Python deps (PREBAKED base image -- skipping apt/pip install)"
+  # Fail-closed: trust the marker only if the baked tools are actually present. A stale/wrong base
+  # image that sets the marker but lacks a dep would otherwise fail deep in schema-load or rspec
+  # with a confusing error; surface it here instead. Each check maps to a required baked package:
+  #   mysql -> default-mysql-client, pip3 -> python3-pip, cc -> build-essential,
+  #   node/nodejs -> nodejs, python `import biom` -> biom-format (proves python3-dev + the whole
+  #   pip group compiled and installed).
+  missing=""
+  command -v mysql >/dev/null 2>&1 || missing="$missing default-mysql-client(mysql)"
+  command -v pip3  >/dev/null 2>&1 || missing="$missing python3-pip(pip3)"
+  command -v cc    >/dev/null 2>&1 || missing="$missing build-essential(cc)"
+  { command -v node || command -v nodejs; } >/dev/null 2>&1 || missing="$missing nodejs(node)"
+  python3 -c 'import biom' >/dev/null 2>&1 || missing="$missing biom-format(python:biom)"
+  if [ -n "$missing" ]; then
+    echo "ERROR: CI_TEST_PREBAKED is set but required prebaked deps are missing:$missing" >&2
+    echo "       The CI base image (.github/docker/ci-test-base.Dockerfile) is stale or wrong." >&2
+    echo "       Rebuild it via .github/workflows/ci-test-base-image.yml, or unset CI_TEST_PREBAKED" >&2
+    echo "       to install deps inline. Refusing to run against an incomplete environment." >&2
+    exit 1
+  fi
+  echo "::endgroup::"
+else
+  echo "::group::System deps"
+  # python3-dev + build-essential are required to compile biom-format's C
+  # extension (Python.h); without them the pip step fails. nodejs for asset bits,
+  # default-mysql-client for the mysql CLI, default-libmysqlclient-dev for the
+  # mysql2 native gem build.
+  apt-get update && apt-get install -y python3-pip python3-dev build-essential nodejs default-mysql-client default-libmysqlclient-dev
+  pip3 config set global.break-system-packages true
+  echo "::endgroup::"
+fi
 
 echo "::group::Ruby deps"
 gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
@@ -20,12 +51,16 @@ bundle config path vendor/bundle
 bundle install --jobs 4 --retry 3
 echo "::endgroup::"
 
-echo "::group::Python deps"
-pip3 install --upgrade pip
-pip3 install "cython<3.0.0"
-pip3 install "pyyaml==5.4.1" --no-build-isolation
-pip3 install -r requirements.txt
-echo "::endgroup::"
+# SMP-1579: skip when prebaked (see the System deps block above). The base image bakes the exact
+# same steps + pins, and the fail-closed check above already verified biom-format imports.
+if [ -z "${CI_TEST_PREBAKED:-}" ]; then
+  echo "::group::Python deps"
+  pip3 install --upgrade pip
+  pip3 install "cython<3.0.0"
+  pip3 install "pyyaml==5.4.1" --no-build-isolation
+  pip3 install -r requirements.txt
+  echo "::endgroup::"
+fi
 
 echo "::group::Dummy static assets (ruby tests don't need real bundles)"
 mkdir -p app/assets/dist

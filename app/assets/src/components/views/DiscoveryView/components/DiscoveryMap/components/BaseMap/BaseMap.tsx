@@ -28,9 +28,22 @@ interface BaseMapState {
     longitude;
     zoom;
   };
+  // Measured pixel size of the map container. <MapGL> is not mounted until BOTH
+  // are > 0: width/height default to the string "100%", so react-map-gl sizes
+  // itself against the container. When the map mounts before its flex container
+  // has been laid out that container is 0x0, which feeds a degenerate viewport
+  // into react-map-gl's WebMercator projection and throws "Pixel project matrix
+  // not invertible" (SMP-1603 / SMP-1587). Gating the mount on a non-zero
+  // measured box avoids the degenerate render without changing map behavior once
+  // it is sized.
+  containerWidth: number;
+  containerHeight: number;
 }
 
 class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
+  containerRef = React.createRef<HTMLDivElement>();
+  resizeObserver: ResizeObserver | null = null;
+
   constructor(props: BaseMapProps) {
     super(props);
 
@@ -43,8 +56,40 @@ class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
         longitude,
         zoom,
       },
+      containerWidth: 0,
+      containerHeight: 0,
     };
   }
+
+  componentDidMount() {
+    // Measure now (covers the container that is already laid out) and again on
+    // every resize, so <MapGL> mounts as soon as the container has a real box.
+    this.measureContainer();
+    if (typeof ResizeObserver !== "undefined" && this.containerRef.current) {
+      this.resizeObserver = new ResizeObserver(this.measureContainer);
+      this.resizeObserver.observe(this.containerRef.current);
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+  }
+
+  measureContainer = () => {
+    const el = this.containerRef.current;
+    if (!el) return;
+    const containerWidth = el.clientWidth;
+    const containerHeight = el.clientHeight;
+    if (
+      containerWidth !== this.state.containerWidth ||
+      containerHeight !== this.state.containerHeight
+    ) {
+      this.setState({ containerWidth, containerHeight });
+    }
+  };
 
   updateViewport = viewport => {
     const { updateViewport, viewBounds, width, height } = this.props;
@@ -94,31 +139,37 @@ class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
       popups,
       tooltip,
     } = this.props;
-    const { viewport } = this.state;
+    const { viewport, containerWidth, containerHeight } = this.state;
+
+    // Only render <MapGL> once the container has a non-degenerate (non-zero) box;
+    // rendering into a 0x0 viewport throws "Pixel project matrix not invertible".
+    const hasSize = containerWidth > 0 && containerHeight > 0;
 
     const styleURL = `https://api.maptiler.com/maps/${mapStyleId}/style.json?key=${mapTilerKey}`;
     return (
-      <div className={cs.mapContainer}>
-        <MapGL
-          mapStyle={styleURL}
-          onClick={onClick}
-          onLoad={this.setCompactAttribution}
-          onViewportChange={this.updateViewport}
-          // Style prop applies to the container and all overlays
-          style={{ position: "absolute" }}
-          {...viewport}
-        >
-          {banner}
-          {markers}
-          {popups}
-          {tooltip}
-
-          <NavigationControl
+      <div className={cs.mapContainer} ref={this.containerRef}>
+        {hasSize && (
+          <MapGL
+            mapStyle={styleURL}
+            onClick={onClick}
+            onLoad={this.setCompactAttribution}
             onViewportChange={this.updateViewport}
-            showCompass={false}
-            className={cs.zoomControl}
-          />
-        </MapGL>
+            // Style prop applies to the container and all overlays
+            style={{ position: "absolute" }}
+            {...viewport}
+          >
+            {banner}
+            {markers}
+            {popups}
+            {tooltip}
+
+            <NavigationControl
+              onViewportChange={this.updateViewport}
+              showCompass={false}
+              className={cs.zoomControl}
+            />
+          </MapGL>
+        )}
       </div>
     );
   }

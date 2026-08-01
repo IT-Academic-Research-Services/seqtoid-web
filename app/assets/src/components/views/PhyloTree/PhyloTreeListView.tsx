@@ -271,8 +271,10 @@ class PhyloTreeListViewCC extends React.Component<
   handleSaveClick = async () => {
     // TODO (gdingle): add analytics tracking?
     const params = parseUrlParams();
+    // SMP-1621: sampleDetailsByNodeName may be absent from the phylo tree API
+    // response; default to {} so Object.values does not throw on null/undefined.
     const sampleIds = Object.values(
-      this.state.currentTree.sampleDetailsByNodeName,
+      this.state.currentTree.sampleDetailsByNodeName ?? {},
     )
       .map((details: $TSFixMe) => details.sample_id)
       .filter((s: $TSFixMe) => !!s);

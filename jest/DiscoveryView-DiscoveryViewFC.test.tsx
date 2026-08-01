@@ -264,11 +264,26 @@ describe("DiscoveryViewFC fetchTotalWorkflowCounts", () => {
     expect(counts).toEqual({ "consensus-genome": 9 });
   });
 
-  it("throws when the total-count response has no aggregate", async () => {
+  // SMP-1619: a missing aggregate is benign (empty project / partial response),
+  // so it must resolve to an empty result instead of throwing and crashing the
+  // view. Fatal GraphQL errors are handled separately at the relay layer.
+  it("returns empty counts when the total-count response has no aggregate", async () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     responses[TOTAL_COUNT] = { fedWorkflowRunsAggregateTotalCount: null };
-    await expect(renderFC()().fetchTotalWorkflowCounts("5")).rejects.toThrow(
-      /Missing project workflows total count data/,
-    );
+    await expect(
+      renderFC()().fetchTotalWorkflowCounts("5"),
+    ).resolves.toBeUndefined();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("returns empty counts when the total-count response is empty", async () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    responses[TOTAL_COUNT] = {};
+    await expect(
+      renderFC()().fetchTotalWorkflowCounts("5"),
+    ).resolves.toBeUndefined();
+    warnSpy.mockRestore();
   });
 });
 
