@@ -71,6 +71,27 @@ that makes something "known-good" and sends it to dev. Because every change in
 `integration` was already reviewed and green on its own PR, the weekly roll-up is an
 aggregation of already-vetted work.
 
+### Keeping `integration` current with `main` (back-sync + drift guard)
+
+Anything that lands on `main` outside the weekly roll-up -- a hotfix, or CI/infra work
+merged direct -- is back-synced to `integration` by `sync-main-to-integration.yml` (it
+fast-forwards `integration` to `main` when possible, else opens a `gitops/sync-*` PR).
+
+The subtle failure this does **not** catch on its own: a workflow fix on `main` can be
+**silently reverted on `integration`** when a long-lived feature branch that predates the
+fix merges in carrying the OLD `.github/workflows/*` version. Because `integration`'s
+workflows gate every PR into `integration`, that silent regression re-arms real breakage
+with no signal (it happened once -- the `ci-test` concurrency fix was clobbered by an
+unrelated merge and only caught by hand). Two guards protect against it:
+
+- **`workflows-drift-guard.yml`** (scheduled + on push to `integration`) fails loudly when
+  any `.github/workflows/**` file on `integration` is missing a commit that exists on
+  `main` (i.e. `integration` is *behind* on that file). It deliberately stays quiet when
+  `integration` is merely *ahead* (unpromoted feature work touching a file `main` never
+  changed). Remediate by running `Sync main -> integration`.
+- **`CODEOWNERS`** marks `/.github/workflows/` so a reviewer sees any workflow change --
+  effective once the branch's protection rule enables "Require review from Code Owners".
+
 ### Hotfix (expedited promotion)
 
 An urgent dev fix does **not** wait for the weekly cron. It still flows **through
