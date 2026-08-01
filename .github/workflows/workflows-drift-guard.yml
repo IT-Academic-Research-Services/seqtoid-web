@@ -1,0 +1,72 @@
+name: Workflows drift guard (integration behind main)
+
+# SMP-1599 / czid#911. A workflow fix on `main` can be silently reverted on `integration` when a
+# long-lived feature branch that predates the fix merges in carrying the OLD .github/workflows/* version.
+# integration's workflows gate every PR into integration, so a silent revert re-arms real breakage with no
+# signal (this happened: the ci-test concurrency fix #254 was clobbered by the SHARD_TOTAL 4->8 merge,
+# caught manually in #258).
+#
+# This guard fails LOUDLY when integration is BEHIND main on any .github/workflows/** file -- i.e. main has
+# a commit touching that file that integration lacks. It deliberately does NOT fire when integration is
+# merely AHEAD (unpromoted feature work): a file integration changed but main did not has no missing
+# main-commit, so it is skipped. Remediate by running `Sync main -> integration`. See docs/branching.md.
+
+on:
+  schedule:
+    - cron: "17 14 * * 1-5" # weekday mid-morning ET; the reliable backstop (schedule runs from the default branch)
+  push:
+    branches: [integration] # catch a feature merge that reverts a workflow the moment it lands on integration
+    paths: [".github/workflows/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift-guard:
+    name: integration .github/workflows behind main?
+    # Trunk-only: never run on forks (e.g. the thorvath-slower mirror).
+    if: github.repository == 'IT-Academic-Research-Services/seqtoid-web'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the branch comparison)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect integration workflows drifted behind main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main integration
+          base=origin/main
+          int=origin/integration
+
+          drift=0
+          summary=""
+          # Only consider files that actually DIFFER between the two branches; for each, integration is
+          # "behind" iff main has >=1 commit touching it that integration lacks (git log int..base -- file).
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            missing="$(git log --oneline "$int".."$base" -- "$f" 2>/dev/null || true)"
+            if [ -n "$missing" ]; then
+              drift=1
+              summary="${summary}"$'\n'"### \`$f\` — integration is behind main"$'\n'
+              summary="${summary}$(printf '%s\n' "$missing" | sed 's/^/- /')"$'\n'
+            fi
+          done < <(git diff --name-only "$int" "$base" -- .github/workflows/)
+
+          if [ "$drift" = "1" ]; then
+            {
+              echo "## :rotating_light: integration workflows have drifted BEHIND main"
+              echo ""
+              echo "One or more \`.github/workflows/**\` files on \`integration\` are missing commits that exist on \`main\`."
+              echo "That is exactly how a workflow fix on main gets silently reverted on integration (a pre-fix feature branch merge)."
+              echo "${summary}"
+              echo ""
+              echo "### Remediate"
+              echo "Run **Actions → \`Sync main -> integration\` → Run workflow** (or merge main's workflow changes into integration), then re-run this guard. See \`docs/branching.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Workflows drift::integration .github/workflows/** is behind main — see the job summary for the drifted files + missing commits."
+            exit 1
+          fi
+          echo "OK: integration .github/workflows/** is not behind main."
