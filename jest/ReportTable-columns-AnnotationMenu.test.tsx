@@ -170,7 +170,12 @@ describe("AnnotationMenu -- selection", () => {
       taxId: 573,
       annotationType,
     });
-    await waitFor(() => expect(onAnnotationUpdate).toHaveBeenCalledTimes(1));
+    // Optimistic update: the callback receives the taxon id and chosen type so
+    // the caller can patch just that row instead of refetching (SMP-1605).
+    await waitFor(() =>
+      expect(onAnnotationUpdate).toHaveBeenCalledWith(573, annotationType),
+    );
+    expect(onAnnotationUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("posts the None choice as null rather than the string 'none'", async () => {
@@ -183,7 +188,10 @@ describe("AnnotationMenu -- selection", () => {
       taxId: 573,
       annotationType: null,
     });
-    await waitFor(() => expect(onAnnotationUpdate).toHaveBeenCalled());
+    // "None" forwards a null type so the caller can clear the taxon's label.
+    await waitFor(() =>
+      expect(onAnnotationUpdate).toHaveBeenCalledWith(573, null),
+    );
   });
 
   it("closes the menu after a choice is made", () => {

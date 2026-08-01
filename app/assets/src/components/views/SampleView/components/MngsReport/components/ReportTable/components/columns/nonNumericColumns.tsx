@@ -7,7 +7,7 @@ import {
   CurrentTabSample,
   SortFunctionsParams,
 } from "~/interface/sampleView";
-import { SampleId, Taxon } from "~/interface/shared";
+import { AnnotationType, SampleId, Taxon } from "~/interface/shared";
 import {
   PhyloTreeModalParamsType,
   STRING_NULL_VALUES,
@@ -33,7 +33,10 @@ export const getNonNumericColumns = (
   handlePhyloTreeModalOpen: (
     phyloTreeModalParams: PhyloTreeModalParamsType,
   ) => void,
-  onAnnotationUpdate: () => void,
+  onAnnotationUpdate: (
+    taxId: number,
+    annotationType: AnnotationType | null,
+  ) => void,
   onBlastClick: (params: BlastData) => void,
   onConsensusGenomeClick: (options: ConsensusGenomeClick) => void,
   onPreviousConsensusGenomeClick: (params: ConsensusGenomeClick) => void,

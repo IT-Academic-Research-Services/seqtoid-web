@@ -10,7 +10,12 @@ import {
   Lineage,
   SampleReportViewMode,
 } from "~/interface/sampleView";
-import { Background, PipelineRun, Taxon } from "~/interface/shared";
+import {
+  AnnotationType,
+  Background,
+  PipelineRun,
+  Taxon,
+} from "~/interface/shared";
 import { DispatchSelectedOptionsType } from "../../utils";
 
 export interface MngsReportProps {
@@ -20,7 +25,10 @@ export interface MngsReportProps {
   dispatchSelectedOptions: React.Dispatch<DispatchSelectedOptionsType>;
   enableMassNormalizedBackgrounds: boolean;
   filteredReportData: Taxon[];
-  handleAnnotationUpdate: () => void;
+  handleAnnotationUpdate: (
+    taxId: number,
+    annotationType: AnnotationType | null,
+  ) => void;
   handleBlastClick: (x: BlastData) => void;
   handleConsensusGenomeClick: (
     params: ConsensusGenomeClick,

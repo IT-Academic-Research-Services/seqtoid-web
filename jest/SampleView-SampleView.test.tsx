@@ -712,6 +712,62 @@ describe("SampleView -- report actions", () => {
   });
 });
 
+describe("SampleView -- optimistic annotation update", () => {
+  // SMP-1605: setting an annotation used to trigger a full report refetch, so
+  // the label only changed after the heavy round-trip finished. It now patches
+  // just the affected taxon in local report state (the backend mutation has
+  // already persisted the value), so the change is visible immediately.
+  it("applies a species annotation in place without refetching the report", async () => {
+    await renderSampleView();
+    await waitFor(() => expect(childProps.report.reportData).toHaveLength(1));
+    const callsAfterLoad = mockedGetSampleReportData.mock.calls.length;
+
+    act(() => childProps.report.handleAnnotationUpdate(301, "hit"));
+
+    await waitFor(() =>
+      expect(childProps.report.reportData[0].species[0].annotation).toBe("hit"),
+    );
+    // The genus row itself is untouched.
+    expect(childProps.report.reportData[0].annotation).toBeUndefined();
+    // The change flows through to the filtered data the table actually renders.
+    expect(
+      childProps.report.filteredReportData[0].filteredSpecies[0].annotation,
+    ).toBe("hit");
+    // No extra report request: the whole point of the fix.
+    expect(mockedGetSampleReportData.mock.calls.length).toBe(callsAfterLoad);
+  });
+
+  it("applies a genus-level annotation to the matching genus row", async () => {
+    await renderSampleView();
+    await waitFor(() => expect(childProps.report.reportData).toHaveLength(1));
+
+    act(() => childProps.report.handleAnnotationUpdate(300, "inconclusive"));
+
+    await waitFor(() =>
+      expect(childProps.report.reportData[0].annotation).toBe("inconclusive"),
+    );
+    // The nested species is left alone.
+    expect(childProps.report.reportData[0].species[0].annotation).toBeUndefined();
+  });
+
+  it("clears a taxon's annotation when 'None' is chosen (null type)", async () => {
+    await renderSampleView();
+    await waitFor(() => expect(childProps.report.reportData).toHaveLength(1));
+    act(() => childProps.report.handleAnnotationUpdate(301, "hit"));
+    await waitFor(() =>
+      expect(childProps.report.reportData[0].species[0].annotation).toBe("hit"),
+    );
+
+    act(() => childProps.report.handleAnnotationUpdate(301, null));
+
+    await waitFor(() =>
+      expect(
+        childProps.report.reportData[0].species[0].annotation,
+      ).toBeUndefined(),
+    );
+  });
+});
+
 describe("SampleView -- report fetch failures", () => {
   it("reports an invalid background when the report request throws", async () => {
     mockedGetSampleReportData.mockRejectedValue(new Error("boom"));
