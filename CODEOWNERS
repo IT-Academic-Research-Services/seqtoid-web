@@ -9,3 +9,9 @@ package.json @chanzuckerberg/frontend-best-practices
 *.ts @chanzuckerberg/frontend-best-practices
 *.js @chanzuckerberg/frontend-best-practices
 e2e
+
+# CI/CD workflow definitions: require a code-owner review so a workflow fix can never be silently
+# overwritten by a stale feature branch (SMP-1599). NOTE: this only ENFORCES review when the target
+# branch's protection rule has "Require review from Code Owners" enabled -- add that on `integration`
+# and `main` for it to gate. The workflows-drift-guard.yml check is the automated backstop either way.
+/.github/workflows/ @thorvath-slower
