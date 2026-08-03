@@ -21,6 +21,12 @@ interface ErrorBoundaryProps {
   // boundary that failed for sample A clears itself when the user navigates to
   // sample B, rather than staying stuck on the error state.
   resetKeys?: ReadonlyArray<unknown>;
+  // Optional gate for Sentry reporting. Return false to suppress the Sentry
+  // capture + client-error record for a caught error that is expected rather
+  // than a product defect (e.g. a missing/forbidden resource). Defaults to
+  // reporting everything, so existing call sites are unchanged. The friendly
+  // fallback still renders regardless; only observability reporting is gated.
+  shouldReportError?: (error: unknown) => boolean;
 }
 
 interface ErrorBoundaryState {
@@ -49,12 +55,17 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // Preserve observability: report to Sentry with the React component stack.
-    Sentry.captureException(error, {
-      extra: { componentStack: info?.componentStack, view: this.props.view },
-    });
-    // Remember it for the self-help portal's quick report (#440).
-    recordClientError(error?.message ? String(error.message) : String(error));
+    // Preserve observability by default, but let the caller opt a specific,
+    // expected error out of reporting (SMP-1633) -- only an explicit `false`
+    // suppresses it, so an unset prop keeps the report-everything behavior.
+    if (this.props.shouldReportError?.(error) !== false) {
+      // Report to Sentry with the React component stack.
+      Sentry.captureException(error, {
+        extra: { componentStack: info?.componentStack, view: this.props.view },
+      });
+      // Remember it for the self-help portal's quick report (#440).
+      recordClientError(error?.message ? String(error.message) : String(error));
+    }
     // eslint-disable-next-line no-console
     console.error("ErrorBoundary", error, info);
   }
