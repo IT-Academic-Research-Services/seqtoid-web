@@ -5,9 +5,9 @@ import { WorkflowLabelType } from "~/components/utils/workflows";
 import { Metadata, MetadataTypes, SampleType } from "~/interface/shared";
 import MetadataSection from "../../MetadataSection";
 import { processAdditionalInfo } from "../../utils";
+import { MetadataTabMetadataFragment$key } from "./__generated__/MetadataTabMetadataFragment.graphql";
 import { MetadataSectionContent } from "./components/MetadataSectionContent";
 import { MetadataSectionContentFragment$key } from "./components/MetadataSectionContent/__generated__/MetadataSectionContentFragment.graphql";
-import { MetadataTabMetadataFragment$key } from "./__generated__/MetadataTabMetadataFragment.graphql";
 
 export const MetadataTabMetadataFragment = graphql`
   fragment MetadataTabMetadataFragment on SampleMetadata {
@@ -28,12 +28,11 @@ interface MetadataTabProps {
   metadataErrors?: { [key: string]: string | null };
   metadataTabFragmentKey: unknown;
   metadataTypes: MetadataTypes;
-  nameLocal: string;
+  sampleName: string;
   onMetadataChange: (key: string, value: any, shouldSave?: boolean) => void;
   onMetadataSave: (key: string, metadata: Metadata) => Promise<void>;
   savePending?: boolean;
   sampleTypes: SampleType[];
-  setNameLocal: (name: string) => void;
   snapshotShareId?: string;
   sampleId?: number | string;
 }
@@ -50,13 +49,12 @@ export const MetadataTab = ({
   metadataErrors,
   metadataTabFragmentKey,
   metadataTypes,
-  nameLocal,
+  sampleName,
   onMetadataChange,
   onMetadataSave,
   sampleTypes,
   sampleId,
   savePending,
-  setNameLocal,
   snapshotShareId,
 }: MetadataTabProps) => {
   const data = useFragment(
@@ -136,11 +134,10 @@ export const MetadataTab = ({
             metadataTypes={metadataTypes}
             onMetadataChange={onMetadataChange}
             onMetadataSave={onMetadataSave}
-            nameLocal={nameLocal}
+            sampleName={sampleName}
             sampleTypes={sampleTypes}
             section={section}
             sectionEditing={sectionEditing}
-            setNameLocal={setNameLocal}
             snapshotShareId={snapshotShareId}
             metadataTabFragmentKey={
               metadataTabFragmentKey as MetadataSectionContentFragment$key
