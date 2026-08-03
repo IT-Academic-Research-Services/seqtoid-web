@@ -194,7 +194,7 @@ export const SampleDetailsMode = ({
   const additionalInfo: AdditionalInfo = processAdditionalInfo(
     sampleMetadataValues?.additional_info as AdditionalInfo,
   );
-  const [nameLocal, setNameLocal] = useState(additionalInfo?.name);
+  const [sampleName, setSampleName] = useState(additionalInfo?.name);
 
   const prevProps = usePrevious({
     sampleId,
@@ -204,7 +204,7 @@ export const SampleDetailsMode = ({
   // If the sampleId is changed, reset the nameLocal to the name of the sample
   useEffect(() => {
     if (isSampleIdChanged) {
-      setNameLocal(additionalInfo?.name);
+      setSampleName(additionalInfo?.name);
     }
   }, [additionalInfo?.name, isSampleIdChanged]);
 
@@ -215,13 +215,15 @@ export const SampleDetailsMode = ({
   }, []);
 
   useEffect(() => {
-    // _save relies on this.state.metadata being up-to-date
-    if (singleKeyValueToSave) {
-      const [key, value] = singleKeyValueToSave;
-      _save(sampleId, key, value);
-      setSingleKeyValueToSave(null);
-    }
-  }, [singleKeyValueToSave]);
+    (async () => {
+      // _save relies on this.state.metadata being up-to-date
+      if (singleKeyValueToSave) {
+        const [key, value] = singleKeyValueToSave;
+        await _save(sampleId, key, value);
+        setSingleKeyValueToSave(null);
+      }
+    })(); // The trailing () immediately triggers execution
+  }, [sampleId, singleKeyValueToSave]);
 
   const onTabChange = (tab: SidebarTabName) => {
     setCurrentTabSidebar(tab);
@@ -237,6 +239,7 @@ export const SampleDetailsMode = ({
     /* Sample name and note are special cases */
     if (key === "name" || key === "notes") {
       setMetadataChanged(set(key, true, metadataChanged));
+      setMetadataErrors(set(key, null, metadataErrors));
       return;
     }
     if (shouldSave) {
@@ -250,7 +253,7 @@ export const SampleDetailsMode = ({
     if (metadataChanged[key]) {
       const newValue = metadata[key];
       setMetadataChanged(set(key, false, metadataChanged));
-      _save(sampleId, key, newValue);
+      await _save(sampleId, key, newValue);
     }
   };
 
@@ -360,8 +363,7 @@ export const SampleDetailsMode = ({
           onMetadataChange={handleMetadataChange}
           onMetadataSave={handleMetadataSave}
           savePending={savePending}
-          nameLocal={nameLocal}
-          setNameLocal={setNameLocal}
+          sampleName={sampleName}
           metadataErrors={metadataErrors}
           sampleId={sampleId}
           sampleTypes={sampleTypes || []}
@@ -441,7 +443,7 @@ export const SampleDetailsMode = ({
 
   return (
     <div className={cs.content}>
-      <div className={cs.title}>{nameLocal}</div>
+      <div className={cs.title}>{sampleName}</div>
       {showReportLink && (
         <div className={cs.reportLink}>
           <a

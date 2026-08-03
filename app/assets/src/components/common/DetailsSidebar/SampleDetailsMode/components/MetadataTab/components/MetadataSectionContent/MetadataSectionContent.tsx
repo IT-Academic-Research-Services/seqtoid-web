@@ -26,13 +26,12 @@ interface MetadataSectionContentProps {
   currentWorkflowTab: WorkflowLabelType;
   metadataErrors?: { [key: string]: string | null };
   metadataTypes: MetadataTypes;
-  nameLocal: string;
+  sampleName: string;
   onMetadataChange: (key: string, value: any, shouldSave?: boolean) => void;
   onMetadataSave: (key: string, metadataLocal: Metadata) => Promise<void>;
   sampleTypes: SampleType[];
   section: Section;
   sectionEditing: SectionEditingLookup;
-  setNameLocal: (name: string) => void;
   snapshotShareId?: string;
   metadataTabFragmentKey: MetadataSectionContentFragment$key;
   sampleId?: number | string;
@@ -73,12 +72,11 @@ export const MetadataSectionContent = ({
   metadataTypes,
   onMetadataChange,
   onMetadataSave,
-  nameLocal,
+  sampleName,
   sampleId,
   sampleTypes,
   section,
   sectionEditing,
-  setNameLocal,
   snapshotShareId,
   metadataTabFragmentKey,
 }: MetadataSectionContentProps) => {
@@ -91,6 +89,8 @@ export const MetadataSectionContent = ({
     flatten: true,
   });
   const [metadataLocal, setMetadataLocal] = useState(metadata);
+  const [sampleNameLocal, setSampleNameLocal] = useState(sampleName);
+
   useEffect(() => {
     // for each key in metadataErrors
     metadataErrors &&
@@ -111,6 +111,7 @@ export const MetadataSectionContent = ({
 
   const prevProps = usePrevious({
     sampleId,
+    sampleName,
   });
   const sampleIdChanged = sampleId !== prevProps?.sampleId;
 
@@ -120,6 +121,16 @@ export const MetadataSectionContent = ({
       setMetadataLocal(metadata);
     }
   }, [sampleIdChanged, metadata]);
+
+  useEffect(() => {
+    if (
+      ((metadataErrors && metadataErrors["name"]) ||
+        prevProps?.sampleName !== sampleName) &&
+      sampleName !== sampleNameLocal
+    ) {
+      setSampleNameLocal(sampleName);
+    }
+  }, [metadataErrors, prevProps, sampleName, sampleNameLocal]);
 
   const validKeys = section.keys.filter(key =>
     Object.keys(metadataTypes).includes(key),
@@ -133,7 +144,7 @@ export const MetadataSectionContent = ({
     shouldSave?: boolean,
   ) => {
     if (key === "name") {
-      setNameLocal(value);
+      setSampleNameLocal(value);
     } else {
       const newMetadata = { ...metadataLocal, [key]: value };
       setMetadataLocal(newMetadata);
@@ -163,7 +174,7 @@ export const MetadataSectionContent = ({
           ) : (
             <MetadataValue
               value={
-                info.key === "name" ? nameLocal : additionalInfo?.[info.key]
+                info.key === "name" ? sampleName : additionalInfo?.[info.key]
               }
             />
           ),
@@ -180,8 +191,8 @@ export const MetadataSectionContent = ({
         <div className={cs.inputWrapper}>
           <Input
             onChange={val => onMetadataChangeWrapper("name", val)}
-            onBlur={() => onMetadataSave("name", { name: nameLocal })}
-            value={nameLocal}
+            onBlur={() => onMetadataSave("name", { name: sampleNameLocal })}
+            value={sampleNameLocal}
             type="text"
             className={cs.sampleNameInput}
           />
