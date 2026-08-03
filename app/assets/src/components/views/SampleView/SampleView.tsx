@@ -43,9 +43,10 @@ import CoverageVizBottomSidebar from "~/components/common/CoverageVizBottomSideb
 import { CoverageVizParamsRaw } from "~/components/common/CoverageVizBottomSidebar/types";
 import { getCoverageVizParams } from "~/components/common/CoverageVizBottomSidebar/utils";
 import ErrorBoundary from "~/components/common/ErrorBoundary";
+import ErrorFallback from "~/components/common/ErrorBoundary/ErrorFallback";
 import csSampleMessage from "~/components/common/SampleMessage/sample_message.scss";
 import NarrowContainer from "~/components/layout/NarrowContainer";
-import { IconLoading } from "~/components/ui/icons";
+import { IconAlert, IconLoading } from "~/components/ui/icons";
 import {
   computeMngsReportTableValuesForCSV,
   createCSVObjectURL,
@@ -121,6 +122,7 @@ import {
   getWorkflowCount,
   hasAppliedFilters,
   initializeSelectedOptions,
+  isSampleNotFoundError,
   KEY_SAMPLE_VIEW_OPTIONS,
   KEY_SELECTED_OPTIONS_BACKGROUND,
   loadState,
@@ -1539,7 +1541,37 @@ export const SampleView = ({
     // fallback (retry + contact support) instead of a blank page, while still
     // reporting to Sentry. Resets automatically when the user opens a different
     // sample so an error on sample A doesn't stick to sample B.
-    <ErrorBoundary view="report" resetKeys={[sampleId, snapshotShareId]}>
+    //
+    // SMP-1633: a sample that does not exist or that the user cannot access
+    // makes the Relay query throw. That is expected, not a product defect, so
+    // show a plain not-found message (no retry / contact-support) and do NOT
+    // report it to Sentry. Any other error keeps the generic fallback + report.
+    <ErrorBoundary
+      view="report"
+      resetKeys={[sampleId, snapshotShareId]}
+      shouldReportError={error => !isSampleNotFoundError(error)}
+      fallback={({ error, resetError }) =>
+        isSampleNotFoundError(error) ? (
+          <SampleMessage
+            icon={
+              <IconAlert className={csSampleMessage.icon} type={"warning"} />
+            }
+            message={
+              "This sample doesn't exist, or you don't have access to it."
+            }
+            status={"Sample not found"}
+            type={"warning"}
+          />
+        ) : (
+          <ErrorFallback
+            error={error}
+            onRetry={resetError}
+            view={"report"}
+            inline={false}
+          />
+        )
+      }
+    >
       <Suspense
         fallback={
           <SampleMessage
