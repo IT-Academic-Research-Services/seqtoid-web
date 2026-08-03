@@ -20,10 +20,14 @@ class DeleteUnclaimedUserAccounts < StandardError
     Rails.logger.info("Checking for unclaimed user accounts...")
     unclaimed_accounts = query_auth0_for_unclaimed_user_accounts
     if unclaimed_accounts.empty?
-      # Log in ops-notifs channel for visibility
+      # Operational INFO: intentionally dual-routed (SMP-1634). log_message writes the
+      # structured app log (Loki/Grafana) AND captures a Sentry info event for ops-notifs
+      # visibility. Keep to_sentry default true so both destinations receive it.
       LogUtil.log_message("Nothing to delete! There are no accounts meeting the deletion criteria.")
     else
-      # Log in ops-notifs channel for visibility
+      # Operational INFO: intentionally dual-routed (SMP-1634). log_message writes the
+      # structured app log (Loki/Grafana) AND captures a Sentry info event for ops-notifs
+      # visibility. Keep to_sentry default true so both destinations receive it.
       LogUtil.log_message("Found #{unclaimed_accounts.length} unclaimed user accounts in Auth0")
 
       deletion_mode_enabled = AppConfigHelper.get_app_config(AppConfig::ENABLE_DELETE_UNCLAIMED_USER_ACCOUNTS) == "1"

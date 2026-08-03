@@ -34,6 +34,25 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
         expect(LogUtil).not_to receive(:log_error)
         DeleteUnclaimedUserAccounts.perform
       end
+
+      # SMP-1634: the operational "Found N unclaimed accounts" INFO is intentionally
+      # dual-routed. Let the real LogUtil.log_message run and assert BOTH destinations
+      # receive it: the structured app log (Rails.logger) AND a Sentry info event.
+      it "dual-routes the count to the app log and to Sentry at info level" do
+        allow(Rails.logger).to receive(:info).and_call_original
+        allow(Sentry).to receive(:capture_message)
+
+        DeleteUnclaimedUserAccounts.perform
+
+        expect(Rails.logger).to have_received(:info).with(
+          { message: "Found 2 unclaimed user accounts in Auth0", details: {} }.to_json
+        )
+        expect(Sentry).to have_received(:capture_message).with(
+          "Found 2 unclaimed user accounts in Auth0",
+          level: "info",
+          extra: {}
+        )
+      end
     end
 
     context "when failing to retrieve unclaimed user accounts from Auth0" do
