@@ -31,7 +31,7 @@ RSpec.describe VersionRetrievalService, type: :service do
       create(:workflow_version, workflow: workflow, version: "8.3.11")
 
       expect { VersionRetrievalService.call(project.id, workflow) }
-        .to raise_error(/does not exist/)
+        .to raise_error(/is not in the catalog/)
     end
 
     it "refuses a default that is catalogued but not runnable" do
@@ -61,7 +61,7 @@ RSpec.describe VersionRetrievalService, type: :service do
       configure_default_without_cataloguing("8.3.15")
 
       expect { VersionRetrievalService.call(project.id, workflow) }
-        .to raise_error(/does not exist/)
+        .to raise_error(/is not in the catalog/)
     end
 
     it "returns the default once it is catalogued" do
@@ -93,7 +93,7 @@ RSpec.describe VersionRetrievalService, type: :service do
       create(:app_config, key: AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME, value: "2099-01-01")
 
       expect { VersionRetrievalService.call(project.id, AlignmentConfig::NCBI_INDEX) }
-        .to raise_error(/does not exist/)
+        .to raise_error(/is not in the catalog/)
     end
   end
 end

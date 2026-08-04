@@ -63,6 +63,12 @@ RSpec.describe SfnAmrPipelineDispatchService, type: :service do
 
   def set_amr_version(version) # rubocop:disable Naming/AccessorMethodName
     create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: amr_workflow), value: version)
+    # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+    # find_or_create_by because this helper is called more than once per example group.
+    WorkflowVersion.find_or_create_by!(workflow: amr_workflow, version: version) do |wv|
+      wv.deprecated = false
+      wv.runnable = true
+    end
   end
 
   def set_sfn_arn

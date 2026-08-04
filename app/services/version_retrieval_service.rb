@@ -73,7 +73,7 @@ class VersionRetrievalService
 
     catalog_entry = WorkflowVersion.find_by(workflow: @workflow, version: version)
     if catalog_entry.nil?
-      raise VersionControlErrors.workflow_version_not_found(@workflow, version)
+      raise VersionControlErrors.workflow_version_not_catalogued(@workflow, version)
     end
 
     handle_workflow_version_issues(catalog_entry.version, catalog_entry.deprecated, catalog_entry.runnable)
