@@ -61,6 +61,11 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
     it "falls back to SFN_ARN when only that one is configured" do
       create(:app_config, key: AppConfig::SFN_ARN, value: BRANCHES_SFN_ARN)
       create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: BRANCHES_WORKFLOW_NAME), value: BRANCHES_LEGACY_WDL_VERSION)
+      # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+      WorkflowVersion.find_or_create_by!(workflow: BRANCHES_WORKFLOW_NAME, version: BRANCHES_LEGACY_WDL_VERSION) do |wv|
+        wv.deprecated = false
+        wv.runnable = true
+      end
       stub_aws_clients
 
       result = described_class.call(pipeline_run)
@@ -146,6 +151,11 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
     before do
       create(:app_config, key: AppConfig::SFN_MNGS_ARN, value: BRANCHES_SFN_ARN)
       create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: BRANCHES_WORKFLOW_NAME), value: BRANCHES_LEGACY_WDL_VERSION)
+      # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+      WorkflowVersion.find_or_create_by!(workflow: BRANCHES_WORKFLOW_NAME, version: BRANCHES_LEGACY_WDL_VERSION) do |wv|
+        wv.deprecated = false
+        wv.runnable = true
+      end
       stub_aws_clients
       create(:host_genome, name: "Human", version: 1)
     end

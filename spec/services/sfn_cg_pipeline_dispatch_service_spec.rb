@@ -93,6 +93,8 @@ RSpec.describe SfnCgPipelineDispatchService, type: :service do
     context "with workflow version" do
       before do
         create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: test_workflow_name), value: fake_wdl_version)
+        # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+        create(:workflow_version, workflow: test_workflow_name, version: fake_wdl_version)
       end
 
       context "and any creation source" do

@@ -51,6 +51,12 @@ RSpec.describe SfnCgPipelineDispatchService, type: :service do
   def with_wdl_version(version)
     create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: test_workflow_name),
                         value: version)
+    # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+    # find_or_create_by because this helper is called more than once per example group.
+    WorkflowVersion.find_or_create_by!(workflow: test_workflow_name, version: version) do |wv|
+      wv.deprecated = false
+      wv.runnable = true
+    end
   end
 
   def nanopore_run(protocol)
