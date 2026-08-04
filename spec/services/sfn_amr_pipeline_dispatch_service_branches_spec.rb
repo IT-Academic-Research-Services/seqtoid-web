@@ -158,7 +158,6 @@ RSpec.describe SfnAmrPipelineDispatchService, type: :service do
     it "keeps a non-Human host genome, uses the fasta ext, single-end adapters and a blank nucleotide type" do
       set_sfn_arn
       set_amr_version("0.2.4")
-      create(:workflow_version, workflow: amr_workflow, version: "0.2.4", deprecated: false, runnable: true)
       sample = single_fasta_sample("Mosquito")
       wr = amr_run(sample)
 
@@ -175,7 +174,6 @@ RSpec.describe SfnAmrPipelineDispatchService, type: :service do
     it "uses the prior mNGS run's gsnap-filtered reads when start_from_mngs is set" do
       set_sfn_arn
       set_amr_version("0.2.4")
-      create(:workflow_version, workflow: amr_workflow, version: "0.2.4", deprecated: false, runnable: true)
       sample = create(:sample, project: @project, host_genome_name: "Human")
       prior_mngs_run(sample)
       wr = amr_run(sample, start_from_mngs: true)
@@ -194,7 +192,6 @@ RSpec.describe SfnAmrPipelineDispatchService, type: :service do
     before do
       set_sfn_arn
       set_amr_version("1.0.0")
-      create(:workflow_version, workflow: amr_workflow, version: "1.0.0", deprecated: false, runnable: true)
     end
 
     it "keeps a non-Human host, fasta ext and single-end adapters, and uses subsampled reads from the prior run" do
@@ -262,7 +259,6 @@ RSpec.describe SfnAmrPipelineDispatchService, type: :service do
     it "raises SfnVersionMissingError and marks the run FAILED" do
       set_sfn_arn
       set_amr_version("0.0.9")
-      create(:workflow_version, workflow: amr_workflow, version: "0.0.9", deprecated: false, runnable: true)
       sample = create(:sample, project: @project, host_genome_name: "Human")
       wr = amr_run(sample)
 
