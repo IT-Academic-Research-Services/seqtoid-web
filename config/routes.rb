@@ -157,6 +157,10 @@ Rails.application.routes.draw do
   get 'app_configs', to: 'home#app_configs'
   get 'user_profile_form', to: 'home#user_profile_form'
   put 'workflow_version', to: 'home#set_workflow_version'
+  # CZID-971 -- REGISTER-only catalog entry for the workflow publisher (token-authed, no session).
+  # Distinct from `put workflow_version` above, which is admin/session-authed and also PROMOTES the
+  # version by writing the app_config default. Publishing must not imply promotion.
+  post 'workflow_versions', to: 'workflow_versions#create'
   put 'set_app_config', to: 'home#set_app_config'
   post 'feedback', to: 'home#feedback'
   post 'sign_up', to: 'home#sign_up'

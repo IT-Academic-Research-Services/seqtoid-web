@@ -43,10 +43,41 @@ class VersionRetrievalService
       end
     elsif !@existing_version_prefix || (default_version && default_version.start_with?(@existing_version_prefix))
       # Allows us to use the version set in app_config even if it's not the latest version
-      default_version
+      validated_default_version
     else
       prepare_specific_workflow_version_for_upload(@existing_version_prefix)
     end
+  end
+
+  # CZID-982 -- the default path used to return the app_config value verbatim, with no catalog
+  # lookup and no validation, which meant `runnable` / `deprecated` gated nothing in practice.
+  #
+  # Every project is pinned at a MAJOR prefix ("8", "0", "1", "3") and the app_config default shares
+  # that major ("8.3.15"), so `start_with?` is always true and this branch is the only one real runs
+  # take. Staging proved the consequence: all 137 runs there executed at versions with no
+  # `workflow_versions` row at all.
+  #
+  # Fail closed. An app_config default naming an uncatalogued version is a configuration error we
+  # want loud, not a run we want to silently let through -- and deliberately NOT an auto-create,
+  # since silent creation is what let the drift accumulate unseen. The seed migration
+  # ReconcileWorkflowVersionCatalog registers the currently-configured versions so this cannot break
+  # a working environment; from here on rows come from the publisher (CZID-971).
+  #
+  # NOTE this also means a default marked `deprecated` now raises, where before it ran. That is a
+  # deliberate behaviour change: it is the same treatment the pinned path has always applied
+  # (prepare_specific_workflow_version_for_upload), and having the two paths disagree about what the
+  # flags mean is the actual bug. A deprecated DEFAULT is a configuration mistake worth surfacing.
+  def validated_default_version
+    version = default_version
+    return version if version.blank? # nothing configured -- unchanged behavior, callers already handle nil
+
+    catalog_entry = WorkflowVersion.find_by(workflow: @workflow, version: version)
+    if catalog_entry.nil?
+      raise VersionControlErrors.workflow_version_not_found(@workflow, version)
+    end
+
+    handle_workflow_version_issues(catalog_entry.version, catalog_entry.deprecated, catalog_entry.runnable)
+    version
   end
 
   def prepare_specific_workflow_version_for_upload(prefix)
