@@ -778,7 +778,7 @@ module ElasticsearchQueryHelper
     if ENV['INDEXING_LAMBDA_MODE'] == 'local'
       local_lambda_host = {
         "taxon-indexing-concurrency-manager-#{LAMBDA_ENV}" => ENV['LOCAL_TAXON_INDEXING_URL'],
-        "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict_selected_taxons" => ENV['LOCAL_EVICTION_URL'],
+        "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict" => ENV['LOCAL_EVICTION_URL'],
       }[function_name]
       begin
         response = HTTP.post("http://#{local_lambda_host}/2015-03-31/functions/function/invocations", json: payload)
@@ -888,7 +888,7 @@ module ElasticsearchQueryHelper
     #   ],
     #   "selected_pipeline_run_ids"=>[29202] # the list of pipeline_run_ids that were passed in
     # }
-    function_name = "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict_selected_taxons"
+    function_name = "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict"
     payload = {
       pipeline_run_ids: pipeline_run_ids,
       # Same isolation as indexing: evict from this pod's own heatmap domain, so a preview

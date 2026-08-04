@@ -49,14 +49,19 @@ RSpec.describe BulkDownloadTypesHelper do
       ).to eq("Consensus Genome")
     end
 
-    # PINS current behavior: an unknown type name looks up nil in the
-    # BULK_DOWNLOAD_TYPE_NAME_TO_DATA hash and then calls [:display_name] on it,
-    # which raises NoMethodError. (Not a bug we fix here; the callers always pass
-    # a known type. Tracked as a characterization note.)
-    it "raises NoMethodError for an unknown type name (nil[:display_name])" do
+    # SMP-1638: an unknown/retired download_type (e.g. legacy records whose type was removed from
+    # BULK_DOWNLOAD_TYPES, like the commented-out original_input_file) must NOT raise --
+    # fed_bulk_downloads maps over every download, so one bad row would 500 the whole Downloads page.
+    # It now falls back to a humanized label (and "Unknown" for nil) instead of nil[:display_name].
+    it "falls back to a humanized label for an unknown type instead of raising" do
       expect do
         described_class.bulk_download_type_display_name("not_a_real_type")
-      end.to raise_error(NoMethodError)
+      end.not_to raise_error
+      expect(described_class.bulk_download_type_display_name("not_a_real_type")).to eq("Not A Real Type")
+    end
+
+    it "returns 'Unknown' for a nil type instead of raising" do
+      expect(described_class.bulk_download_type_display_name(nil)).to eq("Unknown")
     end
   end
 
