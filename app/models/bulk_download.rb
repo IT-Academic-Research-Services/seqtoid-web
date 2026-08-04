@@ -175,7 +175,14 @@ class BulkDownload < ApplicationRecord
   end
 
   def server_host
-    ENV["SERVER_DOMAIN"]
+    # SMP-1636 / #950: normalize to include a scheme. env-staging's SERVER_DOMAIN is bare
+    # (env-staging.seqtoid.org) while dev's carries https://; a schemeless callback url makes the
+    # s3-tar-writer's status ping go http -> 301 -> https (urllib3 FutureWarning) instead of straight
+    # to https. Default a schemeless value to https so every env builds a proper callback url.
+    domain = ENV["SERVER_DOMAIN"]
+    return domain if domain.blank?
+
+    domain.match?(%r{\Ahttps?://}) ? domain : "https://#{domain}"
   end
 
   def log_stream_name
@@ -476,7 +483,11 @@ class BulkDownload < ApplicationRecord
       kind: "Job",
       metadata: { name: "bulk-download-#{id}", labels: labels },
       spec: {
-        backoffLimit: 1,
+        # SMP-1636 / #950: 0 (was 1). A tar-writer failure is deterministic, so a retry re-does the
+        # whole tar for no benefit AND re-pings the single-use callback token, which attempt 1 already
+        # consumed -> a spurious 401 on the retry's status ping (the download is already correctly
+        # marked errored by attempt 1). One attempt = one ping, no token replay, no phantom 401.
+        backoffLimit: 0,
         ttlSecondsAfterFinished: 3600,   # auto-delete the finished Job after 1h
         activeDeadlineSeconds: 10_800,   # 3h cap
         template: {
