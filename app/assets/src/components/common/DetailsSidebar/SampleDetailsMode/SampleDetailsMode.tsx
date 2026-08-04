@@ -200,13 +200,14 @@ export const SampleDetailsMode = ({
     sampleId,
   });
   const isSampleIdChanged = prevProps?.sampleId !== sampleId;
+  const isSampleNameChanged = additionalInfo?.name !== sampleName;
 
-  // If the sampleId is changed, reset the nameLocal to the name of the sample
+  // If the sampleId or sample.name is changed, reset the sampleName to the name of the sample
   useEffect(() => {
-    if (isSampleIdChanged) {
+    if (isSampleIdChanged || isSampleNameChanged) {
       setSampleName(additionalInfo?.name);
     }
-  }, [additionalInfo?.name, isSampleIdChanged]);
+  }, [additionalInfo?.name, isSampleIdChanged, isSampleNameChanged]);
 
   useEffect(() => {
     getAllSampleTypes().then(fetchedSampleTypes => {
