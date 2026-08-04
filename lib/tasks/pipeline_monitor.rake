@@ -339,6 +339,16 @@ class CheckPipelineRuns
           shard_id += 1
         end
         fork_pids.each { |p| Process.waitpid(p) }
+        # #967 finalization reconcile: catch runs whose results fully loaded (results_finalized=SUCCESS)
+        # but whose finalized flag was never set -- a missed SFN completion signal leaves them stuck
+        # in_progress forever, so they are excluded from bulk downloads and show a blank runtime. Finalize
+        # them (grace-gated so the normal path wins first). Runs in-process on a small set. Failures are
+        # logged per-run and never break the monitor iteration.
+        PipelineRun.stuck_finalization.find_each do |pr|
+          pr.finalize_from_completed_results!
+        rescue StandardError => e
+          LogUtil.log_error("[finalization-reconcile #967] failed for pr=#{pr.id}: #{e.message}", exception: e, pipeline_run_id: pr.id)
+        end
         # Poll WorkflowRuns too (cg/amr/benchmark) so a POLLING sandbox advances their status;
         # a no-op in notification mode (dev/staging/prod). Runs in-process -- WR counts are small.
         update_workflow_run_jobs
