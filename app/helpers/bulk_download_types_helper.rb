@@ -339,6 +339,13 @@ module BulkDownloadTypesHelper
   end
 
   def self.bulk_download_type_display_name(type_name)
-    BULK_DOWNLOAD_TYPE_NAME_TO_DATA[type_name][:display_name]
+    data = BULK_DOWNLOAD_TYPE_NAME_TO_DATA[type_name]
+    return data[:display_name] if data
+
+    # A retired/unknown/nil download_type (e.g. legacy records whose type was removed from
+    # BULK_DOWNLOAD_TYPES, like the commented-out original_input_file) must NOT crash the whole
+    # fed_bulk_downloads listing -- one bad row would 500 the entire Downloads page. Fall back to a
+    # humanized version of the raw type instead of nil[:display_name]. (SMP-1638)
+    type_name.present? ? type_name.to_s.tr("_", " ").split.map(&:capitalize).join(" ") : "Unknown"
   end
 end
