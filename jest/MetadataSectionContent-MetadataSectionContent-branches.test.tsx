@@ -12,6 +12,8 @@
 // MetadataInput and the shared Input control are stubbed so the assertions land
 // on this component's own logic rather than on the input widgets.
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MetadataSectionContent } from "~/components/common/DetailsSidebar/SampleDetailsMode/components/MetadataTab/components/MetadataSectionContent/MetadataSectionContent";
+import { WORKFLOW_TABS } from "~/components/utils/workflows";
 
 // jest.config.js maps "\.(css|scss)$" to a style mock, but the "~" webpack alias
 // is registered first and wins, so an aliased stylesheet import is handed to the
@@ -86,9 +88,6 @@ jest.mock("~/components/ui/controls/Input", () => {
   };
 });
 
-import { MetadataSectionContent } from "~/components/common/DetailsSidebar/SampleDetailsMode/components/MetadataTab/components/MetadataSectionContent/MetadataSectionContent";
-import { WORKFLOW_TABS } from "~/components/utils/workflows";
-
 const metadataTypes = {
   sample_type: { key: "sample_type", name: "Sample Type", dataType: "string" },
   collection_location: {
@@ -138,7 +137,7 @@ const baseProps = {
   additionalInfo,
   currentWorkflowTab: WORKFLOW_TABS.SHORT_READ_MNGS,
   metadataTypes,
-  nameLocal: "Local Sample Name",
+  sampleName: "Local Sample Name",
   onMetadataChange: jest.fn(),
   onMetadataSave: jest.fn().mockResolvedValue(undefined),
   sampleId: 101,
@@ -148,7 +147,6 @@ const baseProps = {
     keys: ["sample_type", "collection_location"],
   },
   sectionEditing: {},
-  setNameLocal: jest.fn(),
   metadataTabFragmentKey: { metadata: rawMetadata },
 };
 
@@ -163,10 +161,10 @@ describe("MetadataSectionContent branch coverage", () => {
   });
 
   describe("Sample Info special-case block, read mode", () => {
-    it("renders the SAMPLE_ADDITIONAL_INFO rows, preferring nameLocal over additionalInfo.name", () => {
+    it("renders the SAMPLE_ADDITIONAL_INFO rows, preferring sampleName over additionalInfo.name", () => {
       renderContent();
 
-      // info.key === "name" -> nameLocal wins over additionalInfo.name.
+      // info.key === "name" -> sampleName wins over additionalInfo.name.
       expect(screen.getByTestId("sample-name-value").textContent).toBe(
         "Local Sample Name",
       );
@@ -226,14 +224,13 @@ describe("MetadataSectionContent branch coverage", () => {
       expect(screen.getByTestId("metadata-input-sample_type")).toBeTruthy();
     });
 
-    it("routes a Sample Name edit to setNameLocal, not to the local metadata map", () => {
+    it("routes a Sample Name edit to onMetadataChange, not to the local metadata map", () => {
       renderContent(editingProps);
 
       fireEvent.change(screen.getByTestId("sample-name-input"), {
         target: { value: "Renamed Sample" },
       });
 
-      expect(baseProps.setNameLocal).toHaveBeenCalledWith("Renamed Sample");
       expect(baseProps.onMetadataChange).toHaveBeenCalledWith(
         "name",
         "Renamed Sample",
@@ -255,7 +252,7 @@ describe("MetadataSectionContent branch coverage", () => {
       });
     });
 
-    it("routes a metadata edit into local state instead of setNameLocal", () => {
+    it("routes a metadata edit into local state instead of onMetadataChange", () => {
       renderContent(editingProps);
 
       fireEvent.click(screen.getByTestId("mi-change-sample_type"));
@@ -263,7 +260,6 @@ describe("MetadataSectionContent branch coverage", () => {
       expect(screen.getByTestId("mi-value-sample_type").textContent).toBe(
         "edited-sample_type",
       );
-      expect(baseProps.setNameLocal).not.toHaveBeenCalled();
       expect(baseProps.onMetadataChange).toHaveBeenCalledWith(
         "sample_type",
         "edited-sample_type",
@@ -495,7 +491,7 @@ describe("MetadataSectionContent branch coverage", () => {
           {...({
             ...baseProps,
             sectionEditing: { "Sample Info": true },
-            nameLocal: "Local Sample Name v2",
+            sampleName: "Local Sample Name v2",
           } as $TSFixMe)}
         />,
       );
@@ -516,7 +512,7 @@ describe("MetadataSectionContent branch coverage", () => {
       // MetadataValue renders the em-dash placeholder for missing values.
       expect(screen.getByTestId("upload-date-value").textContent).toBe("--");
       expect(screen.getByTestId("host-value").textContent).toBe("--");
-      // nameLocal still wins for the name row.
+      // sampleName still wins for the name row.
       expect(screen.getByTestId("sample-name-value").textContent).toBe(
         "Local Sample Name",
       );

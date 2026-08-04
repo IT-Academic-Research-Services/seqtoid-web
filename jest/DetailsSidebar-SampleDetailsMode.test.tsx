@@ -64,11 +64,11 @@ jest.mock(
       onMetadataSave,
       metadataErrors,
       sampleTypes,
-      nameLocal,
+      sampleName,
       metadataTypes,
     }: $TSFixMe) => (
       <div data-testid="metadata-tab">
-        <span data-testid="name-local">{nameLocal}</span>
+        <span data-testid="name-local">{sampleName}</span>
         <span data-testid="sample-types-count">{sampleTypes.length}</span>
         <span data-testid="metadata-type-keys">
           {Object.keys(metadataTypes).join(",")}
