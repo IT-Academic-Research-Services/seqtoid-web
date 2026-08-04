@@ -45,6 +45,8 @@ end
   describe "#call" do
     before do
       create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: amr_workflow), value: modern_amr_version)
+      # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+      create(:workflow_version, workflow: amr_workflow, version: modern_amr_version)
       create(:app_config, key: AppConfig::SFN_SINGLE_WDL_ARN, value: fake_sfn_arn)
       create(:workflow_version, workflow: HostGenome::HUMAN_HOST, version: 1)
 

@@ -108,6 +108,8 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
         }
 
         create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: TEST_WORKFLOW_NAME), value: FAKE_WDL_VERSION)
+        # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+        create(:workflow_version, workflow: TEST_WORKFLOW_NAME, version: FAKE_WDL_VERSION)
       end
 
       it "returns correct json" do

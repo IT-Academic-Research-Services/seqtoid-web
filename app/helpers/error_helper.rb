@@ -8,6 +8,16 @@ module ErrorHelper
       "No WorkflowVersions for workflow=#{workflow} exist."
     end
 
+    # CZID-982 -- the configured default names a version that is not in the catalog. Distinct from
+    # workflow_version_not_found above, which is about resolving a version PREFIX; this one is an
+    # exact version and is a configuration error an operator has to fix (register the version, or
+    # point app_config at one that exists), so the message says so rather than talking about
+    # prefixes.
+    def self.workflow_version_not_catalogued(workflow, version)
+      "WorkflowVersion for workflow=#{workflow} and version=#{version} is not in the catalog. " \
+        "The configured default must be a registered workflow version."
+    end
+
     def self.workflow_version_deprecated(workflow, version)
       "WorkflowVersion for workflow=#{workflow} and version=#{version} is deprecated"
     end
