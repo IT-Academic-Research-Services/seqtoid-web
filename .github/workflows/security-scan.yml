@@ -2,9 +2,10 @@ name: idseq-web security-scan
 
 # App-appropriate security suite for seqtoid-web (CZID-102):
 #  - gitleaks: secret scan, gates NEW secrets introduced by a PR (hard-fail)
-#  - trivy (fs): dependency CVE scan, REPORT-ONLY for now (exit-code 0) because
-#    known CVEs (axios CZID-45, EOL base images CZID-44) would otherwise block
-#    every PR. Ratchet exit-code to '1' once those are cleared (CZID-65 ethos).
+#  - trivy (fs): dependency CVE scan, HARD-FAIL on new (SMP-1638). Mirrors the image
+#    gate's semantics (ignore-unfixed + .trivyignore) so only a NEW, fixable HIGH/CRITICAL
+#    a PR introduces breaks the build. This is now THE blocking CVE gate: the post-merge
+#    image scan was made advisory so a background vuln-DB refresh can't freeze main->dev.
 #  - brakeman: Rails static security scan, HARD-FAIL gate (CZID-462 / re-enables the
 #    stale C14 TODO). Fails on ANY high-confidence (w3) warning and on any NEW
 #    medium-confidence (w2) warning: the 23 inherited w2 findings are pinned in
@@ -45,20 +46,27 @@ jobs:
           # honors .gitleaks.toml at repo root (dev/test fixture allowlist)
 
   trivy_fs:
-    name: Dependency CVE scan (trivy fs, report-only)
+    name: Dependency CVE scan (trivy fs, hard-fail on new)
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
         uses: actions/checkout@v6
+      # SMP-1638: this is now the HARD, blocking dependency-CVE gate -- moved shift-left onto the PR
+      # (where a human is present) so a PR that INTRODUCES a fixable HIGH/CRITICAL fails here, before
+      # it ever reaches main. It replaces the old post-merge image gate as the blocker: that gate is
+      # now advisory (build-docker-image.yml) so a background vuln-DB refresh can no longer silently
+      # freeze the main->dev deploy. Semantics mirror the image gate: ignore-unfixed + .trivyignore,
+      # so only NEW, fixable findings not already accepted in the baseline break the build.
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: false
+          ignore-unfixed: true
+          trivyignores: .trivyignore
           format: table
-          exit-code: '0' # report-only; ratchet to '1' after CZID-44/45 land
+          exit-code: '1' # hard-fail on a new fixable HIGH/CRITICAL not in .trivyignore
 
   brakeman:
     name: Rails security scan (brakeman, hard-fail on new)

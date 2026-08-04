@@ -53,6 +53,7 @@ jobs:
       id-token: write
       contents: read
       packages: write # CZID-392: publish the known-good image to GHCR (source-of-record)
+      issues: write   # SMP-1638: advisory image-scan opens/updates a tracking issue on new CVEs
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -98,18 +99,50 @@ jobs:
         env:
           CACHE_MODE: ${{ github.ref == 'refs/heads/main' && 'write' || 'read' }}
         run: bin/build-docker "$(basename "$GITHUB_REF")" "${GITHUB_SHA::8}"
-      # CZID-75: scan the built image BEFORE it ships — fail the release on HIGH/CRITICAL CVEs.
-      # The image is already in ECR (build pushed it); Trivy pulls IMAGE_REF (the amd64 child of
-      # the manifest list on this amd64 runner) and scans it.
+      # CZID-75 / SMP-1638: scan the built image BEFORE it ships. ADVISORY on the CD path.
+      # A new HIGH/CRITICAL here is almost always a build-time / transitive / OS-package CVE surfaced
+      # by a Trivy vuln-DB refresh, NOT by any code change -- and a HARD fail here freezes the whole
+      # main->dev deploy (gitops-advance-dev is gated on this workflow's success), silently stranding
+      # dev until someone hand-baselines .trivyignore. That has recurred repeatedly (07-13, 07-23 x2,
+      # postcss wave, 08-04) and is how the SMP-1638 bulk-download fix went undelivered for days.
+      # So: continue-on-error keeps the build (and the deploy) green; the finding becomes a tracking
+      # issue instead of an outage. The HARD, blocking gate lives shift-left on PRs (security-scan.yml
+      # trivy_fs, exit-code 1) where a human can baseline or forward-fix before it ever reaches main.
       - name: Scan image (Trivy)
+        id: trivy_scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_REF }}
           format: table
+          output: trivy-image-report.txt
           exit-code: "1"
           severity: HIGH,CRITICAL
           ignore-unfixed: "true"
-          trivyignores: .trivyignore  # accept-current app-dep CVEs (Forgejo #474); NEW ones still fail
+          trivyignores: .trivyignore  # accept-current app-dep CVEs (Forgejo #474)
+      # Advisory alert: if the scan flagged a new (non-baselined, fixable) HIGH/CRITICAL, open or
+      # update ONE tracking issue -- no Slack (retired CZI cruft) and Grafana alert-delivery is off,
+      # so an in-repo issue is the reliable, reviewable channel. This step never fails the build.
+      - name: Report new image CVEs (advisory)
+        if: ${{ steps.trivy_scan.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          TITLE="Trivy: new HIGH/CRITICAL CVE on the shipped main image"
+          REPORT="$(sed -n '1,150p' trivy-image-report.txt 2>/dev/null || echo '(report not captured)')"
+          BODY="$(printf '%s\n\n%s\n\n%s\n\n```\n%s\n```\n' \
+            "A fixable HIGH/CRITICAL CVE was found on the shipped main image (\`${IMAGE_REF}\`) that is NOT in \`.trivyignore\`." \
+            "Dev was NOT blocked -- this gate is advisory (SMP-1638). Triage: forward-fix the dep, or baseline it in \`.trivyignore\` with a justification + forward-fix note." \
+            "Build run: ${RUN_URL} (commit ${GITHUB_SHA})" \
+            "${REPORT}")"
+          EXISTING="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "${TITLE} in:title" --json number --jq '.[0].number' 2>/dev/null)"
+          if [ -n "${EXISTING:-}" ] && [ "${EXISTING}" != "null" ]; then
+            printf '%s' "$BODY" | gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file - || true
+          else
+            printf '%s' "$BODY" | gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file - || true
+          fi
       # CZID-392: publish the SAME known-good, scanned MANIFEST LIST to GHCR (source-of-record).
       # #482: `buildx imagetools create` copies the multi-arch manifest list from ECR to GHCR by
       # digest — preserving BOTH arches — without a local image (the old publish-ghcr composite
