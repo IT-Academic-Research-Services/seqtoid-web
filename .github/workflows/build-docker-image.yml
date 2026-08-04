@@ -131,17 +131,22 @@ jobs:
         run: |
           set -uo pipefail
           TITLE="Trivy: new HIGH/CRITICAL CVE on the shipped main image"
-          REPORT="$(sed -n '1,150p' trivy-image-report.txt 2>/dev/null || echo '(report not captured)')"
-          BODY="$(printf '%s\n\n%s\n\n%s\n\n```\n%s\n```\n' \
-            "A fixable HIGH/CRITICAL CVE was found on the shipped main image (\`${IMAGE_REF}\`) that is NOT in \`.trivyignore\`." \
-            "Dev was NOT blocked -- this gate is advisory (SMP-1638). Triage: forward-fix the dep, or baseline it in \`.trivyignore\` with a justification + forward-fix note." \
-            "Build run: ${RUN_URL} (commit ${GITHUB_SHA})" \
-            "${REPORT}")"
+          {
+            echo "A fixable HIGH/CRITICAL CVE was found on the shipped main image (\`${IMAGE_REF}\`) that is NOT in \`.trivyignore\`."
+            echo
+            echo "Dev was NOT blocked -- this gate is advisory (SMP-1638). Triage: forward-fix the dep, or baseline it in \`.trivyignore\` with a justification + forward-fix note."
+            echo
+            echo "Build run: ${RUN_URL} (commit ${GITHUB_SHA})"
+            echo
+            echo '```'
+            sed -n '1,150p' trivy-image-report.txt 2>/dev/null || echo '(report not captured)'
+            echo '```'
+          } > issue-body.md
           EXISTING="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "${TITLE} in:title" --json number --jq '.[0].number' 2>/dev/null)"
           if [ -n "${EXISTING:-}" ] && [ "${EXISTING}" != "null" ]; then
-            printf '%s' "$BODY" | gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file - || true
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file issue-body.md || true
           else
-            printf '%s' "$BODY" | gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file - || true
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file issue-body.md || true
           fi
       # CZID-392: publish the SAME known-good, scanned MANIFEST LIST to GHCR (source-of-record).
       # #482: `buildx imagetools create` copies the multi-arch manifest list from ECR to GHCR by

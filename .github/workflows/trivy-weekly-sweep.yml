@@ -76,9 +76,14 @@ jobs:
           git commit -m "trivy: draft baseline for weekly-sweep CVEs (${DATE})"
           git push origin "${BRANCH}"
           COUNT="$(printf '%s\n' "${IDS}" | wc -l | tr -d ' ')"
-          BODY="$(printf '%s\n\n```\n%s\n```\n\n%s\n' \
-            "The weekly Trivy sweep found ${COUNT} new fixable HIGH/CRITICAL CVE(s) on \`ghcr.io/${GITHUB_REPOSITORY_OWNER}/seqtoid-web:latest\` that are NOT in \`.trivyignore\`. This DRAFT baselines them so review can decide baseline-vs-forward-fix per entry (Dependabot raises the actual bumps)." \
-            "${IDS}" \
-            "Draft => will not auto-merge. Prefer forward-fixing (remove the ID here and bump the dep) where a clean bump exists.")"
-          printf '%s' "${BODY}" | gh pr create --repo "$GITHUB_REPOSITORY" --base integration --head "${BRANCH}" \
-            --title "trivy: weekly CVE baseline (${DATE}) [draft]" --draft --body-file -
+          {
+            echo "The weekly Trivy sweep found ${COUNT} new fixable HIGH/CRITICAL CVE(s) on \`ghcr.io/${GITHUB_REPOSITORY_OWNER}/seqtoid-web:latest\` that are NOT in \`.trivyignore\`. This DRAFT baselines them so review can decide baseline-vs-forward-fix per entry (Dependabot raises the actual bumps)."
+            echo
+            echo '```'
+            echo "${IDS}"
+            echo '```'
+            echo
+            echo "Draft => will not auto-merge. Prefer forward-fixing (remove the ID here and bump the dep) where a clean bump exists."
+          } > pr-body.md
+          gh pr create --repo "$GITHUB_REPOSITORY" --base integration --head "${BRANCH}" \
+            --title "trivy: weekly CVE baseline (${DATE}) [draft]" --draft --body-file pr-body.md
