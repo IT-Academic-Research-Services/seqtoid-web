@@ -219,9 +219,15 @@ COPY --from=chamber-builder /out/chamber /bin/chamber
 #   - aegea : app/models/bulk_download.rb (aegea ecs run -> bulk-download ECS task).
 #             Was missing here, so `aegea` was absent from runtime PATH and every bulk
 #             download raised Errno::ENOENT (Sentry DEV-RAILS-PROJECT-23).
+#   - biom  : app/models/bulk_download.rb#create_biom_file (Open3.capture3 "biom" convert/
+#             add-metadata). Same failure mode as aegea: the biom-format package is in
+#             dist-packages (copied above) but its console-script entrypoint was NOT copied,
+#             so `biom` was absent from runtime PATH and every "Combined Microbiome File"
+#             (biom_format) bulk download failed with "No such file or directory - biom".
 COPY --from=builder /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
 COPY --from=builder /usr/local/bin/aws /usr/local/bin/aws
 COPY --from=builder /usr/local/bin/aegea /usr/local/bin/aegea
+COPY --from=builder /usr/local/bin/biom /usr/local/bin/biom
 
 WORKDIR /app
 COPY --from=builder /app /app
