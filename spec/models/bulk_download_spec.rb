@@ -9,6 +9,25 @@ describe BulkDownload, type: :model do
   let(:illumina) { PipelineRun::TECHNOLOGY_INPUT[:illumina] }
   let(:consensus_genome) { WorkflowRun::WORKFLOW[:consensus_genome] }
 
+  context "#server_host" do
+    before { @bulk_download = create(:bulk_download, user: create(:joe)) }
+
+    it "returns an already-schemed SERVER_DOMAIN unchanged" do
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => "https://dev.seqtoid.org"))
+      expect(@bulk_download.send(:server_host)).to eq("https://dev.seqtoid.org")
+    end
+
+    it "prepends https:// to a schemeless SERVER_DOMAIN (env-staging parity, #950)" do
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => "env-staging.seqtoid.org"))
+      expect(@bulk_download.send(:server_host)).to eq("https://env-staging.seqtoid.org")
+    end
+
+    it "leaves a blank SERVER_DOMAIN blank (so success_url/error_url return nil)" do
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => ""))
+      expect(@bulk_download.send(:server_host)).to eq("")
+    end
+  end
+
   context "#success_url" do
     before do
       @joe = create(:joe)
