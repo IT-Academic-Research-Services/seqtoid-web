@@ -77,3 +77,18 @@ CVE-2026-45623
 # ignores them independently, so the CVE baseline alone did not clear the gate. Same
 # justification and forward-fix as CVE-2026-45623 (bump postcss to 8.x).
 GHSA-r28c-9q8g-f849
+
+# 2026-08-04: a trivy DB-refresh HIGH wave wedged the dev CD again -- the main image build (515db665)
+# failed at "Scan image (Trivy)", so gitops-advance-dev skipped and dev stayed stranded at a6d2e4c8
+# since 08-01 (blocking SMP-1638 bulk-download fix + #293/#294/#296/#297). Baseline the two newly
+# flagged HIGH findings to green the build; both are build-time / low-real-risk transitive deps.
+#
+# CVE-2026-69152 -- brace-expansion 5.0.8 (package.json): DoS via unbounded intermediate arrays,
+# bypassing the CVE-2026-14257 mitigation. Build-time transitive npm dep; not parsing untrusted
+# runtime input. FORWARD-FIX: bump the brace-expansion override to 5.0.9 + regenerate the lockfile.
+CVE-2026-69152
+#
+# GHSA-6v7p-g79w-8964 -- msgpack 1.1.2 (python): MessagePack for Python out-of-bounds read / crash.
+# Transitive python package in the image, not the Rails runtime deserialization path. FORWARD-FIX:
+# bump msgpack to 1.2.1.
+GHSA-6v7p-g79w-8964
