@@ -1,0 +1,52 @@
+# Dependabot: forward-fix dependency CVEs instead of accumulating .trivyignore baselines (SMP-1638).
+# Opens PRs against `integration` (the normal feature -> integration -> main flow). Version updates
+# are grouped per ecosystem to keep PR volume low; Dependabot SECURITY updates are always raised
+# individually and promptly regardless of the grouping below.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    target-branch: integration
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: bundler
+    directory: "/"
+    target-branch: integration
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      bundler-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: pip
+    directory: "/"
+    target-branch: integration
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      pip-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    target-branch: integration
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: integration
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions-all:
+        patterns: ["*"]
