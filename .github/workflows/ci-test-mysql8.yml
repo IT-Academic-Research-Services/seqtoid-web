@@ -319,7 +319,11 @@ jobs:
           # On a PR, compare against the target branch; on a push to main, against the previous
           # commit. `git merge-base` inside the script narrows either to the true base.
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^' }}
-        run: bash bin/ci-migrate-check
+        run: |
+          # The job runs in a container as root while the workspace is runner-owned, so git
+          # rejects it as "dubious ownership" unless it is declared safe for THIS step's HOME.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash bin/ci-migrate-check
 
   collate:
     name: Collate coverage + regression gate

@@ -85,10 +85,18 @@ fail() {
 
 # ---------------------------------------------------------------------------------------------
 echo "::group::Resolve base"
-if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+# `git` refuses to operate on a repo owned by another uid ("detected dubious ownership"), which is
+# the normal case for a container job on a runner-owned workspace. Declaring it safe here keeps the
+# script self-contained rather than depending on the caller having done it.
+git config --global --add safe.directory "$(pwd)" 2>/dev/null || true
+git config --global --add safe.directory '*' 2>/dev/null || true
+
+if ! GIT_ERR="$(git rev-parse --verify "$BASE_REF" 2>&1)"; then
   fail "cannot resolve BASE_REF '$BASE_REF'" \
+       "git said: $GIT_ERR" \
        "The check compares this branch against its base to find new migrations." \
-       "In CI make sure the checkout has enough history (fetch-depth: 0)."
+       "If the ref is genuinely missing, the checkout needs full history (fetch-depth: 0)." \
+       "If git complains about ownership, the workspace is owned by another uid."
 fi
 BASE_SHA="$(git merge-base "$BASE_REF" HEAD)"
 echo "base ref : $BASE_REF"
