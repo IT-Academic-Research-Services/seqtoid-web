@@ -238,6 +238,34 @@ module PipelineRunsHelper
   BOWTIE2_ERCC_READS_PIPELINE_VERSION = "8.1".freeze
   BOWTIE2_ERCC_READS_BEFORE_QUALITY_FILTERING_PIPELINE_VERSION = "8.2".freeze
 
+  # CZID-977 -- refuse a pipeline version paired with an NCBI index vintage it is not recorded as
+  # compatible with.
+  #
+  # The real constraint on running an older pipeline is the reference data, not the WDL, and the
+  # failure is SILENT: a mismatched pair runs to completion and can simply be wrong. Version and
+  # index are pinned independently, so nothing else checks the combination -- and per-run version
+  # selection (CZID-975/976) made an arbitrary pairing reachable from the UI.
+  #
+  # Scoped to mNGS on purpose: this is where the NCBI index is the reference data being aligned
+  # against, and where pipeline_run.alignment_config is the authoritative record of the pairing.
+  # (consensus-genome takes an ncbi_index_version input too -- see the ticket for why that path is
+  # handled separately rather than assumed equivalent.)
+  #
+  # A version with no recorded bounds is UNCONSTRAINED, not incompatible: the boundaries are a
+  # scientific judgment this codebase does not record, so an unpopulated catalog behaves exactly as
+  # it does today.
+  def assert_index_compatible!(workflow, wdl_version, index_version)
+    return if wdl_version.blank? || index_version.blank?
+
+    entry = WorkflowVersion.find_by(workflow: workflow, version: wdl_version)
+    return if entry.nil? # uncatalogued versions are CZID-982's problem, not this check's
+    return if entry.compatible_with_index?(index_version)
+
+    raise ErrorHelper::VersionControlErrors.incompatible_index_version(
+      workflow, wdl_version, index_version, entry.index_compatibility_range
+    )
+  end
+
   def pipeline_version_at_least(pipeline_version, test_version)
     unless pipeline_version
       return false

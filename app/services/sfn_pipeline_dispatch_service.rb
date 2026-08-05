@@ -43,6 +43,11 @@ class SfnPipelineDispatchService
                    end
 
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?
+
+    # CZID-977: refuse a version/index pairing the catalog does not record as compatible. Checked
+    # HERE because this is where both halves are finally known -- the version resolved above and
+    # the index the run was created with.
+    assert_index_compatible!(WORKFLOW_NAME, @wdl_version, @pipeline_run.alignment_config&.name)
   end
 
   def call
