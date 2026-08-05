@@ -54,16 +54,21 @@ class Sample < ApplicationRecord
   validates :pipeline_commit, presence: true, allow_blank: true
   validates :uploaded_from_basespace, presence: true, inclusion: { in: [0, 1] }
   validates :initial_workflow, inclusion: { in: WorkflowRun::WORKFLOW.values }
-  # CZID-976 -- the user-selected pipeline version. Validated HERE, at the upload boundary, so a
-  # malformed selection is a 4xx on the request rather than a 500 later at dispatch time (dispatch
-  # is where the version is actually resolved, which can be well after the upload returns).
-  # VersionRetrievalService re-checks the same shape before the value reaches a LIKE query.
-  validates :workflow_version,
-            format: {
-              with: WorkflowVersion::USER_VERSION_PREFIX_FORMAT,
-              message: "must be a major (8), major.minor (8.1) or full version (8.1.2)",
-            },
-            allow_blank: true
+  # CZID-975/CZID-976 -- the user-selected pipeline versions, keyed by workflow.
+  #
+  # Validated HERE, at the upload boundary, so a malformed selection is a 4xx on the request rather
+  # than a 500 later at dispatch (dispatch resolves the version well after the upload returns).
+  # VersionRetrievalService re-checks the same shape before a value reaches a LIKE query.
+  validate :workflow_versions_are_well_formed
+
+  # The version this sample should run for `workflow`, or nil to use the project pin / configured
+  # default. Per-workflow because one upload can run several: selecting an AMR version must not
+  # change which mNGS version runs.
+  def selected_workflow_version(workflow)
+    return nil unless workflow_versions.is_a?(Hash)
+
+    workflow_versions[workflow.to_s].presence
+  end
 
   before_save :check_host_genome, :concatenate_input_parts, :check_status
   after_create :initiate_input_file_upload
@@ -1269,6 +1274,32 @@ class Sample < ApplicationRecord
   end
 
   private
+
+  # CZID-975 -- the selection map must be {workflow => version}, with known workflow keys and
+  # version-shaped values. The values reach a `LIKE '<prefix>%'` query in VersionRetrievalService,
+  # so their shape is checked here at the upload boundary as well as there.
+  def workflow_versions_are_well_formed
+    return if workflow_versions.blank?
+
+    unless workflow_versions.is_a?(Hash)
+      errors.add(:workflow_versions, "must be a map of workflow to version")
+      return
+    end
+
+    workflow_versions.each do |workflow, version|
+      unless WorkflowRun::WORKFLOW.value?(workflow.to_s)
+        errors.add(:workflow_versions, "contains unknown workflow #{workflow}")
+        next
+      end
+
+      unless version.to_s.match?(WorkflowVersion::USER_VERSION_PREFIX_FORMAT)
+        errors.add(
+          :workflow_versions,
+          "version for #{workflow} must be a major (8), major.minor (8.1) or full version (8.1.2)"
+        )
+      end
+    end
+  end
 
   def mark_older_pipeline_runs_as_deprecated
     # If the sample has more than one pipeline run, set deprecated to true for all other pipeline runs except the first.

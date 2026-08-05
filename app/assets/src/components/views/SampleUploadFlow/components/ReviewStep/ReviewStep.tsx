@@ -21,7 +21,7 @@ import {
 } from "~/interface/shared";
 import { UploadStepType } from "~/interface/upload";
 import TermsAgreement from "~ui/controls/TermsAgreement";
-import { Technology, UploadWorkflows, UPLOAD_WORKFLOWS } from "../../constants";
+import { Technology, UPLOAD_WORKFLOWS, UploadWorkflows } from "../../constants";
 import { UploadProgressModal } from "../UploadProgressModal";
 import { RefSeqAccessionDataType } from "../UploadSampleStep/types";
 import { AnalysesSections } from "./components/AnalysesSections";
@@ -36,6 +36,10 @@ interface ReviewStepProps {
   bedFile: File | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string | null;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   hostGenomes?: HostGenome[];
   medakaModel: string | null;
   metadata: MetadataBasic | null;
@@ -146,6 +150,7 @@ class ReviewStepCC extends React.Component<
       bedFile,
       clearlabs,
       guppyBasecallerSetting,
+      workflowVersions,
       technology,
       hostGenomes,
       medakaModel,
@@ -248,6 +253,7 @@ class ReviewStepCC extends React.Component<
               clearlabs={clearlabs}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               guppyBasecallerSetting={guppyBasecallerSetting}
+              workflowVersions={workflowVersions}
               technology={technology}
               medakaModel={medakaModel}
               metadata={metadata}

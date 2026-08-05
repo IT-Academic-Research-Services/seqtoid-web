@@ -1,9 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getWorkflowVersions } from "~/api";
 import { TaxonOption } from "~/components/common/filters/types";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { AMR_PIPELINE_GITHUB_LINK } from "~/components/utils/documentationLinks";
 import { WorkflowType } from "~/components/utils/workflows";
-import { PipelineVersions, SampleUploadType } from "~/interface/shared";
+import {
+  CatalogedWorkflowVersion,
+  PipelineVersions,
+  SampleUploadType,
+} from "~/interface/shared";
 import { IconCovidVirusXLarge } from "~ui/icons";
 import {
   BASESPACE_UPLOAD,
@@ -13,8 +18,8 @@ import {
   REMOTE_UPLOAD,
   SEQUENCING_TECHNOLOGY_OPTIONS,
   Technology,
-  UploadWorkflows,
   UPLOAD_WORKFLOWS,
+  UploadWorkflows,
 } from "../../constants";
 import { AnalysisType } from "./components/AnalysisType";
 import { ConsensusGenomeSequencingPlatformOptions } from "./components/ConsensusGenomeSequencingPlatformOptions";
@@ -39,6 +44,11 @@ interface WorkflowSelectorProps {
     technology: SEQUENCING_TECHNOLOGY_OPTIONS,
   ) => void;
   onGuppyBasecallerSettingChange?: (selected: string) => void;
+  // CZID-975 -- per-workflow version selection. Keyed by workflow because one upload can run
+  // several (mNGS + AMR is supported), so a single value would apply an AMR choice to the mNGS run.
+  // Optional so the indicators still render read-only wherever selection is not wired.
+  onWorkflowVersionChange?: (workflow: string, selected: string) => void;
+  selectedWorkflowVersions?: Record<string, string>;
   onWetlabProtocolChange?: (selected: string) => void;
   onWorkflowToggle?: (
     workflow: UploadWorkflows,
@@ -88,6 +98,8 @@ const WorkflowSelector = ({
   onTaxonChange,
   onTechnologyToggle,
   onGuppyBasecallerSettingChange,
+  onWorkflowVersionChange,
+  selectedWorkflowVersions,
   onWetlabProtocolChange,
   onWorkflowToggle,
   currentTab,
@@ -106,6 +118,41 @@ const WorkflowSelector = ({
     return !enabledWorkflows.includes(workflow);
   };
 
+  // CZID-975 -- the version catalogs backing the dropdowns, one per selectable workflow. Fetched
+  // once; a workflow whose fetch fails keeps an empty list, which makes its indicator fall back to
+  // read-only rather than blocking the upload.
+  const [versionCatalogs, setVersionCatalogs] = useState<
+    Record<string, CatalogedWorkflowVersion[]>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const selectable = [
+      WorkflowType.AMR,
+      WorkflowType.SHORT_READ_MNGS,
+      WorkflowType.LONG_READ_MNGS,
+      WorkflowType.CONSENSUS_GENOME,
+    ];
+    Promise.all(
+      selectable.map(workflow =>
+        getWorkflowVersions(workflow)
+          .then(response => [workflow, response?.versions ?? []] as const)
+          .catch(() => [workflow, [] as CatalogedWorkflowVersion[]] as const),
+      ),
+    ).then(entries => {
+      if (!cancelled) setVersionCatalogs(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Curried so each indicator reports a change for its OWN workflow.
+  const versionChangeHandlerFor = (workflow: string) =>
+    onWorkflowVersionChange
+      ? (selected: string) => onWorkflowVersionChange(workflow, selected)
+      : undefined;
+
   return (
     <div className={cs.workflowSelector}>
       <div className={cs.header}>Analysis Type</div>
@@ -123,6 +170,9 @@ const WorkflowSelector = ({
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
             currentTab={currentTab}
             latestMajorPipelineVersions={latestMajorPipelineVersions}
+            versionCatalogs={versionCatalogs}
+            selectedWorkflowVersions={selectedWorkflowVersions}
+            versionChangeHandlerFor={versionChangeHandlerFor}
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
             onChangeGuppyBasecallerSetting={onGuppyBasecallerSettingChange}
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
@@ -173,6 +223,8 @@ const WorkflowSelector = ({
           <div className={cs.technologyContent}>
             <PipelineVersionIndicator
               isPipelineVersion={true}
+              availableVersions={versionCatalogs[WorkflowType.AMR]}
+              onVersionChange={versionChangeHandlerFor(WorkflowType.AMR)}
               isNewVersionAvailable={
                 projectPipelineVersions?.[WorkflowType.AMR]?.[0] !==
                 latestMajorPipelineVersions?.[WorkflowType.AMR]
@@ -180,7 +232,10 @@ const WorkflowSelector = ({
               warningHelpLink={
                 WorkflowLinksConfig[WorkflowType.AMR].warningLink
               }
-              version={projectPipelineVersions?.[WorkflowType.AMR]}
+              version={
+                selectedWorkflowVersions?.[WorkflowType.AMR] ??
+                projectPipelineVersions?.[WorkflowType.AMR]
+              }
               versionHelpLink={
                 WorkflowLinksConfig[WorkflowType.AMR].pipelineVersionLink
               }
@@ -209,6 +264,13 @@ const WorkflowSelector = ({
         title={UPLOAD_WORKFLOWS.VIRAL_CONSENSUS_GENOME.label}
         sequencingPlatformOptions={
           <ViralConsensusGenomeSequencingPlatformOptions
+            availableVersions={versionCatalogs[WorkflowType.CONSENSUS_GENOME]}
+            onVersionChange={versionChangeHandlerFor(
+              WorkflowType.CONSENSUS_GENOME,
+            )}
+            selectedVersion={
+              selectedWorkflowVersions?.[WorkflowType.CONSENSUS_GENOME]
+            }
             bedFileName={bedFileName}
             refSeqFileName={refSeqFileName}
             hasRefSeqFileNameError={hasRefSeqFileNameError}

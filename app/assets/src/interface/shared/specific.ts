@@ -212,6 +212,20 @@ export interface PipelineVersionResponse {
   latestMajorPipelineVersions: PipelineVersions;
 }
 
+// CZID-975 -- one selectable entry from the version catalog. `deprecated` versions still run, they
+// are just no longer patched, so they are offered but discouraged. Versions that cannot run at all
+// are omitted server-side rather than being returned with a flag.
+export interface CatalogedWorkflowVersion {
+  version: string;
+  deprecated: boolean;
+  notes?: string;
+}
+
+export interface CatalogedWorkflowVersionsResponse {
+  workflow: string;
+  versions: CatalogedWorkflowVersion[];
+}
+
 export interface Project {
   created_at?: DateString;
   creator?: string;
