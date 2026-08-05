@@ -33,7 +33,14 @@ class SfnPipelineDispatchService
     @sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_MNGS_ARN) || AppConfigHelper.get_app_config(AppConfig::SFN_ARN)
     raise SfnArnMissingError if @sfn_arn.blank?
 
-    @wdl_version = /\d+\.\d+\.\d+/ =~ pipeline_run.pipeline_branch ? pipeline_run.pipeline_branch : VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME)
+    # CZID-976: pipeline_branch stays the ADMIN escape hatch (a semver there is used verbatim,
+    # bypassing catalog validation); sample.workflow_version is the user's selection and IS
+    # validated by the service.
+    @wdl_version = if /\d+\.\d+\.\d+/ =~ pipeline_run.pipeline_branch
+                     pipeline_run.pipeline_branch
+                   else
+                     VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.workflow_version)
+                   end
 
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?
   end
