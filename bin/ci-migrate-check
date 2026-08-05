@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+#
+# CZID-998 -- prove this branch's migrations actually APPLY to an existing database.
+#
+# WHY THIS EXISTS
+#
+# Nothing in CI ran `db:migrate`. The Ruby suite uses `db:schema:load`, which builds the schema
+# straight from db/schema.rb and never executes a single migration. So a migration could be merged,
+# built and shipped without anyone having run it, and the first place it executed was the Argo
+# PreSync hook in a live environment -- where a failure aborts the whole sync and blocks EVERY
+# subsequent deploy, not just its own.
+#
+# That is not hypothetical. Two defects shipped that way in one day (CZID-992):
+#
+#   1. strong_migrations refused a raw `execute` and a `remove_column`. The series had never
+#      successfully applied ANYWHERE, and nothing noticed.
+#   2. MySQL DDL auto-commits per statement, so the aborted run left its columns behind with the
+#      migration unrecorded in schema_migrations. Every retry then died on "Duplicate column name".
+#
+# Together those wedged dev for six deploys. The only signal was the Argo app sitting at
+# OutOfSync / *Healthy* -- "Healthy" describes the old pods still serving, so nothing alarmed.
+#
+# WHAT IT CHECKS
+#
+#   1. APPLY      load the BASE branch's schema, then migrate. This is what a deploy does: apply new
+#                 migrations to a database that already has the previous schema. Catches
+#                 strong_migrations violations and anything that only fails against real MySQL.
+#   2. PARITY     the committed db/schema.rb must equal what the migrations actually produce.
+#   3. RE-RUN     delete this branch's migrations from schema_migrations, leave their DDL in place,
+#                 and migrate again. This reproduces the partial-apply state exactly, and is the
+#                 check that would have caught defect 2.
+#
+# Loading the BASE schema (not the branch's) is the point. Loading the branch's own schema.rb would
+# mark the new migrations as already applied -- `assume_migrated_upto_version` -- and they would
+# never run, which is precisely the blind spot that let this through.
+#
+# SSOT: runs identically locally and in CI, like bin/ci-test (CZID-109). Locally:
+#   DB_HOST=127.0.0.1 DB_USERNAME=root DB_PASSWORD= bash bin/ci-migrate-check
+set -euo pipefail
+
+RAILS_ENV="${RAILS_ENV:-test}"
+export RAILS_ENV
+DB_NAME="${DB_NAME:-idseq_test}"
+DB_HOST="${DB_HOST:-db}"
+DB_USERNAME="${DB_USERNAME:-root}"
+DB_PASSWORD="${DB_PASSWORD:-}"
+
+# `origin/main` locally, overridden in CI with the PR's real merge base.
+BASE_REF="${BASE_REF:-origin/main}"
+
+mysql_do() {
+  if [ -n "$DB_PASSWORD" ]; then
+    mysql -h "$DB_HOST" -u "$DB_USERNAME" -p"$DB_PASSWORD" -D "$DB_NAME" -N -B -e "$1"
+  else
+    mysql -h "$DB_HOST" -u "$DB_USERNAME" -D "$DB_NAME" -N -B -e "$1"
+  fi
+}
+
+# Compare two schema dumps, ignoring differences that are about the SERVER or the DUMPER rather
+# than about the schema:
+#   * MySQL 8.0.29+ renders the `utf8` alias as `utf8mb3`, so the spelling tracks the server patch
+#     version rather than anything in the schema.
+#   * `precision:` on datetime columns is emitted differently across ActiveRecord::Schema versions.
+# Returns 0 (true) when they DIFFER, printing the diff.
+schema_differs() {
+  local a="$1" b="$2" na nb
+  na="$(mktemp)"; nb="$(mktemp)"
+  sed -E 's/utf8mb3/utf8/g; s/, precision: [0-9]+//g; s/ActiveRecord::Schema\[[0-9.]+\]/ActiveRecord::Schema/' "$a" > "$na"
+  sed -E 's/utf8mb3/utf8/g; s/, precision: [0-9]+//g; s/ActiveRecord::Schema\[[0-9.]+\]/ActiveRecord::Schema/' "$b" > "$nb"
+  if diff -u "$na" "$nb"; then
+    rm -f "$na" "$nb"; return 1
+  fi
+  rm -f "$na" "$nb"; return 0
+}
+
+fail() {
+  echo ""
+  echo "=============================================================================="
+  echo "MIGRATION CHECK FAILED: $1"
+  echo "=============================================================================="
+  shift
+  for line in "$@"; do echo "  $line"; done
+  exit 1
+}
+
+# ---------------------------------------------------------------------------------------------
+echo "::group::Resolve base"
+# `git` refuses to operate on a repo owned by another uid ("detected dubious ownership"), which is
+# the normal case for a container job on a runner-owned workspace. Declaring it safe here keeps the
+# script self-contained rather than depending on the caller having done it.
+git config --global --add safe.directory "$(pwd)" 2>/dev/null || true
+git config --global --add safe.directory '*' 2>/dev/null || true
+
+if ! GIT_ERR="$(git rev-parse --verify "$BASE_REF" 2>&1)"; then
+  fail "cannot resolve BASE_REF '$BASE_REF'" \
+       "git said: $GIT_ERR" \
+       "The check compares this branch against its base to find new migrations." \
+       "If the ref is genuinely missing, the checkout needs full history (fetch-depth: 0)." \
+       "If git complains about ownership, the workspace is owned by another uid."
+fi
+BASE_SHA="$(git merge-base "$BASE_REF" HEAD)"
+echo "base ref : $BASE_REF"
+echo "base sha : $BASE_SHA"
+
+# Migrations this branch adds or edits. Deleted files are excluded (--diff-filter=d): a removed
+# migration cannot be re-applied, and its absence is a separate review question.
+CHANGED_MIGRATIONS="$(git diff --name-only --diff-filter=d "$BASE_SHA...HEAD" -- db/migrate/ || true)"
+if [ -n "$CHANGED_MIGRATIONS" ]; then
+  echo "migrations changed on this branch:"
+  echo "$CHANGED_MIGRATIONS" | sed 's/^/  /'
+else
+  echo "no migrations changed on this branch -- still verifying schema.rb parity"
+fi
+echo "::endgroup::"
+
+# ---------------------------------------------------------------------------------------------
+echo "::group::Load BASE schema"
+# The base branch's schema.rb stands in for "what is already deployed". Written into the working
+# tree only long enough to load, then restored, so the parity check below compares against the
+# schema.rb this branch actually commits.
+git show "$BASE_SHA:db/schema.rb" > db/schema.rb
+bundle exec rails db:drop db:create db:schema:load
+git checkout -- db/schema.rb
+
+BASE_VERSION="$(mysql_do 'SELECT COALESCE(MAX(version), "none") FROM schema_migrations;')"
+echo "schema_migrations high-water after loading base: $BASE_VERSION"
+echo "::endgroup::"
+
+# ---------------------------------------------------------------------------------------------
+echo "::group::1/3 APPLY -- migrate onto the base schema"
+# The step that was missing. A migration that cannot run against real MySQL fails HERE, in CI,
+# instead of in a deployed environment as a wedged PreSync hook.
+if ! bundle exec rails db:migrate; then
+  fail "db:migrate failed applying this branch's migrations to the base schema" \
+       "The real error is in the rails output above -- read it rather than assuming a cause." \
+       "This is exactly what the deploy's PreSync hook does, so it WOULD have blocked every" \
+       "deploy, not just its own. Two causes seen in practice:" \
+       "  * strong_migrations refusing an operation (raw execute, remove_column, ...). Wrap it" \
+       "    in safety_assured { } only with a written justification, never to silence the check." \
+       "  * DDL that only fails against real MySQL (charset, index length, generated columns)."
+fi
+# `db:migrate` re-dumps db/schema.rb, so this is the schema the migrations actually produce.
+AFTER_APPLY="$(mktemp)"
+cp db/schema.rb "$AFTER_APPLY"
+echo "::endgroup::"
+
+# ---------------------------------------------------------------------------------------------
+echo "::group::2/3 PARITY -- committed schema.rb matches what the migrations produce"
+# ADVISORY, deliberately not a hard failure.
+#
+# The committed db/schema.rb declares `ActiveRecord::Schema[7.0]` while this Rails re-dumps it as
+# [7.2], which alone rewrites ~72 lines (mostly datetime `precision:`) with ZERO pending migrations.
+# Until schema.rb is regenerated under the current Rails -- its own reviewable change, not something
+# to smuggle in here -- a strict gate would be red on every PR for a difference no PR introduced,
+# and a gate that cries wolf gets ignored, which is worse than not having one.
+#
+# The normalisation above absorbs the known cosmetic differences, so anything still reported here is
+# worth a look even though it does not block.
+COMMITTED_SCHEMA="$(mktemp)"
+git show HEAD:db/schema.rb > "$COMMITTED_SCHEMA"
+if schema_differs "$COMMITTED_SCHEMA" "$AFTER_APPLY"; then
+  echo ""
+  echo "NOTE (advisory, not failing): committed db/schema.rb differs from the migrated schema."
+  echo "  If your migrations changed the schema, regenerate and commit db/schema.rb."
+  echo "  Pre-existing [7.0] vs [7.2] dumper drift is expected here and is tracked separately."
+else
+  echo "committed db/schema.rb matches the migrated schema"
+fi
+echo "::endgroup::"
+
+# ---------------------------------------------------------------------------------------------
+echo "::group::3/3 RE-RUN -- migrations converge after a partial apply"
+if [ -z "$CHANGED_MIGRATIONS" ]; then
+  echo "no migrations changed on this branch; nothing to re-run"
+else
+  # Reproduce the partial-apply state: the DDL has landed and auto-committed, but the migration was
+  # never recorded. That is exactly the state a killed or aborted migrate leaves behind, and MySQL
+  # cannot roll it back. A re-run must converge rather than repeat the original failure.
+  VERSIONS=""
+  for f in $CHANGED_MIGRATIONS; do
+    v="$(basename "$f" | cut -d_ -f1)"
+    case "$v" in
+      ''|*[!0-9]*) continue ;;   # not a versioned migration filename
+    esac
+    VERSIONS="${VERSIONS:+$VERSIONS,}'$v'"
+  done
+
+  if [ -z "$VERSIONS" ]; then
+    echo "no versioned migration filenames among the changes; nothing to re-run"
+  else
+    echo "forgetting versions: $VERSIONS"
+    mysql_do "DELETE FROM schema_migrations WHERE version IN ($VERSIONS);"
+
+    if ! bundle exec rails db:migrate; then
+      fail "re-applying this branch's migrations failed" \
+           "The real error is in the rails output above -- read it rather than assuming a cause." \
+           "Their DDL was left in place and their schema_migrations rows removed: the state an" \
+           "aborted migrate leaves behind, since MySQL DDL auto-commits and cannot roll back." \
+           "A retry must CONVERGE, or it wedges the PreSync hook and blocks ALL deploys." \
+           "Two causes seen in practice:" \
+           "  * not idempotent -- 'Duplicate column name' / 'Can't DROP'. Guard each step:" \
+           "      add_column :t, :c, :string unless column_exists?(:t, :c)" \
+           "      remove_column :t, :c if column_exists?(:t, :c)" \
+           "  * strong_migrations refusing an operation. NOTE: when this branch EDITS an existing" \
+           "    migration rather than adding a new one, the base schema already records it as" \
+           "    applied, so step 1 does not re-execute it -- this step is where it first runs."
+    fi
+
+    # Compare the re-run's dump against the FIRST apply's dump, not against the committed file.
+    # Both sides come from the same Rails and the same server, so this isolates the one question
+    # that matters -- does applying twice converge? -- with no dumper-version noise.
+    if schema_differs "$AFTER_APPLY" db/schema.rb; then
+      fail "re-running the migrations produced a DIFFERENT schema" \
+           "They are not idempotent: applying them twice does not converge to one schema."
+    fi
+    echo "migrations converge when re-applied over their own partial state"
+  fi
+fi
+echo "::endgroup::"
+
+echo ""
+echo "migration check passed"
