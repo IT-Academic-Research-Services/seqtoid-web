@@ -14,7 +14,7 @@ import {
   generateUrlToSampleView,
   TempSelectedOptionsShape,
 } from "~/components/utils/urls";
-import { WorkflowType, WORKFLOW_TABS } from "~/components/utils/workflows";
+import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import { ConsensusGenomeDropdown } from "~/components/views/SampleView/components/ConsensusGenomeView/components/ConsensusGenomeHeader/components/ConsensusGenomeDropdown";
 import { usePrevious } from "~/helpers/customHooks/usePrevious";
 import Sample, { WorkflowRun } from "~/interface/sample";
@@ -29,6 +29,11 @@ import {
   SnapshotShareId,
 } from "~/interface/shared";
 import { formatSendValue, processMetadataTypes } from "~utils/metadata";
+import { SampleDetailsModeSampleMetadataFieldsQuery } from "./__generated__/SampleDetailsModeSampleMetadataFieldsQuery.graphql";
+import { SampleDetailsModeSampleMetadataQuery } from "./__generated__/SampleDetailsModeSampleMetadataQuery.graphql";
+import { SampleDetailsModeUpdateMetadataMutation } from "./__generated__/SampleDetailsModeUpdateMetadataMutation.graphql";
+import { SampleDetailsModeUpdateSampleNameMutation } from "./__generated__/SampleDetailsModeUpdateSampleNameMutation.graphql";
+import { SampleDetailsModeUpdateSampleNotesMutation } from "./__generated__/SampleDetailsModeUpdateSampleNotesMutation.graphql";
 import { MetadataTab } from "./components/MetadataTab";
 import { NotesTab } from "./components/NotesTab";
 import { PipelineTab } from "./components/PipelineTab";
@@ -36,11 +41,6 @@ import { SIDEBAR_TABS } from "./constants";
 import cs from "./sample_details_mode.scss";
 import { AdditionalInfo, SidebarTabName } from "./types";
 import { processAdditionalInfo } from "./utils";
-import { SampleDetailsModeSampleMetadataFieldsQuery } from "./__generated__/SampleDetailsModeSampleMetadataFieldsQuery.graphql";
-import { SampleDetailsModeSampleMetadataQuery } from "./__generated__/SampleDetailsModeSampleMetadataQuery.graphql";
-import { SampleDetailsModeUpdateMetadataMutation } from "./__generated__/SampleDetailsModeUpdateMetadataMutation.graphql";
-import { SampleDetailsModeUpdateSampleNameMutation } from "./__generated__/SampleDetailsModeUpdateSampleNameMutation.graphql";
-import { SampleDetailsModeUpdateSampleNotesMutation } from "./__generated__/SampleDetailsModeUpdateSampleNotesMutation.graphql";
 
 export interface SampleDetailsModeProps {
   currentRun?: WorkflowRun | PipelineRun;
@@ -194,19 +194,20 @@ export const SampleDetailsMode = ({
   const additionalInfo: AdditionalInfo = processAdditionalInfo(
     sampleMetadataValues?.additional_info as AdditionalInfo,
   );
-  const [nameLocal, setNameLocal] = useState(additionalInfo?.name);
+  const [sampleName, setSampleName] = useState(additionalInfo?.name);
 
   const prevProps = usePrevious({
     sampleId,
   });
   const isSampleIdChanged = prevProps?.sampleId !== sampleId;
+  const isSampleNameChanged = additionalInfo?.name !== sampleName;
 
-  // If the sampleId is changed, reset the nameLocal to the name of the sample
+  // If the sampleId or sample.name is changed, reset the sampleName to the name of the sample
   useEffect(() => {
-    if (isSampleIdChanged) {
-      setNameLocal(additionalInfo?.name);
+    if (isSampleIdChanged || isSampleNameChanged) {
+      setSampleName(additionalInfo?.name);
     }
-  }, [additionalInfo?.name, isSampleIdChanged]);
+  }, [additionalInfo?.name, isSampleIdChanged, isSampleNameChanged]);
 
   useEffect(() => {
     getAllSampleTypes().then(fetchedSampleTypes => {
@@ -215,13 +216,15 @@ export const SampleDetailsMode = ({
   }, []);
 
   useEffect(() => {
-    // _save relies on this.state.metadata being up-to-date
-    if (singleKeyValueToSave) {
-      const [key, value] = singleKeyValueToSave;
-      _save(sampleId, key, value);
-      setSingleKeyValueToSave(null);
-    }
-  }, [singleKeyValueToSave]);
+    (async () => {
+      // _save relies on this.state.metadata being up-to-date
+      if (singleKeyValueToSave) {
+        const [key, value] = singleKeyValueToSave;
+        await _save(sampleId, key, value);
+        setSingleKeyValueToSave(null);
+      }
+    })(); // The trailing () immediately triggers execution
+  }, [sampleId, singleKeyValueToSave]);
 
   const onTabChange = (tab: SidebarTabName) => {
     setCurrentTabSidebar(tab);
@@ -237,6 +240,7 @@ export const SampleDetailsMode = ({
     /* Sample name and note are special cases */
     if (key === "name" || key === "notes") {
       setMetadataChanged(set(key, true, metadataChanged));
+      setMetadataErrors(set(key, null, metadataErrors));
       return;
     }
     if (shouldSave) {
@@ -250,7 +254,7 @@ export const SampleDetailsMode = ({
     if (metadataChanged[key]) {
       const newValue = metadata[key];
       setMetadataChanged(set(key, false, metadataChanged));
-      _save(sampleId, key, newValue);
+      await _save(sampleId, key, newValue);
     }
   };
 
@@ -268,7 +272,6 @@ export const SampleDetailsMode = ({
     useMutation<SampleDetailsModeUpdateSampleNotesMutation>(
       UpdateSampleNotesMutation,
     );
-
   const _save = async (
     id: number | string,
     key: string,
@@ -282,12 +285,10 @@ export const SampleDetailsMode = ({
     }
 
     const onMetadataSaveCompleted = data => {
-      if (data.UpdateMetadata?.status === "failed") {
-        _metadataErrors = set(
-          key,
-          data.UpdateMetadata.message,
-          _metadataErrors,
-        );
+      const mutationResult =
+        data.UpdateMetadata || data.UpdateSampleName || data.UpdateSampleNotes;
+      if (mutationResult?.status === "failed") {
+        _metadataErrors = set(key, mutationResult.message, _metadataErrors);
         setMetadataErrors(_metadataErrors);
       } else {
         loadMetadataQuery(
@@ -363,8 +364,7 @@ export const SampleDetailsMode = ({
           onMetadataChange={handleMetadataChange}
           onMetadataSave={handleMetadataSave}
           savePending={savePending}
-          nameLocal={nameLocal}
-          setNameLocal={setNameLocal}
+          sampleName={sampleName}
           metadataErrors={metadataErrors}
           sampleId={sampleId}
           sampleTypes={sampleTypes || []}
@@ -444,7 +444,7 @@ export const SampleDetailsMode = ({
 
   return (
     <div className={cs.content}>
-      <div className={cs.title}>{nameLocal}</div>
+      <div className={cs.title}>{sampleName}</div>
       {showReportLink && (
         <div className={cs.reportLink}>
           <a
