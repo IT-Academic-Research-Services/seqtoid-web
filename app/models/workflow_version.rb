@@ -22,6 +22,12 @@ class WorkflowVersion < ApplicationRecord
   IMAGE_DIGEST_FORMAT = /\Asha256:[0-9a-f]{64}\z/
   CHECKSUM_FORMAT = /\A[0-9a-f]{64}\z/
 
+  # CZID-976 -- the shape a USER may select: a major ("8"), major.minor ("8.1") or full version
+  # ("8.1.2"). Lives here with the rest of the version-shape knowledge because both the upload
+  # boundary (Sample) and the resolver (VersionRetrievalService) have to agree on it -- the value
+  # reaches a `LIKE '<prefix>%'` query, so it is validated at both ends.
+  USER_VERSION_PREFIX_FORMAT = /\A\d+(\.\d+){0,2}\z/
+
   validates :tier, inclusion: { in: TIERS }, allow_nil: true
   validates :image_digest, format: { with: IMAGE_DIGEST_FORMAT }, allow_nil: true
   validates :wdl_checksum, format: { with: CHECKSUM_FORMAT }, allow_nil: true

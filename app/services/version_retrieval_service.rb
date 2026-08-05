@@ -34,13 +34,17 @@ class VersionRetrievalService
 
   def fetch_and_validate_version_to_run
     if @user_specified_prefix
-      if @existing_version_prefix
-        # In the future, we may want to explore allowing users to update their pinned version.
-        # For now, this service does not allow the updating of ProjectWorkflowVersions.
-        raise VersionControlErrors.project_workflow_version_already_pinned(@project_id, @workflow, @existing_version_prefix)
-      else
-        prepare_specific_workflow_version_for_upload(@user_specified_prefix)
-      end
+      # CZID-976 -- a user-specified version WINS over the project pin.
+      #
+      # This branch used to raise project_workflow_version_already_pinned whenever the project was
+      # pinned. That made per-run selection impossible in practice, not just awkward: the dev census
+      # on 2026-08-04 found ALL 33 projects pinned at a major prefix, so every selection would have
+      # raised. The pin is now what supplies the DEFAULT (see the branches below); an explicit choice
+      # overrides it for this run only.
+      #
+      # Pinning itself is unchanged -- ProjectWorkflowVersion still exists and still decides what
+      # happens when the user expresses no preference. Only precedence changed.
+      prepare_specific_workflow_version_for_upload(validated_user_prefix)
     elsif !@existing_version_prefix || (default_version && default_version.start_with?(@existing_version_prefix))
       # Allows us to use the version set in app_config even if it's not the latest version
       validated_default_version
@@ -78,6 +82,24 @@ class VersionRetrievalService
 
     handle_workflow_version_issues(catalog_entry.version, catalog_entry.deprecated, catalog_entry.runnable)
     version
+  end
+
+  # CZID-976 -- the user-specified prefix is now END-USER input, not an admin-only field, and it
+  # reaches a `LIKE '<prefix>%'` query. Validate its shape strictly before it gets anywhere near
+  # that, independently of Arel's escaping: a MAJOR ("8"), MAJOR.MINOR ("8.1") or full version
+  # ("8.1.2") and nothing else.
+  #
+  # Rejecting here rather than letting it fall through to "no versions match" keeps a malformed
+  # selection a clear bad-request instead of a confusing not-found. Sample validates the same shape
+  # at the upload boundary, so a bad value is a 4xx there; this is defence in depth for every other
+  # caller (rerun, admin tooling, anything that constructs the service directly).
+  def validated_user_prefix
+    prefix = @user_specified_prefix.to_s.strip
+    unless prefix.match?(WorkflowVersion::USER_VERSION_PREFIX_FORMAT)
+      raise VersionControlErrors.invalid_user_specified_version(@workflow, @user_specified_prefix)
+    end
+
+    prefix
   end
 
   def prepare_specific_workflow_version_for_upload(prefix)
