@@ -3,6 +3,7 @@ import cx from "classnames";
 import React, { ReactNode } from "react";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import commonStyles from "~/components/views/SampleUploadFlow/components/WorkflowSelector/workflow_selector.scss";
+import { CatalogedWorkflowVersion } from "~/interface/shared";
 import { PipelineVersionIndicator } from "../PipelineVersionIndicator";
 import cs from "./sequencing_platform_option.scss";
 
@@ -14,6 +15,11 @@ interface SequencingPlatformOptionProps {
   isSelected: boolean;
   onClick(): void;
   pipelineVersion?: string;
+  // CZID-975 -- version selection for this workflow. Optional: without a catalog and a handler
+  // the indicator renders read-only exactly as before.
+  availableVersions?: CatalogedWorkflowVersion[];
+  onVersionChange?: (selected: string) => void;
+  selectedVersion?: string;
   latestMajorPipelineVersion?: string;
   latestMajorIndexVersion?: string;
   technologyName: string;
@@ -34,6 +40,9 @@ const SequencingPlatformOption = ({
   isSelected,
   onClick,
   pipelineVersion,
+  availableVersions,
+  onVersionChange,
+  selectedVersion,
   latestMajorPipelineVersion,
   latestMajorIndexVersion,
   warningHelpLink,
@@ -99,7 +108,9 @@ const SequencingPlatformOption = ({
             <div className={commonStyles.technologyContent}>
               <PipelineVersionIndicator
                 isPipelineVersion={true}
-                version={pipelineVersion}
+                version={selectedVersion ?? pipelineVersion}
+                availableVersions={availableVersions}
+                onVersionChange={onVersionChange}
                 versionHelpLink={versionHelpLink}
                 warningHelpLink={warningHelpLink}
                 isNewVersionAvailable={

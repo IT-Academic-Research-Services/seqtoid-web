@@ -29,6 +29,42 @@ class WorkflowVersionsController < ApplicationController
 
   before_action :authenticate_publisher!, only: [:create]
 
+  # GET /workflow_versions?workflow=short-read-mngs
+  #
+  # CZID-975 -- the catalog the upload flow's version dropdown renders. Ordinary session auth (any
+  # signed-in user), because selection is per-run for any user (CZID-976), not an admin feature.
+  #
+  # Newest first, using the catalog's own numeric-segment ordering (CZID-972) rather than a string
+  # sort -- otherwise 8.3.9 would be offered above 8.3.15.
+  #
+  # Non-runnable versions are omitted entirely: they cannot be dispatched
+  # (VersionRetrievalService refuses them), so offering them would only produce a failed upload.
+  # Deprecated versions ARE returned, flagged, so the client can show them as a discouraged choice
+  # -- they still run, they are just no longer patched.
+  def index
+    workflow = params[:workflow].to_s.strip
+    unless catalogued_workflow_name?(workflow)
+      render json: { error: "invalid workflow" }, status: :unprocessable_entity
+      return
+    end
+
+    versions = WorkflowVersion
+               .where(workflow: workflow, runnable: true)
+               .sort_by { |wv| WorkflowVersion.version_sort_key(wv.version) }
+               .reverse
+
+    render json: {
+      workflow: workflow,
+      versions: versions.map do |wv|
+        {
+          version: wv.version,
+          deprecated: wv.deprecated.present?,
+          notes: wv.notes,
+        }.compact
+      end,
+    }
+  end
+
   # POST /workflow_versions
   #   { "workflow": "consensus-genome", "version": "3.5.5" }
   #
@@ -155,9 +191,18 @@ class WorkflowVersionsController < ApplicationController
   end
 
   # Mirrors the publisher's own validation (scripts/publish_workflow_version.py) so the two ends
-  # agree on what a workflow name and a version look like.
+  # agree on what a workflow name and a version look like. Hyphens only, deliberately: the publisher
+  # only ever registers WDL workflows, which are all hyphenated (consensus-genome, short-read-mngs).
   def valid_workflow?(workflow)
     workflow.match?(/\A[a-z0-9][a-z0-9-]{0,63}\z/)
+  end
+
+  # CZID-975 -- what the catalog can be READ for is broader than what the publisher can WRITE. The
+  # table also holds the versioned reference data the app pins alongside pipelines, and those use
+  # underscores: `ncbi_index_date` and `human_host_genome`. Reusing valid_workflow? here rejected
+  # them outright, which is exactly the NCBI-index path this ticket must not regress.
+  def catalogued_workflow_name?(workflow)
+    workflow.match?(/\A[a-z0-9][a-z0-9_-]{0,63}\z/)
   end
 
   def valid_version?(version)
