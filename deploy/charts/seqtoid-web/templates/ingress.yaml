@@ -15,6 +15,17 @@ metadata:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/ssl-redirect: '443'
     alb.ingress.kubernetes.io/healthcheck-path: {{ .Values.ingress.healthCheckPath | quote }}
+    {{- /* TLS policy. Emitted by the CHART, not per-env, because the failure mode was a MISSING value:
+           with no ssl-policy annotation the AWS Load Balancer Controller applies its own default,
+           ELBSecurityPolicy-2016-08, which still permits TLS 1.0 and TLS 1.1. That was found live on
+           2026-08-05 on BOTH internet-facing listeners (dev.seqtoid.org and env-staging.seqtoid.org),
+           and it was a control LOST in the ECS->EKS migration: the retired ECS ALBs explicitly set
+           ELBSecurityPolicy-TLS-1-2-2017-01. Six per-env annotations would have fixed the six envs that
+           exist today and silently missed the seventh, so the default belongs here. Overridable per-env
+           via ingress.sslPolicy, or wholesale via ingress.annotations (merged after this). */}}
+    {{- with .Values.ingress.sslPolicy }}
+    alb.ingress.kubernetes.io/ssl-policy: {{ . | quote }}
+    {{- end }}
     {{- with .Values.ingress.certificateArn }}
     alb.ingress.kubernetes.io/certificate-arn: {{ . | quote }}
     {{- end }}
