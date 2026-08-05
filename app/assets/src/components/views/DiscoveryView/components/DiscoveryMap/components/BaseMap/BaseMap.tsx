@@ -92,11 +92,22 @@ class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
   };
 
   updateViewport = viewport => {
-    const { updateViewport, viewBounds, width, height } = this.props;
+    const { updateViewport, viewBounds } = this.props;
+    const { containerWidth, containerHeight } = this.state;
 
-    // Let width/height update on resize
+    // Ensure numeric dimensions are positive and non-zero
+    const width =
+      typeof viewport.width === "number" && viewport.width > 0
+        ? viewport.width
+        : containerWidth || 800;
+    const height =
+      typeof viewport.height === "number" && viewport.height > 0
+        ? viewport.height
+        : containerHeight || 600;
+
     viewport.width = width;
     viewport.height = height;
+
     viewport.latitude = limitToRange(
       viewport.latitude,
       // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532
@@ -141,6 +152,17 @@ class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
     } = this.props;
     const { viewport, containerWidth, containerHeight } = this.state;
 
+    // Use container dimensions if available, otherwise fallback to props or default
+    const viewportToRender = {
+      ...viewport,
+      width:
+        containerWidth ||
+        (typeof viewport.width === "number" ? viewport.width : 800),
+      height:
+        containerHeight ||
+        (typeof viewport.height === "number" ? viewport.height : 600),
+    };
+
     // Only render <MapGL> once the container has a non-degenerate (non-zero) box;
     // rendering into a 0x0 viewport throws "Pixel project matrix not invertible".
     const hasSize = containerWidth > 0 && containerHeight > 0;
@@ -156,7 +178,7 @@ class BaseMap extends React.Component<BaseMapProps, BaseMapState> {
             onViewportChange={this.updateViewport}
             // Style prop applies to the container and all overlays
             style={{ position: "absolute" }}
-            {...viewport}
+            {...viewportToRender}
           >
             {banner}
             {markers}
