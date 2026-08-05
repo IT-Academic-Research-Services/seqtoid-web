@@ -15,15 +15,28 @@ class ReplaceSampleWorkflowVersionWithMap < ActiveRecord::Migration[7.2]
   #
   # Dropping the old column is safe: nothing ever wrote it. CZID-976 added it and the only writer
   # (the upload flow, CZID-975) is not merged, so it is empty everywhere by construction.
+  #
+  # CZID-992 -- both steps are guarded, because this is a DROP followed by an ADD and MySQL DDL does
+  # not roll back. If the process dies between them the drop stays committed and the migration is
+  # never recorded, so the retry re-runs the drop and fails with "Can't DROP 'workflow_version'".
+  # That wedges the Argo PreSync hook and therefore every subsequent deploy -- exactly how
+  # 20260805000000 took dev down for five deploys. Guarded, a retry simply finishes the half it has
+  # left to do.
   def up
-    remove_column :samples, :workflow_version
-    add_column :samples, :workflow_versions, :json,
-               comment: "Per-workflow pipeline versions the user selected at upload, e.g. {\"amr\":\"1.4.2\"} (CZID-975). A workflow absent from the map uses the project pin / configured default. This is the REQUEST; pipeline_runs.wdl_version and workflow_runs.wdl_version record what actually ran."
+    remove_column :samples, :workflow_version if column_exists?(:samples, :workflow_version)
+
+    unless column_exists?(:samples, :workflow_versions)
+      add_column :samples, :workflow_versions, :json,
+                 comment: "Per-workflow pipeline versions the user selected at upload, e.g. {\"amr\":\"1.4.2\"} (CZID-975). A workflow absent from the map uses the project pin / configured default. This is the REQUEST; pipeline_runs.wdl_version and workflow_runs.wdl_version record what actually ran."
+    end
   end
 
   def down
-    remove_column :samples, :workflow_versions
-    add_column :samples, :workflow_version, :string,
-               comment: "Pipeline version explicitly selected by the user at upload (CZID-976). Nil = use the project pin / configured default. This is the REQUEST; pipeline_runs.wdl_version records what actually ran."
+    remove_column :samples, :workflow_versions if column_exists?(:samples, :workflow_versions)
+
+    unless column_exists?(:samples, :workflow_version)
+      add_column :samples, :workflow_version, :string,
+                 comment: "Pipeline version explicitly selected by the user at upload (CZID-976). Nil = use the project pin / configured default. This is the REQUEST; pipeline_runs.wdl_version records what actually ran."
+    end
   end
 end

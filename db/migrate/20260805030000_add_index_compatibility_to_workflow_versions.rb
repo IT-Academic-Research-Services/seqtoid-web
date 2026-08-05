@@ -20,10 +20,32 @@ class AddIndexCompatibilityToWorkflowVersions < ActiveRecord::Migration[7.2]
   #
   # Compared using WorkflowVersion.version_sort_key, which already orders these ISO dates correctly
   # (CZID-972) and is the same comparison used for semver.
-  def change
-    add_column :workflow_versions, :min_index_version, :string,
-               comment: "Oldest NCBI index vintage (ncbi_index_date, e.g. 2024-02-06) this workflow version may run against. NULL = no lower bound recorded (CZID-977)."
-    add_column :workflow_versions, :max_index_version, :string,
-               comment: "Newest NCBI index vintage this workflow version may run against. NULL = no upper bound recorded (CZID-977)."
+  #
+  # CZID-992 -- guarded and written as explicit up/down rather than `change`, because two
+  # `add_column`s are two auto-committed DDL statements. Dying between them leaves the first column
+  # in place with the migration unrecorded, and the retry fails on "Duplicate column name" -- which
+  # blocks the Argo PreSync hook and every deploy behind it, as 20260805000000 did on dev.
+  def up
+    add_column_unless_present :min_index_version,
+                              "Oldest NCBI index vintage (ncbi_index_date, e.g. 2024-02-06) this workflow version may run against. NULL = no lower bound recorded (CZID-977)."
+    add_column_unless_present :max_index_version,
+                              "Newest NCBI index vintage this workflow version may run against. NULL = no upper bound recorded (CZID-977)."
+  end
+
+  def down
+    [:min_index_version, :max_index_version].each do |column|
+      remove_column :workflow_versions, column if column_exists?(:workflow_versions, column)
+    end
+  end
+
+  private
+
+  def add_column_unless_present(column, comment)
+    if column_exists?(:workflow_versions, column)
+      say "skipping #{column}: already present (re-run of a partially applied migration)"
+      return
+    end
+
+    add_column :workflow_versions, column, :string, comment: comment
   end
 end
