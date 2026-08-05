@@ -161,6 +161,9 @@ Rails.application.routes.draw do
   # Distinct from `put workflow_version` above, which is admin/session-authed and also PROMOTES the
   # version by writing the app_config default. Publishing must not imply promotion.
   post 'workflow_versions', to: 'workflow_versions#create'
+  # CZID-975 -- the catalog the upload flow's version dropdown reads. Session-authed like the rest of
+  # the app (any signed-in user); selection is per-run for any user, not an admin feature.
+  get 'workflow_versions', to: 'workflow_versions#index'
   put 'set_app_config', to: 'home#set_app_config'
   post 'feedback', to: 'home#feedback'
   post 'sign_up', to: 'home#sign_up'

@@ -39,7 +39,7 @@ class SfnPipelineDispatchService
     @wdl_version = if /\d+\.\d+\.\d+/ =~ pipeline_run.pipeline_branch
                      pipeline_run.pipeline_branch
                    else
-                     VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.workflow_version)
+                     VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.selected_workflow_version(WORKFLOW_NAME))
                    end
 
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?

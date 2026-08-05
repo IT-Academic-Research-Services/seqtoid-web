@@ -30,7 +30,9 @@ class SfnAmrPipelineDispatchService
     @mngs_wdl_version = AppConfigHelper.get_workflow_version(WorkflowRun::WORKFLOW[:short_read_mngs])
 
     # CZID-976: honour a version the user selected at upload; nil falls back to the project pin.
-    @wdl_version = VersionRetrievalService.call(@sample.project.id, @workflow_run.workflow, @sample.workflow_version)
+    @wdl_version = VersionRetrievalService.call(
+      @sample.project.id, @workflow_run.workflow, @sample.selected_workflow_version(@workflow_run.workflow)
+    )
     raise SfnVersionMissingError, @workflow_run.workflow if @wdl_version.blank?
 
     @workflow_run.update(

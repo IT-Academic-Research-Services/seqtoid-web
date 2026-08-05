@@ -34,7 +34,7 @@ class SfnLongReadMngsPipelineDispatchService
     # CZID-976: pipeline_branch stays the ADMIN escape hatch (used verbatim, unvalidated);
     # sample.workflow_version is the user's selection and is validated by the service.
     @wdl_version = pipeline_run.pipeline_branch ||
-                   VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.workflow_version)
+                   VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.selected_workflow_version(WORKFLOW_NAME))
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?
   end
 

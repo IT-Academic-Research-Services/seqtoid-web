@@ -41,6 +41,10 @@ export interface UploadSampleStepState {
   remoteSelectedSampleIds: Set<string>;
   removedLocalFiles: $TSFixMe[];
   selectedGuppyBasecallerSetting: $TSFixMe;
+  // CZID-975 -- pipeline versions the user picked, keyed by workflow. One upload can run several
+  // workflows (mNGS + AMR is supported), so this is a map: a workflow absent from it uses the
+  // project default.
+  selectedWorkflowVersions: Record<string, string>;
   selectedTaxon: TaxonOption | null;
   selectedTechnology:
     | SEQUENCING_TECHNOLOGY_OPTIONS

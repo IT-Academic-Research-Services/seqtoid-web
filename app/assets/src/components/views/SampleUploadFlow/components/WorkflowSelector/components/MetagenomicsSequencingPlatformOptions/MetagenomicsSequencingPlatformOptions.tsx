@@ -2,13 +2,17 @@ import cx from "classnames";
 import React from "react";
 import { WorkflowType } from "~/components/utils/workflows";
 import cs from "~/components/views/SampleUploadFlow/components/WorkflowSelector/workflow_selector.scss";
-import { PipelineVersions, SampleUploadType } from "~/interface/shared";
+import {
+  CatalogedWorkflowVersion,
+  PipelineVersions,
+  SampleUploadType,
+} from "~/interface/shared";
 import {
   NCBI_INDEX,
   NO_TECHNOLOGY_SELECTED,
   SEQUENCING_TECHNOLOGY_OPTIONS,
-  UploadWorkflows,
   UPLOAD_WORKFLOWS,
+  UploadWorkflows,
 } from "../../../../constants";
 import { shouldDisableSequencingPlatformOption } from "../../WorkflowSelector";
 import { WorkflowLinksConfig } from "../../workflowTypeConfig";
@@ -30,9 +34,18 @@ interface MetagenomicsSequencingPlatformOptionsProps {
     | typeof NO_TECHNOLOGY_SELECTED;
   selectedWetlabProtocol: string;
   projectPipelineVersions?: PipelineVersions;
+  // CZID-975 -- per-workflow version catalogs and the curried change handler from WorkflowSelector.
+  versionCatalogs?: Record<string, CatalogedWorkflowVersion[]>;
+  selectedWorkflowVersions?: Record<string, string>;
+  versionChangeHandlerFor?: (
+    workflow: string,
+  ) => ((selected: string) => void) | undefined;
 }
 
 const MetagenomicsSequencingPlatformOptions = ({
+  versionCatalogs,
+  selectedWorkflowVersions,
+  versionChangeHandlerFor,
   currentTab,
   onChangeGuppyBasecallerSetting,
   onTechnologyToggle,
@@ -69,6 +82,13 @@ const MetagenomicsSequencingPlatformOptions = ({
             latestMajorPipelineVersions?.[WorkflowType.SHORT_READ_MNGS]
           }
           latestMajorIndexVersion={latestMajorPipelineVersions?.[NCBI_INDEX]}
+          availableVersions={versionCatalogs?.[WorkflowType.SHORT_READ_MNGS]}
+          onVersionChange={versionChangeHandlerFor?.(
+            WorkflowType.SHORT_READ_MNGS,
+          )}
+          selectedVersion={
+            selectedWorkflowVersions?.[WorkflowType.SHORT_READ_MNGS]
+          }
           versionHelpLink={
             WorkflowLinksConfig[WorkflowType.SHORT_READ_MNGS]
               .pipelineVersionLink
@@ -95,6 +115,13 @@ const MetagenomicsSequencingPlatformOptions = ({
             latestMajorPipelineVersions?.[WorkflowType.LONG_READ_MNGS]
           }
           latestMajorIndexVersion={latestMajorPipelineVersions?.[NCBI_INDEX]}
+          availableVersions={versionCatalogs?.[WorkflowType.LONG_READ_MNGS]}
+          onVersionChange={versionChangeHandlerFor?.(
+            WorkflowType.LONG_READ_MNGS,
+          )}
+          selectedVersion={
+            selectedWorkflowVersions?.[WorkflowType.LONG_READ_MNGS]
+          }
         />
       </div>
     </button>

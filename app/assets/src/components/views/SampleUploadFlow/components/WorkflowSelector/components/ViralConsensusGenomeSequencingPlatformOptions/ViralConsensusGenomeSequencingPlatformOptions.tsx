@@ -6,6 +6,7 @@ import ExternalLink from "~/components/ui/controls/ExternalLink";
 import IssueGroup from "~/components/ui/notifications/IssueGroup";
 import commonStyles from "~/components/views/SampleUploadFlow/components/WorkflowSelector/workflow_selector.scss";
 import { UploadWorkflows } from "~/components/views/SampleUploadFlow/constants";
+import { CatalogedWorkflowVersion } from "~/interface/shared";
 import { REF_SEQ_FILE_NAME_ERROR_MESSAGE } from "../../../UploadSampleStep/constants";
 import { WorkflowLinksConfig } from "../../workflowTypeConfig";
 import { PipelineVersionIndicator } from "../PipelineVersionIndicator";
@@ -25,9 +26,17 @@ interface ViralConsensusGenomeSequencingPlatformOptionsProps {
   onTaxonChange(taxa: TaxonOption): void;
   pipelineVersion?: string;
   latestMajorVersion?: string;
+  // CZID-975 -- consensus-genome version selection. Optional: without a catalog and a handler the
+  // indicator renders read-only exactly as before.
+  availableVersions?: CatalogedWorkflowVersion[];
+  onVersionChange?: (selected: string) => void;
+  selectedVersion?: string;
 }
 
 const ViralConsensusGenomeSequencingPlatformOptions = ({
+  availableVersions,
+  onVersionChange,
+  selectedVersion,
   bedFileName,
   refSeqFileName,
   hasRefSeqFileNameError,
@@ -68,8 +77,10 @@ const ViralConsensusGenomeSequencingPlatformOptions = ({
         onClick={e => e.stopPropagation()}
       >
         <PipelineVersionIndicator
-          version={pipelineVersion}
+          version={selectedVersion ?? pipelineVersion}
           isPipelineVersion={true}
+          availableVersions={availableVersions}
+          onVersionChange={onVersionChange}
           versionHelpLink={pipelineVersionLink}
           warningHelpLink={warningLink}
           isNewVersionAvailable={pipelineVersion?.[0] !== latestMajorVersion}
