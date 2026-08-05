@@ -202,7 +202,6 @@ class ReviewStepCC extends React.Component<
               wetlabProtocol={wetlabProtocol}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               guppyBasecallerSetting={guppyBasecallerSetting}
-              workflowVersions={workflowVersions}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               refSeqTaxon={refSeqTaxon?.name}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
