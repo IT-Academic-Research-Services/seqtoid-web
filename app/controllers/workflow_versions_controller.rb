@@ -32,37 +32,127 @@ class WorkflowVersionsController < ApplicationController
   # POST /workflow_versions
   #   { "workflow": "consensus-genome", "version": "3.5.5" }
   #
-  # Idempotent: registering a version that is already catalogued succeeds without modifying it, so a
-  # republish (or a replayed backfill) is safe.
+  # Idempotent: re-registering an identical version succeeds without modifying it, so a republish or
+  # a replayed backfill is safe.
+  #
+  # CZID-973 -- the request may also carry the provenance the publisher computed into the bundle's
+  # manifest (image digest, WDL checksum, publish time, backfill tier, engines, notes). All optional,
+  # so a caller that predates that metadata still works.
+  #
+  # Re-registration is an ENRICHMENT, not an overwrite:
+  #   * row absent                                   -> create
+  #   * row present without a digest                 -> fill in the provenance it never had
+  #                                                     (exactly the reconciled rows CZID-982 made)
+  #   * row present with the SAME digest             -> no-op
+  #   * row present with a DIFFERENT digest          -> 409; a published version is immutable
   def create
-    permitted = params.permit(:workflow, :version)
-    workflow = permitted[:workflow].to_s.strip
-    version = permitted[:version].to_s.strip
+    workflow = params[:workflow].to_s.strip
+    version = params[:version].to_s.strip
 
     unless valid_workflow?(workflow) && valid_version?(version)
       render json: { status: "invalid workflow or version" }, status: :unprocessable_entity
       return
     end
 
-    existing = WorkflowVersion.find_by(workflow: workflow, version: version)
-    if existing
-      render json: { status: "already registered", workflow: workflow, version: version }, status: :ok
+    metadata, error = catalog_metadata
+    if error
+      render json: { status: error }, status: :unprocessable_entity
       return
     end
 
-    WorkflowVersion.create!(workflow: workflow, version: version, deprecated: false, runnable: true)
+    existing = WorkflowVersion.find_by(workflow: workflow, version: version)
+    return register_existing(existing, metadata, workflow, version) if existing
+
+    WorkflowVersion.create!({ workflow: workflow, version: version, deprecated: false, runnable: true }.merge(metadata))
     Rails.logger.info("[CZID-971] registered workflow version #{workflow} #{version}")
     render json: { status: "registered", workflow: workflow, version: version }, status: :created
   rescue ActiveRecord::RecordNotUnique
     # Concurrent publishes of the same version raced past the find_by. Both callers wanted the same
     # end state, and it now holds.
     render json: { status: "already registered", workflow: workflow, version: version }, status: :ok
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { status: "invalid: #{e.record.errors.full_messages.join('; ')}" }, status: :unprocessable_entity
   rescue StandardError => e
     Rails.logger.error("[CZID-971] failed to register workflow version: #{e.message}")
     render json: { status: "error" }, status: :internal_server_error
   end
 
   private
+
+  # Handle a version that is already catalogued. See the contract on #create.
+  def register_existing(existing, metadata, workflow, version)
+    incoming_digest = metadata[:image_digest]
+
+    if existing.image_digest.present? && incoming_digest.present? && existing.image_digest != incoming_digest
+      Rails.logger.warn(
+        "[CZID-973] refusing to re-register #{workflow} #{version}: digest #{existing.image_digest} != #{incoming_digest}"
+      )
+      render json: {
+        status: "conflict: already published with a different image digest",
+        workflow: workflow,
+        version: version,
+      }, status: :conflict
+      return
+    end
+
+    # Only fill in what is missing -- never overwrite recorded provenance.
+    fill = metadata.reject { |attribute, _| existing.public_send(attribute).present? }
+    if fill.any?
+      existing.update!(fill)
+      Rails.logger.info("[CZID-973] enriched #{workflow} #{version} with #{fill.keys.join(', ')}")
+      render json: { status: "enriched", workflow: workflow, version: version, fields: fill.keys }, status: :ok
+    else
+      render json: { status: "already registered", workflow: workflow, version: version }, status: :ok
+    end
+  end
+
+  # Optional provenance from the publisher's manifest. Returns [attributes, error_message]; the
+  # error is non-nil when a supplied value is malformed, so a bad publish is rejected rather than
+  # silently recorded.
+  def catalog_metadata
+    attributes = {}
+
+    if params[:image_digest].present?
+      digest = params[:image_digest].to_s.strip
+      return [nil, "invalid image_digest"] unless digest.match?(WorkflowVersion::IMAGE_DIGEST_FORMAT)
+
+      attributes[:image_digest] = digest
+    end
+
+    if params[:wdl_checksum].present?
+      checksum = params[:wdl_checksum].to_s.strip
+      return [nil, "invalid wdl_checksum"] unless checksum.match?(WorkflowVersion::CHECKSUM_FORMAT)
+
+      attributes[:wdl_checksum] = checksum
+    end
+
+    if params[:tier].present?
+      tier = params[:tier].to_s.strip
+      return [nil, "invalid tier"] unless WorkflowVersion::TIERS.include?(tier)
+
+      attributes[:tier] = tier
+    end
+
+    if params[:engines].present?
+      engines = Array(params[:engines]).map { |e| e.to_s.strip }
+      return [nil, "invalid engines"] if engines.empty? || (engines - WorkflowVersion::ENGINES).any?
+
+      attributes[:engines] = engines
+    end
+
+    if params[:published_at].present?
+      begin
+        attributes[:published_at] = Time.zone.parse(params[:published_at].to_s) ||
+                                    raise(ArgumentError, "unparseable")
+      rescue ArgumentError
+        return [nil, "invalid published_at"]
+      end
+    end
+
+    attributes[:notes] = params[:notes].to_s.strip.first(1000) if params[:notes].present?
+
+    [attributes, nil]
+  end
 
   # Mirrors the publisher's own validation (scripts/publish_workflow_version.py) so the two ends
   # agree on what a workflow name and a version look like.
