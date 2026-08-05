@@ -34,6 +34,14 @@ module ErrorHelper
         "Expected a major (8), major.minor (8.1) or full version (8.1.2)."
     end
 
+    # CZID-977 -- the selected pipeline version is not recorded as compatible with the NCBI index
+    # vintage the run would use. Names both halves and the recorded range, because the fix is either
+    # to pick a different version or to repin the project's index -- the operator needs to know which.
+    def self.incompatible_index_version(workflow, version, index_version, allowed_range)
+      "WorkflowVersion #{workflow} #{version} is not compatible with NCBI index #{index_version}. " \
+        "Compatible index range: #{allowed_range || 'unrecorded'}."
+    end
+
     def self.project_workflow_version_already_pinned(project_id, workflow, version)
       "Project #{project_id} is already pinned to a specific version of the workflow=#{workflow}. Please unpin the project from version #{version} before pinning it to a new version."
     end
