@@ -201,6 +201,10 @@ ingress:
   # can restart nothing -- liveness = "is the process wedged?", readiness = "should it get traffic?"
   # (SMP-1473). Overridable per env.
   livenessPath: /up
+  # Minimum TLS policy for the ALB HTTPS listener. Chart-wide default so no environment can inherit the
+  # AWS Load Balancer Controller default (ELBSecurityPolicy-2016-08), which still negotiates TLS 1.0/1.1.
+  # TLS13-1-2-2021-06 permits only TLSv1.2 and TLSv1.3. Set to "" to fall back to the LBC default.
+  sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
 
 # Ephemeral scratch volume for the WEB pod's temp directory.
 #
