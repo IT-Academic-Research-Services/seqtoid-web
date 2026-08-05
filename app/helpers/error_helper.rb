@@ -26,6 +26,14 @@ module ErrorHelper
       "WorkflowVersion for workflow=#{workflow} and version=#{version} is not runnable"
     end
 
+    # CZID-976 -- a user-selected version whose shape is not a version at all. Distinct from
+    # workflow_version_not_found (a well-formed selection that simply has no match), because this one
+    # is a malformed REQUEST and must surface as a 4xx rather than a not-found or a 500.
+    def self.invalid_user_specified_version(workflow, version)
+      "Invalid version #{version.inspect} requested for workflow=#{workflow}. " \
+        "Expected a major (8), major.minor (8.1) or full version (8.1.2)."
+    end
+
     def self.project_workflow_version_already_pinned(project_id, workflow, version)
       "Project #{project_id} is already pinned to a specific version of the workflow=#{workflow}. Please unpin the project from version #{version} before pinning it to a new version."
     end

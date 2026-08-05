@@ -31,7 +31,10 @@ class SfnLongReadMngsPipelineDispatchService
     @sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN)
     raise SfnArnMissingError if @sfn_arn.blank?
 
-    @wdl_version = pipeline_run.pipeline_branch || VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME)
+    # CZID-976: pipeline_branch stays the ADMIN escape hatch (used verbatim, unvalidated);
+    # sample.workflow_version is the user's selection and is validated by the service.
+    @wdl_version = pipeline_run.pipeline_branch ||
+                   VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.workflow_version)
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?
   end
 

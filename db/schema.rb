@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_08_05_000000) do
+ActiveRecord::Schema[7.0].define(version: 2026_08_05_010000) do
   create_table "accession_coverage_stats", charset: "utf8", collation: "utf8_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -664,6 +664,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_08_05_000000) do
     t.boolean "use_taxon_whitelist", default: false, null: false, comment: "If true, sample processing will filter for a whitelist of taxons."
     t.string "initial_workflow", default: "short-read-mngs", null: false, comment: "A soft enum (string) describing the initial workflow the sample was run on"
     t.datetime "deleted_at", precision: nil, comment: "When the user triggered deletion of the sample"
+    t.string "workflow_version", comment: "Pipeline version explicitly selected by the user at upload (CZID-976). Nil = use the project pin / configured default. This is the REQUEST; pipeline_runs.wdl_version records what actually ran."
     t.index ["created_at"], name: "index_samples_on_created_at"
     t.index ["host_genome_id"], name: "samples_host_genome_id_fk"
     t.index ["name"], name: "index_samples_on_name"
