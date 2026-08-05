@@ -5,6 +5,7 @@ import {
   MNGS_ILLUMINA_PIPELINE_GITHUB_LINK,
 } from "~/components/utils/documentationLinks";
 import cs from "~/components/views/SampleUploadFlow/components/WorkflowSelector/workflow_selector.scss";
+import { CatalogedWorkflowVersion } from "~/interface/shared";
 import { SEQUENCING_TECHNOLOGY_OPTIONS } from "../../../../constants";
 import { SequencingPlatformOption } from "../SequencingPlatformOption";
 import { WetlabSelector } from "../WetlabSelector";
@@ -17,6 +18,11 @@ interface IlluminaSequencingPlatformOptionProps {
   onWetlabProtocolChange?(value: string): void;
   selectedWetlabProtocol?: string;
   pipelineVersion?: string;
+  // CZID-975 -- version selection for this workflow. Optional: without a catalog and a handler
+  // the indicator renders read-only exactly as before.
+  availableVersions?: CatalogedWorkflowVersion[];
+  onVersionChange?: (selected: string) => void;
+  selectedVersion?: string;
   latestMajorPipelineVersion?: string;
   latestMajorIndexVersion?: string;
   versionHelpLink: string;
@@ -31,6 +37,9 @@ const IlluminaSequencingPlatformOption = ({
   onWetlabProtocolChange,
   selectedWetlabProtocol,
   pipelineVersion,
+  availableVersions,
+  onVersionChange,
+  selectedVersion,
   latestMajorPipelineVersion,
   latestMajorIndexVersion,
   versionHelpLink,
@@ -75,6 +84,9 @@ const IlluminaSequencingPlatformOption = ({
       }
       testId={SEQUENCING_TECHNOLOGY_OPTIONS.ILLUMINA}
       pipelineVersion={pipelineVersion}
+      availableVersions={availableVersions}
+      onVersionChange={onVersionChange}
+      selectedVersion={selectedVersion}
       latestMajorPipelineVersion={latestMajorPipelineVersion}
       latestMajorIndexVersion={latestMajorIndexVersion}
       versionHelpLink={versionHelpLink}

@@ -46,8 +46,10 @@ interface SampleUploadFlowState {
   refSeqTaxon: TaxonOption | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string | null;
-  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
-  workflowVersion?: string;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   medakaModel: string | null;
   metadata: MetadataBasic | null;
   metadataIssues: $TSFixMeUnknown;
@@ -79,7 +81,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
     // Metadata upload information
     clearlabs: false,
     guppyBasecallerSetting: null,
-    workflowVersion: undefined,
+    workflowVersions: {},
     medakaModel: null,
     metadata: null, //
     metadataIssues: null,
@@ -112,7 +114,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
     technology,
     project,
     guppyBasecallerSetting,
-    workflowVersion,
+    workflowVersions,
     medakaModel,
     refSeqAccession,
     refSeqFile,
@@ -129,7 +131,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
       technology,
       currentStep: UploadStepType.MetadataStep,
       guppyBasecallerSetting,
-      workflowVersion,
+      workflowVersions,
       medakaModel,
       project,
       refSeqAccession,
@@ -316,7 +318,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
             bedFile={this.state.bedFile}
             clearlabs={this.state.clearlabs}
             guppyBasecallerSetting={this.state.guppyBasecallerSetting}
-            workflowVersion={this.state.workflowVersion}
+            workflowVersions={this.state.workflowVersions}
             hostGenomes={this.state.hostGenomes}
             medakaModel={this.state.medakaModel}
             metadata={this.state.metadata}

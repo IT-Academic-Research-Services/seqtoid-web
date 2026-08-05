@@ -36,8 +36,10 @@ interface ReviewStepProps {
   bedFile: File | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string | null;
-  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
-  workflowVersion?: string;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   hostGenomes?: HostGenome[];
   medakaModel: string | null;
   metadata: MetadataBasic | null;
@@ -148,7 +150,7 @@ class ReviewStepCC extends React.Component<
       bedFile,
       clearlabs,
       guppyBasecallerSetting,
-      workflowVersion,
+      workflowVersions,
       technology,
       hostGenomes,
       medakaModel,
@@ -200,7 +202,7 @@ class ReviewStepCC extends React.Component<
               wetlabProtocol={wetlabProtocol}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               guppyBasecallerSetting={guppyBasecallerSetting}
-              workflowVersion={workflowVersion}
+              workflowVersions={workflowVersions}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               refSeqTaxon={refSeqTaxon?.name}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
@@ -252,7 +254,7 @@ class ReviewStepCC extends React.Component<
               clearlabs={clearlabs}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               guppyBasecallerSetting={guppyBasecallerSetting}
-              workflowVersion={workflowVersion}
+              workflowVersions={workflowVersions}
               technology={technology}
               medakaModel={medakaModel}
               metadata={metadata}

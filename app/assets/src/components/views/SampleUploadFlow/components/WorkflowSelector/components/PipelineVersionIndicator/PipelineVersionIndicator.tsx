@@ -6,6 +6,19 @@ import { CatalogedWorkflowVersion } from "~/interface/shared";
 import commonStyles from "../../workflow_selector.scss";
 import cs from "./pipeline_version_indicator.scss";
 
+// CZID-975 -- a deprecated version still runs, it is just no longer patched, so it is offered with a
+// marker rather than hidden. Hoisted out of the JSX: nesting template literals trips
+// sonarjs/no-nested-template-literals.
+const versionOptionLabel = ({
+  version,
+  deprecated,
+  notes,
+}: CatalogedWorkflowVersion): string => {
+  if (!deprecated) return version;
+  const reason = notes ? `: ${notes}` : "";
+  return `${version} (deprecated${reason})`;
+};
+
 interface PipelineVersionIndicatorProps {
   warningHelpLink?: string;
   version?: string;
@@ -92,13 +105,9 @@ export const PipelineVersionIndicator = ({
           data-testid="pipeline-version-select"
           onChange={event => onVersionChange(event.target.value)}
         >
-          {availableVersions.map(({ version: value, deprecated, notes }) => (
-            <option key={value} value={value}>
-              {/* Deprecated versions still run -- they are offered, but marked, and the server
-                  never returns one as the default. */}
-              {deprecated
-                ? `${value} (deprecated${notes ? `: ${notes}` : ""})`
-                : value}
+          {availableVersions.map(entry => (
+            <option key={entry.version} value={entry.version}>
+              {versionOptionLabel(entry)}
             </option>
           ))}
         </select>

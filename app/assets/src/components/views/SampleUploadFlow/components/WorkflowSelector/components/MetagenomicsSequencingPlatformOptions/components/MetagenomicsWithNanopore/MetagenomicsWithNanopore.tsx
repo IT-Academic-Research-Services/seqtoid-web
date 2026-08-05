@@ -6,6 +6,7 @@ import {
   MNGS_NANOPORE_PIPELINE_GITHUB_LINK,
 } from "~/components/utils/documentationLinks";
 import { WorkflowType } from "~/components/utils/workflows";
+import { CatalogedWorkflowVersion } from "~/interface/shared";
 import { SEQUENCING_TECHNOLOGY_OPTIONS } from "../../../../../../constants";
 import { WorkflowLinksConfig } from "../../../../workflowTypeConfig";
 import { SequencingPlatformOption } from "../../../SequencingPlatformOption";
@@ -19,6 +20,11 @@ interface MetagenomicsWithNanoporeProps {
   selectedGuppyBasecallerSetting: string;
   onChangeGuppyBasecallerSetting(selected: string): void;
   pipelineVersion?: string;
+  // CZID-975 -- version selection for this workflow. Optional: without a catalog and a handler
+  // the indicator renders read-only exactly as before.
+  availableVersions?: CatalogedWorkflowVersion[];
+  onVersionChange?: (selected: string) => void;
+  selectedVersion?: string;
   latestMajorPipelineVersion?: string;
   latestMajorIndexVersion?: string;
 }
@@ -31,6 +37,9 @@ const MetagenomicsWithNanopore = ({
   selectedGuppyBasecallerSetting,
   onChangeGuppyBasecallerSetting,
   pipelineVersion,
+  availableVersions,
+  onVersionChange,
+  selectedVersion,
   latestMajorPipelineVersion,
   latestMajorIndexVersion,
 }: MetagenomicsWithNanoporeProps) => {
@@ -73,6 +82,9 @@ const MetagenomicsWithNanopore = ({
       testId={SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE}
       tooltipText={tooltipText}
       pipelineVersion={pipelineVersion}
+      availableVersions={availableVersions}
+      onVersionChange={onVersionChange}
+      selectedVersion={selectedVersion}
       latestMajorPipelineVersion={latestMajorPipelineVersion}
       latestMajorIndexVersion={latestMajorIndexVersion}
       versionHelpLink={pipelineVersionLink}

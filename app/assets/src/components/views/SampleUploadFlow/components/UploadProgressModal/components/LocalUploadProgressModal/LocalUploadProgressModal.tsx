@@ -70,8 +70,10 @@ interface LocalUploadProgressModalProps {
   bedFile: File | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string;
-  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
-  workflowVersion?: string;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   medakaModel: string | null;
   metadata: MetadataBasic | null;
   onUploadComplete: () => void;
@@ -93,7 +95,7 @@ export const LocalUploadProgressModal = ({
   bedFile,
   clearlabs,
   guppyBasecallerSetting,
-  workflowVersion,
+  workflowVersions,
   medakaModel,
   metadata,
   onUploadComplete,
@@ -202,7 +204,7 @@ export const LocalUploadProgressModal = ({
       bedFileName: bedFile?.name,
       clearlabs,
       guppyBasecallerSetting,
-      workflowVersion,
+      workflowVersions,
       medakaModel,
       samples,
       useStepFunctionPipeline,

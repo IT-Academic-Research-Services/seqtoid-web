@@ -12,8 +12,10 @@ interface UploadProgressModalProps {
   bedFile: File | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string;
-  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
-  workflowVersion?: string;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   medakaModel: string | null;
   metadata: MetadataBasic | null;
   onUploadComplete: () => void;
@@ -35,7 +37,7 @@ export const UploadProgressModal = ({
   bedFile,
   clearlabs,
   guppyBasecallerSetting,
-  workflowVersion,
+  workflowVersions,
   medakaModel,
   metadata,
   onUploadComplete,
@@ -66,7 +68,7 @@ export const UploadProgressModal = ({
           bedFile={bedFile}
           clearlabs={clearlabs}
           guppyBasecallerSetting={guppyBasecallerSetting}
-          workflowVersion={workflowVersion}
+          workflowVersions={workflowVersions}
           technology={technology}
           medakaModel={medakaModel}
           metadata={metadata && processMetadataRows(metadata.rows)}
@@ -87,7 +89,7 @@ export const UploadProgressModal = ({
           adminOptions={adminOptions}
           bedFile={bedFile}
           clearlabs={clearlabs}
-          workflowVersion={workflowVersion}
+          workflowVersions={workflowVersions}
           technology={technology}
           medakaModel={medakaModel}
           // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532

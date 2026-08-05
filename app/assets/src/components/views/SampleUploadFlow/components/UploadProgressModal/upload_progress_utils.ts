@@ -25,9 +25,10 @@ interface addFlagsToSamplesProps {
   wetlabProtocol: string | null;
   useStepFunctionPipeline: boolean;
   guppyBasecallerSetting?: string;
-  // CZID-975/CZID-976 -- the pipeline version the user picked at upload. Optional: when unset the
-  // server falls back to the project pin / configured default, which is the pre-existing behaviour.
-  workflowVersion?: string;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
 }
 
 // Add flags selected by the user in the upload review Step
@@ -46,7 +47,7 @@ export const addFlagsToSamples = ({
   technology,
   workflows,
   wetlabProtocol,
-  workflowVersion,
+  workflowVersions,
 }: addFlagsToSamplesProps): SampleFromApi[] => {
   const PIPELINE_EXECUTION_STRATEGIES = {
     directed_acyclic_graph: "directed_acyclic_graph",
@@ -78,9 +79,12 @@ export const addFlagsToSamples = ({
     do_not_process: skipSampleProcessing,
     pipeline_execution_strategy: pipelineExecutionStrategy,
     workflows: workflowsConverted,
-    // CZID-976: only sent when the user actually chose a version -- an absent key means "use the
+    // CZID-975: only sent when the user actually chose something. An absent key means "use the
     // project default", which is what every upload did before this existed.
-    ...(workflowVersion && { workflow_version: workflowVersion }),
+    ...(workflowVersions &&
+      Object.keys(workflowVersions).length > 0 && {
+        workflow_versions: workflowVersions,
+      }),
     // Add mNGS specific fields
     ...(isMetagenomics &&
       isNanopore && {

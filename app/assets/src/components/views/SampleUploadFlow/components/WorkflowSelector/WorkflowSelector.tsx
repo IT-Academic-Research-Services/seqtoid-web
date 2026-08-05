@@ -44,10 +44,11 @@ interface WorkflowSelectorProps {
     technology: SEQUENCING_TECHNOLOGY_OPTIONS,
   ) => void;
   onGuppyBasecallerSettingChange?: (selected: string) => void;
-  // CZID-975 -- the AMR pipeline version dropdown. Optional so the component still renders
-  // read-only wherever selection is not wired.
-  onWorkflowVersionChange?: (selected: string) => void;
-  selectedWorkflowVersion?: string;
+  // CZID-975 -- per-workflow version selection. Keyed by workflow because one upload can run
+  // several (mNGS + AMR is supported), so a single value would apply an AMR choice to the mNGS run.
+  // Optional so the indicators still render read-only wherever selection is not wired.
+  onWorkflowVersionChange?: (workflow: string, selected: string) => void;
+  selectedWorkflowVersions?: Record<string, string>;
   onWetlabProtocolChange?: (selected: string) => void;
   onWorkflowToggle?: (
     workflow: UploadWorkflows,
@@ -98,7 +99,7 @@ const WorkflowSelector = ({
   onTechnologyToggle,
   onGuppyBasecallerSettingChange,
   onWorkflowVersionChange,
-  selectedWorkflowVersion,
+  selectedWorkflowVersions,
   onWetlabProtocolChange,
   onWorkflowToggle,
   currentTab,
@@ -117,26 +118,40 @@ const WorkflowSelector = ({
     return !enabledWorkflows.includes(workflow);
   };
 
-  // CZID-975 -- the AMR version catalog backing the dropdown. Fetched once; a failure leaves the
-  // list empty, which makes the indicator fall back to its read-only rendering rather than blocking
-  // the upload.
-  const [amrVersions, setAmrVersions] = useState<CatalogedWorkflowVersion[]>(
-    [],
-  );
+  // CZID-975 -- the version catalogs backing the dropdowns, one per selectable workflow. Fetched
+  // once; a workflow whose fetch fails keeps an empty list, which makes its indicator fall back to
+  // read-only rather than blocking the upload.
+  const [versionCatalogs, setVersionCatalogs] = useState<
+    Record<string, CatalogedWorkflowVersion[]>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
-    getWorkflowVersions(WorkflowType.AMR)
-      .then(response => {
-        if (!cancelled) setAmrVersions(response?.versions ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setAmrVersions([]);
-      });
+    const selectable = [
+      WorkflowType.AMR,
+      WorkflowType.SHORT_READ_MNGS,
+      WorkflowType.LONG_READ_MNGS,
+      WorkflowType.CONSENSUS_GENOME,
+    ];
+    Promise.all(
+      selectable.map(workflow =>
+        getWorkflowVersions(workflow)
+          .then(response => [workflow, response?.versions ?? []] as const)
+          .catch(() => [workflow, [] as CatalogedWorkflowVersion[]] as const),
+      ),
+    ).then(entries => {
+      if (!cancelled) setVersionCatalogs(Object.fromEntries(entries));
+    });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Curried so each indicator reports a change for its OWN workflow.
+  const versionChangeHandlerFor = (workflow: string) =>
+    onWorkflowVersionChange
+      ? (selected: string) => onWorkflowVersionChange(workflow, selected)
+      : undefined;
 
   return (
     <div className={cs.workflowSelector}>
@@ -155,6 +170,9 @@ const WorkflowSelector = ({
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
             currentTab={currentTab}
             latestMajorPipelineVersions={latestMajorPipelineVersions}
+            versionCatalogs={versionCatalogs}
+            selectedWorkflowVersions={selectedWorkflowVersions}
+            versionChangeHandlerFor={versionChangeHandlerFor}
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
             onChangeGuppyBasecallerSetting={onGuppyBasecallerSettingChange}
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
@@ -205,8 +223,8 @@ const WorkflowSelector = ({
           <div className={cs.technologyContent}>
             <PipelineVersionIndicator
               isPipelineVersion={true}
-              availableVersions={amrVersions}
-              onVersionChange={onWorkflowVersionChange}
+              availableVersions={versionCatalogs[WorkflowType.AMR]}
+              onVersionChange={versionChangeHandlerFor(WorkflowType.AMR)}
               isNewVersionAvailable={
                 projectPipelineVersions?.[WorkflowType.AMR]?.[0] !==
                 latestMajorPipelineVersions?.[WorkflowType.AMR]
@@ -215,7 +233,7 @@ const WorkflowSelector = ({
                 WorkflowLinksConfig[WorkflowType.AMR].warningLink
               }
               version={
-                selectedWorkflowVersion ??
+                selectedWorkflowVersions?.[WorkflowType.AMR] ??
                 projectPipelineVersions?.[WorkflowType.AMR]
               }
               versionHelpLink={
@@ -246,6 +264,13 @@ const WorkflowSelector = ({
         title={UPLOAD_WORKFLOWS.VIRAL_CONSENSUS_GENOME.label}
         sequencingPlatformOptions={
           <ViralConsensusGenomeSequencingPlatformOptions
+            availableVersions={versionCatalogs[WorkflowType.CONSENSUS_GENOME]}
+            onVersionChange={versionChangeHandlerFor(
+              WorkflowType.CONSENSUS_GENOME,
+            )}
+            selectedVersion={
+              selectedWorkflowVersions?.[WorkflowType.CONSENSUS_GENOME]
+            }
             bedFileName={bedFileName}
             refSeqFileName={refSeqFileName}
             hasRefSeqFileNameError={hasRefSeqFileNameError}
