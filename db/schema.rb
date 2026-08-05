@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_07_21_130000) do
+ActiveRecord::Schema[7.0].define(version: 2026_08_05_000000) do
   create_table "accession_coverage_stats", charset: "utf8", collation: "utf8_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -933,6 +933,12 @@ ActiveRecord::Schema[7.0].define(version: 2026_07_21_130000) do
     t.string "version", null: false, comment: "The specific version of the workflow (e.g. 1.2.3)"
     t.boolean "deprecated", comment: "A workflow version is deprecated if it's no longer receiving patches, but is runnable"
     t.boolean "runnable", comment: "A workflow version is runnable if the infrastructure can run it"
+    t.string "image_digest", comment: "Immutable image content digest (sha256:...) this version resolves to. A tag is mutable; a digest reproduces. Nil for rows that predate the publisher."
+    t.string "wdl_checksum", comment: "Checksum over the published WDL bundle's source files, for detecting drift or tampering in S3. Nil for rows that predate the publisher."
+    t.datetime "published_at", comment: "When the publisher released this version. Nil for rows that predate the publisher; NOT a created_at substitute."
+    t.string "tier", comment: "Backfill tier: full (built + validated), lazy (WDL published, image built on first request), record_only (catalogued but not buildable). Nil = not classified by the backfill."
+    t.json "engines", comment: "Runners that may execute this version, e.g. [\"swipe\"] or [\"swipe\",\"k8s\"]. Lets the K8s runner be opted in per version."
+    t.text "notes", comment: "Human-readable context surfaced in the UI, e.g. why a version is not runnable (EOL base image)."
     t.index ["workflow", "version"], name: "index_workflow_versions_on_workflow_and_version", unique: true
   end
 

@@ -1,4 +1,51 @@
 class WorkflowVersion < ApplicationRecord
+  # CZID-973 -- this table is the CATALOG: the source of truth for which workflow versions exist and
+  # what each one resolves to. Rows are written by the publisher (CZID-971) via
+  # WorkflowVersionsController, not by hand. `db/seeds` is no longer the place to declare that a
+  # version exists -- a version that is not published is not in the catalog, and CZID-982 means an
+  # uncatalogued version cannot be dispatched.
+
+  # Backfill classification (CZID-974). Nil means the row was never classified by the backfill --
+  # true of the seeded rows and of everything the CZID-982 reconciliation created.
+  TIER_FULL = "full".freeze              # image built and validated
+  TIER_LAZY = "lazy".freeze              # WDL + manifest published; image built on first request
+  TIER_RECORD_ONLY = "record_only".freeze # catalogued for provenance, not buildable
+  TIERS = [TIER_FULL, TIER_LAZY, TIER_RECORD_ONLY].freeze
+
+  # Runners that can execute a version. SWIPE/SFN is the engine today; the K8s runner (CZID-978) is
+  # opted in per version rather than switched on globally.
+  ENGINE_SWIPE = "swipe".freeze
+  ENGINE_K8S = "k8s".freeze
+  ENGINES = [ENGINE_SWIPE, ENGINE_K8S].freeze
+  DEFAULT_ENGINES = [ENGINE_SWIPE].freeze
+
+  IMAGE_DIGEST_FORMAT = /\Asha256:[0-9a-f]{64}\z/
+  CHECKSUM_FORMAT = /\A[0-9a-f]{64}\z/
+
+  validates :tier, inclusion: { in: TIERS }, allow_nil: true
+  validates :image_digest, format: { with: IMAGE_DIGEST_FORMAT }, allow_nil: true
+  validates :wdl_checksum, format: { with: CHECKSUM_FORMAT }, allow_nil: true
+  validate :engines_are_known
+
+  # A row with no engines cannot be dispatched anywhere, which is never what the caller meant.
+  before_validation { self.engines = DEFAULT_ENGINES if engines.blank? }
+
+  # Versions this engine may run. Kept as a Ruby filter rather than a JSON query because the row
+  # count per workflow is bounded and it stays portable across the DB variants in play.
+  def self.runnable_on(engine)
+    where(runnable: true).select { |wv| wv.runs_on?(engine) }
+  end
+
+  def runs_on?(engine)
+    Array(engines).include?(engine)
+  end
+
+  # True once the publisher has recorded what this version actually resolves to. Rows that predate
+  # the publisher report false rather than pretending to provenance they do not have.
+  def reproducible?
+    image_digest.present? && wdl_checksum.present?
+  end
+
   # CZID-972 -- version ordering is NUMERIC-SEGMENT aware, not lexical.
   #
   # `ORDER BY version DESC` is a string sort, so "8.3.9" sorts above "8.3.11" and "0.7.8" above
@@ -56,5 +103,13 @@ class WorkflowVersion < ApplicationRecord
     end
 
     latest
+  end
+
+  private
+
+  def engines_are_known
+    listed = Array(engines)
+    unknown = listed - ENGINES
+    errors.add(:engines, "contains unknown engines: #{unknown.join(', ')}") if unknown.any?
   end
 end
