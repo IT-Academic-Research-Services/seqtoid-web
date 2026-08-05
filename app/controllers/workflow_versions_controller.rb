@@ -48,10 +48,18 @@ class WorkflowVersionsController < ApplicationController
       return
     end
 
-    versions = WorkflowVersion
-               .where(workflow: workflow, runnable: true)
-               .sort_by { |wv| WorkflowVersion.version_sort_key(wv.version) }
-               .reverse
+    # CZID-994 -- an empty list while the feature is off, rather than a 404. The dropdown is already
+    # opt-in on availableVersions.length > 0, so the upload flow renders exactly as it did before the
+    # feature existed, and callers get a well-formed response instead of an error to special-case.
+    # This is presentation only; Sample#selected_workflow_version is what actually gates dispatch.
+    versions = if versioned_selection_enabled?
+                 WorkflowVersion
+                   .where(workflow: workflow, runnable: true)
+                   .sort_by { |wv| WorkflowVersion.version_sort_key(wv.version) }
+                   .reverse
+               else
+                 []
+               end
 
     render json: {
       workflow: workflow,
@@ -207,6 +215,13 @@ class WorkflowVersionsController < ApplicationController
 
   def valid_version?(version)
     version.match?(/\A\d+\.\d+\.\d+\z/)
+  end
+
+  # CZID-994 -- gates only the READ side (the upload dropdown). Registration is deliberately NOT
+  # gated: the publisher must keep recording published versions while the feature is dark, otherwise
+  # turning the flag on would surface a catalog with a hole in it for everything published meanwhile.
+  def versioned_selection_enabled?
+    AppConfigHelper.get_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION) == '1'
   end
 
   # FAIL-CLOSED shared-secret check, mirroring the pattern already used for the export-control

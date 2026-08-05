@@ -22,6 +22,19 @@ class AppConfig < ApplicationRecord
   # SEPARATE from ENABLE_EXPORT_CONTROL_LAYER3 (the gate flag): the screening core can be exercised in a
   # sandbox with this flag while the user-facing gate stays off.
   ENABLE_DESCARTES_SCREENING = 'enable_descartes_screening'.freeze
+  # CZID-994 -- when this is "1", users may pick a PIPELINE VERSION per run (CZID-975/976): the
+  # upload flow offers a version dropdown and dispatch honours the selection. Defaults OFF ("" / nil)
+  # so the versioned-pipeline catalog ships DARK -- the catalog, the publisher and the registration
+  # endpoint all keep working and accumulating versions, but no user-visible behavior changes and
+  # every run resolves exactly as it does today (project pin / configured default).
+  #
+  # Gated in TWO places, because the UI is only cosmetic:
+  #   - WorkflowVersionsController#index returns an empty version list, so the dropdown does not
+  #     render (it is already opt-in on availableVersions.length > 0); and
+  #   - Sample#selected_workflow_version returns nil, so a selection that was persisted earlier or
+  #     crafted directly against the API is IGNORED at dispatch.
+  # The second is the real gate; the first only keeps the UI honest.
+  ENABLE_VERSIONED_PIPELINE_SELECTION = 'enable_versioned_pipeline_selection'.freeze
   # CZID-600 -- export-control Layer 3 screening POLICY config. These carry counsel's operational choices
   # (list scope, whitelist, cadence, hit-handling) as runtime config so they are drop-in without a deploy.
   # They hold NO secret values (secrets are ENV/Chamber -- see ExportControl::ScreeningPolicy). Each is
