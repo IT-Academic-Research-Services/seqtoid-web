@@ -52,6 +52,43 @@ class WorkflowVersion < ApplicationRecord
     image_digest.present? && wdl_checksum.present?
   end
 
+  # CZID-977 -- may this workflow version run against this NCBI index vintage?
+  #
+  # The real constraint on an older pipeline is the reference data, not the WDL, and the failure is
+  # SILENT: a mismatched pair runs to completion and can simply be wrong. Pipeline version and index
+  # vintage are pinned independently, so nothing else checks this.
+  #
+  # An unrecorded bound means "unconstrained", NOT "incompatible". The boundaries are a scientific
+  # judgment about reference-data format and content that this codebase does not record anywhere, so
+  # a version with no bounds behaves exactly as it does today. Populating the bounds is what turns
+  # this from a mechanism into a mitigation.
+  #
+  # Comparison reuses version_sort_key, which already orders these ISO dates correctly (CZID-972).
+  def compatible_with_index?(index_version)
+    return true if index_version.blank?
+
+    # NOTE: version_sort_key returns an Array, which defines <=> but NOT < or >. Comparing with the
+    # operators raises NoMethodError, so the spaceship result is compared explicitly.
+    index_key = self.class.version_sort_key(index_version)
+    if min_index_version.present? &&
+       (index_key <=> self.class.version_sort_key(min_index_version)).negative?
+      return false
+    end
+    if max_index_version.present? &&
+       (index_key <=> self.class.version_sort_key(max_index_version)).positive?
+      return false
+    end
+
+    true
+  end
+
+  # Human-readable bound for an error or a UI hint, or nil when unconstrained.
+  def index_compatibility_range
+    return nil if min_index_version.blank? && max_index_version.blank?
+
+    "#{min_index_version.presence || 'any'} to #{max_index_version.presence || 'any'}"
+  end
+
   # CZID-972 -- version ordering is NUMERIC-SEGMENT aware, not lexical.
   #
   # `ORDER BY version DESC` is a string sort, so "8.3.9" sorts above "8.3.11" and "0.7.8" above
