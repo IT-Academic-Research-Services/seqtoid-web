@@ -242,6 +242,85 @@ jobs:
           path: shard-out/
           retention-days: 1
 
+  migration_check:
+    # CZID-998 -- the Ruby suite above uses db:schema:load and never RUNS a migration, so a
+    # migration could be merged, built and shipped without once being executed. The first place it
+    # ran was the Argo PreSync hook in a live environment, where a failure aborts the sync and
+    # blocks every subsequent deploy. That shipped two defects in one day and wedged dev for six
+    # deploys (CZID-992). This job runs the migrations for real, against MySQL 8.
+    #
+    # Separate job, not another shard: it needs full git history and its own pristine database, and
+    # it must report as its own red/green signal rather than hiding inside a suite failure.
+    name: Migration check (applies, parity, re-runnable)
+    # Same de-duplication as the suite: a PR and its push-to-main share a SHA, and there is no
+    # reason to migrate twice for one commit.
+    needs: preflight
+    if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
+    runs-on: ubuntu-latest
+    container: ruby:3.3.6
+    env:
+      AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_HOST: db
+      RAILS_ENV: test
+      AWS_REGION: us-west-2
+      AWS_ACCOUNT_ID: test
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      db:
+        image: bitnamilegacy/mysql:8.0
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: idseq_test
+          MYSQL_AUTHENTICATION_PLUGIN: mysql_native_password
+          MYSQL_EXTRA_FLAGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --group_concat_max_len=1073741824"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          # The check diffs against the merge base to find this branch's migrations, and loads the
+          # BASE schema.rb to migrate onto. Both need real history, so no shallow clone.
+          fetch-depth: 0
+      - name: Determine Kernel Version
+        run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
+      - name: Cache Ruby Dependencies
+        uses: actions/cache@v5
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.KERNEL_VERSION }}-gems
+      - name: Install deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y build-essential default-mysql-client default-libmysqlclient-dev
+          gem install bundler:"$(tail -1 Gemfile.lock | tr -d ' ')" --no-document 2>/dev/null || gem install bundler --no-document
+          bundle config path vendor/bundle
+          bundle install --jobs 4 --retry 3
+      - name: Run migration check
+        shell: bash
+        env:
+          # On a PR, compare against the target branch; on a push to main, against the previous
+          # commit. `git merge-base` inside the script narrows either to the true base.
+          BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^' }}
+        run: bash bin/ci-migrate-check
+
   collate:
     name: Collate coverage + regression gate
     needs: [preflight, ruby_test_mysql8]
