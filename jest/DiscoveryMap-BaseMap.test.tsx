@@ -144,8 +144,9 @@ describe("BaseMap render", () => {
     expect(capturedMapProps.latitude).toBe(27);
     expect(capturedMapProps.longitude).toBe(0);
     expect(capturedMapProps.zoom).toBe(1.4);
-    expect(capturedMapProps.width).toBe("100%");
-    expect(capturedMapProps.height).toBe("100%");
+    // When container size is 800x600, render uses those values
+    expect(capturedMapProps.width).toBe(800);
+    expect(capturedMapProps.height).toBe(600);
   });
 
   it("seeds the viewport from explicit position props", () => {
@@ -162,7 +163,8 @@ describe("BaseMap render", () => {
     expect(capturedMapProps.latitude).toBe(10);
     expect(capturedMapProps.longitude).toBe(20);
     expect(capturedMapProps.zoom).toBe(5);
-    expect(capturedMapProps.width).toBe(640);
+    // Container size is 800x600; render uses container size
+    expect(capturedMapProps.width).toBe(800);
   });
 
   it("wires the same updateViewport handler to the map and nav control", () => {
@@ -190,9 +192,9 @@ describe("BaseMap updateViewport clamping", () => {
     expect(reported.latitude).toBe(60);
     expect(reported.longitude).toBe(-180);
     expect(reported.zoom).toBe(17);
-    // width/height are re-applied from props on every viewport change.
-    expect(reported.width).toBe("100%");
-    expect(reported.height).toBe("100%");
+    // width/height are re-applied from container size (800, 600) on every viewport change.
+    expect(reported.width).toBe(800);
+    expect(reported.height).toBe(600);
   });
 
   it("clamps to the lower bounds and leaves in-range values untouched", () => {
@@ -270,10 +272,11 @@ describe("BaseMap zero-size viewport guard (SMP-1603)", () => {
     act(() => resizeObserverCb && resizeObserverCb());
 
     expect(screen.getByTestId("map-gl")).toBeTruthy();
-    // Behavior once sized is unchanged: the viewport still carries the "100%"
-    // width/height that lets react-map-gl size itself against the container.
-    expect(capturedMapProps.width).toBe("100%");
-    expect(capturedMapProps.height).toBe("100%");
+    // Behavior once sized is updated: the viewport now carries the numeric
+    // width/height that lets react-map-gl size itself against the container
+    // without throwing "Pixel project matrix not invertible".
+    expect(capturedMapProps.width).toBe(800);
+    expect(capturedMapProps.height).toBe(600);
   });
 
   it("mounts MapGL immediately when the container is already laid out", () => {
