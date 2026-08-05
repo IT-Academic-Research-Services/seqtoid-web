@@ -54,6 +54,16 @@ class Sample < ApplicationRecord
   validates :pipeline_commit, presence: true, allow_blank: true
   validates :uploaded_from_basespace, presence: true, inclusion: { in: [0, 1] }
   validates :initial_workflow, inclusion: { in: WorkflowRun::WORKFLOW.values }
+  # CZID-976 -- the user-selected pipeline version. Validated HERE, at the upload boundary, so a
+  # malformed selection is a 4xx on the request rather than a 500 later at dispatch time (dispatch
+  # is where the version is actually resolved, which can be well after the upload returns).
+  # VersionRetrievalService re-checks the same shape before the value reaches a LIKE query.
+  validates :workflow_version,
+            format: {
+              with: WorkflowVersion::USER_VERSION_PREFIX_FORMAT,
+              message: "must be a major (8), major.minor (8.1) or full version (8.1.2)",
+            },
+            allow_blank: true
 
   before_save :check_host_genome, :concatenate_input_parts, :check_status
   after_create :initiate_input_file_upload

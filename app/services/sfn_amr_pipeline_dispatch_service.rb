@@ -29,7 +29,8 @@ class SfnAmrPipelineDispatchService
     # AMR uses the host filtering stage of the mNGS pipeline
     @mngs_wdl_version = AppConfigHelper.get_workflow_version(WorkflowRun::WORKFLOW[:short_read_mngs])
 
-    @wdl_version = VersionRetrievalService.call(@sample.project.id, @workflow_run.workflow)
+    # CZID-976: honour a version the user selected at upload; nil falls back to the project pin.
+    @wdl_version = VersionRetrievalService.call(@sample.project.id, @workflow_run.workflow, @sample.workflow_version)
     raise SfnVersionMissingError, @workflow_run.workflow if @wdl_version.blank?
 
     @workflow_run.update(

@@ -148,10 +148,16 @@ RSpec.describe VersionRetrievalService, type: :service do
         create(:project_workflow_version, project_id: @project.id, workflow: cg_workflow, version_prefix: version_prefix)
       end
 
-      subject { VersionRetrievalService.call(@project.id, cg_workflow, "100000") }
+      # CZID-976: this previously expected project_workflow_version_already_pinned. Selection is now
+      # per-run and the user's choice WINS over the pin -- the raise made the feature impossible in
+      # practice, since every project is pinned. The pin now only supplies the default.
+      it "honours the user's selection instead of raising" do
+        expect(VersionRetrievalService.call(@project.id, cg_workflow, "2.0")).to eq("2.0.9")
+      end
 
-      it "should raise an error" do
-        expect { subject }.to raise_error(RuntimeError, ErrorHelper::VersionControlErrors.project_workflow_version_already_pinned(@project.id, cg_workflow, version_prefix))
+      it "still refuses a selection that resolves to nothing" do
+        expect { VersionRetrievalService.call(@project.id, cg_workflow, "100000") }
+          .to raise_error(RuntimeError, /does not exist/)
       end
     end
 
