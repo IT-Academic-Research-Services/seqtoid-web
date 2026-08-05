@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_08_05_020000) do
+ActiveRecord::Schema[7.0].define(version: 2026_08_05_030000) do
   create_table "accession_coverage_stats", charset: "utf8", collation: "utf8_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -940,6 +940,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_08_05_020000) do
     t.string "tier", comment: "Backfill tier: full (built + validated), lazy (WDL published, image built on first request), record_only (catalogued but not buildable). Nil = not classified by the backfill."
     t.json "engines", comment: "Runners that may execute this version, e.g. [\"swipe\"] or [\"swipe\",\"k8s\"]. Lets the K8s runner be opted in per version."
     t.text "notes", comment: "Human-readable context surfaced in the UI, e.g. why a version is not runnable (EOL base image)."
+    t.string "min_index_version", comment: "Oldest NCBI index vintage (ncbi_index_date, e.g. 2024-02-06) this workflow version may run against. NULL = no lower bound recorded (CZID-977)."
+    t.string "max_index_version", comment: "Newest NCBI index vintage this workflow version may run against. NULL = no upper bound recorded (CZID-977)."
     t.index ["workflow", "version"], name: "index_workflow_versions_on_workflow_and_version", unique: true
   end
 
