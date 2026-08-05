@@ -98,14 +98,27 @@ class VersionRetrievalService
 
   # Given a version_prefix, return the latest version of the workflow that matches the version_prefix
   # i.e. if the latest short-read-mngs version is 8.1.2 and version_prefix is 8.1, return 8.1.2
+  #
+  # CZID-972: both halves of this were string operations and both were wrong.
+  #
+  #   * `LIKE '<prefix>%'` also matches a different minor line -- prefix "8.1" matches "8.10.5".
+  #     The LIKE is kept as a cheap DB-side narrowing (it is always a superset), then the candidates
+  #     are filtered SEGMENT-wise.
+  #   * `ORDER BY version DESC` is a lexical sort, so it picks "8.1.9" over "8.1.11".
+  #
+  # See WorkflowVersion.version_sort_key for the ordering, which also covers the non-semver formats
+  # this table holds (ISO dates for ncbi_index_date, bare integers for human_host_genome).
   def fetch_latest_version_for_version_prefix(version_prefix)
     version = WorkflowVersion.arel_table[:version]
-    workflow_versions = WorkflowVersion.where(workflow: @workflow).where(version.matches("#{version_prefix}%"))
+    candidates = WorkflowVersion
+                 .where(workflow: @workflow)
+                 .where(version.matches("#{version_prefix}%"))
+                 .select { |wv| WorkflowVersion.version_matches_prefix?(wv.version, version_prefix) }
 
-    if workflow_versions.empty?
+    if candidates.empty?
       raise VersionControlErrors.workflow_version_not_found(@workflow, version_prefix)
     end
 
-    workflow_versions.order(version: :desc).first
+    candidates.max_by { |wv| WorkflowVersion.version_sort_key(wv.version) }
   end
 end
