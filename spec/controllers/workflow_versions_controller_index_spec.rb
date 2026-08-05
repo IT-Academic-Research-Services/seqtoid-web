@@ -10,6 +10,10 @@ RSpec.describe WorkflowVersionsController, type: :controller do
     JSON.parse(response.body)["versions"]
   end
 
+  # CZID-994 -- the dropdown is behind a feature flag; these cover the behavior once it is on. The
+  # dark default has its own context at the bottom.
+  before { AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, "1") }
+
   context "as a signed-in non-admin user" do
     before { sign_in @joe }
 
@@ -86,6 +90,32 @@ RSpec.describe WorkflowVersionsController, type: :controller do
       get :index, params: { workflow: workflow }
 
       expect(response).not_to have_http_status(:ok)
+    end
+  end
+
+  # CZID-994 -- with the feature dark the endpoint stays well-formed but offers nothing, so the
+  # dropdown (opt-in on availableVersions.length > 0) renders exactly as it did before the feature.
+  context "with the feature flag off" do
+    before { sign_in @joe }
+
+    it "serves an empty list rather than an error" do
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, "")
+      create(:workflow_version, workflow: workflow, version: "8.3.15")
+
+      get :index, params: { workflow: workflow }
+
+      # 200 with nothing to choose, NOT a 404 the frontend would have to special-case.
+      expect(response).to have_http_status(:ok)
+      expect(listed_versions).to eq([])
+      expect(JSON.parse(response.body)["workflow"]).to eq(workflow)
+    end
+
+    it "still rejects a malformed workflow name while dark" do
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, "")
+
+      get :index, params: { workflow: "not a workflow!" }
+
+      expect(response).to have_http_status(:unprocessable_entity)
     end
   end
 end

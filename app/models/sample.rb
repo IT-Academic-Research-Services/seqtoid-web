@@ -64,7 +64,16 @@ class Sample < ApplicationRecord
   # The version this sample should run for `workflow`, or nil to use the project pin / configured
   # default. Per-workflow because one upload can run several: selecting an AMR version must not
   # change which mNGS version runs.
+  #
+  # CZID-994 -- this is the REAL feature gate for per-run version selection, because it is the one
+  # point every dispatch service reads (mNGS, long-read mNGS, AMR and CG all call it). Returning nil
+  # while the flag is off means a selection is ignored no matter how it got persisted -- an older
+  # upload made while the flag was on, or a request crafted straight against the API -- and each run
+  # resolves exactly as it did before the feature existed. Gating only the UI would leave the API
+  # open, so the check lives here rather than at the upload boundary. Selections are kept rather than
+  # erased, so flipping the flag on is not a data migration.
   def selected_workflow_version(workflow)
+    return nil unless AppConfigHelper.get_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION) == '1'
     return nil unless workflow_versions.is_a?(Hash)
 
     workflow_versions[workflow.to_s].presence

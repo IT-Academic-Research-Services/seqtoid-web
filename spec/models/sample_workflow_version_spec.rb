@@ -63,6 +63,11 @@ RSpec.describe Sample, type: :model do
   end
 
   describe "#selected_workflow_version" do
+    # CZID-994 -- reading a selection requires the feature flag. Validation above deliberately does
+    # NOT: a malformed map is still a 4xx whatever the flag says, so turning the feature on can never
+    # activate a selection that was never checked.
+    before { AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, "1") }
+
     it "returns only the selection for the workflow asked about" do
       sample = create(:sample, project: project, workflow_versions: { mngs => "8.1.2", amr => "1.4.2" })
 
@@ -87,6 +92,50 @@ RSpec.describe Sample, type: :model do
       sample = create(:sample, project: project, workflow_versions: { mngs => "8.1.2" })
 
       expect(sample.reload.selected_workflow_version(mngs)).to eq("8.1.2")
+    end
+  end
+
+  # CZID-994 -- the feature ships DARK. This is the half that matters: with the flag off the app must
+  # behave exactly as it did before per-run version selection existed.
+  describe "#selected_workflow_version with the feature flag off" do
+    let(:sample) { create(:sample, project: project, workflow_versions: { mngs => "8.1.2", amr => "1.4.2" }) }
+
+    it "ignores a selection when the flag is unset (the default)" do
+      expect(sample.selected_workflow_version(mngs)).to be_nil
+      expect(sample.selected_workflow_version(amr)).to be_nil
+    end
+
+    it "ignores a selection when the flag is explicitly off" do
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, "")
+
+      expect(sample.selected_workflow_version(mngs)).to be_nil
+    end
+
+    it "treats any value other than \"1\" as off" do
+      # Mirrors the other flags in AppConfig: only the exact string "1" enables. Guards against a
+      # "true"/"yes"/"0" typo silently switching a user-facing feature on.
+      ["0", "true", "yes", "enabled", " 1"].each do |not_enabled|
+        AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, not_enabled)
+
+        expect(sample.selected_workflow_version(mngs)).to(
+          be_nil, "expected #{not_enabled.inspect} not to enable version selection"
+        )
+      end
+    end
+
+    it "keeps the selection stored, so enabling the flag is not a data migration" do
+      # Gated on READ rather than erased on write: flipping the flag on restores what users chose.
+      expect(sample.reload.workflow_versions).to eq({ mngs => "8.1.2", amr => "1.4.2" })
+
+      AppConfigHelper.set_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION, "1")
+
+      expect(sample.selected_workflow_version(mngs)).to eq("8.1.2")
+    end
+
+    it "still validates a malformed selection while dark" do
+      # Validation is independent of the flag, so turning the feature on cannot activate a selection
+      # that was never checked.
+      expect(sample_with({ mngs => "8; DROP TABLE samples" })).not_to be_valid
     end
   end
 end
