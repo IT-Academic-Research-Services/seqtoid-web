@@ -2,8 +2,8 @@ import { TaxonOption } from "~/components/common/filters/types";
 import {
   NO_TECHNOLOGY_SELECTED,
   SEQUENCING_TECHNOLOGY_OPTIONS,
-  UploadWorkflows,
   UPLOAD_WORKFLOWS,
+  UploadWorkflows,
   WORKFLOWS_BY_UPLOAD_SELECTIONS,
 } from "~/components/views/SampleUploadFlow/constants";
 import { SampleFromApi } from "~/interface/shared";
@@ -25,6 +25,9 @@ interface addFlagsToSamplesProps {
   wetlabProtocol: string | null;
   useStepFunctionPipeline: boolean;
   guppyBasecallerSetting?: string;
+  // CZID-975/CZID-976 -- the pipeline version the user picked at upload. Optional: when unset the
+  // server falls back to the project pin / configured default, which is the pre-existing behaviour.
+  workflowVersion?: string;
 }
 
 // Add flags selected by the user in the upload review Step
@@ -43,6 +46,7 @@ export const addFlagsToSamples = ({
   technology,
   workflows,
   wetlabProtocol,
+  workflowVersion,
 }: addFlagsToSamplesProps): SampleFromApi[] => {
   const PIPELINE_EXECUTION_STRATEGIES = {
     directed_acyclic_graph: "directed_acyclic_graph",
@@ -74,6 +78,9 @@ export const addFlagsToSamples = ({
     do_not_process: skipSampleProcessing,
     pipeline_execution_strategy: pipelineExecutionStrategy,
     workflows: workflowsConverted,
+    // CZID-976: only sent when the user actually chose a version -- an absent key means "use the
+    // project default", which is what every upload did before this existed.
+    ...(workflowVersion && { workflow_version: workflowVersion }),
     // Add mNGS specific fields
     ...(isMetagenomics &&
       isNanopore && {

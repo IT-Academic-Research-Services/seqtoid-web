@@ -41,6 +41,9 @@ export interface UploadSampleStepState {
   remoteSelectedSampleIds: Set<string>;
   removedLocalFiles: $TSFixMe[];
   selectedGuppyBasecallerSetting: $TSFixMe;
+  // CZID-975 -- pipeline version the user picked in the WorkflowSelector dropdown.
+  // Undefined until they choose one, in which case the project default applies.
+  selectedWorkflowVersion?: string;
   selectedTaxon: TaxonOption | null;
   selectedTechnology:
     | SEQUENCING_TECHNOLOGY_OPTIONS

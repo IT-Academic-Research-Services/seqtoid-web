@@ -1,9 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getWorkflowVersions } from "~/api";
 import { TaxonOption } from "~/components/common/filters/types";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { AMR_PIPELINE_GITHUB_LINK } from "~/components/utils/documentationLinks";
 import { WorkflowType } from "~/components/utils/workflows";
-import { PipelineVersions, SampleUploadType } from "~/interface/shared";
+import {
+  CatalogedWorkflowVersion,
+  PipelineVersions,
+  SampleUploadType,
+} from "~/interface/shared";
 import { IconCovidVirusXLarge } from "~ui/icons";
 import {
   BASESPACE_UPLOAD,
@@ -13,8 +18,8 @@ import {
   REMOTE_UPLOAD,
   SEQUENCING_TECHNOLOGY_OPTIONS,
   Technology,
-  UploadWorkflows,
   UPLOAD_WORKFLOWS,
+  UploadWorkflows,
 } from "../../constants";
 import { AnalysisType } from "./components/AnalysisType";
 import { ConsensusGenomeSequencingPlatformOptions } from "./components/ConsensusGenomeSequencingPlatformOptions";
@@ -39,6 +44,10 @@ interface WorkflowSelectorProps {
     technology: SEQUENCING_TECHNOLOGY_OPTIONS,
   ) => void;
   onGuppyBasecallerSettingChange?: (selected: string) => void;
+  // CZID-975 -- the AMR pipeline version dropdown. Optional so the component still renders
+  // read-only wherever selection is not wired.
+  onWorkflowVersionChange?: (selected: string) => void;
+  selectedWorkflowVersion?: string;
   onWetlabProtocolChange?: (selected: string) => void;
   onWorkflowToggle?: (
     workflow: UploadWorkflows,
@@ -88,6 +97,8 @@ const WorkflowSelector = ({
   onTaxonChange,
   onTechnologyToggle,
   onGuppyBasecallerSettingChange,
+  onWorkflowVersionChange,
+  selectedWorkflowVersion,
   onWetlabProtocolChange,
   onWorkflowToggle,
   currentTab,
@@ -105,6 +116,27 @@ const WorkflowSelector = ({
   const shouldDisableWorkflow = (workflow: UploadWorkflows) => {
     return !enabledWorkflows.includes(workflow);
   };
+
+  // CZID-975 -- the AMR version catalog backing the dropdown. Fetched once; a failure leaves the
+  // list empty, which makes the indicator fall back to its read-only rendering rather than blocking
+  // the upload.
+  const [amrVersions, setAmrVersions] = useState<CatalogedWorkflowVersion[]>(
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    getWorkflowVersions(WorkflowType.AMR)
+      .then(response => {
+        if (!cancelled) setAmrVersions(response?.versions ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setAmrVersions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className={cs.workflowSelector}>
@@ -173,6 +205,8 @@ const WorkflowSelector = ({
           <div className={cs.technologyContent}>
             <PipelineVersionIndicator
               isPipelineVersion={true}
+              availableVersions={amrVersions}
+              onVersionChange={onWorkflowVersionChange}
               isNewVersionAvailable={
                 projectPipelineVersions?.[WorkflowType.AMR]?.[0] !==
                 latestMajorPipelineVersions?.[WorkflowType.AMR]
@@ -180,7 +214,10 @@ const WorkflowSelector = ({
               warningHelpLink={
                 WorkflowLinksConfig[WorkflowType.AMR].warningLink
               }
-              version={projectPipelineVersions?.[WorkflowType.AMR]}
+              version={
+                selectedWorkflowVersion ??
+                projectPipelineVersions?.[WorkflowType.AMR]
+              }
               versionHelpLink={
                 WorkflowLinksConfig[WorkflowType.AMR].pipelineVersionLink
               }

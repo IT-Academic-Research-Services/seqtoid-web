@@ -46,6 +46,8 @@ interface SampleUploadFlowState {
   refSeqTaxon: TaxonOption | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string | null;
+  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
+  workflowVersion?: string;
   medakaModel: string | null;
   metadata: MetadataBasic | null;
   metadataIssues: $TSFixMeUnknown;
@@ -77,6 +79,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
     // Metadata upload information
     clearlabs: false,
     guppyBasecallerSetting: null,
+    workflowVersion: undefined,
     medakaModel: null,
     metadata: null, //
     metadataIssues: null,
@@ -109,6 +112,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
     technology,
     project,
     guppyBasecallerSetting,
+    workflowVersion,
     medakaModel,
     refSeqAccession,
     refSeqFile,
@@ -125,6 +129,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
       technology,
       currentStep: UploadStepType.MetadataStep,
       guppyBasecallerSetting,
+      workflowVersion,
       medakaModel,
       project,
       refSeqAccession,
@@ -311,6 +316,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
             bedFile={this.state.bedFile}
             clearlabs={this.state.clearlabs}
             guppyBasecallerSetting={this.state.guppyBasecallerSetting}
+            workflowVersion={this.state.workflowVersion}
             hostGenomes={this.state.hostGenomes}
             medakaModel={this.state.medakaModel}
             metadata={this.state.metadata}

@@ -62,8 +62,8 @@ import {
   SELECT_ID_KEY,
   SEQUENCING_TECHNOLOGY_OPTIONS,
   UNKNOWN_TAXON_OPTION,
-  UploadWorkflows,
   UPLOAD_WORKFLOWS,
+  UploadWorkflows,
 } from "../../constants";
 import cs from "../../sample_upload_flow.scss";
 import {
@@ -135,6 +135,8 @@ class UploadSampleStepCC extends React.Component<
     removedLocalFiles: [], // Invalid local files that were removed.
     // TODO (mlila): move the following technology-specific state/callbacks as sub-state within selectedWorkflows
     selectedGuppyBasecallerSetting: null,
+    // CZID-975/CZID-976 -- undefined until the user picks a version; the project default applies.
+    selectedWorkflowVersion: undefined,
     selectedTaxon: null,
     // we can only select one technology at a time. If the user attempts to select a second technology
     // the first will automatically be deselected for them and we will use the tech most recently chosen
@@ -658,6 +660,12 @@ class UploadSampleStepCC extends React.Component<
     this.setState({ selectedGuppyBasecallerSetting: selected });
   };
 
+  // CZID-975: the user picked a pipeline version in the WorkflowSelector dropdown.
+  handleWorkflowVersionChange = (selected: string) => {
+    this.props.onDirty();
+    this.setState({ selectedWorkflowVersion: selected });
+  };
+
   handleMedakaModelChange = (selected: string) => {
     this.props.onDirty();
     this.setState({ selectedMedakaModel: selected });
@@ -1097,6 +1105,7 @@ class UploadSampleStepCC extends React.Component<
       selectedTechnology,
       selectedMedakaModel,
       selectedGuppyBasecallerSetting,
+      selectedWorkflowVersion,
       selectedProject,
       selectedWorkflows,
       selectedWetlabProtocol,
@@ -1135,6 +1144,8 @@ class UploadSampleStepCC extends React.Component<
         workflows: selectedWorkflows,
         // mNGS Nanopore only inputs
         guppyBasecallerSetting: selectedGuppyBasecallerSetting,
+        // CZID-976: carried to samples.workflow_version; absent means the project default.
+        workflowVersion: selectedWorkflowVersion,
         // WGS only inputs
         bedFile,
         refSeqAccession,
@@ -1556,6 +1567,8 @@ class UploadSampleStepCC extends React.Component<
             onClearLabsChange={this.handleClearLabsChange}
             onMedakaModelChange={this.handleMedakaModelChange}
             onRefSeqFileChanged={this.handleRefSeqFileChanged}
+            onWorkflowVersionChange={this.handleWorkflowVersionChange}
+            selectedWorkflowVersion={this.state.selectedWorkflowVersion}
             onGuppyBasecallerSettingChange={
               this.handleGuppyBasecallerSettingChange
             }

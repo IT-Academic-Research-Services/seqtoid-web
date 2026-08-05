@@ -47,6 +47,8 @@ const BASESPACE_SAMPLE_FIELDS = [
 const NUM_FAILED_SAMPLES_TO_DISPLAY = 3;
 
 interface RemoteUploadProgressModalProps {
+  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
+  workflowVersion?: string;
   adminOptions: Record<string, string>;
   bedFile: File | null;
   clearlabs: boolean;
@@ -67,6 +69,7 @@ interface RemoteUploadProgressModalProps {
 }
 
 export const RemoteUploadProgressModal = ({
+  workflowVersion,
   adminOptions,
   bedFile,
   clearlabs,
@@ -153,6 +156,7 @@ export const RemoteUploadProgressModal = ({
       technology,
       workflows,
       wetlabProtocol,
+      workflowVersion,
     });
 
     const includeAdditionalInputFiles = bedFile || refSeqFile;

@@ -21,7 +21,7 @@ import {
 } from "~/interface/shared";
 import { UploadStepType } from "~/interface/upload";
 import TermsAgreement from "~ui/controls/TermsAgreement";
-import { Technology, UploadWorkflows, UPLOAD_WORKFLOWS } from "../../constants";
+import { Technology, UPLOAD_WORKFLOWS, UploadWorkflows } from "../../constants";
 import { UploadProgressModal } from "../UploadProgressModal";
 import { RefSeqAccessionDataType } from "../UploadSampleStep/types";
 import { AnalysesSections } from "./components/AnalysesSections";
@@ -36,6 +36,8 @@ interface ReviewStepProps {
   bedFile: File | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string | null;
+  // CZID-975/CZID-976 -- user-selected pipeline version; undefined means use the project default.
+  workflowVersion?: string;
   hostGenomes?: HostGenome[];
   medakaModel: string | null;
   metadata: MetadataBasic | null;
@@ -146,6 +148,7 @@ class ReviewStepCC extends React.Component<
       bedFile,
       clearlabs,
       guppyBasecallerSetting,
+      workflowVersion,
       technology,
       hostGenomes,
       medakaModel,
@@ -197,6 +200,7 @@ class ReviewStepCC extends React.Component<
               wetlabProtocol={wetlabProtocol}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               guppyBasecallerSetting={guppyBasecallerSetting}
+              workflowVersion={workflowVersion}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               refSeqTaxon={refSeqTaxon?.name}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
@@ -248,6 +252,7 @@ class ReviewStepCC extends React.Component<
               clearlabs={clearlabs}
               // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2322
               guppyBasecallerSetting={guppyBasecallerSetting}
+              workflowVersion={workflowVersion}
               technology={technology}
               medakaModel={medakaModel}
               metadata={metadata}
