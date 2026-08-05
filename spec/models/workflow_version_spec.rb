@@ -2,13 +2,14 @@ require 'rails_helper'
 
 RSpec.describe WorkflowVersion, type: :model do
   context ".latest_version_of" do
-    it "returns the highest version for a workflow by descending order" do
+    it "returns the highest version for a workflow by numeric segment" do
       create(:workflow_version, workflow: "short-read-mngs", version: "8.2.3")
       create(:workflow_version, workflow: "short-read-mngs", version: "8.2.4")
       create(:workflow_version, workflow: "short-read-mngs", version: "8.2.10")
-      # Note: ordering is lexical (ORDER version DESC), which the model documents.
-      # "8.2.4" sorts after "8.2.10" and "8.2.3" lexically.
-      expect(WorkflowVersion.latest_version_of("short-read-mngs")).to eq("8.2.4")
+      # CZID-972: this previously expected "8.2.4", because ordering was lexical ("8.2.4" sorts
+      # above "8.2.10" as a string) -- the spec pinned the bug as intended behaviour. 8.2.10 is the
+      # highest version, and that is what the catalog must resolve to.
+      expect(WorkflowVersion.latest_version_of("short-read-mngs")).to eq("8.2.10")
     end
 
     it "scopes to the requested workflow only" do
