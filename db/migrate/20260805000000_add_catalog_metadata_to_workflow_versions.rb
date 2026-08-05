@@ -47,11 +47,24 @@ class AddCatalogMetadataToWorkflowVersions < ActiveRecord::Migration[7.2]
     #
     # `WHERE engines IS NULL` is what makes this safe to repeat: a re-run touches only rows still
     # unset, and never overwrites an engine list the publisher has since recorded.
-    execute <<~SQL.squish
-      UPDATE workflow_versions
-      SET engines = CAST('["swipe"]' AS JSON)
-      WHERE engines IS NULL
-    SQL
+    #
+    # safety_assured because strong_migrations cannot see inside an `execute` and so refuses it
+    # outright. This is a one-shot backfill of a column added moments earlier in the same migration:
+    # it takes no lock beyond the row updates, and workflow_versions is a small catalog table (tens
+    # of rows), not a user-data table where a blocking UPDATE would matter.
+    #
+    # THIS is what actually wedged dev. The migration added its six columns, reached here, and
+    # strong_migrations aborted it -- after the DDL had auto-committed but before the migration was
+    # recorded in schema_migrations. Every retry then died earlier still, on "Duplicate column name",
+    # which masked this line as the real cause. The CZID-992 guards fixed the retry; this fixes the
+    # reason there was anything to retry.
+    safety_assured do
+      execute <<~SQL.squish
+        UPDATE workflow_versions
+        SET engines = CAST('["swipe"]' AS JSON)
+        WHERE engines IS NULL
+      SQL
+    end
   end
 
   def down

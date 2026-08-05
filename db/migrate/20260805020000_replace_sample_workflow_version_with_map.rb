@@ -23,7 +23,17 @@ class ReplaceSampleWorkflowVersionWithMap < ActiveRecord::Migration[7.2]
   # 20260805000000 took dev down for five deploys. Guarded, a retry simply finishes the half it has
   # left to do.
   def up
-    remove_column :samples, :workflow_version if column_exists?(:samples, :workflow_version)
+    # safety_assured on the DROP. strong_migrations blocks remove_column because ActiveRecord caches
+    # attributes, so a running process can still SELECT a column that has just been dropped; the
+    # prescribed fix is to ship `self.ignored_columns += [...]` first, then drop in a later deploy.
+    #
+    # That does not apply here. `samples.workflow_version` is added by 20260805010000 and removed by
+    # this migration in the SAME unreleased series -- it has never existed in a deployed schema, so
+    # no running code has it cached and there is nothing to ignore. Nothing ever wrote it either:
+    # CZID-976 added it and its only writer (the CZID-975 upload flow) shipped against the map.
+    safety_assured do
+      remove_column :samples, :workflow_version if column_exists?(:samples, :workflow_version)
+    end
 
     unless column_exists?(:samples, :workflow_versions)
       add_column :samples, :workflow_versions, :json,
