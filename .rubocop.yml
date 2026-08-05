@@ -54,7 +54,13 @@ AllCops:
     - '**/Vagabondfile'
     - '**/Vagrantfile'
   Exclude:
-    - 'db/**/*'
+    # CZID-985 -- db/ is deliberately NOT excluded wholesale. Migrations and seed migrations are real
+    # Ruby (seed migrations especially: they query and write data), and excluding them meant nothing
+    # under db/ was ever linted, locally or by the PR gate. Existing offenses are baselined in
+    # .rubocop_todo.yml rather than reformatting historical migrations, which are immutable history.
+    # Schema dumps and structure files stay excluded: they are generated, not authored.
+    - 'db/schema.rb'
+    - 'db/structure.sql'
     - vendor/**/*
     - bin/*
     - node_modules/**/*
