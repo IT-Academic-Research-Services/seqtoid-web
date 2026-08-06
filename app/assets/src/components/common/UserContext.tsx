@@ -11,6 +11,8 @@ const UserContextValues: UserContextType = {
   userName: null,
   userEmail: null,
   profileCompleted: false,
+  // Default to the prod host so an out-of-provider render still yields a working link.
+  helpCenterHost: "https://helpcenter.seqtoid.org",
 };
 
 export const UserContext = React.createContext(UserContextValues);

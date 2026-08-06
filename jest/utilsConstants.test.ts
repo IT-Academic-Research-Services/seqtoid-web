@@ -44,9 +44,9 @@ describe("utils/documentationLinks.ts", () => {
     expect(documentationLinks.NEXTCLADE_APP_LINK).toBe(
       "https://clades.nextstrain.org/",
     );
-    expect(documentationLinks.CONTACT_US_LINK).toBe(
-      "https://helpcenter.seqtoid.org/contact",
-    );
+    // Help-center links are authored as "helpcenter:" sentinel paths and resolved
+    // to the environment host at render by Link.tsx (SW-2).
+    expect(documentationLinks.CONTACT_US_LINK).toBe("helpcenter:/contact");
     // Every exported link should be a non-empty string.
     Object.values(documentationLinks).forEach(link => {
       expect(typeof link).toBe("string");

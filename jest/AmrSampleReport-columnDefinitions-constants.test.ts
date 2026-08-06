@@ -5,12 +5,14 @@
 // tests pin both the copy and the gene/reads/contigs anchor each entry points at.
 import * as constants from "~/components/views/SampleView/components/AmrView/components/AmrSampleReport/columnDefinitions/constants";
 
+// SW-2: help-center links are authored as "helpcenter:" sentinel paths, resolved
+// to the env host at render by Link.tsx.
 const GENES_ANCHOR =
-  "https://helpcenter.seqtoid.org/articles/amr-sample-report-metrics-and-analysis/#amr-gene-information";
+  "helpcenter:/articles/amr-sample-report-metrics-and-analysis/#amr-gene-information";
 const READS_ANCHOR =
-  "https://helpcenter.seqtoid.org/articles/amr-sample-report-metrics-and-analysis/#read-metrics";
+  "helpcenter:/articles/amr-sample-report-metrics-and-analysis/#read-metrics";
 const CONTIGS_ANCHOR =
-  "https://helpcenter.seqtoid.org/articles/amr-sample-report-metrics-and-analysis/#contig-metrics";
+  "helpcenter:/articles/amr-sample-report-metrics-and-analysis/#contig-metrics";
 
 const GENE_GROUP = [
   "GENE_COLUMN_TOOLTIP_STRINGS",
@@ -56,7 +58,7 @@ describe("AMR column definition constants", () => {
       expect(tooltip.boldText.length).toBeGreaterThan(0);
       expect(tooltip.link.linkText).toBe("Learn More.");
       expect(tooltip.link.href).toMatch(
-        /^https:\/\/helpcenter\.seqtoid\.org\/articles\/amr-sample-report-metrics-and-analysis\/#/,
+        /^helpcenter:\/articles\/amr-sample-report-metrics-and-analysis\/#/,
       );
     },
   );

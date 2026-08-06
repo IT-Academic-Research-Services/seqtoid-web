@@ -1,6 +1,6 @@
-import { WORKFLOWS } from "@e2e/constants/common";
+import { HELP_CENTER_HOST, WORKFLOWS } from "@e2e/constants/common";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { ProjectPage } from "../../page-objects/project-page";
 
 /*
@@ -192,8 +192,7 @@ test.describe("Viral CG (WGS) - Sample report: Functional: P-2", () => {
     // #region 5. Click on Learn more link
     let articlesPage = await samplesPage.clickTooltipLearnMore();
 
-    const expectedArticleUrl =
-      "https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/";
+    const expectedArticleUrl = `${HELP_CENTER_HOST}/articles/metagenomic-analysis-consensus-genome-quality-checks/`;
     // - ""Learn more"" and ""Learn more about consensus genomes"" links open in new browser tab
     // - Consensus Genome Quality Checks article page is displayed
     // (https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/)"

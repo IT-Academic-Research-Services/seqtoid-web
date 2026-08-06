@@ -1,8 +1,5 @@
-import { QA_TEST_PROJECTS } from "@e2e/constants/common";
-import {
-  HELP_CENTER_PROJECT_URL,
-  PROJECT_NAME_NOT_AVAILABLE_ERROR,
-} from "@e2e/constants/upload";
+import { HELP_CENTER_HOST, QA_TEST_PROJECTS } from "@e2e/constants/common";
+import { PROJECT_NAME_NOT_AVAILABLE_ERROR } from "@e2e/constants/upload";
 import { stubRequest } from "@e2e/utils/api";
 import { acceptCookies } from "@e2e/utils/page";
 import { expect, test } from "@playwright/test";
@@ -134,8 +131,10 @@ test.describe("Sample project tests", () => {
       context.waitForEvent("page"),
       page.locator("a").getByText("Learn more").first().click(),
     ]);
-    // New page should be help center
-    expect(newPage.url()).toContain(HELP_CENTER_PROJECT_URL);
+    // New page should be the env's help center. Assert the resolved host (SW-2) -
+    // the stale HELP_CENTER_PROJECT_URL fragment no longer matches the current
+    // project-sharing article path.
+    expect(newPage.url()).toContain(HELP_CENTER_HOST);
   });
 
   // todo: needs testid to propagate to staging for test to work in staging

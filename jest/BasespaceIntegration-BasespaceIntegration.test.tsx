@@ -7,8 +7,12 @@
 // a missing opener would throw), and it renders either the success copy or the
 // "contact us" error copy depending on whether a token came back.
 import { fireEvent, render, screen } from "@testing-library/react";
-import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
+import { UserContext } from "~/components/common/UserContext";
 import { BasespaceIntegration } from "~/components/views/BasespaceIntegration/BasespaceIntegration";
+
+// SW-2: the contact link is the "helpcenter:" sentinel, resolved against
+// helpCenterHost by Link.tsx. Render under a known host for a deterministic URL.
+const HELP_HOST = "https://helpcenter.test";
 
 const setOpener = (opener: $TSFixMe) => {
   Object.defineProperty(window, "opener", {
@@ -61,14 +65,18 @@ describe("BasespaceIntegration", () => {
 
   it("shows the error copy with a contact-us link when no token was returned", () => {
     setOpener(null);
-    render(<BasespaceIntegration />);
+    render(
+      <UserContext.Provider value={{ helpCenterHost: HELP_HOST } as $TSFixMe}>
+        <BasespaceIntegration />
+      </UserContext.Provider>,
+    );
     expect(
       screen.queryByText(
         "You've successfully authorized SeqtoID to connect to Basespace!",
       ),
     ).toBeNull();
     const link = screen.getByText("contact us") as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe(CONTACT_US_LINK);
+    expect(link.getAttribute("href")).toBe(`${HELP_HOST}/contact`);
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });

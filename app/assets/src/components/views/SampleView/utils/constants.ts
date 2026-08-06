@@ -1,4 +1,4 @@
-import { WorkflowType, WORKFLOW_TABS } from "~/components/utils/workflows";
+import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import { FilterSelections } from "~/interface/sampleView";
 
 export const SPECIES_LEVEL_INDEX = 1;
@@ -232,7 +232,7 @@ export const CATEGORIES = [
 const DOC_BASE_LINK =
   "https://help.czid.org/hc/en-us/articles/360034790574-Single-Sample-Report-Table";
 const ONT_HELP_LINK =
-  "https://helpcenter.seqtoid.org/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
+  "helpcenter:/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
 
 export const REPORT_TABLE_COLUMNS = {
   NT_aggregatescore: {

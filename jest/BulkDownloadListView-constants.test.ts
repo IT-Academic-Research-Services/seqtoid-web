@@ -107,7 +107,9 @@ describe("BulkDownloadListView constants tables", () => {
     expect(keys).toHaveLength(3);
     keys.forEach(key => {
       expect(typeof BULK_DOWNLOAD_DOCUMENTATION_LINKS[key]).toBe("string");
-      expect(BULK_DOWNLOAD_DOCUMENTATION_LINKS[key]).toContain("http");
+      // SW-2: help-center links are "helpcenter:" sentinel paths, resolved to the
+      // env host at render by Link.tsx (this map is consumed via ExternalLink).
+      expect(BULK_DOWNLOAD_DOCUMENTATION_LINKS[key]).toMatch(/^helpcenter:\//);
     });
     expect(
       BULK_DOWNLOAD_DOCUMENTATION_LINKS[BULK_DOWNLOAD_TYPES.SAMPLE_METADATA],

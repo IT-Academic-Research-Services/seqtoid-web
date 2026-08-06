@@ -7,6 +7,7 @@ import {
 } from "~/components/common/Header/UserMenuDropDown";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import IconMobileNavClose from "~/components/ui/icons/IconMobileNavClose";
+import { HELP_CENTER_LINK } from "~/components/utils/documentationLinks";
 import BareDropdown from "~ui/controls/dropdowns/BareDropdown";
 import { SeqtoIDLogoReversed } from "~ui/icons";
 import cs from "./LandingHeader.scss";
@@ -56,7 +57,7 @@ export const LandingHeader = ({
             }
             <ExternalLink
               className={cs.link}
-              href="https://helpcenter.seqtoid.org/articles/faqs-czid-s-transfer-to-the-university-of-california-san-francisco/"
+              href="helpcenter:/articles/faqs-czid-s-transfer-to-the-university-of-california-san-francisco/"
             >
               HERE
             </ExternalLink>
@@ -71,29 +72,29 @@ export const LandingHeader = ({
         </a>
         {!logoOnly && (
           <nav className={cs.nav} data-test-id="home-top-nav">
-          {legalNav ? (
-            <div className={cs.legalNav}>
-              {/* TODO: update to help.seqtoid.org once help center migration is complete */}
-              <a
-                className={cs.textLink}
-                href="#"
-                aria-label="View the SeqtoID help center"
-                data-testid="home-top-nav-help-center"
-              >
-                Help Center
-              </a>
-              <div className={cs.legalDivider} />
-              <BareDropdown
-                trigger={<span className={cs.legalTrigger}>Legal</span>}
-                className={cs.termsDropdown}
-                items={[TermsDropdownItem, PrivacyDropdownItem]}
-                direction="left"
-              />
-            </div>
-          ) : (
-            <span className={cs.hideMobile}>
-              {/* REBRAND: Case Studies temporarily disabled - impact page hidden */}
-              {/* <a
+            {legalNav ? (
+              <div className={cs.legalNav}>
+                <ExternalLink
+                  unstyled
+                  className={cs.textLink}
+                  href={HELP_CENTER_LINK}
+                  aria-label="View the SeqtoID help center"
+                  data-testid="home-top-nav-help-center"
+                >
+                  Help Center
+                </ExternalLink>
+                <div className={cs.legalDivider} />
+                <BareDropdown
+                  trigger={<span className={cs.legalTrigger}>Legal</span>}
+                  className={cs.termsDropdown}
+                  items={[TermsDropdownItem, PrivacyDropdownItem]}
+                  direction="left"
+                />
+              </div>
+            ) : (
+              <span className={cs.hideMobile}>
+                {/* REBRAND: Case Studies temporarily disabled - impact page hidden */}
+                {/* <a
                 className={`${cs.textLink} ${
                   impactPage ? cs.textLinkActive : null
                 }`}
@@ -103,92 +104,92 @@ export const LandingHeader = ({
               >
                 Case Studies
               </a> */}
-              {/* TODO: update to help.seqtoid.org once help center migration is complete */}
-              <a
-                className={cs.textLink}
-                href="#"
-                aria-label="View the SeqtoID help page"
-                data-testid="home-top-nav-resources"
-              >
-                Resources
-              </a>
-              <a
-                className={cs.buttonLink}
-                href="/auth0/login"
-                data-testid="home-top-nav-login"
-              >
-                Sign in
-              </a>
-            </span>
-          )}
-          <div
-            onClick={toggleMobileNav}
-            onKeyDown={toggleMobileNav}
-            className={cs.hamburgerIcon}
-            data-testid="home-mobile-hamburger"
-            role="button"
-            tabIndex={0}
-          >
-            <div className={cs.bar1}></div>
-            <div className={cs.bar2}></div>
-            <div className={cs.bar3}></div>
-          </div>
-          <div
-            className={cs.mobileNav}
-            style={menuOpen ? { width: "100%" } : { width: "0" }}
-          >
-            <div className={cs.mobileNavCloseContainer}>
-              <span
-                className={cs.mobileNavClose}
-                onClick={toggleMobileNav}
-                onKeyDown={toggleMobileNav}
-                data-testid="home-mobile-close-hamburger"
-                role="button"
-                tabIndex={0}
-              >
-                <IconMobileNavClose />
+                <ExternalLink
+                  unstyled
+                  className={cs.textLink}
+                  href={HELP_CENTER_LINK}
+                  aria-label="View the SeqtoID help page"
+                  data-testid="home-top-nav-resources"
+                >
+                  Resources
+                </ExternalLink>
+                <a
+                  className={cs.buttonLink}
+                  href="/auth0/login"
+                  data-testid="home-top-nav-login"
+                >
+                  Sign in
+                </a>
               </span>
+            )}
+            <div
+              onClick={toggleMobileNav}
+              onKeyDown={toggleMobileNav}
+              className={cs.hamburgerIcon}
+              data-testid="home-mobile-hamburger"
+              role="button"
+              tabIndex={0}
+            >
+              <div className={cs.bar1}></div>
+              <div className={cs.bar2}></div>
+              <div className={cs.bar3}></div>
             </div>
-            <div className={cs.mobileNavLinkContainer}>
-              {legalNav ? (
-                <>
-                  {/* TODO: update to help.seqtoid.org once help center migration is complete */}
-                  <a
-                    className={cs.mobileNavLink}
-                    href="#"
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                    aria-label="View the SeqtoID help center"
-                    data-testid="home-mobile-menu-help-center"
-                  >
-                    Help Center
-                  </a>
-                  <div
-                    className={cs.mobileNavSeparator}
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                  ></div>
-                  <a
-                    className={cs.mobileNavLink}
-                    href="/terms"
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                    aria-label="View the SeqtoID terms of use"
-                    data-testid="home-mobile-menu-terms"
-                  >
-                    Terms of Use
-                  </a>
-                  <a
-                    className={cs.mobileNavLink}
-                    href="/privacy"
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                    aria-label="View the SeqtoID privacy notice"
-                    data-testid="home-mobile-menu-privacy"
-                  >
-                    Privacy Policy
-                  </a>
-                </>
-              ) : (
-                <>
-                  {/* REBRAND: Case Studies mobile link temporarily disabled */}
-                  {/* <a
+            <div
+              className={cs.mobileNav}
+              style={menuOpen ? { width: "100%" } : { width: "0" }}
+            >
+              <div className={cs.mobileNavCloseContainer}>
+                <span
+                  className={cs.mobileNavClose}
+                  onClick={toggleMobileNav}
+                  onKeyDown={toggleMobileNav}
+                  data-testid="home-mobile-close-hamburger"
+                  role="button"
+                  tabIndex={0}
+                >
+                  <IconMobileNavClose />
+                </span>
+              </div>
+              <div className={cs.mobileNavLinkContainer}>
+                {legalNav ? (
+                  <>
+                    <ExternalLink
+                      unstyled
+                      className={cs.mobileNavLink}
+                      href={HELP_CENTER_LINK}
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                      aria-label="View the SeqtoID help center"
+                      data-testid="home-mobile-menu-help-center"
+                    >
+                      Help Center
+                    </ExternalLink>
+                    <div
+                      className={cs.mobileNavSeparator}
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                    ></div>
+                    <a
+                      className={cs.mobileNavLink}
+                      href="/terms"
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                      aria-label="View the SeqtoID terms of use"
+                      data-testid="home-mobile-menu-terms"
+                    >
+                      Terms of Use
+                    </a>
+                    <a
+                      className={cs.mobileNavLink}
+                      href="/privacy"
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                      aria-label="View the SeqtoID privacy notice"
+                      data-testid="home-mobile-menu-privacy"
+                    >
+                      Privacy Policy
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    {/* REBRAND: Case Studies mobile link temporarily disabled */}
+                    {/* <a
                     className={cs.mobileNavLink}
                     href="/impact"
                     style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
@@ -199,32 +200,32 @@ export const LandingHeader = ({
                   >
                     Case Studies
                   </a> */}
-                  {/* TODO: update to help.seqtoid.org once help center migration is complete */}
-                  <a
-                    className={cs.mobileNavLink}
-                    href="#"
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                    aria-label="View the SeqtoID help page"
-                    data-testid="home-mobile-menu-resources"
-                  >
-                    Resources
-                  </a>
-                  <div
-                    className={cs.mobileNavSeparator}
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                  ></div>
-                  <a
-                    className={cs.mobileNavLink}
-                    href="/auth0/login"
-                    style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
-                    data-testid="home-mobile-menu-login"
-                  >
-                    Sign In
-                  </a>
-                </>
-              )}
+                    <ExternalLink
+                      unstyled
+                      className={cs.mobileNavLink}
+                      href={HELP_CENTER_LINK}
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                      aria-label="View the SeqtoID help page"
+                      data-testid="home-mobile-menu-resources"
+                    >
+                      Resources
+                    </ExternalLink>
+                    <div
+                      className={cs.mobileNavSeparator}
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                    ></div>
+                    <a
+                      className={cs.mobileNavLink}
+                      href="/auth0/login"
+                      style={menuOpen ? { opacity: "1" } : { opacity: "0" }}
+                      data-testid="home-mobile-menu-login"
+                    >
+                      Sign In
+                    </a>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
           </nav>
         )}
       </div>

@@ -73,7 +73,7 @@ export const HEATMAP_DOWNLOAD_REPORT_OPTIONS: HeatmapDownloadOption[] = [
           MicrobiomeDB
         </ExternalLink>
         .{" "}
-        <ExternalLink href="https://helpcenter.seqtoid.org/articles/metagenomic-analysis-initiate-a-bulk-download/">
+        <ExternalLink href="helpcenter:/articles/metagenomic-analysis-initiate-a-bulk-download/">
           Learn More
         </ExternalLink>
       </React.Fragment>

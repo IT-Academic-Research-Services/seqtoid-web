@@ -1,4 +1,5 @@
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import cs from "../../pathogen_list_view.scss";
 
@@ -25,11 +26,9 @@ export const PathogenIntro = ({ numOfCitations }: PathogenIntroProps) => {
       </p>
       <p>
         Reach out to{" "}
-        <a href={CONTACT_US_LINK} target="_blank" rel="noopener noreferrer">
-          our Help Center
-        </a>{" "}
-        to help us make the list better, or if there is any questions or
-        comments. We are excited to hear from you!
+        <ExternalLink href={CONTACT_US_LINK}>our Help Center</ExternalLink> to
+        help us make the list better, or if there is any questions or comments.
+        We are excited to hear from you!
       </p>
     </div>
   );

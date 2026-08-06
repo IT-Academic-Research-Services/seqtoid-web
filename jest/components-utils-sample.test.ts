@@ -21,7 +21,8 @@ import {
 } from "~/components/utils/sample";
 import { SampleStatus } from "~/interface/sample";
 
-const CONTACT_US_LINK = "https://helpcenter.seqtoid.org/contact";
+// SW-2: sampleErrorInfo returns the "helpcenter:" sentinel; Link.tsx resolves the host.
+const CONTACT_US_LINK = "helpcenter:/contact";
 
 describe("sample.sampleErrorInfo message source precedence", () => {
   it("prefers the pipelineRun error_message over error.message (InvalidFileFormatError)", () => {

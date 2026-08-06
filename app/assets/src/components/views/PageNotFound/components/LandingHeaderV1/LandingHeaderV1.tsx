@@ -1,4 +1,5 @@
 import React from "react";
+import { HELP_CENTER_LINK } from "~/components/utils/documentationLinks";
 import { TransparentButton } from "~ui/controls/buttons";
 import ExternalLink from "~ui/controls/ExternalLink";
 import { SeqtoIDLogoReversed } from "~ui/icons";
@@ -27,10 +28,10 @@ export const LandingHeaderV1 = ({ browserInfo }: LandingHeaderV1Props) => {
         </div>
         <div className={cs.fill} />
         <div className={cs.links}>
-          {/* TODO: update to help.seqtoid.org once help center migration is complete */}
           <ExternalLink
+            unstyled
             className={cs.headerLink}
-            href="#"
+            href={HELP_CENTER_LINK}
             analyticsEventName="Landing_help-center-link_clicked"
             data-testid="help-center"
           >

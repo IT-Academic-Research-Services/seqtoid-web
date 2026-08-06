@@ -8,7 +8,8 @@
         browserInfo: <%= @browser_info.to_json.html_safe %>,
         showLandingHeader: <%= @show_landing_header %>
       },
-      'page_not_found'
+      'page_not_found',
+      JSON.parse('<%= raw escape_json(user_context)%>')
       );
   <% end %>
 </div>
