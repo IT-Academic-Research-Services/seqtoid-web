@@ -48,6 +48,19 @@ export const PipelineVersionIndicator = ({
     !!onVersionChange &&
     !!availableVersions &&
     availableVersions.length > 0;
+
+  // The DEFAULT selection is whatever the project already runs, so opening the dropdown shows
+  // today's behaviour and every other version is an opt-in departure from it.
+  //
+  // That only holds if the current version is actually one of the options. The catalog endpoint
+  // lists runnable versions, and a project can be pinned to one that has since been marked
+  // non-runnable or deprecated -- in which case `value` matches no <option> and the browser renders
+  // the select BLANK, silently misreporting what the run will use. Prepending it keeps the default
+  // truthful; it is marked so nobody reads it as a normal choice.
+  const versionOptions =
+    isSelectable && version && !availableVersions.some(entry => entry.version === version)
+      ? [{ version, deprecated: false, notes: "current version for this project" }, ...availableVersions]
+      : (availableVersions ?? []);
   const newVersionAvailableText = (
     <div>
       A new {isPipelineVersion ? "major version" : "NCBI Index"} is available.
@@ -105,7 +118,7 @@ export const PipelineVersionIndicator = ({
           data-testid="pipeline-version-select"
           onChange={event => onVersionChange(event.target.value)}
         >
-          {availableVersions.map(entry => (
+          {versionOptions.map(entry => (
             <option key={entry.version} value={entry.version}>
               {versionOptionLabel(entry)}
             </option>
