@@ -1,7 +1,6 @@
 import { Link } from "@czi-sds/components";
 import { isEmpty } from "lodash/fp";
 import React from "react";
-import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import cs from "./confirmation_message.scss";
 interface ConfirmationMessageProps {
   errorType?: string;
@@ -36,7 +35,15 @@ export const ConfirmationMessage = ({
         <div>
           There has been an error in creating your account. Please try again or
           contact us at{" "}
-          <Link sdsStyle="default" href={CONTACT_US_LINK} target="_blank">
+          {/* TODO(SW-2-SDS-LINKS): env-aware help host not applied here. Routing
+              through Link (the resolver) loses the SDS sdsStyle="default" treatment,
+              so this stays the absolute prod host until we decide how to preserve SDS
+              styling through the resolver. */}
+          <Link
+            sdsStyle="default"
+            href="https://helpcenter.seqtoid.org/contact"
+            target="_blank"
+          >
             our Help Center
           </Link>{" "}
           for assistance.

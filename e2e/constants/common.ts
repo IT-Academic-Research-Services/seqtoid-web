@@ -12,6 +12,14 @@ export const footer: Record<string, string> = {
   Careers: "https://boards.greenhouse.io/chanzuckerberginitiative/jobs/3293983",
   Resources: "http://help.czid.org",
 };
+
+// SW-2: the app resolves help-center links against helpCenterHost at render. Mirror
+// that exact resolution here - same env var, same prod fallback - so navigation
+// assertions follow the env under test (dev host when set, prod otherwise) and can
+// never silently pass if host resolution breaks. Not a second source of truth: this
+// is the same HELP_CENTER_HOST value chamber injects into the app.
+export const HELP_CENTER_HOST =
+  process.env.HELP_CENTER_HOST ?? "https://helpcenter.seqtoid.org";
 export const tag =
   "The no-code, cloud-based bioinformatics tool for researchers";
 export const VISUALIZATIONS = "Visualizations";

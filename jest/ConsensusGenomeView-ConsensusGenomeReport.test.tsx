@@ -87,9 +87,11 @@ jest.mock(
 
 import { ConsensusGenomeReport } from "~/components/views/SampleView/components/ConsensusGenomeView/components/ConsensusGenomeReport/ConsensusGenomeReport";
 
+// SARS link is a legacy help.czid.org URL, intentionally untouched by SW-2 (SW-3).
 const SARS_LINK = "https://help.czid.org/hc/en-us/articles/360049787632";
+// SW-2: the viral CG doc link is now the "helpcenter:" sentinel (resolved by Link.tsx).
 const VIRAL_LINK =
-  "https://helpcenter.seqtoid.org/articles/metagenomic-analysis-consensus-genome-quality-checks/";
+  "helpcenter:/articles/metagenomic-analysis-consensus-genome-quality-checks/";
 
 const sample = { id: 42, name: "sample-42" } as $TSFixMe;
 

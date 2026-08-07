@@ -2,6 +2,9 @@ require 'csv'
 require 'json'
 
 module ApplicationHelper
+  # Provides help_center_host, used below in user_context and reusable from views.
+  include HelpCenterHelper
+
   def rds_host
     '$RDS_ADDRESS'
   end
@@ -41,6 +44,7 @@ module ApplicationHelper
       allowedFeatures: current_user ? current_user.allowed_feature_list : [],
       appConfig: AppConfigHelper.configs_for_context(),
       firstSignIn: current_user && current_user.sign_in_count <= 1,
+      helpCenterHost: help_center_host,
       userId: current_user && current_user.id,
       userName: current_user && current_user.name,
       userEmail: current_user && current_user.email,

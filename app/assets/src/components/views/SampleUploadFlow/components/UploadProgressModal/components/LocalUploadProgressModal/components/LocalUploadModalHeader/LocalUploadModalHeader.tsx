@@ -1,5 +1,6 @@
 import cx from "classnames";
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import ImgUploadPrimary from "~/components/ui/illustrations/ImgUploadPrimary";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import { SampleFromApi } from "~/interface/shared";
@@ -67,14 +68,9 @@ export const LocalUploadModalHeader = ({
               </>
             )}
             {isInFailedMode && numberOfFailedSamples === numberOfSamples && (
-              <a
-                className={cs.helpLink}
-                href={CONTACT_US_LINK}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ExternalLink className={cs.helpLink} href={CONTACT_US_LINK}>
                 Contact us for help
-              </a>
+              </ExternalLink>
             )}
           </div>
         </>

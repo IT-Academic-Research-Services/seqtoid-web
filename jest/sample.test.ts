@@ -12,7 +12,8 @@ import {
 } from "../app/assets/src/components/utils/sample";
 import { SampleStatus } from "../app/assets/src/interface/sample";
 
-const CONTACT_US_LINK = "https://helpcenter.seqtoid.org/contact";
+// SW-2: sampleErrorInfo returns the "helpcenter:" sentinel; Link.tsx resolves the host.
+const CONTACT_US_LINK = "helpcenter:/contact";
 
 describe("sample.cleanFilePath", () => {
   it("trims whitespace", () => {
