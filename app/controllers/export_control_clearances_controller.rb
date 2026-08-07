@@ -103,7 +103,7 @@ class ExportControlClearancesController < ApplicationController
       verification_status: ExportControlClearance::VERIFICATION_FAILED,
       screening_result: ExportControlClearance::SCREENING_PENDING,
       idv_provider: ExportControl::IdentityVerificationProvider::PROVIDER,
-      screening_provider: ExportControl::DeniedPartyScreeningProvider::PROVIDER,
+      screening_provider: ExportControl::DeniedPartyScreeningProvider.provider_name,
       clearance_version: ExportControlClearance::CURRENT_VERSION,
       ip_address: request.remote_ip,
       viewer_country: request.headers["CloudFront-Viewer-Country"],
