@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Run a one-off Rake task in an EKS env (dev / per-PR preview) with proper AWS credentials.
+#
+# WHY: a hand-rolled Job pod falls back to the EC2 node IMDS and dies with
+#   "Error retrieving instance profile credentials: HTTP 401" / Aws::Errors::MissingCredentialsError.
+# In EKS, credentials come from the IRSA web-identity token, which the pod-identity webhook injects ONLY
+# when the pod uses an IRSA-annotated ServiceAccount and you set NO AWS_* creds yourself. This script
+# sidesteps all of that by CLONING the deploy's migrate Job -- which already carries the correct
+# serviceAccount, image, and chamber env for that exact namespace -- and swapping the command to your
+# rake task (run through the image entrypoint: `chamber exec <svc> -- bundle exec rake <task>`).
+#
+# Usage:
+#   bin/run-rake-in-eks -n <namespace> [--context <ctx>] [--sa <sa>] [--name <job>] <rake task...>
+#
+# Examples:
+#   bin/run-rake-in-eks -n seqtoid-pr-336 update_pathogen_list
+#   bin/run-rake-in-eks -n seqtoid-dev --context seqtoid-dev db:migrate:status
+#
+# ServiceAccount (--sa): defaults to `seqtoid-web` -- the RUNTIME role, which has the app S3 grants
+# (e.g. seqtoid-public-references) that data-load tasks like update_pathogen_list need. Use
+# `--sa seqtoid-web-provisioner` only for provisioning/DDL that needs the elevated provisioner role.
+set -euo pipefail
+
+CONTEXT="seqtoid-dev"; NS=""; SA="seqtoid-web"; NAME=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -n|--namespace) NS="$2"; shift 2 ;;
+    --context)      CONTEXT="$2"; shift 2 ;;
+    --sa)           SA="$2"; shift 2 ;;
+    --name)         NAME="$2"; shift 2 ;;
+    -h|--help)      sed -n '2,27p' "$0"; exit 0 ;;
+    --)             shift; break ;;
+    -*)             echo "unknown flag: $1" >&2; exit 2 ;;
+    *)              break ;;
+  esac
+done
+
+[[ -n "$NS" ]] || { echo "error: -n <namespace> is required" >&2; exit 2; }
+[[ $# -gt 0 ]] || { echo "error: give a rake task (e.g. update_pathogen_list)" >&2; exit 2; }
+NAME="${NAME:-rake-$(printf '%s' "$1" | tr ':/ .' '----')}"
+
+k() { kubectl --context "$CONTEXT" -n "$NS" "$@"; }
+
+# Clone source = the deploy's migrate Job (right SA/image/chamber env for THIS namespace).
+SRC="$(k get job -o name 2>/dev/null | grep -m1 -iE 'seqtoid-web-migrate' || true)"
+[[ -n "$SRC" ]] || { echo "error: no *seqtoid-web-migrate Job in ns '$NS' to clone -- is the env deployed?" >&2; exit 1; }
+
+echo ">> cloning $SRC -> job/$NAME  (ns=$NS context=$CONTEXT sa=$SA)"
+echo ">> rake $*"
+
+# Emit the runner Job: clone the migrate pod spec, override name/SA/args, fail-fast, auto-clean.
+# The migrate Job JSON is piped to stdin; the transform is passed via -c so it doesn't collide with it.
+CLONE_PY='
+import json, sys
+job = json.load(sys.stdin); name, sa, rake = sys.argv[1], sys.argv[2], sys.argv[3:]
+job.pop("status", None)
+m = job["metadata"]
+for k in ("resourceVersion","uid","creationTimestamp","ownerReferences","managedFields","generation","selfLink","annotations"):
+    m.pop(k, None)
+m["name"] = name; m["labels"] = {"app": "rake-runner"}
+spec = job["spec"]; spec.pop("selector", None)
+spec["backoffLimit"] = 0; spec["ttlSecondsAfterFinished"] = 7200
+tmpl = spec["template"]; tmpl.setdefault("metadata", {}).pop("labels", None)
+ts = tmpl["spec"]; ts["serviceAccountName"] = sa
+ts["containers"][0]["args"] = ["rake"] + rake
+print(json.dumps(job))
+'
+k get "$SRC" -o json | python3 -c "$CLONE_PY" "$NAME" "$SA" "$@" | k apply -f -
+
+# Stream logs, then surface the real exit status.
+k wait --for=condition=ready pod -l "job-name=$NAME" --timeout=300s >/dev/null 2>&1 || true
+k logs -f "job/$NAME" 2>/dev/null || true
+if k wait --for=condition=complete "job/$NAME" --timeout=1800s >/dev/null 2>&1; then
+  echo ">> OK: job/$NAME completed"
+else
+  echo ">> FAILED: job/$NAME (see logs above; \`kubectl -n $NS logs job/$NAME\`)" >&2
+  exit 1
+fi
