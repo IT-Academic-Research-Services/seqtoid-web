@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import cs from "./Accordion.scss";
 import AccordionItem from "./AccordionItem";
@@ -51,10 +52,7 @@ const Accordion = () => {
             shared with any other SeqtoID user, nor is it ever accessed by
             anyone working on SeqtoID unless specifically requested by a user,
             such as to debug an issue. Read more in SeqtoID’s{" "}
-            <a
-              href="/privacy"
-              aria-label="View the SeqtoID privacy notice"
-            >
+            <a href="/privacy" aria-label="View the SeqtoID privacy notice">
               Privacy Policy
             </a>
             .
@@ -74,10 +72,7 @@ const Accordion = () => {
             (ex: human, mosquito) genetic information is filtered out. We always
             filter out all human genetic information, regardless of host. Read
             more in SeqtoID’s{" "}
-            <a
-              href="/privacy"
-              aria-label="View the SeqtoID privacy notice"
-            >
+            <a href="/privacy" aria-label="View the SeqtoID privacy notice">
               Privacy Policy
             </a>
             .
@@ -97,9 +92,13 @@ const Accordion = () => {
               Terms of Use
             </a>
             . You can request to delete your account at any time by{" "}
-            <a href={CONTACT_US_LINK} target="_blank" rel="noopener noreferrer" aria-label="Contact the SeqtoID team (opens in new window)">
+            <ExternalLink
+              unstyled
+              href={CONTACT_US_LINK}
+              aria-label="Contact the SeqtoID team (opens in new window)"
+            >
               contacting our team
-            </a>
+            </ExternalLink>
             .
           </>
         }

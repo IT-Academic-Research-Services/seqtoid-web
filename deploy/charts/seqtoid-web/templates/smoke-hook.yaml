@@ -48,7 +48,7 @@ spec:
       {{- end }}
       containers:
         - name: smoke-gate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "seqtoid-web.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # entrypoint.sh wraps this in `chamber exec <service> -- bundle exec ...`, so the
           # smoke runs with the exact DB/secrets/OpenSearch config the app would use.

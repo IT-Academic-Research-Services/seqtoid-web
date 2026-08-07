@@ -13,8 +13,12 @@ jest.mock(
   { virtual: true },
 );
 
-import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
+import { UserContext } from "~/components/common/UserContext";
 import { RemoteUploadModalHeader } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/RemoteUploadProgressModal/components/RemoteUploadModalHeader/RemoteUploadModalHeader";
+
+// SW-2: the contact link is authored as the "helpcenter:" sentinel and resolved
+// against helpCenterHost by Link.tsx. Render under a known host for determinism.
+const HELP_HOST = "https://helpcenter.test";
 
 const renderHeader = (props: {
   isUploadComplete: boolean;
@@ -23,7 +27,9 @@ const renderHeader = (props: {
   uploadType: string;
 }) => {
   const { container } = render(
-    <RemoteUploadModalHeader projectName="My Project" {...props} />,
+    <UserContext.Provider value={{ helpCenterHost: HELP_HOST } as $TSFixMe}>
+      <RemoteUploadModalHeader projectName="My Project" {...props} />
+    </UserContext.Provider>,
   );
   return (container.textContent ?? "").replace(/\s+/g, " ").trim();
 };
@@ -127,9 +133,10 @@ describe("RemoteUploadModalHeader branches", () => {
       expect(text).not.toContain("Uploads completed with");
 
       const link = screen.getByText("Contact us for help");
-      expect(link.getAttribute("href")).toBe(CONTACT_US_LINK);
+      expect(link.getAttribute("href")).toBe(`${HELP_HOST}/contact`);
       expect(link.getAttribute("target")).toBe("_blank");
-      expect(link.getAttribute("rel")).toBe("noreferrer");
+      // Routing through ExternalLink/Link normalises rel to "noopener noreferrer".
+      expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     });
   });
 });

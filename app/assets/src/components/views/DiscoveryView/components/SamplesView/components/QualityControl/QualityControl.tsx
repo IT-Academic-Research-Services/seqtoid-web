@@ -10,14 +10,14 @@ import ImgVizSecondary from "~/components/ui/illustrations/ImgVizSecondary";
 import { getTooltipStyle } from "~/components/utils/tooltip";
 import { WorkflowType } from "~/components/utils/workflows";
 import { TooltipVizTable } from "~ui/containers";
+import {
+  QualityControlQuery$data,
+  QualityControlQuery as QualityControlQueryType,
+} from "./__generated__/QualityControlQuery.graphql";
 import { Histograms } from "./components/Histograms";
 import { ReadsLostChart } from "./components/ReadsLostChart";
 import { SampleStatsInfo } from "./components/SampleStatsInfo";
 import cs from "./quality_control.scss";
-import {
-  QualityControlQuery as QualityControlQueryType,
-  QualityControlQuery$data,
-} from "./__generated__/QualityControlQuery.graphql";
 
 const QualityControlQuery = graphql`
   query QualityControlQuery(
@@ -277,7 +277,7 @@ function QualityControl({
         className={cs.noDataBannerContainer}
         icon={<ImgVizSecondary />}
         link={{
-          href: "https://help.czid.org",
+          href: "helpcenter:/articles/sample-qc/",
           text: "Learn about sample QC",
         }}
         message="You can visually check your QC metrics after your samples have successfully processed."

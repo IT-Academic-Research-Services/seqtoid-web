@@ -1,4 +1,8 @@
-import { WORKFLOWS, SEQUENCING_PLATFORMS } from "@e2e/constants/common";
+import {
+  HELP_CENTER_HOST,
+  SEQUENCING_PLATFORMS,
+  WORKFLOWS,
+} from "@e2e/constants/common";
 import {
   SAMPLE_FILE_1_PAIRED_R1,
   SAMPLE_FILE_1_PAIRED_R2,
@@ -7,7 +11,7 @@ import {
 import { ProjectPage } from "@e2e/page-objects/project-page";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { UploadPage } from "@e2e/page-objects/upload-page";
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { kebabCase } from "lodash";
 
 const SAMPLE_FILES = [SAMPLE_FILE_1_PAIRED_R1, SAMPLE_FILE_1_PAIRED_R2];
@@ -707,7 +711,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn More link opens Help Center new tab:
     // https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/
     expect(await linkedPage.url()).toEqual(
-      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
+      `${HELP_CENTER_HOST}/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/`,
     );
     await linkedPage.close();
     // #endregion 7. Click on Learn More LINK
@@ -741,7 +745,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn More link opens Help Center new tab:
     // https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/
     expect(await linkedPage.url()).toEqual(
-      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
+      `${HELP_CENTER_HOST}/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/`,
     );
     await linkedPage.close();
     // #endregion 11. Click on Learn More LINK
@@ -779,7 +783,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn more link opens ClearLabs new tab:
     linkedPage = await uploadPage.clickMedakaModelHereLink();
     expect(await linkedPage.url()).toEqual(
-      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
+      `${HELP_CENTER_HOST}/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/`,
     );
     // #endregion 13. Hover over ""Medaka Model:"" information icon and click on Learn More LINK
   });

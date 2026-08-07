@@ -3,10 +3,20 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import { Footer } from "~/components/common/Footer/Footer";
+import { UserContext } from "~/components/common/UserContext";
+
+// SW-2: help links render the "helpcenter:" sentinel; Link.tsx resolves it against
+// helpCenterHost from UserContext. Render under a known host so the resolved URL is
+// deterministic.
+const HELP_HOST = "https://helpcenter.test";
 
 describe("Footer", () => {
   it("renders the legal and contact links", () => {
-    render(React.createElement(Footer));
+    render(
+      <UserContext.Provider value={{ helpCenterHost: HELP_HOST } as $TSFixMe}>
+        <Footer />
+      </UserContext.Provider>,
+    );
 
     const privacy = screen.getByText("Privacy");
     expect(privacy.getAttribute("href")).toBe("/privacy");
@@ -21,9 +31,7 @@ describe("Footer", () => {
     );
 
     const contact = screen.getByText("Contact us");
-    expect(contact.getAttribute("href")).toBe(
-      "https://helpcenter.seqtoid.org/contact",
-    );
+    expect(contact.getAttribute("href")).toBe(`${HELP_HOST}/contact`);
     expect(contact.getAttribute("aria-label")).toBe(
       "Contact the SeqtoID team (opens in new window)",
     );

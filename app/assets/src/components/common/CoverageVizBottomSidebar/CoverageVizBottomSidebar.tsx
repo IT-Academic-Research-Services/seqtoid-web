@@ -10,6 +10,7 @@ import { getCoverageVizData } from "~/api";
 import BasicPopup from "~/components/common/BasicPopup";
 import { UserContext } from "~/components/common/UserContext";
 import NarrowContainer from "~/components/layout/NarrowContainer";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import { getDownloadContigUrl } from "~/components/utils/download";
 import { formatPercent } from "~/components/utils/format";
@@ -508,15 +509,10 @@ export default class CoverageVizBottomSidebar extends React.Component<
                 Sorry, we failed to load the coverage data due to an unexpected
                 error.
               </div>
-              <a
-                className={cs.linkWithArrow}
-                href={CONTACT_US_LINK}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ExternalLink className={cs.linkWithArrow} href={CONTACT_US_LINK}>
                 Contact us for help
                 <IconArrowRight />
-              </a>
+              </ExternalLink>
             </div>
             <ImgMicrobePrimary className={cs.icon} />
           </div>

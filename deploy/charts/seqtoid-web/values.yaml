@@ -21,6 +21,12 @@ image:
   repository: seqtoid-web
   # CI advances this to the immutable sha-<commit> tag on deploy (GitOps, #444).
   tag: latest
+  # Immutable image digest (sha256:...). When set it WINS over `tag` and the pod renders
+  # repository@digest -- see the `seqtoid-web.image` helper. The promotion pipeline
+  # (CZID-464) writes this alongside the sha-tag so a promoted tier runs the exact artifact
+  # that passed the test gate; a tag can be repointed after the test, a digest cannot.
+  # Empty by default, so environments not yet onboarded to digest promotion are unaffected.
+  digest: ""
   pullPolicy: IfNotPresent
 
 # Node scheduling. The image is single-arch (linux/amd64), but this cluster's

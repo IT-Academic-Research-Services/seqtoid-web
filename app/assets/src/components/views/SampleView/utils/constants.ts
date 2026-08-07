@@ -1,4 +1,4 @@
-import { WorkflowType, WORKFLOW_TABS } from "~/components/utils/workflows";
+import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import { FilterSelections } from "~/interface/sampleView";
 
 export const SPECIES_LEVEL_INDEX = 1;
@@ -229,50 +229,49 @@ export const CATEGORIES = [
   { name: "Uncategorized" },
 ];
 
-const DOC_BASE_LINK =
-  "https://help.czid.org/hc/en-us/articles/360034790574-Single-Sample-Report-Table";
+const DOC_BASE_LINK = "helpcenter:/articles/sample-report-table/";
 const ONT_HELP_LINK =
-  "https://helpcenter.seqtoid.org/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
+  "helpcenter:/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
 
 export const REPORT_TABLE_COLUMNS = {
   NT_aggregatescore: {
     title: "Aggregate score",
     tooltip:
       "Experimental ranking score for prioritizing microbes based on abundance within the sample (rPM) as well as compared to control samples (Z-score).",
-    link: DOC_BASE_LINK + "#score",
+    link: DOC_BASE_LINK + "#aggregate-score-score",
   },
   zscore: {
     title: "Z-score",
     tooltip:
       "Statistic used for evaluating the prevalence of microbes in the sample as compared to background contaminants.",
-    link: DOC_BASE_LINK + "#z-score",
+    link: DOC_BASE_LINK + "#z-score-z",
   },
   rpm: {
     tooltip:
       "Number of reads aligning to the taxon in the NCBI NR/NT database, per million reads sequenced.",
-    link: DOC_BASE_LINK + "#rpm",
+    link: DOC_BASE_LINK + "#reads-per-million-rpm",
   },
   r: {
     tooltip:
       "Number of reads aligning to the taxon in the NCBI NT/NR database.",
-    link: DOC_BASE_LINK + "#reads",
+    link: DOC_BASE_LINK + "#reads-r",
   },
   contigs: {
     tooltip: "Number of assembled contigs aligning to the taxon.",
-    link: DOC_BASE_LINK + "#contig",
+    link: DOC_BASE_LINK + "#number-of-contigs-contig",
   },
   contigreads: {
     tooltip: "Total number of reads across all assembled contigs.",
-    link: DOC_BASE_LINK + "#contig-r",
+    link: DOC_BASE_LINK + "#contig-reads-contig-r",
   },
   percentidentity: {
     tooltip: "Average percent-identity of alignments to NCBI NT/NR.",
-    link: DOC_BASE_LINK + "#identity-match",
+    link: DOC_BASE_LINK + "#identity-id",
   },
   alignmentlength: {
     tooltip:
       "Average length of the local alignment for all contigs and reads assigned to this taxon.",
-    link: DOC_BASE_LINK + "#average-length",
+    link: DOC_BASE_LINK + "#alignment-length-l",
   },
   evalue: {
     tooltip: "Average expect value (e-value) of alignments to NCBI NT/NR.",

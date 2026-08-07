@@ -55,7 +55,7 @@ spec:
           {{- end }}
           containers:
             - name: taxon-refresh
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              image: {{ include "seqtoid-web.image" . | quote }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               args:
                 {{- toYaml .Values.taxonRefresh.command | nindent 16 }}

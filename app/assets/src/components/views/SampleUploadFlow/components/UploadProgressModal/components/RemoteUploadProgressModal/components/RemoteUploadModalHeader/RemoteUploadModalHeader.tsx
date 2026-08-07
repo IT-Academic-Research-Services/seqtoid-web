@@ -1,4 +1,5 @@
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { IconSuccess } from "~/components/ui/icons";
 import ImgUploadPrimary from "~/components/ui/illustrations/ImgUploadPrimary";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
@@ -62,14 +63,9 @@ export const RemoteUploadModalHeader = ({
           </div>
           {didAllUploadsFail && (
             <div className={cs.subtitle}>
-              <a
-                className={cs.helpLink}
-                href={CONTACT_US_LINK}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <ExternalLink className={cs.helpLink} href={CONTACT_US_LINK}>
                 Contact us for help
-              </a>
+              </ExternalLink>
             </div>
           )}
         </>

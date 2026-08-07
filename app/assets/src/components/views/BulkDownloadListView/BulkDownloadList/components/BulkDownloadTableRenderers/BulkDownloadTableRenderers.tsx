@@ -1,6 +1,7 @@
 import { Icon } from "@czi-sds/components";
 import { get } from "lodash/fp";
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import { formatFileSize } from "~/components/utils/format";
 import { openUrl } from "~/components/utils/links";
@@ -111,15 +112,9 @@ export class BulkDownloadTableRenderers extends React.Component {
     return (
       <div className={cs.statusCell}>
         <div className={cs.links}>
-          <a
-            id={rowData?.id}
-            className={cs.link}
-            href={CONTACT_US_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <ExternalLink className={cs.link} href={CONTACT_US_LINK}>
             Contact us
-          </a>
+          </ExternalLink>
         </div>
       </div>
     );
