@@ -1,0 +1,17 @@
+A restricted-party screening HIT has placed a compliance HOLD. The affected user is blocked
+(fail-closed) until a compliance officer adjudicates this in the Descartes Incident Manager.
+
+  Hold ID:            <%= @hold_id %>
+  Subject:            <%= @subject_ref %>
+  Alert level:        <%= @alert_level || "n/a" %>
+  Screening result:   <%= @screening_result_id || "n/a" %>
+<% if @trace_id.present? -%>
+  Trace ID:           <%= @trace_id %>
+<% end -%>
+
+Next step: review and adjudicate this hold in the Descartes Visual Compliance Incident Manager.
+Once resolved there, the platform's resolution poller reconciles the verdict and releases the hold
+automatically.
+
+Note: this message intentionally contains identifiers only. The screened party's name and details
+are available in the Incident Manager, never in this email.

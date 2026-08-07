@@ -68,6 +68,13 @@ class AppConfig < ApplicationRecord
   # this ships triple-dark. Go-live is counsel + vendor gated (CZID-335), never flipped by engineering.
   ENABLE_EXPORT_CONTROL_SCREEN_ONBOARDING = 'enable_export_control_screen_onboarding'.freeze
   ENABLE_EXPORT_CONTROL_SCREEN_RELEASE = 'enable_export_control_screen_release'.freeze
+  # SMP-1687 -- comma/space/semicolon-separated email recipient(s) notified when a screening HOLD is
+  # placed (ExportControl::ComplianceNotifier). Without it a hold is SILENT: the user is blocked
+  # fail-closed but nobody at UCSF is told there is something to adjudicate in the Descartes Incident
+  # Manager, so the user stays blocked indefinitely. Blank/unset => NO notification is sent (inert --
+  # matches the screening core's off-by-default posture; notification never blocks or breaks the
+  # screening path). Carries NO secret and NO screened-party PII. Example: "export-compliance@ucsf.edu".
+  EXPORT_CONTROL_COMPLIANCE_RECIPIENT = 'export_control_compliance_recipient'.freeze
   # CZID-598 -- watermark (ISO-8601 UTC string, no offset) for the Descartes Incident Manager resolution
   # poller (ResolveScreeningHolds). Records the "To" bound of the last fully-processed IMTimeStampSearch
   # window; the next poll starts its "From" here. Advanced ONLY after a reply is fully processed, so a
