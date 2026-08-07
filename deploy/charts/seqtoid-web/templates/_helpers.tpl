@@ -11,6 +11,26 @@ seqtoid-web
 {{- printf "%s-%s-%s" .Values.project .Values.environment (include "seqtoid-web.name" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{/*
+Image reference. Prefer the immutable DIGEST when set, else the tag.
+
+The promotion pipeline (CZID-464, promote-to-env.yml) writes BOTH image.digest and
+image.tag: the digest is the artifact that passed the test gate, the tag is the
+human-readable sha-<commit> alongside it. Rendering repository@sha256:... is what makes
+"the tier runs the byte-identical artifact that was tested" true rather than aspirational
+-- a tag can be repointed after the test, a digest cannot.
+
+Falls back to :tag so every environment that has not been onboarded to digest promotion
+(and local/dev rendering) is unaffected.
+*/}}
+{{- define "seqtoid-web.image" -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | toString) -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Rails env derived from the logical environment, unless explicitly set. */}}
 {{- define "seqtoid-web.railsEnv" -}}
 {{- if .Values.railsEnv -}}

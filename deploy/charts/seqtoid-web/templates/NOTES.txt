@@ -2,7 +2,7 @@ seqtoid-web ({{ .Values.environment }}) deployed as a blueGreen Rollout.
 
   Rollout:    {{ include "seqtoid-web.fullname" . }}
   Namespace:  {{ .Release.Namespace }}
-  Image:      {{ .Values.image.repository }}:{{ .Values.image.tag }}
+  Image:      {{ include "seqtoid-web.image" . }}
   Promotion:  {{ if .Values.blueGreen.autoPromotionEnabled }}AUTOMATED (promotes on smoke pass){{ else }}MANUAL (pauses after smoke; run `kubectl argo rollouts promote`){{ end }}
 
 Watch the rollout:
