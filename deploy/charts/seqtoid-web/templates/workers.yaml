@@ -44,7 +44,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ $name }}
-          image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag }}"
+          image: {{ include "seqtoid-web.image" $root | quote }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           args:
             {{- toYaml $w.args | nindent 12 }}
