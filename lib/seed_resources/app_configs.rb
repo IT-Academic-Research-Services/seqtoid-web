@@ -10,9 +10,47 @@ module SeedResource
       workflow_versions
       sfn_configs
       alignment_config
+      export_control_flags
     end
 
     private
+
+    # SMP-1686 -- seed the Descartes / export-control Layer 3 gate + tuning rows so their operational
+    # state is EXPLICIT in every environment (previously no app_configs row existed for any of them; the
+    # code defaults are safe -- absent == OFF -- but nothing was seeded, so the state was implicit).
+    #
+    # This must NEVER flip anything on: every gate flag seeds to "0" (OFF) and every tuning row to its
+    # conservative default ("hold" for hit-handling, "" otherwise). find_or_create matches AppConfig on
+    # `key` and returns the existing row untouched (config/initializers/factory_bot.rb), so a re-seed
+    # NEVER overwrites a value someone deliberately set -- a flag turned on out-of-band stays on. Safe to
+    # run repeatedly (the chart runs db:seed in the migrate PreSync hook on every deploy).
+    #
+    # DESCARTES_RESOLUTION_POLL_CURSOR is intentionally NOT seeded: it is a watermark the poller manages,
+    # and an empty/unset cursor means "first poll uses the API default 24h look-back" (see AppConfig).
+    def export_control_flags
+      # Gate flags -- all seed OFF ("0"). ENABLE_EXPORT_CONTROL_LAYER3 is the master gate.
+      export_control_gate_flags = [
+        AppConfig::ENABLE_EXPORT_CONTROL_LAYER3,
+        AppConfig::ENABLE_EXPORT_CONTROL_SCREEN_ONBOARDING,
+        AppConfig::ENABLE_EXPORT_CONTROL_SCREEN_RELEASE,
+        AppConfig::ENABLE_DESCARTES_SCREENING,
+        AppConfig::ENABLE_EXPORT_CONTROL_ATTESTATION,
+        AppConfig::ENABLE_EXPORT_CONTROL_DEVICE_ATTESTATION,
+      ]
+      export_control_gate_flags.each do |key|
+        find_or_create(:app_config, key: key, value: "0")
+      end
+
+      # Tuning rows -- conservative / fail-closed defaults (see AppConfig for how each is interpreted):
+      #   RPS_GROUPS            "" => Descartes profile default
+      #   SCREENING_WHITELIST   "" => nobody whitelisted
+      #   RESCREEN_CADENCE_DAYS "0" => always re-screen
+      #   HIT_HANDLING          "hold" => place a hold and await human adjudication (never "allow")
+      find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_RPS_GROUPS, value: "")
+      find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST, value: "")
+      find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_RESCREEN_CADENCE_DAYS, value: "0")
+      find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_HIT_HANDLING, value: "hold")
+    end
 
     def sfn_configs
       account_id = ENV["AWS_ACCOUNT_ID"]
