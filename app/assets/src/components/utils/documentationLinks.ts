@@ -3,27 +3,25 @@
 //                         host-relative marker resolved at render by Link.tsx against
 //                         the environment's helpCenterHost (from UserContext). Never a
 //                         literal host here.
-//   "https://..."       = external site (github, ncbi, etc.), or a legacy help.czid.org
-//                         link pending SW-3. Absolute; never touched by the resolver.
+//   "https://..."       = external site (github, ncbi, etc.). Absolute; never touched
+//                         by the resolver.
 //   "/path" (bare)      = internal Rails route; never touched by the resolver.
-//
-// WARNING: Links with the prefix help.czid.org/knowledge will not be user-accessible. Just replace /knowledge/ with /hc/en-us/ .
 
 export const SARS_COV_2_CONSENSUS_GENOME_DOC_LINK =
-  "https://help.czid.org/hc/en-us/articles/360049787632";
+  "helpcenter:/articles/assess-the-quality-of-sars-cov-2-genomes/";
 export const VIRAL_CONSENSUS_GENOME_DOC_LINK =
   "helpcenter:/articles/metagenomic-analysis-consensus-genome-quality-checks/";
 export const NEXTCLADE_APP_LINK = "https://clades.nextstrain.org/";
 export const NEXTCLADE_DEFAULT_TREE_LINK =
   "https://docs.nextstrain.org/projects/nextclade/en/latest/user/datasets.html"; // Beware of link breaking
 export const NEXTCLADE_REFERENCE_TREE_LINK =
-  "https://help.czid.org/hc/en-us/articles/360052479232#Uploading-to-Nextclade";
+  "helpcenter:/articles/view-sars-cov-2-genomes-in-nextclade/#uploading-to-nextclade";
 export const NEXTCLADE_TREE_FORMAT_LINK =
   "https://docs.nextstrain.org/en/latest/reference/formats/data-formats.html";
 export const NEXTCLADE_TREE_ROOT_LINK =
   "https://github.com/nextstrain/ncov/blob/master/defaults/reference_seq.gb";
 export const VISUALIZATIONS_DOC_LINK =
-  "https://help.czid.org/hc/en-us/articles/360043062453-Creating-a-Heatmap";
+  "helpcenter:/articles/creating-a-heatmap/";
 export const ARTIC_PIPELINE_LINK =
   "https://artic.network/ncov-2019/ncov2019-bioinformatics-sop.html";
 export const CG_ILLUMINA_PIPELINE_GITHUB_LINK =
@@ -35,11 +33,10 @@ export const MNGS_NANOPORE_PIPELINE_GITHUB_LINK =
 export const AMR_PIPELINE_GITHUB_LINK =
   "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/amr";
 export const PHYLO_TREE_LINK =
-  "https://help.czid.org/hc/en-us/articles/4404223662228";
+  "helpcenter:/articles/building-a-phylogenetic-tree/";
 export const PAIRWISE_DISTANCE_MATRIX_INSTEAD_OF_TREE_LINK =
   "helpcenter:/articles/why-a-pairwise-distance-matrix-instead-of-a-tree/";
-export const BACKGROUND_MODELS_LINK =
-  "https://help.czid.org/hc/en-us/articles/360050883054-Background-Models";
+export const BACKGROUND_MODELS_LINK = "helpcenter:/articles/background-models/";
 export const CG_QUALITY_CONTROL_LINK =
   "helpcenter:/articles/viral-consensus-genomes-download-consensus-genome-data/#available-intermediate-files";
 export const NCBI_POLICIES_AND_DISCLAIMERS_LINK =

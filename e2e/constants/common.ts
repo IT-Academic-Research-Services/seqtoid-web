@@ -10,7 +10,7 @@ export const HREF = {
 export const footer: Record<string, string> = {
   Github: "https://github.com/chanzuckerberg/czid-workflows#workflows",
   Careers: "https://boards.greenhouse.io/chanzuckerberginitiative/jobs/3293983",
-  Resources: "http://help.czid.org",
+  Resources: "helpcenter:/",
 };
 
 // SW-2: the app resolves help-center links against helpCenterHost at render. Mirror

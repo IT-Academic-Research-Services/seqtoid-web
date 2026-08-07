@@ -37,7 +37,7 @@ const GITHUB_HERE_LINK = "[href*='github.com/chanzuckerberg']";
 const CLEAR_HERE_LINK = "[href*='clearlabs']";
 const ARTIC_NETWORK_LINK = "[href*='artic.network']";
 const NANOPORE_LEARN_MORE_LINK =
-  "//*[contains(@href, 'chanzuckerberg.zendesk') and text()='Learn More']";
+  "//*[contains(@href, 'helpcenter') and text()='Learn More']";
 const SELECT_BASESPACE_PROJECT_DROPDOWN =
   "[class*='basespaceSampleImport'] [class*='dropdownTrigger']";
 const SELECT_BASESPACE_PROJECT_OPTIONS =
