@@ -35,6 +35,17 @@ RSpec.describe HandleSfnNotifications, type: :job do
       }.to_json,
     }
   end
+  let(:stale_running_wr_message) do
+    {
+      "Message" => {
+        "detail-type": "Step Functions Execution Status Change",
+        "detail": {
+          "executionArn": known_wr_execution_arn,
+          "status": "RUNNING",
+        },
+      }.to_json,
+    }
+  end
   let(:other_event_message) do
     {
       "Message" => {
@@ -59,7 +70,7 @@ RSpec.describe HandleSfnNotifications, type: :job do
 
   describe "#perform" do
     it "processes notification messages, updates WorkflowRun status, and deletes the message" do
-      _ = workflow_run  # Force it to be loaded
+      _ = workflow_run # Force it to be loaded
       expect(WorkflowRun).to receive(:find_by).with(sfn_execution_arn: known_wr_execution_arn).and_call_original
       expect(sqs_msg).to receive(:delete)
 
@@ -68,9 +79,21 @@ RSpec.describe HandleSfnNotifications, type: :job do
       expect(workflow_run.reload.status).to eq(new_status)
     end
 
+    it "deletes (acks) a stale status event for an already-finalized WorkflowRun without re-updating it" do
+      # Regression for the poison-message incident (2026-08-07): a late/duplicate
+      # RUNNING event for a run that already reached a terminal state must be acked,
+      # not left to redeliver until it dead-letters.
+      _finalized_wr = create(:workflow_run, sample: sample, sfn_execution_arn: known_wr_execution_arn, status: WorkflowRun::STATUS[:succeeded])
+      expect(WorkflowRun).to receive(:find_by).with(sfn_execution_arn: known_wr_execution_arn).and_call_original
+      expect_any_instance_of(WorkflowRun).not_to receive(:update_status)
+      expect(sqs_msg).to receive(:delete)
+
+      expect { subject.perform(sqs_msg, stale_running_wr_message) }.not_to raise_error
+    end
+
     it "processes notification messages, updates PipelineRun status, and deletes the message" do
       AppConfigHelper.set_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS, "1")
-      _ = pipeline_run  # Force it to be loaded
+      _ = pipeline_run # Force it to be loaded
       expect(PipelineRun).to receive(:find_by).with(sfn_execution_arn: known_pr_execution_arn).and_call_original
       allow_any_instance_of(PipelineRun).to receive(:format_job_status_text).and_return(new_pr_status)
       expect(sqs_msg).to receive(:delete)
