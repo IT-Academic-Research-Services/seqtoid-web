@@ -31,8 +31,15 @@ module ExportControl
     # Defensive PII denylist: any attribute whose key contains one of these is dropped before it
     # reaches a span or log line. Screened-party identity details live only in the vendor's system
     # and (by reference) in raw_response_ref -- never in observability signals.
+    #
+    # ssecno / spassword are the Descartes REQUEST-BODY credentials (search_entity_client.rb). They are
+    # latent here today -- no call site passes them -- but the credential rides in the same body as the
+    # screened party's identity, which is exactly the payload most likely to get attached to a diagnostic
+    # or error path later (SMP-1690 / gap C-121). Denylisting them now keeps a careless future call site
+    # from leaking a live credential into a span or log line.
     SENSITIVE_KEYS = %w[
       name company address address1 city state zip country email phone
+      ssecno spassword
     ].freeze
 
     module_function

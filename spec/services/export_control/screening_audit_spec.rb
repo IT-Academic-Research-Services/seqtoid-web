@@ -15,6 +15,13 @@ RSpec.describe ExportControl::ScreeningAudit do
       %w[name company address1 city state zip country email phone].each { |k| expect(out).not_to have_key(k) }
     end
 
+    it 'drops the Descartes credential keys ssecno / spassword (SMP-1690 / gap C-121)' do
+      out = described_class.sanitize(subject_ref: 'User:42', ssecno: '12345', spassword: 'secretpw')
+      expect(out).to eq('subject_ref' => 'User:42')
+      expect(out).not_to have_key('ssecno')
+      expect(out).not_to have_key('spassword')
+    end
+
     it 'drops nil values and stringifies keys' do
       expect(described_class.sanitize(subject_ref: 'User:1', trace_id: nil)).to eq('subject_ref' => 'User:1')
     end
