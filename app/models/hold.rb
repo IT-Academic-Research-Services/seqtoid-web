@@ -19,6 +19,13 @@ class Hold < ApplicationRecord
   validates :subject_ref, presence: true
   validates :reason, inclusion: { in: REASONS }
 
+  # SMP-1687: the moment a hold is durably committed, notify the compliance administrator -- a hit is an
+  # adjudication task, a fail-closed error is an operational incident. Without this a hold is SILENT and
+  # the blocked user waits indefinitely. after_create_commit so a rolled-back hold never notifies; the
+  # notifier is INERT when no recipient is configured and INERT-SAFE (never raises back into the
+  # screening path), matching the screening core's off-by-default, fail-closed posture.
+  after_create_commit { ExportControl::ComplianceNotifier.notify_hold(self) }
+
   # Still-in-force holds (not yet released), and the per-subject filter.
   scope :active, -> { where(released_at: nil) }
   scope :released, -> { where.not(released_at: nil) }
