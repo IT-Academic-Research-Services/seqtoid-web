@@ -7,11 +7,12 @@ require 'rails_helper'
 RSpec.describe ExportControl::DeniedPartyScreeningProvider, type: :model do
   let(:user) { create(:user) }
 
-  # Stub the config read exactly as provider_name issues it (key + fail-closed default).
+  # Drive the config-selected provider by stubbing the reader directly, NOT the shared
+  # AppConfigHelper.get_app_config -- a strict .with(...) partial-double on that shared helper breaks
+  # any other get_app_config call made during the example (e.g. from user creation), which is what
+  # regressed shard 6. provider_name is exactly the seam provider_module reads.
   def stub_provider(value)
-    allow(AppConfigHelper).to receive(:get_app_config)
-      .with(AppConfig::EXPORT_CONTROL_SCREENING_PROVIDER, described_class::DEFAULT_PROVIDER)
-      .and_return(value)
+    allow(described_class).to receive(:provider_name).and_return(value)
   end
 
   describe ".provider_module (config-driven, fail-closed)" do
