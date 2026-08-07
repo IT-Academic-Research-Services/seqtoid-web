@@ -65,9 +65,13 @@ RSpec.describe HandleSfnNotifications, type: :job do
       expect(pt.reload.status).to eq(WorkflowRun::STATUS[:succeeded])
     end
 
-    it "leaves an already-finalized PhyloTreeNg alone" do
+    it "skips the status update for an already-finalized PhyloTreeNg but still deletes the message" do
+      # A stale/duplicate event for a finalized run is non-actionable, but it must
+      # still be acked or it redelivers until it dead-letters (see the poison-message
+      # incident, 2026-08-07). Mirrors the finalized PipelineRun arm below.
       pt = create(:phylo_tree_ng, sfn_execution_arn: "pt-done-arn", status: WorkflowRun::STATUS[:succeeded])
-      expect(sqs_msg).not_to receive(:delete)
+      expect_any_instance_of(PhyloTreeNg).not_to receive(:update_status)
+      expect(sqs_msg).to receive(:delete)
 
       subject.handle_phylo_tree_ng_update("pt-done-arn", sqs_msg, "FAILED")
 
