@@ -302,4 +302,72 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
       expect(Rails.logger).not_to have_received(:error).with(a_string_matching(/Wayne/))
     end
   end
+
+  # ---- SMP-1684: ScreeningPolicy wiring (whitelist + screen-once cadence + hit-handling) ----
+  describe '#screen -- policy short-circuits (SMP-1684)' do
+    it 'ALLOWS a whitelisted subject with NO vendor call and NO screening_results row' do
+      allow(ExportControl::ScreeningPolicy).to receive(:whitelisted?).and_return(true)
+      outcome = nil
+      expect { outcome = service.screen(party) }.not_to change(ScreeningResult, :count)
+      expect(outcome).to be_allowed
+      expect(a_request(:post, search_url)).not_to have_been_made
+    end
+
+    it 'SKIPS re-screen when a recent passing screen is within cadence and no hold is active' do
+      create(:screening_result, subject_ref: 'User:42',
+                                transstatus: ScreeningResult::TRANSSTATUS_PASSED, screened_at: 1.hour.ago)
+      allow(ExportControl::ScreeningPolicy).to receive(:rescreen_due?).and_return(false)
+      outcome = nil
+      expect { outcome = service.screen(party) }.not_to change(ScreeningResult, :count)
+      expect(outcome).to be_allowed
+      expect(a_request(:post, search_url)).not_to have_been_made
+    end
+
+    it 're-screens (does NOT skip) when the subject has an active hold, even within cadence' do
+      create(:screening_result, subject_ref: 'User:42',
+                                transstatus: ScreeningResult::TRANSSTATUS_PASSED, screened_at: 1.hour.ago)
+      create(:hold, :error, subject_ref: 'User:42')
+      allow(ExportControl::ScreeningPolicy).to receive(:rescreen_due?).and_return(false)
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+      service.screen(party)
+      expect(a_request(:post, search_url)).to have_been_made
+    end
+
+    it 'emits a report signal on a hit when hit_handling is "report" (never downgrades to allow)' do
+      allow(ExportControl::ScreeningPolicy).to receive(:hit_handling)
+        .and_return(ExportControl::ScreeningPolicy::HIT_REPORT)
+      allow(ExportControl::ScreeningAudit).to receive(:record).and_call_original
+      stub_request(:post, search_url)
+        .to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-1'), headers: json_headers)
+      outcome = service.screen(party)
+      expect(outcome.decision).to eq(:held)
+      expect(ExportControl::ScreeningAudit).to have_received(:record)
+        .with('screen.hit_reported', hash_including(subject_ref: 'User:42'))
+    end
+  end
+
+  # ---- SMP-1692: fail-closed error holds are releasable via re-screen (+ operator backstop rake) ----
+  describe '#screen -- error-hold release (SMP-1692)' do
+    it 'releases the subject active error holds when a re-screen comes back clean' do
+      error_hold = create(:hold, :error, subject_ref: 'User:42')
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+      service.screen(party)
+      expect(error_hold.reload).not_to be_active
+      expect(error_hold.disposition).to eq(Hold::DISPOSITION_RELEASED)
+    end
+
+    it 'releases error holds for a whitelisted subject too' do
+      error_hold = create(:hold, :error, subject_ref: 'User:42')
+      allow(ExportControl::ScreeningPolicy).to receive(:whitelisted?).and_return(true)
+      service.screen(party)
+      expect(error_hold.reload).not_to be_active
+    end
+
+    it 'does NOT release a real screening_hit hold on a clean re-screen' do
+      hit_hold = create(:hold, subject_ref: 'User:42') # default reason = screening_hit
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+      service.screen(party)
+      expect(hit_hold.reload).to be_active
+    end
+  end
 end
