@@ -64,14 +64,12 @@ const UploadInstructions = ({
                 {`If your entered Host Organism does not match a supported host
                 genome, we will only subtract out ERCCs and the Human genome. You can
                 read more about how to request a new genome to be added to SeqtoID `}
-                <a
-                  href="https://help.czid.org/hc/en-us/articles/360034790814-How-do-I-request-a-new-host-genome-be-added-to-CZID"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <ExternalLink
+                  href="helpcenter:/articles/how-do-i-request-a-new-host-genome-be-added-to-seqtoid/"
                   className={cs.link}
                 >
                   here.
-                </a>
+                </ExternalLink>
               </p>
             </React.Fragment>,
             `Make sure your column headers match our naming convention.`,
