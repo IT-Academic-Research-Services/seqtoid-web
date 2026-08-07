@@ -45,19 +45,35 @@ class HandleSfnNotifications
 
   def handle_workflow_run_update(arn, sqs_msg, status)
     wr = WorkflowRun.find_by(sfn_execution_arn: arn)
-    if wr && !wr.finalized?
-      wr.update_status(status)
+    if wr
+      # Only a non-finalized run has a status to advance. A finalized run has
+      # nothing left to do, but the message HAS been fully handled -- delete it
+      # either way so a stale/duplicate status event (e.g. a late RUNNING event
+      # arriving after the run already reached a terminal state) does not sit
+      # unacked and redeliver until it dead-letters. Mirrors
+      # handle_pipeline_run_update, which deletes whenever the run is found.
+      if wr.finalized?
+        Rails.logger.info("Ignoring #{status} event for finalized WorkflowRun #{wr.id} #{arn}")
+      else
+        wr.update_status(status)
+        Rails.logger.info("Updated WorkflowRun #{wr.id} #{arn} to #{status}")
+      end
       sqs_msg.delete
-      Rails.logger.info("Updated WorkflowRun #{wr.id} #{arn} to #{status}")
     end
   end
 
   def handle_phylo_tree_ng_update(arn, sqs_msg, status)
     pt = PhyloTreeNg.find_by(sfn_execution_arn: arn)
-    if pt && !pt.finalized?
-      pt.update_status(status)
+    if pt
+      # See handle_workflow_run_update: delete once the run is found (even if
+      # finalized) so stale/duplicate events are acked rather than dead-lettered.
+      if pt.finalized?
+        Rails.logger.info("Ignoring #{status} event for finalized PhyloTreeNg #{pt.id} #{arn}")
+      else
+        pt.update_status(status)
+        Rails.logger.info("Updated PhyloTreeNg #{pt.id} #{arn} to #{status}")
+      end
       sqs_msg.delete
-      Rails.logger.info("Updated PhyloTreeNg #{pt.id} #{arn} to #{status}")
     end
   end
 
