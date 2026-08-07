@@ -231,4 +231,75 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
       expect(Rails.logger).not_to have_received(:info).with(a_string_matching(/screening_audit.*Wayne/))
     end
   end
+
+  # SMP-1693 (gap C-125) -- the service's own fail-closed log line must not carry an exception message,
+  # only the error CLASS: a client/transport exception can interpolate the vendor body (party name).
+  describe '#screen -- SMP-1693 error log carries the class only, never the message' do
+    it 'logs the error class but not a leaked exception message on a transport failure' do
+      leaky = instance_double(ExportControl::Descartes::SearchEntityClient)
+      allow(leaky).to receive(:search).and_raise(StandardError, 'boom for Wayne Smith at 1 Main St')
+      svc = described_class.new(client: leaky)
+      allow(Rails.logger).to receive(:error).and_call_original
+
+      outcome = svc.screen(party)
+
+      expect(outcome.decision).to eq(:error) # still fail-closed
+      expect(Rails.logger).to have_received(:error).with(a_string_matching(/\[ScreeningService\] fail-closed/))
+      expect(Rails.logger).not_to have_received(:error).with(a_string_matching(/Wayne|Main St/))
+    end
+  end
+
+  # SMP-1695 (gap C-129) -- a persistence failure (Aurora failover, pool exhaustion, validation) on the
+  # request-path gate must STILL leave durable evidence (an audit record) and STILL fail closed (deny).
+  # Previously persist_and_decide ran outside any rescue: the request 500'd with NO hold, NO
+  # screening_results row, and NO audit record -- the screen left no compliance evidence.
+  describe '#screen -- SMP-1695 persistence failure still leaves evidence + fails closed' do
+    before { stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers) }
+
+    it 'emits a screen.persist_error audit line and denies (no allow, no leak) when create! raises' do
+      allow(Rails.logger).to receive(:info).and_call_original
+      allow(ScreeningResult).to receive(:create!)
+        .and_raise(ActiveRecord::StatementInvalid, 'Lost connection to MySQL server')
+
+      outcome = nil
+      expect { outcome = service.screen(party) }
+        .to(not_change(ScreeningResult, :count).and(not_change(Hold, :count)))
+
+      # Fail-closed: :error -> SCREENING_PENDING -> deny. NEVER downgraded to an allow.
+      expect(outcome.decision).to eq(:error)
+      expect(outcome).not_to be_allowed
+      expect(outcome.screening_result).to be_nil
+      expect(outcome.hold).to be_nil
+      expect(outcome.to_provider_result.result).to eq(ExportControlClearance::SCREENING_PENDING)
+
+      # Durable EVIDENCE survives the DB failure: ScreeningAudit is log-based + inert-safe.
+      expect(Rails.logger).to have_received(:info)
+        .with(a_string_matching(/\[screening_audit\].*"screening_event":"screen\.persist_error"/))
+    end
+
+    it 'still fails closed with an audit record when the HOLD write raises on a hit' do
+      stub_request(:post, search_url)
+        .to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-1'), headers: json_headers)
+      allow(Rails.logger).to receive(:info).and_call_original
+      allow(Hold).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique, 'deadlock')
+
+      outcome = service.screen(party)
+
+      expect(outcome.decision).to eq(:error)
+      expect(outcome).not_to be_allowed
+      expect(Rails.logger).to have_received(:info)
+        .with(a_string_matching(/"screening_event":"screen\.persist_error"/))
+    end
+
+    it 'never leaks the screened party name when persistence fails' do
+      allow(Rails.logger).to receive(:info).and_call_original
+      allow(Rails.logger).to receive(:error).and_call_original
+      allow(ScreeningResult).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique, 'dup key')
+
+      service.screen(party) # party.name = 'Wayne Smith'
+
+      expect(Rails.logger).not_to have_received(:info).with(a_string_matching(/Wayne/))
+      expect(Rails.logger).not_to have_received(:error).with(a_string_matching(/Wayne/))
+    end
+  end
 end

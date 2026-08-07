@@ -99,7 +99,9 @@ module ExportControl
 
         parse(JSON.parse(resp.body.to_s))
       rescue JSON::ParserError => e
-        raise Error, "malformed SearchEntity response: #{e.message}"
+        # SMP-1693: JSON::ParserError#message echoes a fragment of the (unparseable) response body,
+        # which can carry the screened/matched party's name -- surface only the error class.
+        raise Error, "malformed SearchEntity response (#{e.class})"
       end
 
       private
@@ -157,7 +159,12 @@ module ExportControl
 
       def parse(json)
         # Job-fatal errors can come back as the whole result or in a search errorstring -> fail-closed.
-        raise Error, "SearchEntity job error: #{json}" if job_fatal?(json)
+        # SMP-1693: raise with the matched vendor error MARKER only. The parsed body carries the
+        # screened party's sname/scompany/saddress, so it must never reach an exception message
+        # (which lands verbatim in logs/Sentry/Resque). The markers are fixed vendor codes -- no PII.
+        if (marker = fatal_marker(json))
+          raise Error, "SearchEntity job error: #{marker}"
+        end
 
         searches = Array(json['searches'])
         first = searches.first || {}
@@ -175,9 +182,15 @@ module ExportControl
         )
       end
 
-      def job_fatal?(json)
+      # The first job-fatal marker present in the (stringified) body, or nil. Returning the matched
+      # marker -- not the whole body -- is what lets the raise carry a safe, PII-free identifier.
+      def fatal_marker(json)
         blob = json.is_a?(String) ? json : json.to_s
-        JOB_FATAL_MARKERS.any? { |m| blob.include?(m) }
+        JOB_FATAL_MARKERS.find { |m| blob.include?(m) }
+      end
+
+      def job_fatal?(json)
+        !fatal_marker(json).nil?
       end
 
       def map_alert(smaxalert)
