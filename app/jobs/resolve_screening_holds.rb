@@ -113,7 +113,20 @@ class ResolveScreeningHolds
     optid = verdict.shoptid
     return [] if optid.blank? || optid == '0'
 
-    ScreeningResult.where(soptionalid: optid).to_a
+    # SMP-1694 (gap C-128): soptionalid is table-keyed to users.id, so `where(soptionalid: optid)` alone
+    # matches EVERY screen ever performed for that user -- and apply() would then release the active hold
+    # on each one, letting a single verdict clear holds from wholly unrelated screens. This fallback is
+    # reached only when the exact sdistributedid match failed (blank id on a clean screen, or a
+    # Compliance-Manager-originated verdict), so we cannot pin the verdict to one screen precisely. Narrow
+    # to the SINGLE most-recent screen for the user that is still actively held -- the one awaiting
+    # adjudication. Fail-closed: a verdict can now release at most that one hold; if it was actually for an
+    # older screen, that screen just stays held until its own verdict arrives. Releasing FEWER holds is
+    # always safe; releasing too many is the bug this closes.
+    screen = ScreeningResult.where(soptionalid: optid)
+                            .where(id: Hold.active.select(:screening_result_id))
+                            .latest_first
+                            .first
+    screen ? [screen] : []
   end
 
   def apply(screening_result, verdict, disposition)
