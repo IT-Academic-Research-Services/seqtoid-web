@@ -76,14 +76,22 @@ module ExportControl
       begin
         response = client.search(subject, soptionalid: soptionalid)
       rescue StandardError => e
-        Rails.logger.error("[ScreeningService] fail-closed HOLD for #{subject.subject_ref}: " \
-                           "#{e.class}: #{e.message}")
+        # SMP-1693: log the error CLASS only -- an exception message from the client/transport can carry
+        # the screened party's name (vendor body interpolation), which must never reach a log line.
+        Rails.logger.error("[ScreeningService] fail-closed HOLD for #{subject.subject_ref}: #{e.class}")
         return hold_on_error(subject)
       end
 
       return hold_on_error(subject) if response.errored?
 
-      persist_and_decide(subject, soptionalid, response)
+      # SMP-1695 (gap C-129): persistence itself can fail (Aurora failover, pool exhaustion, a
+      # validation error). Without this rescue the request 500s leaving NO hold, NO screening_results
+      # row, and NO audit record -- the screen leaves no compliance evidence. Fail closed WITH evidence.
+      begin
+        persist_and_decide(subject, soptionalid, response)
+      rescue StandardError => e
+        persist_error_outcome(subject, e)
+      end
     end
 
     private
@@ -129,6 +137,24 @@ module ExportControl
         )
         Outcome.new(decision: :allowed, screening_result: screening_result, hold: nil)
       end
+    end
+
+    # SMP-1695 (gap C-129): a persist_and_decide failure still leaves DURABLE EVIDENCE and fails closed.
+    # ScreeningAudit.record is log-based and inert-safe (it never raises and does not touch the DB), so
+    # the audit line survives even when the DB is the thing that just failed. We deliberately do NOT
+    # retry a DB write here (that is exactly what failed) and we NEVER downgrade to an allow: the
+    # :error decision maps to SCREENING_PENDING -> deny, identical to the other fail-closed paths.
+    def persist_error_outcome(subject, error)
+      Rails.logger.error(
+        "[ScreeningService] fail-closed (persist error) for #{subject.subject_ref}: #{error.class}"
+      )
+      ExportControl::ScreeningAudit.record(
+        "screen.persist_error",
+        subject_ref: subject.subject_ref, decision: "error", reason: Hold::REASON_SCREENING_ERROR,
+        error_class: error.class.name, provider: PROVIDER,
+        trace_id: ExportControl::ScreeningAudit.current_trace_id
+      )
+      Outcome.new(decision: :error, screening_result: nil, hold: nil)
     end
 
     # Fail-closed hold with no screening row (transport/timeout/config/per-search error).

@@ -142,5 +142,20 @@ RSpec.describe ExportControl::Descartes::ResolutionClient, type: :service do
       expect { described_class.new(config: configured).poll(time_from: time_from, time_to: time_to) }
         .to raise_error(described_class::Error)
     end
+
+    # SMP-1693 (gap C-125): the SOAP body carries SHname/SHcompany for EVERY party in the polling
+    # window. A job-fatal raise must surface only the fixed vendor MARKER, never the body -- otherwise
+    # every party in the window leaks into the log/Sentry/Resque failure record.
+    it 'raises with the vendor marker ONLY -- never any party name -- on a job-fatal body' do
+      body = "#{sh_document(sh_result(id: '1', status: 'Cleared', name: 'Wayne Smith', company: 'ACME'))}" \
+             'ERROR: Access to RPS Denied.'
+      stub_request(:post, soap_url).to_return(status: 200, headers: xml_headers, body: body)
+
+      expect { described_class.new(config: configured).poll(time_from: time_from, time_to: time_to) }
+        .to raise_error(described_class::Error) { |e|
+          expect(e.message).to include('Access to RPS Denied')
+          expect(e.message).not_to match(/Wayne|ACME/)
+        }
+    end
   end
 end
