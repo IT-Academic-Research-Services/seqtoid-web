@@ -25,6 +25,36 @@ RSpec.describe ExportControl::Descartes::SearchEntityClient, type: :service do
     end
   end
 
+  describe 'TLS enforcement (SMP-1689 / gap C-107)' do
+    it 'refuses a non-https endpoint fail-closed, with NO network call' do
+      http_client = described_class.new(
+        config: described_class::Config.new(endpoint: 'http://rpstest.example.test', secno: '1', password: 'p')
+      )
+      expect(http_client.configured?).to be(true) # it IS configured -- the point is we still refuse
+      expect { http_client.search(party, soptionalid: '42') }
+        .to raise_error(described_class::ConfigurationError, /must be https/)
+      expect(a_request(:post, %r{rpstest\.example\.test}i)).not_to have_been_made
+    end
+
+    it 'refuses a malformed endpoint fail-closed' do
+      bad = described_class.new(
+        config: described_class::Config.new(endpoint: 'not a url', secno: '1', password: 'p')
+      )
+      expect { bad.search(party, soptionalid: '42') }
+        .to raise_error(described_class::ConfigurationError, /must be https/)
+    end
+
+    it 'allows an https endpoint through to the network' do
+      stub = stub_request(:post, search_url).to_return(
+        status: 200, headers: json_headers,
+        body: JSON.dump('transstatus' => 'Passed', 'smaxalert' => '',
+                        'searches' => [{ 'nomatch' => '1', 'riskcountry' => '0', 'sdistributedid' => '' }])
+      )
+      described_class.new(config: configured).search(party, soptionalid: '42')
+      expect(stub).to have_been_requested
+    end
+  end
+
   describe '#search request shape' do
     it 'POSTs the credentialed JSON sdoc envelope with our table-keyed soptionalid' do
       stub = stub_request(:post, search_url)

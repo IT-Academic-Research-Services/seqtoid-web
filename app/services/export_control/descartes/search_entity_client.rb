@@ -88,6 +88,7 @@ module ExportControl
       def search(subject, soptionalid:)
         raise ConfigurationError, 'Descartes RPS endpoint/credentials not configured' unless configured?
 
+        enforce_https!(@config.endpoint)
         uri = URI.join(@config.endpoint, SEARCH_PATH)
         req = build_request(uri, subject, soptionalid)
 
@@ -102,6 +103,25 @@ module ExportControl
       end
 
       private
+
+      # SMP-1689 (gap C-107): enforce TLS at the boundary. The SearchEntity request carries the Descartes
+      # credentials AND the screened party's real name (plus company/country on the diagnostic path) in
+      # the request BODY, and HttpResilience retries up to 3x -- so a single non-https DESCARTES_RPS_ENDPOINT
+      # would put a named individual's identity and the API credential on the wire in CLEARTEXT, up to three
+      # times per screen. Fail CLOSED: refuse to transmit rather than downgrade. ScreeningService turns this
+      # raise into a fail-closed HOLD, so a misconfigured endpoint denies access -- it never leaks.
+      def enforce_https!(endpoint)
+        scheme = begin
+          URI(endpoint.to_s).scheme&.downcase
+        rescue URI::InvalidURIError
+          nil
+        end
+        return if scheme == 'https'
+
+        raise ConfigurationError,
+              "Descartes RPS endpoint must be https (got #{scheme.inspect}); refusing to transmit " \
+              'credentials and screened-party identity over a non-TLS connection'
+      end
 
       def build_request(uri, subject, soptionalid)
         req = Net::HTTP::Post.new(uri)
