@@ -130,6 +130,23 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(hold.reload).not_to be_active
     end
 
+    it 'via the soptionalid fallback, releases only the most-recent held screen, not unrelated older ones (SMP-1694)' do
+      # One user (same table-keyed soptionalid) with TWO distinct screens, each with its own active hold.
+      old_sr = create(:screening_result, :red, subject_ref: 'user:multi', soptionalid: '7777',
+                                               sdistributedid: 'old-dist', screened_at: 3.days.ago)
+      old_hold = create(:hold, subject_ref: 'user:multi', screening_result: old_sr)
+
+      new_sr = create(:screening_result, :red, subject_ref: 'user:multi', soptionalid: '7777',
+                                               sdistributedid: 'new-dist', screened_at: 1.hour.ago)
+      new_hold = create(:hold, subject_ref: 'user:multi', screening_result: new_sr)
+
+      # A verdict whose result id matches no row -> forced down the soptionalid fallback path.
+      run_with([verdict(status: 'Cleared', shresult_id: 'no-such-dist', shoptid: '7777')])
+
+      expect(new_hold.reload).not_to be_active # the single most-recent held screen is released
+      expect(old_hold.reload).to be_active     # the unrelated older screen's hold is left in force
+    end
+
     it 'NEVER correlates on the ambiguous soptionalid "0"' do
       _sr, hold = held_subject(sdistributedid: 'zzz', soptionalid: '0')
       # verdict carries no matching result id and only the ambiguous "0" optid -> no correlation, no-op.
@@ -190,6 +207,26 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       allow(client).to receive(:poll).and_raise(ExportControl::Descartes::ResolutionClient::Error, 'boom')
       expect { job.run }.to raise_error(StandardError)
       expect(hold.reload).to be_active
+    end
+
+    # SMP-1693 (gap C-125): LogUtil.log_error uses the exception message as the Sentry event title AND
+    # the job re-raises so it also lands in the Resque failure record. Because the client now raises with
+    # the vendor MARKER only, neither observability signal carries a screened party's name.
+    it 'reports a marker-only error to Sentry/Resque without any party name' do
+      job = described_class.new
+      allow(job).to receive(:client).and_return(client)
+      allow(client).to receive(:poll)
+        .and_raise(ExportControl::Descartes::ResolutionClient::Error,
+                   'IMTimeStampSearch job error: ERROR: Access to RPS Denied.')
+      allow(LogUtil).to receive(:log_error).and_call_original
+
+      expect { job.run }.to raise_error(ExportControl::Descartes::ResolutionClient::Error) { |e|
+        # The re-raised message (-> Resque failure record) and its use as the Sentry title carry no PII.
+        expect(e.message).not_to match(/Wayne|SHname|SHcompany/)
+      }
+      expect(LogUtil).to have_received(:log_error)
+        .with(a_string_matching(/poll failed; holds left in force/),
+              hash_including(exception: kind_of(ExportControl::Descartes::ResolutionClient::Error)))
     end
   end
 

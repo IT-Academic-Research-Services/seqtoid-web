@@ -231,4 +231,143 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
       expect(Rails.logger).not_to have_received(:info).with(a_string_matching(/screening_audit.*Wayne/))
     end
   end
+
+  # SMP-1693 (gap C-125) -- the service's own fail-closed log line must not carry an exception message,
+  # only the error CLASS: a client/transport exception can interpolate the vendor body (party name).
+  describe '#screen -- SMP-1693 error log carries the class only, never the message' do
+    it 'logs the error class but not a leaked exception message on a transport failure' do
+      leaky = instance_double(ExportControl::Descartes::SearchEntityClient)
+      allow(leaky).to receive(:search).and_raise(StandardError, 'boom for Wayne Smith at 1 Main St')
+      svc = described_class.new(client: leaky)
+      allow(Rails.logger).to receive(:error).and_call_original
+
+      outcome = svc.screen(party)
+
+      expect(outcome.decision).to eq(:error) # still fail-closed
+      expect(Rails.logger).to have_received(:error).with(a_string_matching(/\[ScreeningService\] fail-closed/))
+      expect(Rails.logger).not_to have_received(:error).with(a_string_matching(/Wayne|Main St/))
+    end
+  end
+
+  # SMP-1695 (gap C-129) -- a persistence failure (Aurora failover, pool exhaustion, validation) on the
+  # request-path gate must STILL leave durable evidence (an audit record) and STILL fail closed (deny).
+  # Previously persist_and_decide ran outside any rescue: the request 500'd with NO hold, NO
+  # screening_results row, and NO audit record -- the screen left no compliance evidence.
+  describe '#screen -- SMP-1695 persistence failure still leaves evidence + fails closed' do
+    before { stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers) }
+
+    it 'emits a screen.persist_error audit line and denies (no allow, no leak) when create! raises' do
+      allow(Rails.logger).to receive(:info).and_call_original
+      allow(ScreeningResult).to receive(:create!)
+        .and_raise(ActiveRecord::StatementInvalid, 'Lost connection to MySQL server')
+
+      outcome = nil
+      expect { outcome = service.screen(party) }
+        .to(not_change(ScreeningResult, :count).and(not_change(Hold, :count)))
+
+      # Fail-closed: :error -> SCREENING_PENDING -> deny. NEVER downgraded to an allow.
+      expect(outcome.decision).to eq(:error)
+      expect(outcome).not_to be_allowed
+      expect(outcome.screening_result).to be_nil
+      expect(outcome.hold).to be_nil
+      expect(outcome.to_provider_result.result).to eq(ExportControlClearance::SCREENING_PENDING)
+
+      # Durable EVIDENCE survives the DB failure: ScreeningAudit is log-based + inert-safe.
+      expect(Rails.logger).to have_received(:info)
+        .with(a_string_matching(/\[screening_audit\].*"screening_event":"screen\.persist_error"/))
+    end
+
+    it 'still fails closed with an audit record when the HOLD write raises on a hit' do
+      stub_request(:post, search_url)
+        .to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-1'), headers: json_headers)
+      allow(Rails.logger).to receive(:info).and_call_original
+      allow(Hold).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique, 'deadlock')
+
+      outcome = service.screen(party)
+
+      expect(outcome.decision).to eq(:error)
+      expect(outcome).not_to be_allowed
+      expect(Rails.logger).to have_received(:info)
+        .with(a_string_matching(/"screening_event":"screen\.persist_error"/))
+    end
+
+    it 'never leaks the screened party name when persistence fails' do
+      allow(Rails.logger).to receive(:info).and_call_original
+      allow(Rails.logger).to receive(:error).and_call_original
+      allow(ScreeningResult).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique, 'dup key')
+
+      service.screen(party) # party.name = 'Wayne Smith'
+
+      expect(Rails.logger).not_to have_received(:info).with(a_string_matching(/Wayne/))
+      expect(Rails.logger).not_to have_received(:error).with(a_string_matching(/Wayne/))
+    end
+  end
+
+  # ---- SMP-1684: ScreeningPolicy wiring (whitelist + screen-once cadence + hit-handling) ----
+  describe '#screen -- policy short-circuits (SMP-1684)' do
+    it 'ALLOWS a whitelisted subject with NO vendor call and NO screening_results row' do
+      allow(ExportControl::ScreeningPolicy).to receive(:whitelisted?).and_return(true)
+      outcome = nil
+      expect { outcome = service.screen(party) }.not_to change(ScreeningResult, :count)
+      expect(outcome).to be_allowed
+      expect(a_request(:post, search_url)).not_to have_been_made
+    end
+
+    it 'SKIPS re-screen when a recent passing screen is within cadence and no hold is active' do
+      create(:screening_result, subject_ref: 'User:42',
+                                transstatus: ScreeningResult::TRANSSTATUS_PASSED, screened_at: 1.hour.ago)
+      allow(ExportControl::ScreeningPolicy).to receive(:rescreen_due?).and_return(false)
+      outcome = nil
+      expect { outcome = service.screen(party) }.not_to change(ScreeningResult, :count)
+      expect(outcome).to be_allowed
+      expect(a_request(:post, search_url)).not_to have_been_made
+    end
+
+    it 're-screens (does NOT skip) when the subject has an active hold, even within cadence' do
+      create(:screening_result, subject_ref: 'User:42',
+                                transstatus: ScreeningResult::TRANSSTATUS_PASSED, screened_at: 1.hour.ago)
+      create(:hold, :error, subject_ref: 'User:42')
+      allow(ExportControl::ScreeningPolicy).to receive(:rescreen_due?).and_return(false)
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+      service.screen(party)
+      expect(a_request(:post, search_url)).to have_been_made
+    end
+
+    it 'emits a report signal on a hit when hit_handling is "report" (never downgrades to allow)' do
+      allow(ExportControl::ScreeningPolicy).to receive(:hit_handling)
+        .and_return(ExportControl::ScreeningPolicy::HIT_REPORT)
+      allow(ExportControl::ScreeningAudit).to receive(:record).and_call_original
+      stub_request(:post, search_url)
+        .to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-1'), headers: json_headers)
+      outcome = service.screen(party)
+      expect(outcome.decision).to eq(:held)
+      expect(ExportControl::ScreeningAudit).to have_received(:record)
+        .with('screen.hit_reported', hash_including(subject_ref: 'User:42'))
+    end
+  end
+
+  # ---- SMP-1692: fail-closed error holds are releasable via re-screen (+ operator backstop rake) ----
+  describe '#screen -- error-hold release (SMP-1692)' do
+    it 'releases the subject active error holds when a re-screen comes back clean' do
+      error_hold = create(:hold, :error, subject_ref: 'User:42')
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+      service.screen(party)
+      expect(error_hold.reload).not_to be_active
+      expect(error_hold.disposition).to eq(Hold::DISPOSITION_RELEASED)
+    end
+
+    it 'releases error holds for a whitelisted subject too' do
+      error_hold = create(:hold, :error, subject_ref: 'User:42')
+      allow(ExportControl::ScreeningPolicy).to receive(:whitelisted?).and_return(true)
+      service.screen(party)
+      expect(error_hold.reload).not_to be_active
+    end
+
+    it 'does NOT release a real screening_hit hold on a clean re-screen' do
+      hit_hold = create(:hold, subject_ref: 'User:42') # default reason = screening_hit
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+      service.screen(party)
+      expect(hit_hold.reload).to be_active
+    end
+  end
 end

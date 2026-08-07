@@ -143,13 +143,20 @@ module ExportControl
       # wrapped in CDATA) carried inside the SOAP body. We locate the result text, guard the fatal
       # markers, then parse the inner <SH> tree into Verdicts.
       def parse(body)
-        raise Error, "IMTimeStampSearch job error: #{body}" if job_fatal?(body)
+        # SMP-1693: the SOAP body / inner <SH> document carries SHname/SHcompany for EVERY party in the
+        # polling window. Raise with the matched vendor error MARKER only (a fixed vendor code -- no PII),
+        # NEVER the body itself, so the message can safely reach logs/Sentry/the Resque failure record.
+        if (marker = fatal_marker(body))
+          raise Error, "IMTimeStampSearch job error: #{marker}"
+        end
 
         inner = extract_result_xml(body)
         return [] if inner.nil? || inner.include?(NO_STATUS_HISTORY)
 
         # A fatal marker may only surface once the outer envelope is stripped.
-        raise Error, "IMTimeStampSearch job error: #{inner}" if job_fatal?(inner)
+        if (marker = fatal_marker(inner))
+          raise Error, "IMTimeStampSearch job error: #{marker}"
+        end
 
         doc = strict_xml(inner)
         doc.remove_namespaces!
@@ -195,8 +202,14 @@ module ExportControl
         child&.text.to_s.strip.presence
       end
 
+      # The first job-fatal marker present in the (stringified) blob, or nil. Returning the matched
+      # marker -- not the whole blob -- is what lets the raise carry a safe, PII-free identifier.
+      def fatal_marker(blob)
+        JOB_FATAL_MARKERS.find { |m| blob.to_s.include?(m) }
+      end
+
       def job_fatal?(blob)
-        JOB_FATAL_MARKERS.any? { |m| blob.to_s.include?(m) }
+        !fatal_marker(blob).nil?
       end
 
       def xml_escape(val)

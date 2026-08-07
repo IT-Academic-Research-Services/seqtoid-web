@@ -88,6 +88,7 @@ module ExportControl
       def search(subject, soptionalid:)
         raise ConfigurationError, 'Descartes RPS endpoint/credentials not configured' unless configured?
 
+        enforce_https!(@config.endpoint)
         uri = URI.join(@config.endpoint, SEARCH_PATH)
         req = build_request(uri, subject, soptionalid)
 
@@ -98,10 +99,31 @@ module ExportControl
 
         parse(JSON.parse(resp.body.to_s))
       rescue JSON::ParserError => e
-        raise Error, "malformed SearchEntity response: #{e.message}"
+        # SMP-1693: JSON::ParserError#message echoes a fragment of the (unparseable) response body,
+        # which can carry the screened/matched party's name -- surface only the error class.
+        raise Error, "malformed SearchEntity response (#{e.class})"
       end
 
       private
+
+      # SMP-1689 (gap C-107): enforce TLS at the boundary. The SearchEntity request carries the Descartes
+      # credentials AND the screened party's real name (plus company/country on the diagnostic path) in
+      # the request BODY, and HttpResilience retries up to 3x -- so a single non-https DESCARTES_RPS_ENDPOINT
+      # would put a named individual's identity and the API credential on the wire in CLEARTEXT, up to three
+      # times per screen. Fail CLOSED: refuse to transmit rather than downgrade. ScreeningService turns this
+      # raise into a fail-closed HOLD, so a misconfigured endpoint denies access -- it never leaks.
+      def enforce_https!(endpoint)
+        scheme = begin
+          URI(endpoint.to_s).scheme&.downcase
+        rescue URI::InvalidURIError
+          nil
+        end
+        return if scheme == 'https'
+
+        raise ConfigurationError,
+              "Descartes RPS endpoint must be https (got #{scheme.inspect}); refusing to transmit " \
+              'credentials and screened-party identity over a non-TLS connection'
+      end
 
       def build_request(uri, subject, soptionalid)
         req = Net::HTTP::Post.new(uri)
@@ -137,7 +159,12 @@ module ExportControl
 
       def parse(json)
         # Job-fatal errors can come back as the whole result or in a search errorstring -> fail-closed.
-        raise Error, "SearchEntity job error: #{json}" if job_fatal?(json)
+        # SMP-1693: raise with the matched vendor error MARKER only. The parsed body carries the
+        # screened party's sname/scompany/saddress, so it must never reach an exception message
+        # (which lands verbatim in logs/Sentry/Resque). The markers are fixed vendor codes -- no PII.
+        if (marker = fatal_marker(json))
+          raise Error, "SearchEntity job error: #{marker}"
+        end
 
         searches = Array(json['searches'])
         first = searches.first || {}
@@ -155,9 +182,15 @@ module ExportControl
         )
       end
 
-      def job_fatal?(json)
+      # The first job-fatal marker present in the (stringified) body, or nil. Returning the matched
+      # marker -- not the whole body -- is what lets the raise carry a safe, PII-free identifier.
+      def fatal_marker(json)
         blob = json.is_a?(String) ? json : json.to_s
-        JOB_FATAL_MARKERS.any? { |m| blob.include?(m) }
+        JOB_FATAL_MARKERS.find { |m| blob.include?(m) }
+      end
+
+      def job_fatal?(json)
+        !fatal_marker(json).nil?
       end
 
       def map_alert(smaxalert)

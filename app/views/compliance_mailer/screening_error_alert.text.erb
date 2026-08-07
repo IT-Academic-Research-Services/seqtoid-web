@@ -1,0 +1,16 @@
+ACTION REQUIRED -- a screening attempt FAILED and placed a fail-closed HOLD with no screening
+evidence row. This usually means the Descartes Visual Compliance path errored, timed out, or is
+misconfigured. The affected user is blocked until this is resolved, so treat it as an operational
+incident, not a routine adjudication.
+
+  Hold ID:      <%= @hold_id %>
+  Subject:      <%= @subject_ref %>
+<% if @trace_id.present? -%>
+  Trace ID:     <%= @trace_id %>
+<% end -%>
+
+Next steps:
+  1. Check the export-control screening integration (vendor connectivity, credentials, config).
+  2. Once the path is healthy, the user can be re-screened; release the hold if appropriate.
+
+Note: identifiers only -- no screened-party PII is included in this email.

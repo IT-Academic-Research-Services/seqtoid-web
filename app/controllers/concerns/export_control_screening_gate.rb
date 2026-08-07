@@ -97,7 +97,10 @@ module ExportControlScreeningGate
       subject_ref: "User:#{current_user.id}",
       subject_type: "User",
       name: current_user.name,
-      soptionalid: current_user.id.to_s
+      soptionalid: current_user.id.to_s,
+      # SMP-1684: email is used ONLY for the ScreeningPolicy whitelist domain match (e.g. "ucsf.edu");
+      # it is never sent to the vendor and never logged.
+      email: current_user.email
     )
   end
 
