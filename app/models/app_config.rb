@@ -81,6 +81,15 @@ class AppConfig < ApplicationRecord
   # failed poll re-covers the same window (idempotent re-processing). Empty/unset => first poll uses the
   # API default 24h look-back. Inert until ENABLE_DESCARTES_SCREENING is on (the job self-skips when off).
   DESCARTES_RESOLUTION_POLL_CURSOR = 'descartes_resolution_poll_cursor'.freeze
+  # CZID-285/596 -- selects the denied/restricted-party SCREENING vendor that
+  # ExportControl::DeniedPartyScreeningProvider.provider_module resolves to (Path A: the
+  # ExportControlClearancesController screening call). Accepts the committed provider name: "descartes"
+  # routes to Providers::Descartes; "reference_stub" (or ANY unknown/blank value) FAILS CLOSED to
+  # Providers::ReferenceStub, which returns PENDING => deny. Defaults to "reference_stub" so behaviour is
+  # unchanged when unset, and there is NO value that opens a permissive path. Runtime-configurable so the
+  # go-live switch (and rollback) is a config row, not a code deploy. Go-live is counsel + vendor gated
+  # (CZID-335) and additionally requires ENABLE_DESCARTES_SCREENING for Descartes to place holds.
+  EXPORT_CONTROL_SCREENING_PROVIDER = 'export_control_screening_provider'.freeze
   # When this is "1", all requests other than the landing page will be re-directed to the maintenance page.
   DISABLE_SITE_FOR_MAINTENANCE = 'disable_site_for_maintenance'.freeze
   # When this is "1", the Video Tour banner on the landing page will be shown.
