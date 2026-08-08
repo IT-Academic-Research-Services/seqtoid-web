@@ -1,5 +1,5 @@
 <div id="TermsOfUse_page">
   <%= javascript_tag do %>
-    react_component('TermsOfUse', {}, 'TermsOfUse_page');
+    react_component('TermsOfUse', {}, 'TermsOfUse_page', JSON.parse('<%= raw escape_json(help_center_context) %>'));
   <% end %>
 </div>

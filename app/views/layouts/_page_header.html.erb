@@ -16,7 +16,7 @@
         autoAccountCreationEnabled: <%= @auto_account_creation_enabled %>,
         announcementBannerEnabled: <%= @announcement_banner_enabled %>,
         emergencyBannerMessage: <%= raw escape_json(@emergency_banner_message.to_s) %>,
-      }, 'page_header')
+      }, 'page_header', JSON.parse('<%= raw escape_json(help_center_context) %>'))
     <% end %>
   <% elsif current_user && current_user.id && !@show_landing_header && AppConfigHelper::get_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1) == "1" && current_user.profile_form_version.zero? %>
     <%= javascript_tag do %>
