@@ -10,25 +10,32 @@
 # rake task (run through the image entrypoint: `chamber exec <svc> -- bundle exec rake <task>`).
 #
 # Usage:
-#   bin/run-rake-in-eks -n <namespace> [--context <ctx>] [--sa <sa>] [--name <job>] <rake task...>
+#   bin/run-rake-in-eks -n <namespace> [--context <ctx>] [--sa <sa>] [--name <job>] [-e KEY=VALUE]... <rake task...>
 #
 # Examples:
 #   bin/run-rake-in-eks -n seqtoid-pr-336 update_pathogen_list
+#   bin/run-rake-in-eks -n seqtoid-pr-336 -e PATHOGEN_LIST_VERSION=0.2.1 -e DRY_RUN=false update_pathogen_list
 #   bin/run-rake-in-eks -n seqtoid-dev --context seqtoid-dev db:migrate:status
 #
 # ServiceAccount (--sa): defaults to `seqtoid-web` -- the RUNTIME role, which has the app S3 grants
 # (e.g. seqtoid-public-references) that data-load tasks like update_pathogen_list need. Use
 # `--sa seqtoid-web-provisioner` only for provisioning/DDL that needs the elevated provisioner role.
+#
+# -e KEY=VALUE (repeatable): set/override an env var on the runner container. Use for env-driven tasks,
+# e.g. update_pathogen_list reads PATHOGEN_LIST_VERSION and DRY_RUN. Chamber-injected config
+# (CHAMBER_SERVICE / S3_DATABASE_BUCKET / DB creds) is inherited from the cloned migrate Job.
 set -euo pipefail
 
-CONTEXT="seqtoid-dev"; NS=""; SA="seqtoid-web"; NAME=""
+CONTEXT="seqtoid-dev"; NS=""; SA="seqtoid-web"; NAME=""; ENV_KVS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n|--namespace) NS="$2"; shift 2 ;;
     --context)      CONTEXT="$2"; shift 2 ;;
     --sa)           SA="$2"; shift 2 ;;
     --name)         NAME="$2"; shift 2 ;;
-    -h|--help)      sed -n '2,27p' "$0"; exit 0 ;;
+    -e|--env)       [[ "$2" == *=* ]] || { echo "error: -e expects KEY=VALUE, got '$2'" >&2; exit 2; }
+                    ENV_KVS+=("$2"); shift 2 ;;
+    -h|--help)      sed -n '2,31p' "$0"; exit 0 ;;
     --)             shift; break ;;
     -*)             echo "unknown flag: $1" >&2; exit 2 ;;
     *)              break ;;
@@ -51,7 +58,7 @@ echo ">> rake $*"
 # Emit the runner Job: clone the migrate pod spec, override name/SA/args, fail-fast, auto-clean.
 # The migrate Job JSON is piped to stdin; the transform is passed via -c so it doesn't collide with it.
 CLONE_PY='
-import json, sys
+import json, os, sys
 job = json.load(sys.stdin); name, sa, rake = sys.argv[1], sys.argv[2], sys.argv[3:]
 job.pop("status", None)
 m = job["metadata"]
@@ -62,9 +69,20 @@ spec = job["spec"]; spec.pop("selector", None)
 spec["backoffLimit"] = 0; spec["ttlSecondsAfterFinished"] = 7200
 tmpl = spec["template"]; tmpl.setdefault("metadata", {}).pop("labels", None)
 ts = tmpl["spec"]; ts["serviceAccountName"] = sa
-ts["containers"][0]["args"] = ["rake"] + rake
+c = ts["containers"][0]; c["args"] = ["rake"] + rake
+# Upsert -e KEY=VALUE overrides (newline-joined via RUNNER_ENV) onto the container env.
+envlist = c.setdefault("env", [])
+for kv in os.environ.get("RUNNER_ENV", "").splitlines():
+    if not kv.strip():
+        continue
+    k_, _, v_ = kv.partition("=")
+    envlist[:] = [e for e in envlist if e.get("name") != k_]
+    envlist.append({"name": k_, "value": v_})
 print(json.dumps(job))
 '
+RUNNER_ENV=""
+for kv in ${ENV_KVS[@]+"${ENV_KVS[@]}"}; do RUNNER_ENV+="$kv"$'\n'; done
+export RUNNER_ENV
 k get "$SRC" -o json | python3 -c "$CLONE_PY" "$NAME" "$SA" "$@" | k apply -f -
 
 # Stream logs, then surface the real exit status.
