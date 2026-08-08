@@ -52,5 +52,15 @@ module ApplicationHelper
     }
   end
 
+  # Minimal, host-only context for pages that mount React WITHOUT user_context.
+  # These views (legal, FAQ, metadata, auth/oauth error, the logged-out header)
+  # render help-center links but carry no identity payload. Link.tsx resolves the
+  # "helpcenter:" sentinel against helpCenterHost, so this one string is all they
+  # need. Deliberately NOT user_context: keeping it separate means fields added to
+  # user_context can never silently land on these pages (SW-4).
+  def help_center_context
+    { helpCenterHost: help_center_host }
+  end
+
   HUMAN_TAX_IDS = [9605, 9606].freeze
 end
