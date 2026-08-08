@@ -1,5 +1,5 @@
 <div id="FAQPage_page">
   <%= javascript_tag do %>
-    react_component('FAQPage', {}, 'FAQPage_page');
+    react_component('FAQPage', {}, 'FAQPage_page', JSON.parse('<%= raw escape_json(help_center_context) %>'));
   <% end %>
 </div>

@@ -3,7 +3,8 @@
     react_component(
       'UploadInstructions',
       { standalone: true, size: "small" },
-      'MetadataInstructions_page'
+      'MetadataInstructions_page',
+      JSON.parse('<%= raw escape_json(help_center_context) %>')
     );
   <% end %>
 </div>
