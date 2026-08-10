@@ -148,17 +148,35 @@ module S3Util
     end
   end
 
+  # S3 CopyObject copies an object in a single operation, but that operation is
+  # capped at 5 GiB by AWS. Larger objects must be copied via a multipart copy
+  # (UploadPartCopy). copy_object has no fallback, so we branch on the source size:
+  # objects at or under the limit take the proven single-copy path, larger ones use
+  # the SDK's managed multipart copy.
+  MAX_SINGLE_COPY_BYTES = 5 * 1024 * 1024 * 1024 # 5 GiB (S3 CopyObject hard limit)
+
   def self.copy_with_tags(source_path, dest_path, tags = {})
     source_bucket, source_key = parse_s3_path(source_path)
     dest_bucket, dest_key = parse_s3_path(dest_path)
-    Rails.logger.debug("Copying S3 [#{source_bucket}/#{source_key}] -> [#{dest_bucket}/#{dest_key}] tags [#{URI.encode_www_form(tags)}]")
+    tagging = URI.encode_www_form(tags)
+    Rails.logger.debug("Copying S3 [#{source_bucket}/#{source_key}] -> [#{dest_bucket}/#{dest_key}] tags [#{tagging}]")
 
-    AwsClient[:s3].copy_object(
-      copy_source: "#{source_bucket}/#{source_key}",
-      bucket: dest_bucket,
-      key: dest_key,
-      tagging_directive: "REPLACE",
-      tagging: URI.encode_www_form(tags)
-    )
+    source_size = AwsClient[:s3].head_object(bucket: source_bucket, key: source_key).content_length
+
+    if source_size > MAX_SINGLE_COPY_BYTES
+      # Multipart copy for objects above the 5 GiB single-operation limit. tagging is
+      # applied on the multipart upload; tagging_directive is a copy_object-only option
+      # and does not apply here.
+      Aws::S3::Object.new(bucket_name: dest_bucket, key: dest_key, client: AwsClient[:s3])
+                     .copy_from("#{source_bucket}/#{source_key}", multipart_copy: true, tagging: tagging)
+    else
+      AwsClient[:s3].copy_object(
+        copy_source: "#{source_bucket}/#{source_key}",
+        bucket: dest_bucket,
+        key: dest_key,
+        tagging_directive: "REPLACE",
+        tagging: tagging
+      )
+    end
   end
 end

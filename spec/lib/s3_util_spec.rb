@@ -107,4 +107,39 @@ RSpec.describe S3Util do
       end
     end
   end
+
+  describe "#copy_with_tags" do
+    let(:source_path) { "s3://src-bucket/import/big_R1.fastq.gz" }
+    let(:dest_path) { "s3://dst-bucket/samples/1/2/fastqs/big_R1.fastq.gz" }
+    let(:tags) { { type: "sample", id: "2" } }
+    let(:tagging) { "type=sample&id=2" }
+
+    it "uses a single copy_object (not multipart) for objects at or under 5 GiB" do
+      @mock_aws_clients[:s3].stub_responses(:head_object, { content_length: S3Util::MAX_SINGLE_COPY_BYTES })
+      copy_args = nil
+      allow(@mock_aws_clients[:s3]).to receive(:copy_object) { |args| copy_args = args }
+      expect_any_instance_of(Aws::S3::Object).not_to receive(:copy_from)
+
+      S3Util.copy_with_tags(source_path, dest_path, tags)
+
+      expect(copy_args).to eq(
+        copy_source: "src-bucket/import/big_R1.fastq.gz",
+        bucket: "dst-bucket",
+        key: "samples/1/2/fastqs/big_R1.fastq.gz",
+        tagging_directive: "REPLACE",
+        tagging: tagging
+      )
+    end
+
+    # SMP-1746: a >5 GiB source used to hit the copy_object 5 GiB cap and fail with
+    # S3_UPLOAD_FAILED before a run was ever created. Large objects must go multipart.
+    it "uses a multipart copy for objects larger than 5 GiB" do
+      @mock_aws_clients[:s3].stub_responses(:head_object, { content_length: S3Util::MAX_SINGLE_COPY_BYTES + 1 })
+      expect(@mock_aws_clients[:s3]).not_to receive(:copy_object)
+      expect_any_instance_of(Aws::S3::Object).to receive(:copy_from)
+        .with("src-bucket/import/big_R1.fastq.gz", hash_including(multipart_copy: true, tagging: tagging))
+
+      S3Util.copy_with_tags(source_path, dest_path, tags)
+    end
+  end
 end
