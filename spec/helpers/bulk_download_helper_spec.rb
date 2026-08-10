@@ -299,12 +299,51 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
       # 2) The required field is listed first.
       # 3) collection_location is displayed in the header instead of collection_location_v2.
       # 4) Human metadata (ie. host_age) is HIPAA compliant
+      # 5) host_organism is emitted as a fixed second column, per sample.
       expect(csv_string).to eq(
         generate_expected_csv_str([
-                                    ["sample_name", "sample_type", "collection_location", "host_age", "custom_field_one", "custom_field_two"],
-                                    ["Test Sample 1", "Serum", "San Francisco, USA", "≥ #{MetadataField::MAX_HUMAN_AGE}", "Value One", nil],
-                                    ["Test Sample 2", "CSF", "Los Angeles, USA", MetadataField::MAX_HUMAN_AGE.to_s, nil, "Value Two"],
-                                    ["Test Sample 3", "Serum", "San Francisco, USA", (MetadataField::MAX_HUMAN_AGE - 1).to_s, "Value One", nil],
+                                    ["sample_name", "host_organism", "sample_type", "collection_location", "host_age", "custom_field_one", "custom_field_two"],
+                                    ["Test Sample 1", "Human", "Serum", "San Francisco, USA", "≥ #{MetadataField::MAX_HUMAN_AGE}", "Value One", nil],
+                                    ["Test Sample 2", "Mosquito", "CSF", "Los Angeles, USA", MetadataField::MAX_HUMAN_AGE.to_s, nil, "Value Two"],
+                                    ["Test Sample 3", "Human", "Serum", "San Francisco, USA", (MetadataField::MAX_HUMAN_AGE - 1).to_s, "Value One", nil],
+                                  ])
+      )
+    end
+
+    # Host organism is not a metadata field (MetadataField::RESERVED_NAMES forbids the name),
+    # so it can only reach the download as a fixed column. Pin that it does.
+    it "includes the host organism column even when the sample has no metadata at all" do
+      MetadataField.where(name: "sample_type").update(is_required: 0)
+
+      sample = create(:sample, project: @project, name: "Test Sample 5", host_genome_name: "Mosquito",
+                               pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
+
+      csv_string = BulkDownloadsHelper.generate_metadata_csv(Sample.where(id: sample.id))
+
+      expect(csv_string).to eq(
+        generate_expected_csv_str([
+                                    ["sample_name", "host_organism"],
+                                    ["Test Sample 5", "Mosquito"],
+                                  ])
+      )
+    end
+
+    # samples.host_genome_id is nullable, and legacy rows can have no host genome.
+    it "emits a blank host organism rather than raising when the sample has no host genome" do
+      MetadataField.where(name: "sample_type").update(is_required: 0)
+
+      sample = create(:sample, project: @project, name: "Test Sample 6",
+                               pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
+      # Skipping validations is the point: `belongs_to :host_genome` is required for new writes,
+      # so the only way to reproduce a legacy null-host-genome row is to write it directly.
+      sample.update_column(:host_genome_id, nil) # rubocop:disable Rails/SkipsModelValidations
+
+      csv_string = BulkDownloadsHelper.generate_metadata_csv(Sample.where(id: sample.id))
+
+      expect(csv_string).to eq(
+        generate_expected_csv_str([
+                                    ["sample_name", "host_organism"],
+                                    ["Test Sample 6", ""],
                                   ])
       )
     end
@@ -323,8 +362,8 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
 
       expect(csv_string).to eq(
         generate_expected_csv_str([
-                                    ["sample_name"],
-                                    ["Test Sample 4"],
+                                    ["sample_name", "host_organism"],
+                                    ["Test Sample 4", sample_no_metadata.host_genome_name],
                                   ])
       )
     end

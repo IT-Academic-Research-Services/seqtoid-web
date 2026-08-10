@@ -476,26 +476,42 @@ module BulkDownloadsHelper
     }
   end
 
+  # Host organism lives on the sample itself (samples.host_genome_id), not in metadata_fields
+  # -- MetadataField forbids the name outright (MetadataField::RESERVED_NAMES), so walking the
+  # metadata fields can never surface it. Emit it as a fixed second column instead.
+  # "host_organism" is one of MetadataField::HOST_GENOME_SYNONYMS, so the exported file stays
+  # re-importable for this column, and it matches the snake_case of "sample_name".
+  METADATA_CSV_FIXED_HEADERS = ["sample_name", "host_organism"].freeze
+
+  # samples.host_genome_id is nullable and Sample#host_genome_name returns nil when the
+  # association is missing. `belongs_to :host_genome` is required for new writes, but legacy
+  # rows carried over from IDseq can still have a null or dangling host_genome_id, so a nil
+  # here is a real (if rare) data state, not a bug to be papered over. Export it as a blank
+  # cell, matching how absent metadata values render.
+  def self.metadata_csv_fixed_values(sample, host_genome_by_sample_id)
+    [sample.name, host_genome_by_sample_id[sample.id] || ""]
+  end
+
   # This method generates the csv for the metadata bulk download.
   def self.generate_metadata_csv(samples)
-    metadata_headers, metadata_keys, metadata_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: samples)
+    metadata_headers, metadata_keys, metadata_by_sample_id, host_genome_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: samples)
 
     CSVSafe.generate(headers: true) do |csv|
-      csv << ["sample_name"] + metadata_headers
+      csv << METADATA_CSV_FIXED_HEADERS + metadata_headers
       samples.each do |sample|
         metadata = metadata_by_sample_id[sample.id] || {}
-        csv << [sample.name] + metadata.values_at(*metadata_keys)
+        csv << BulkDownloadsHelper.metadata_csv_fixed_values(sample, host_genome_by_sample_id) + metadata.values_at(*metadata_keys)
       end
     end
   end
 
   def self.generate_metadata_arr(samples)
-    metadata_headers, metadata_keys, metadata_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: samples)
+    metadata_headers, metadata_keys, metadata_by_sample_id, host_genome_by_sample_id = BulkDownloadsHelper.generate_sample_metadata_csv_info(samples: samples)
     csv = []
-    csv << ["sample_name"] + metadata_headers
+    csv << METADATA_CSV_FIXED_HEADERS + metadata_headers
     samples.each do |sample|
       metadata = metadata_by_sample_id[sample.id] || {}
-      csv << [sample.name] + metadata.values_at(*metadata_keys)
+      csv << BulkDownloadsHelper.metadata_csv_fixed_values(sample, host_genome_by_sample_id) + metadata.values_at(*metadata_keys)
     end
     csv
   end
@@ -612,6 +628,8 @@ module BulkDownloadsHelper
 
     sample_ids = samples.pluck(:id)
     metadata_by_sample_id = Metadatum.by_sample_ids(sample_ids, use_csv_compatible_values: true)
+    # Used for the HIPAA host-age clamp below, and returned so callers can export host organism
+    # as a column (it is not a metadata field -- see METADATA_CSV_FIXED_HEADERS).
     host_genome_by_sample_id = samples.map { |sample| [sample.id, sample.host_genome_name] }.to_h
 
     # Convert metadata to HIPAA-compliant values
@@ -623,6 +641,6 @@ module BulkDownloadsHelper
       end
     end
 
-    return [metadata_headers, metadata_keys, metadata_by_sample_id]
+    return [metadata_headers, metadata_keys, metadata_by_sample_id, host_genome_by_sample_id]
   end
 end

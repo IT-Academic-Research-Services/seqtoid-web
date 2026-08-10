@@ -123,5 +123,13 @@ RSpec.describe BulkDownloadsHelper, type: :helper do
       expect(arr[1].first).to eq(sample.name)
       expect(arr[1]).to include("Serum")
     end
+
+    # Host organism is a fixed column, not a metadata field, so it has to be pinned by position.
+    it "emits host organism as the second column, before the metadata fields" do
+      sample = create(:sample, host_genome_name: "Mosquito", metadata_fields: { "sample_type" => "Serum" })
+      arr = BulkDownloadsHelper.generate_metadata_arr(Sample.where(id: sample.id))
+      expect(arr.first[0, 2]).to eq(["sample_name", "host_organism"])
+      expect(arr[1][0, 2]).to eq([sample.name, "Mosquito"])
+    end
   end
 end
