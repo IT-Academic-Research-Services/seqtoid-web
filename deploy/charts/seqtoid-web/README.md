@@ -11,7 +11,7 @@ task-definition path. This is the crux artifact of the ECS→EKS blue/green cuto
 | `rollout.yaml` | `czecs.json` (web service) | `kind: Rollout`, **blueGreen** strategy, active/preview Services |
 | `services.yaml` | ALB target group | `<fullname>-active` (live) + `<fullname>-preview` (new color) |
 | `workers.yaml` | `czecs-resque.json` ×4 + `czecs-shoryuken.json` | resque / scheduler / pipeline-monitor / result-monitor + shoryuken Deployments |
-| `migrate-job.yaml` | `czecs-task-migrate.json` (run-task) | `rails db:migrate:with_data` as an Argo CD **PreSync hook** |
+| `migrate-job.yaml` | `czecs-task-migrate.json` (run-task) | `rails db:migrate:with_data` (+ `seed:migrate`, see `migrate.seedMigrate`) as an Argo CD **PreSync hook** |
 | `analysistemplate.yaml` | (new) | smoke Job — curls the preview color's `/health_check`; gates promotion |
 | `ingress.yaml` | external ALB | AWS Load Balancer Controller → the **active** Service |
 | `serviceaccount.yaml` | ECS web task role | **IRSA** (`eks.amazonaws.com/role-arn`) |
