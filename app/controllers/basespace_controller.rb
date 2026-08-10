@@ -6,24 +6,37 @@ class BasespaceController < ApplicationController
     disable_header_navigation
     @access_token = nil
 
-    if params[:code] &&
-       ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"] &&
-       ENV["CZID_BASESPACE_CLIENT_ID"] &&
-       ENV["CZID_BASESPACE_CLIENT_SECRET"]
+    missing_env_vars = BasespaceHelper.missing_oauth_env_vars
+    if missing_env_vars.any?
+      # Do not fail silently. Without this, a misconfigured environment renders
+      # the oauth callback with a nil access token and emits no telemetry at
+      # all, which presents to the user as an unexplained "Basespace upload
+      # issue" that nobody can diagnose after the fact.
+      LogUtil.log_error(
+        "BasespaceConfigurationError: Basespace OAuth is not configured for this environment. " \
+        "Missing environment variables: #{missing_env_vars.join(', ')}. Basespace upload is unavailable.",
+        missing_env_vars: missing_env_vars
+      )
+      return
+    end
 
-      begin
-        response = HttpHelper.post_json(
-          "https://api.basespace.illumina.com/v1pre3/oauthv2/token",
-          "code" => params[:code],
-          "redirect_uri" => ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"],
-          "client_id" => ENV["CZID_BASESPACE_CLIENT_ID"],
-          "client_secret" => ENV["CZID_BASESPACE_CLIENT_SECRET"],
-          "grant_type" => "authorization_code"
-        )
-        @access_token = response["access_token"]
-      rescue StandardError => e
-        LogUtil.log_error("Failed to get basespace access token: #{e}", exception: e)
-      end
+    if params[:code].blank?
+      LogUtil.log_error("BasespaceOauthError: Basespace OAuth callback was reached without an authorization code.")
+      return
+    end
+
+    begin
+      response = HttpHelper.post_json(
+        "https://api.basespace.illumina.com/v1pre3/oauthv2/token",
+        "code" => params[:code],
+        "redirect_uri" => ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"],
+        "client_id" => ENV["CZID_BASESPACE_CLIENT_ID"],
+        "client_secret" => ENV["CZID_BASESPACE_CLIENT_SECRET"],
+        "grant_type" => "authorization_code"
+      )
+      @access_token = response["access_token"]
+    rescue StandardError => e
+      LogUtil.log_error("Failed to get basespace access token: #{e}", exception: e)
     end
   end
 

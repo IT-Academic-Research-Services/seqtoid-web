@@ -27,6 +27,8 @@ export const REF_SEQ_FILE_NAME_ERROR_MESSAGE =
   "Reference file name can only contain letters, numbers, dashes, parenthesis and underscores";
 export const UNSUPPORTED_UPLOAD_OPTION_TOOLTIP =
   "This upload option is not supported for this pipeline.";
+export const BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP =
+  "Basespace upload is not available in this environment. Please contact us for help.";
 export const R1CHECK = "_R1";
 export const R2CHECK = "_R2";
 
