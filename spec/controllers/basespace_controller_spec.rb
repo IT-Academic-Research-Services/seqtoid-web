@@ -141,7 +141,13 @@ RSpec.describe BasespaceController, type: :controller do
         it "returns an error" do
           expect(LogUtil).to receive(:log_error).with(
             "Fetch Basespace projects failed with error: Failed to list projects",
-            hash_including(access_token: "123")
+            # SMP-1729: the access token is fingerprinted, never logged. Assert the
+            # fingerprint IS present AND the raw-token key is gone, so this doubles as a
+            # regression test for the credential leak rather than just tracking the rename.
+            satisfy do |extras|
+              extras[:basespace_token_fingerprint] == SecretRedaction.fingerprint("123") &&
+                !extras.key?(:access_token)
+            end
           ).exactly(1).times
           get :projects, params: { access_token: "123" }
 
@@ -243,7 +249,13 @@ RSpec.describe BasespaceController, type: :controller do
         it "returns an error" do
           expect(LogUtil).to receive(:log_error).with(
             "Fetch samples for Basespace project failed with error: Failed to get samples for project",
-            hash_including(access_token: "123", project_id: "77")
+            # SMP-1729: token fingerprinted, never logged. project_id is not a secret and
+            # must still be present -- assert both, plus the absence of the raw token.
+            satisfy do |extras|
+              extras[:basespace_token_fingerprint] == SecretRedaction.fingerprint("123") &&
+                extras[:project_id] == "77" &&
+                !extras.key?(:access_token)
+            end
           ).exactly(1).times
           get :samples_for_project, params: { access_token: "123", basespace_project_id: 77 }
 

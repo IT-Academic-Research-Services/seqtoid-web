@@ -1,4 +1,5 @@
 require 'open-uri'
+require './lib/secret_redaction'
 
 # TODO(mark): Investigate if there is a way to fetch the user's current projects with v2 API. No obvious way from the docs.
 BASESPACE_CURRENT_PROJECTS_URL = "https://api.basespace.illumina.com/v1pre3/users/current/projects".freeze
@@ -19,6 +20,15 @@ BASESPACE_OAUTH_ENV_VARS = [
 ].freeze
 
 module BasespaceHelper
+  # A BaseSpace access token is the USER'S credential for their own Illumina
+  # account, held by us only for the duration of an upload, so it must never be
+  # written to a log or to Sentry (SMP-1729). Where a log line genuinely needs to
+  # say WHICH token -- several samples share one token, so "did this one get
+  # revoked" is a real question -- log SecretRedaction.fingerprint instead: a
+  # truncated SHA256 that correlates lines without being replayable against
+  # Illumina. The same applies to BaseSpace HrefContent download paths, which are
+  # presigned URLs and therefore bearer credentials for their validity window.
+
   # Names of the required OAuth environment variables that are unset or blank.
   # Blank is treated as unset because an empty string is truthy in Ruby, which
   # would otherwise let a misconfigured environment pass a bare presence check.
@@ -45,7 +55,7 @@ module BasespaceHelper
     # If we reach this step, the access token must not have been revoked.
     LogUtil.log_error(
       "BasespaceAccessTokenError: Failed to revoke access token for sample id #{sample_id}",
-      access_token: access_token,
+      basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
       sample_id: sample_id
     )
   rescue HttpHelper::HttpError => e
@@ -77,16 +87,23 @@ module BasespaceHelper
         if response.dig("ResponseStatus", "Message").present?
           LogUtil.log_error(
             "Fetch Basespace projects failed with error: #{response['ResponseStatus']['Message']}",
-            access_token: access_token,
-            response: response
+            basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+            response: SecretRedaction.scrub(response)
           )
         else
-          LogUtil.log_error("Failed to fetch Basespace projects", access_token: access_token, response: response)
+          LogUtil.log_error(
+            "Failed to fetch Basespace projects",
+            basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+            response: SecretRedaction.scrub(response)
+          )
         end
         return nil
       end
     rescue StandardError
-      LogUtil.log_error("Failed to fetch Basespace projects", access_token: access_token)
+      LogUtil.log_error(
+        "Failed to fetch Basespace projects",
+        basespace_token_fingerprint: SecretRedaction.fingerprint(access_token)
+      )
       return nil
     end
 
@@ -108,15 +125,15 @@ module BasespaceHelper
           LogUtil.log_error(
             "Fetch samples for Basespace project failed with error: #{response['ErrorMessage']}",
             project_id: project_id,
-            access_token: access_token,
-            response: response
+            basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+            response: SecretRedaction.scrub(response)
           )
         else
           LogUtil.log_error(
             "Failed to fetch samples for Basespace project",
             project_id: project_id,
-            access_token: access_token,
-            response: response
+            basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+            response: SecretRedaction.scrub(response)
           )
         end
         return nil
@@ -125,7 +142,7 @@ module BasespaceHelper
       LogUtil.log_error(
         "Failed to fetch samples for Basespace project",
         project_id: project_id,
-        access_token: access_token
+        basespace_token_fingerprint: SecretRedaction.fingerprint(access_token)
       )
       return nil
     end
@@ -156,15 +173,15 @@ module BasespaceHelper
           LogUtil.log_error(
             "Fetch files for Basespace dataset failed with error: #{response['ErrorMessage']}",
             dataset_id: dataset_id,
-            access_token: access_token,
-            response: response
+            basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+            response: SecretRedaction.scrub(response)
           )
         else
           LogUtil.log_error(
             "Failed to fetch files for basespace dataset",
             dataset_id: dataset_id,
-            access_token: access_token,
-            response: response
+            basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+            response: SecretRedaction.scrub(response)
           )
         end
         return nil
@@ -173,7 +190,7 @@ module BasespaceHelper
       LogUtil.log_error(
         "Failed to fetch files for basespace dataset",
         dataset_id: dataset_id,
-        access_token: access_token
+        basespace_token_fingerprint: SecretRedaction.fingerprint(access_token)
       )
       return nil
     end
@@ -203,9 +220,13 @@ module BasespaceHelper
     )
 
     unless success
+      # basespace_paths are HrefContent download URLs -- presigned, so the query
+      # string IS the credential. Log the origin and object path (which is what
+      # identifies the file) with the signature stripped. curl's stderr is passed
+      # through the same redaction because it can echo the URL it was given.
       LogUtil.log_error(
-        "Failed to transfer file from basespace to #{s3_path} for #{file_name}: #{stderr}",
-        basespace_paths: basespace_paths,
+        "Failed to transfer file from basespace to #{s3_path} for #{file_name}: #{SecretRedaction.redact_text(stderr)}",
+        basespace_paths: SecretRedaction.redact_urls(basespace_paths),
         s3_path: s3_path,
         file_name: file_name
       )

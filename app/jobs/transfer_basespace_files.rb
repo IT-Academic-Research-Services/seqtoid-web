@@ -1,3 +1,5 @@
+require './lib/secret_redaction'
+
 # Job to upload input files from basespace file to s3 for a particular sample.
 class TransferBasespaceFiles
   extend InstrumentedJob
@@ -38,7 +40,9 @@ class TransferBasespaceFiles
       exception: err,
       sample_id: sample_id,
       basespace_dataset_id: basespace_dataset_id,
-      basespace_access_token: basespace_access_token
+      # The token is the user's Illumina credential. Log a non-reversible
+      # fingerprint so a shared-token failure is still traceable (SMP-1729).
+      basespace_token_fingerprint: SecretRedaction.fingerprint(basespace_access_token)
     )
     raise err
   end
