@@ -65,6 +65,11 @@ import { LocalUploadModalHeader } from "./components/LocalUploadModalHeader";
 import { UploadConfirmationModal } from "./components/UploadConfirmationModal";
 import { UploadProgressModalSampleList } from "./components/UploadProgressModalSampleList";
 
+// SMP-1747: per-request timeout for the S3 upload client so a stalled connection cannot hang
+// forever and wedge the serial per-sample upload loop. Sized generously against a 5 MiB part on
+// a slow link (~42 KiB/s floor); the SDK retries a timed-out request before it fails the sample.
+const UPLOAD_REQUEST_TIMEOUT_MS = 120_000;
+
 interface LocalUploadProgressModalProps {
   adminOptions: Record<string, string>;
   bedFile: File | null;
@@ -342,6 +347,14 @@ export const LocalUploadProgressModal = ({
       // versions auto-inject a default CRC32 request checksum, which can break accelerate/CORS PUTs.
       requestChecksumCalculation: "WHEN_REQUIRED",
       responseChecksumValidation: "WHEN_REQUIRED",
+      // SMP-1747: bound every request so a stalled connection (fetch open, no bytes flowing)
+      // cannot hang forever. Samples upload serially, so a single wedged UploadPart with no
+      // timeout would block the whole batch and leave every later sample stuck in "created"
+      // until the 3h/18h stalled-upload sweep. The config object is passed to the browser's
+      // default FetchHttpHandler; a timed-out request is retried by the SDK's retry layer, and
+      // an unrecoverable one fails just that sample (parts are left on S3 for Resume) so the
+      // loop proceeds to the next. Generous vs a 5 MiB part on a slow link (~42 KiB/s floor).
+      requestHandler: { requestTimeout: UPLOAD_REQUEST_TIMEOUT_MS },
     });
   };
 
