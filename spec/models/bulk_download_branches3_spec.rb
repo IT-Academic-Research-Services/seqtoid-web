@@ -157,9 +157,35 @@ RSpec.describe BulkDownload, type: :model do
     it "logs and returns nil when presigning raises" do
       bd = create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_SUCCESS)
       allow(S3_PRESIGNER).to receive(:presigned_url).and_raise(StandardError, "presign boom")
-      expect(LogUtil).to receive(:log_error).with(/BulkDownloadPresignError/, anything)
+      expect(LogUtil).to receive(:log_error).with(
+        /BulkDownloadPresignError/,
+        hash_including(bulk_download_id: bd.id)
+      )
 
       expect(bd.output_file_presigned_url).to be_nil
+    end
+
+    # SMP-1748 regression. access_token is our own single-use callback bearer token; it was
+    # logged verbatim in the rescue arm above. Assert on the bytes that actually reach the log
+    # sink rather than on a LogUtil stub, so a future caller cannot reintroduce the leak by
+    # passing the token under some other extras key.
+    it "does not write the access token to the log when presigning raises" do
+      bd = create(:bulk_download, user: @joe, download_type: "sample_overview", status: BulkDownload::STATUS_SUCCESS)
+      allow(S3_PRESIGNER).to receive(:presigned_url).and_raise(StandardError, "presign boom")
+
+      log_output = StringIO.new
+      allow(Rails).to receive(:logger).and_return(ActiveSupport::Logger.new(log_output))
+
+      expect(bd.output_file_presigned_url).to be_nil
+
+      logged = log_output.string
+      expect(logged).to include("BulkDownloadPresignError")
+      expect(bd.access_token).to be_present
+      expect(logged).not_to include(bd.access_token)
+      expect(logged).not_to include("access_token")
+      # The failing download is still identifiable without the credential.
+      expect(logged).to include("bulk_download_id")
+      expect(logged).to include(bd.id.to_s)
     end
   end
 
