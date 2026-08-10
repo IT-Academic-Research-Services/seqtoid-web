@@ -9,10 +9,13 @@ interface NextcladeModalFooterProps {
   description?: string;
   invalidSampleNames?: string[];
   hasValidIds?: boolean;
+  isMissingUploadedTree?: boolean;
+  isParsingReferenceTree?: boolean;
   list?: string[];
   loading?: boolean;
   message?: string;
   onClick?: $TSFixMeFunction;
+  referenceTreeError?: string | null;
   samplesNotSentToNextclade?: string[];
   type?: "warning" | "error" | "success" | "info";
   validationError?: string | null;
@@ -21,8 +24,11 @@ interface NextcladeModalFooterProps {
 export const NextcladeModalFooter = ({
   hasValidIds,
   invalidSampleNames,
+  isMissingUploadedTree,
+  isParsingReferenceTree,
   loading,
   onClick,
+  referenceTreeError,
   samplesNotSentToNextclade,
   validationError,
 }: NextcladeModalFooterProps) => {
@@ -96,10 +102,35 @@ export const NextcladeModalFooter = ({
     }
   };
 
+  // Surfaces the state of an "Upload a Tree" selection: a parse failure, a tree
+  // still being read, or no usable tree yet. Without this the export ran with
+  // no tree at all and looked like a success (SMP-1660).
+  const renderReferenceTreeNotification = () => {
+    if (referenceTreeError) {
+      return renderNotification({
+        message: referenceTreeError,
+        type: "error",
+      });
+    }
+    if (isMissingUploadedTree && !isParsingReferenceTree) {
+      return renderNotification({
+        message:
+          "Upload a reference tree in Auspice JSON format, or choose the Nextclade Default Tree, before continuing.",
+        type: "warning",
+      });
+    }
+    return null;
+  };
+
   const renderViewQCInNextcladeButton = () => {
     return (
       <PrimaryButton
-        disabled={loading || !hasValidIds}
+        disabled={Boolean(
+          loading ||
+            !hasValidIds ||
+            isParsingReferenceTree ||
+            isMissingUploadedTree,
+        )}
         text="View QC in Nextclade"
         onClick={onClick}
       />
@@ -146,9 +177,16 @@ export const NextcladeModalFooter = ({
             className={cs.loading}
           />
         )}
+        {isParsingReferenceTree && (
+          <LoadingMessage
+            message="Reading reference tree..."
+            className={cs.loading}
+          />
+        )}
         {renderValidationError()}
         {renderInvalidSamplesNotifications()}
         {renderNonSARSCov2Warning()}
+        {renderReferenceTreeNotification()}
       </div>
       {renderViewQCInNextcladeButton()}
     </div>
