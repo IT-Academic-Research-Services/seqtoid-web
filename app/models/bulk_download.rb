@@ -169,7 +169,13 @@ class BulkDownload < ApplicationRecord
                                         expires_in: OUTPUT_DOWNLOAD_EXPIRATION,
                                         response_content_disposition: "attachment; filename=\"#{filename}\"").to_s
     rescue StandardError => e
-      LogUtil.log_error("BulkDownloadPresignError: #{e.inspect}", exception: e, access_token: access_token)
+      # SMP-1748: never log access_token. It is our own single-use callback bearer token
+      # (has_secure_token, embedded as a path segment in the success/error/progress routes),
+      # so writing it verbatim put a live credential into the Rails log -> CloudWatch/Loki.
+      # A fingerprint would add nothing here: there is exactly one token per bulk download and
+      # it is nulled on the first callback, so it is useless as a correlation key. The record
+      # id is the identifier an operator can actually act on, so log that instead.
+      LogUtil.log_error("BulkDownloadPresignError: #{e.inspect}", exception: e, bulk_download_id: id)
     end
     nil
   end
