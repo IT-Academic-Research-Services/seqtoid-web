@@ -1374,8 +1374,13 @@ class SamplesController < ApplicationController
   def upload
     @projects = current_power.updatable_projects
     @host_genomes = host_genomes_list || nil
-    @basespace_client_id = ENV["CZID_BASESPACE_CLIENT_ID"] || nil
-    @basespace_oauth_redirect_uri = ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"] || nil
+    # Use presence so that a blank env var is rendered as an empty string rather
+    # than passing a truthy-but-useless value to the client. The client treats an
+    # empty client id or redirect uri as "Basespace is not configured for this
+    # environment" and blocks the upload option instead of opening an OAuth popup
+    # that can only fail.
+    @basespace_client_id = ENV["CZID_BASESPACE_CLIENT_ID"].presence
+    @basespace_oauth_redirect_uri = ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"].presence
   end
 
   # GET /samples/1/edit

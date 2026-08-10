@@ -9,7 +9,27 @@ BASESPACE_DELETE_ACCESS_TOKEN_URL = "https://api.basespace.illumina.com/v2/oauth
 # If users reach this limit, we will need to implement multiple requests to fetch all the samples.
 BASESPACE_PAGE_SIZE = 1024
 
+# Environment variables that must all be set for the BaseSpace OAuth handshake
+# to be possible. If any is missing, BaseSpace upload cannot work in this
+# environment and must not be offered to the user as if it were functional.
+BASESPACE_OAUTH_ENV_VARS = [
+  "CZID_BASESPACE_CLIENT_ID",
+  "CZID_BASESPACE_CLIENT_SECRET",
+  "CZID_BASESPACE_OAUTH_REDIRECT_URI",
+].freeze
+
 module BasespaceHelper
+  # Names of the required OAuth environment variables that are unset or blank.
+  # Blank is treated as unset because an empty string is truthy in Ruby, which
+  # would otherwise let a misconfigured environment pass a bare presence check.
+  def self.missing_oauth_env_vars
+    BASESPACE_OAUTH_ENV_VARS.reject { |var| ENV[var].present? }
+  end
+
+  def self.oauth_configured?
+    missing_oauth_env_vars.empty?
+  end
+
   def revoke_access_token(access_token)
     HttpHelper.delete(
       BASESPACE_DELETE_ACCESS_TOKEN_URL,
