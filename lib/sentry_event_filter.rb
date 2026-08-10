@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
-# Predicates for Sentry `before_send` (config/initializers/sentry.rb), extracted
-# so the drop rules are unit-testable without booting Sentry.
+require_relative "secret_redaction"
+
+# Predicates and payload scrubbing for Sentry `before_send`
+# (config/initializers/sentry.rb), extracted so the rules are unit-testable
+# without booting Sentry.
 module SentryEventFilter
   # A socket connect that is still in progress (EALREADY / EINPROGRESS) at the
   # moment the process is signalled to shut down (SIGTERM/INT/QUIT surfaces in
@@ -17,7 +20,72 @@ module SentryEventFilter
   # which is what lets us tell `rails runner` apart from `rails server` etc.
   PROC_CMDLINE = "/proc/self/cmdline"
 
+  # Marker left in place of the extras payload if scrubbing itself blows up. The
+  # event still reports (exception + stacktrace are untouched); only the context
+  # we could not prove clean is dropped. Fail CLOSED on the secret, open on the
+  # error signal.
+  SCRUB_FAILED = { scrub_error: "extras dropped: redaction failed" }.freeze
+
   module_function
+
+  # Last line of defence for credential material in telemetry (SMP-1729).
+  #
+  # Individual call sites are fixed not to pass secrets, but call sites are a
+  # snapshot -- the next one to add `access_token:` to a log payload would
+  # re-open the hole silently. This scrubs the event on the way out instead, so
+  # the property holds for call sites that do not exist yet: values under a
+  # secret-looking key are dropped, presigned URLs lose their signature, and
+  # bearer tokens embedded in free text are masked, in both extras and
+  # breadcrumbs. Message, exception, stacktrace and every non-secret value are
+  # left exactly as they were.
+  def scrub_secrets(event)
+    return event if event.nil?
+
+    begin
+      scrub_attribute(event, :extra)
+      scrub_breadcrumbs(event)
+    rescue StandardError
+      force_attribute(event, :extra, SCRUB_FAILED.dup)
+    end
+
+    event
+  end
+
+  # Replace an event attribute with its scrubbed copy, whether the SDK exposes a
+  # writer for it or only a readable hash we can rewrite in place.
+  def scrub_attribute(event, name)
+    return unless event.respond_to?(name)
+
+    current = event.public_send(name)
+    return if current.nil?
+
+    scrubbed = SecretRedaction.scrub(current)
+    return if force_attribute(event, name, scrubbed)
+
+    current.replace(scrubbed) if current.is_a?(Hash)
+  end
+
+  def force_attribute(event, name, value)
+    writer = :"#{name}="
+    return false unless event.respond_to?(writer)
+
+    event.public_send(writer, value)
+    true
+  end
+
+  def scrub_breadcrumbs(event)
+    buffer = event.respond_to?(:breadcrumbs) ? event.breadcrumbs : nil
+    return unless buffer.respond_to?(:each)
+
+    buffer.each do |crumb|
+      next if crumb.nil?
+
+      scrub_attribute(crumb, :data)
+      if crumb.respond_to?(:message) && crumb.respond_to?(:message=)
+        crumb.message = SecretRedaction.redact_signed_text(crumb.message)
+      end
+    end
+  end
 
   # True for the benign resque-scheduler shutdown race (platform-overhaul 727):
   # on pod SIGTERM, resque-scheduler's before_shutdown releases its Redis master

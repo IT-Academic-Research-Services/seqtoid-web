@@ -185,7 +185,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: Validation failed: Input fastqs have identical read 1 source and read 2 source",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -219,7 +222,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: Validation failed: Input fastqs invalid number (3)",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -239,7 +245,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: #{ErrorHelper::SampleUploadErrors.error_fetching_basespace_files_for_dataset(fake_dataset_id, @sample.name, @sample.id)}",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -259,7 +268,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: #{ErrorHelper::SampleUploadErrors.no_files_in_basespace_dataset(fake_dataset_id, @sample.name, @sample.id)}",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -282,7 +294,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: #{ErrorHelper::SampleUploadErrors.upload_from_basespace_failed(@sample.name, @sample.id, file_one_name, fake_dataset_id, 3)}",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)

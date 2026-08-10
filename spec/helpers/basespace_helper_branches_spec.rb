@@ -14,7 +14,7 @@ RSpec.describe BasespaceHelper, type: :helper do
       allow(HttpHelper).to receive(:get_json).and_return({})
       expect(LogUtil).to receive(:log_error).with(
         "Failed to fetch Basespace projects",
-        hash_including(access_token: access_token)
+        hash_including(basespace_token_fingerprint: SecretRedaction.fingerprint(access_token))
       ).once
 
       expect(helper.basespace_projects(access_token)).to be_nil
@@ -25,7 +25,7 @@ RSpec.describe BasespaceHelper, type: :helper do
         .and_return("ResponseStatus" => { "Message" => "boom" })
       expect(LogUtil).to receive(:log_error).with(
         "Fetch Basespace projects failed with error: boom",
-        hash_including(access_token: access_token)
+        hash_including(basespace_token_fingerprint: SecretRedaction.fingerprint(access_token))
       ).once
 
       expect(helper.basespace_projects(access_token)).to be_nil

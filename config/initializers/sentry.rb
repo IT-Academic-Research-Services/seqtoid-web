@@ -49,12 +49,18 @@ if ENV['SENTRY_DSN_BACKEND']
     #      master lock hits a mid-connect socket (Errno::EALREADY caused by the
     #      shutdown Interrupt) -- platform-overhaul 727. Real Redis outages still
     #      report.
+    #
+    # Whatever survives those two rules is then scrubbed of credential material
+    # (SentryEventFilter.scrub_secrets): third-party bearer tokens and presigned
+    # URLs must never land in an event's extras or breadcrumbs (SMP-1729). This
+    # is deliberately a sink-side guarantee rather than a per-call-site one, so a
+    # future log payload cannot silently re-open the hole.
     config.before_send = lambda do |event, hint|
       if SentryEventFilter.interactive_cli_session?
         nil
       else
         exception = hint && hint[:exception]
-        SentryEventFilter.shutdown_connect_race?(exception) ? nil : event
+        SentryEventFilter.shutdown_connect_race?(exception) ? nil : SentryEventFilter.scrub_secrets(event)
       end
     end
   end
