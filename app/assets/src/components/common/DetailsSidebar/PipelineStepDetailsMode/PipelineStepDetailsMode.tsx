@@ -2,13 +2,32 @@ import cx from "classnames";
 import Linkify from "linkify-react";
 import moment from "moment";
 import React, { ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { Components } from "react-markdown";
 import { Accordion } from "~/components/layout";
 import { sampleErrorInfo } from "~/components/utils/sample";
 import PipelineVizStatusIcon from "~/components/views/PipelineViz/PipelineVizStatusIcon";
 import Sample from "~/interface/sample";
 import { FileList, InputFile, NameUrl, PipelineRun } from "~/interface/shared";
 import cs from "./pipeline_step_details_mode.scss";
+
+// linkify-react walks the React tree it is given and, for every element whose
+// type is not a plain tag name, clones it with its string children replaced by
+// an ARRAY of nodes. react-markdown requires `children` to be a single string,
+// so wrapping <ReactMarkdown> in <Linkify> destroys the markdown: development
+// builds throw, production builds render nothing at all. Linkify therefore has
+// to run INSIDE the markdown renderer, over already-parsed paragraph content,
+// rather than around it.
+// ignoreTags keeps linkify out of anchors the markdown itself produced (which
+// would otherwise nest <a> inside <a>) and out of code spans.
+const LINKIFY_OPTIONS = { ignoreTags: ["a", "code", "pre"] };
+
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => (
+    <Linkify as="p" options={LINKIFY_OPTIONS}>
+      {children}
+    </Linkify>
+  ),
+};
 
 export interface PSDProps {
   status: string;
@@ -90,11 +109,11 @@ const PipelineStepDetailsMode = ({
       return (
         <Accordion header={header} className={cs.accordion} open={true}>
           <div className={cx(cs.description, cs.accordionContent)}>
-            <Linkify>
-              <div className={cs.description}>
-                <ReactMarkdown>{descriptionWithoutIndentation}</ReactMarkdown>
-              </div>
-            </Linkify>
+            <div className={cs.description}>
+              <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+                {descriptionWithoutIndentation}
+              </ReactMarkdown>
+            </div>
           </div>
         </Accordion>
       );
