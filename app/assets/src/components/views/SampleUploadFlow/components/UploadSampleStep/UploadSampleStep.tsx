@@ -68,6 +68,7 @@ import {
 import cs from "../../sample_upload_flow.scss";
 import {
   groupSamplesByLane,
+  isBasespaceOAuthConfigured,
   openBasespaceOAuthPopup,
   removeLaneFromName,
 } from "../../utils";
@@ -81,6 +82,7 @@ import {
   SampleUploadTable,
 } from "./components/SampleUploadTable";
 import {
+  BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP,
   MISMATCH_FORMAT_ERROR,
   NCBI_GENBANK_REF_SEQ_HEADER_REGEX,
   REF_SEQ_FILE_NAME_ERROR_MESSAGE,
@@ -272,9 +274,28 @@ class UploadSampleStepCC extends React.Component<
     }
   };
 
+  isBasespaceConfigured = () => {
+    const { basespaceOauthRedirectUri, basespaceClientId } = this.props;
+    return isBasespaceOAuthConfigured(
+      basespaceClientId,
+      basespaceOauthRedirectUri,
+    );
+  };
+
   requestBasespaceReadProjectPermissions = () => {
     const basespaceSamples = this.getSelectedSamples(BASESPACE_UPLOAD);
     const { basespaceOauthRedirectUri, basespaceClientId } = this.props;
+
+    if (!this.isBasespaceConfigured()) {
+      // Should be unreachable: the Basespace tab is disabled when unconfigured.
+      // openBasespaceOAuthPopup also refuses, but stop here so we never even
+      // reach the point of asking for project read permissions we cannot get.
+      // eslint-disable-next-line no-console
+      console.error(
+        "Basespace OAuth is not configured for this environment. Cannot request Basespace project read permissions.",
+      );
+      return;
+    }
 
     // Request permissions to read (i.e. download files) from all source projects.
     const uniqueBasespaceProjectIds = uniq(
@@ -1397,19 +1418,26 @@ class UploadSampleStepCC extends React.Component<
     const shouldDisableS3Tab =
       this.isWorkflowSelected(UPLOAD_WORKFLOWS.MNGS.value) &&
       selectedTechnology === SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE;
+    const basespaceUnavailable = !this.isBasespaceConfigured();
     const shouldDisableBasespaceTab =
-      (this.isWorkflowSelected(UPLOAD_WORKFLOWS.MNGS.value) ||
+      basespaceUnavailable ||
+      ((this.isWorkflowSelected(UPLOAD_WORKFLOWS.MNGS.value) ||
         this.isWorkflowSelected(
           UPLOAD_WORKFLOWS.COVID_CONSENSUS_GENOME.value,
         )) &&
-      selectedTechnology === SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE;
+        selectedTechnology === SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE);
 
     // We're currently disabling S3 tab for ONT v1, but it could be re-enabled in the future.
     // Basespace upload is disabled for Nanopore pipelines because it only stores Illumina files.
+    // It is also disabled outright when this environment has no Basespace OAuth
+    // credentials, because the OAuth handshake cannot succeed without them.
     const s3Tab = this.renderUploadTab(shouldDisableS3Tab, REMOTE_UPLOAD_LABEL);
     const basespaceTab = this.renderUploadTab(
       shouldDisableBasespaceTab,
       BASESPACE_UPLOAD_LABEL,
+      basespaceUnavailable
+        ? BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP
+        : UNSUPPORTED_UPLOAD_OPTION_TOOLTIP,
     );
 
     return (
@@ -1435,7 +1463,11 @@ class UploadSampleStepCC extends React.Component<
     );
   };
 
-  renderUploadTab = (disabled: $TSFixMe, label: $TSFixMe) => {
+  renderUploadTab = (
+    disabled: $TSFixMe,
+    label: $TSFixMe,
+    tooltip: string = UNSUPPORTED_UPLOAD_OPTION_TOOLTIP,
+  ) => {
     let tab = (
       <Tab
         disabled={disabled}
@@ -1445,12 +1477,7 @@ class UploadSampleStepCC extends React.Component<
     );
     if (disabled) {
       tab = (
-        <Tooltip
-          arrow
-          placement="top"
-          title={UNSUPPORTED_UPLOAD_OPTION_TOOLTIP}
-          leaveDelay={0}
-        >
+        <Tooltip arrow placement="top" title={tooltip} leaveDelay={0}>
           <span>{tab}</span>
         </Tooltip>
       );
