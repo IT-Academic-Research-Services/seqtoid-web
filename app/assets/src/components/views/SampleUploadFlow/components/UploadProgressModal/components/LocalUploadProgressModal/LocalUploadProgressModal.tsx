@@ -66,9 +66,19 @@ import { UploadConfirmationModal } from "./components/UploadConfirmationModal";
 import { UploadProgressModalSampleList } from "./components/UploadProgressModalSampleList";
 
 // SMP-1747: per-request timeout for the S3 upload client so a stalled connection cannot hang
-// forever and wedge the serial per-sample upload loop. Sized generously against a 5 MiB part on
+// forever and wedge the per-sample upload loop. Sized generously against a 5 MiB part on
 // a slow link (~42 KiB/s floor); the SDK retries a timed-out request before it fails the sample.
 const UPLOAD_REQUEST_TIMEOUT_MS = 120_000;
+
+// Throughput: upload up to this many samples concurrently. Each sample's input files and parts
+// still upload in parallel within. Bounded (not a full Promise.all over every sample) because
+// credentials are fetched per sample as each pool slot opens, so we never fetch all of a large
+// batch's upload credentials at once and let the later ones expire before we reach them.
+const SAMPLE_UPLOAD_CONCURRENCY = 3;
+
+// Throughput: number of parts uploaded in parallel per file (ResumableUpload worker count).
+// Higher streams more of a large file at once; the library default is 4.
+const PART_UPLOAD_CONCURRENCY = 8;
 
 interface LocalUploadProgressModalProps {
   adminOptions: Record<string, string>;
@@ -265,12 +275,25 @@ export const LocalUploadProgressModal = ({
     // Ping a heartbeat periodically to say the browser is actively uploading the samples.
     heartbeatInterval = await startUploadHeartbeat();
 
-    // Upload each sample in serial, but upload each sample's input files and parts in parallel.
-    // if we upload samples in parallel, we fetch AWS credentials for many samples at once at
-    // the beginning, so by the time we get to the last sample, the credentials could have expired.
-    for (const sample of samples) {
-      await uploadSample(sample);
-    }
+    // Upload up to SAMPLE_UPLOAD_CONCURRENCY samples at once (each sample's files and parts still
+    // upload in parallel within). A shared queue with a small fixed pool of workers keeps credential
+    // fetches staggered — each pool slot calls getS3Client as it picks up the next sample — so we
+    // never fetch a whole batch's credentials upfront and let the trailing ones expire (the reason
+    // the previous version uploaded strictly one sample at a time). uploadSample handles its own
+    // errors, so one bad sample never stalls the pool; on Pause, workers stop taking new samples.
+    const queue = [...samples];
+    const runNextSample = async (): Promise<void> => {
+      while (queue.length > 0 && !pausedRef.current) {
+        const sample = queue.shift();
+        if (!sample) return;
+        await uploadSample(sample);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(SAMPLE_UPLOAD_CONCURRENCY, samples.length) }, () =>
+        runNextSample(),
+      ),
+    );
 
     // Once the upload is done, release the wake lock
     if (wakeLock !== null) {
@@ -317,8 +340,11 @@ export const LocalUploadProgressModal = ({
         onMarkSampleUploadedError: handleSampleUploadError,
       });
     } catch (e) {
+      // Fail just this sample; do NOT clear the shared batch heartbeat here — other samples in the
+      // concurrency pool may still be uploading, and the heartbeat is cleared once the whole batch
+      // finishes (uploadSamples) or on Pause. Clearing it per-error would falsely stop the "actively
+      // uploading" signal for the samples still in flight.
       handleSampleUploadError(sample, e);
-      heartbeatInterval && clearInterval(heartbeatInterval);
     }
   };
 
@@ -407,6 +433,7 @@ export const LocalUploadProgressModal = ({
       client: s3Client,
       leavePartsOnError: true, // configures lib to propagate errors
       params: uploadParams,
+      queueSize: PART_UPLOAD_CONCURRENCY, // parts uploaded in parallel per file (lib default is 4)
       ...(sampleFileUploadIds[s3Key] && {
         uploadId: sampleFileUploadIds[s3Key],
       }),
