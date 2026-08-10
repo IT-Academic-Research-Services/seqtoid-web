@@ -34,6 +34,18 @@ enum SelectedTreeType {
   UPLOAD = "upload",
 }
 
+const REFERENCE_TREE_ERROR_MESSAGE =
+  "We couldn't read that reference tree. Files must be valid Auspice JSON. Please pick another file or use the Nextclade Default Tree.";
+
+// Nextclade expects an Auspice v2 document, whose top level is an object with a
+// "tree" member. This is a shape check, not schema validation: it only rejects
+// files that happen to parse as JSON but are plainly not a reference tree.
+const isPlausibleAuspiceTree = (parsed: unknown): boolean =>
+  typeof parsed === "object" &&
+  parsed !== null &&
+  !Array.isArray(parsed) &&
+  "tree" in parsed;
+
 export const NextcladeModal = ({
   onClose,
   isOpen,
@@ -63,6 +75,10 @@ export const NextcladeModal = ({
   const [referenceTreeContents, setReferenceTreeContents] = useState<
     string | null
   >(null);
+  const [referenceTreeError, setReferenceTreeError] = useState<string | null>(
+    null,
+  );
+  const [isParsingReferenceTree, setIsParsingReferenceTree] = useState(false);
 
   const fetchValidationInfo = useCallback(async () => {
     if (!selectedIds) {
@@ -128,11 +144,37 @@ export const NextcladeModal = ({
     openUrlInNewTab(link.external_url);
   };
 
-  const handleFileUpload = async (file: File) => {
-    // Stringify, then parse to remove excess whitespace
-    const fileContents = JSON.stringify(JSON.parse(await file.text()));
-    setReferenceTree(file);
-    setReferenceTreeContents(fileContents);
+  // The picker hands back head(acceptedFiles), which is undefined for an empty
+  // drop, so this must tolerate no file at all.
+  const handleFileUpload = async (file?: File) => {
+    setReferenceTree(file ?? null);
+    // Any previously parsed tree is stale the moment a new file is picked.
+    setReferenceTreeContents(null);
+    setReferenceTreeError(null);
+
+    if (!file) {
+      return;
+    }
+
+    setIsParsingReferenceTree(true);
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!isPlausibleAuspiceTree(parsed)) {
+        throw new Error(
+          "Reference tree JSON has no top-level tree; it is not an Auspice document",
+        );
+      }
+      // Stringify the parsed value to remove excess whitespace
+      setReferenceTreeContents(JSON.stringify(parsed));
+    } catch (error) {
+      // Never swallow this: the export used to proceed tree-less and silently
+      // succeed, which is exactly the failure this guard exists to make loud.
+      setReferenceTreeContents(null);
+      setReferenceTreeError(REFERENCE_TREE_ERROR_MESSAGE);
+      console.error(error);
+    } finally {
+      setIsParsingReferenceTree(false);
+    }
   };
 
   const handleSelectTreeType = (treeType: SelectedTreeType) => {
@@ -197,6 +239,11 @@ export const NextcladeModal = ({
   const handleCloseErrorModal = () => {
     setIsErrorModalOpen(false);
   };
+
+  // "Upload a Tree" was chosen but no tree has been successfully parsed yet, so
+  // exporting now would send the samples to Nextclade with no tree at all.
+  const isUploadSelected = selectedTreeType === SelectedTreeType.UPLOAD;
+  const isMissingUploadedTree = isUploadSelected && !referenceTreeContents;
 
   const sentToNextcladeCount = selectedIds
     ? selectedIds.size - samplesNotSentToNextclade.length
@@ -303,6 +350,9 @@ export const NextcladeModal = ({
             samplesNotSentToNextclade={samplesNotSentToNextclade}
             validationError={validationError}
             hasValidIds={validWorkflowRunIds && validWorkflowRunIds.size > 0}
+            isParsingReferenceTree={isParsingReferenceTree}
+            isMissingUploadedTree={isMissingUploadedTree}
+            referenceTreeError={isUploadSelected ? referenceTreeError : null}
           />
         </div>
       </div>
