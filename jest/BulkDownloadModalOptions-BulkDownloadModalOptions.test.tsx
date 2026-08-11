@@ -108,7 +108,7 @@ describe("BulkDownloadModalOptions", () => {
     // Standard categories are humanized.
     expect(screen.getByText("Results")).toBeTruthy();
     expect(screen.getByText("Reports")).toBeTruthy();
-    expect(screen.getByText("Raw Data")).toBeTruthy();
+    expect(screen.getByText("Sequence Data")).toBeTruthy();
     // Non-standard category is appended and also rendered.
     expect(screen.getByText("Extras")).toBeTruthy();
     expect(screen.getAllByTestId("download-type")).toHaveLength(4);

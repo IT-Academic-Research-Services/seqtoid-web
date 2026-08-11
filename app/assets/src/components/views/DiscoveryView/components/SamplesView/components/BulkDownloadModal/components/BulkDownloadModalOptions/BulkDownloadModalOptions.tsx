@@ -128,7 +128,9 @@ export const BulkDownloadModalOptions = ({
 
           return (
             <div className={cs.category} key={category}>
-              <div className={cs.title}>{humanize(category)}</div>
+              <div className={cs.title}>
+                {category === "raw_data" ? "Sequence Data" : humanize(category)}
+              </div>
               {categoryTypes.map((categoryType, index) => (
                 <DownloadTypeOptionWrapper
                   key={

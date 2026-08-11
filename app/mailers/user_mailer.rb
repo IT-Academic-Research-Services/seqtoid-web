@@ -18,7 +18,7 @@ class UserMailer < ApplicationMailer
   end
 
   def landing_sign_up_email(body)
-    account_email = "help@czid.org"
+    account_email = "seqtoid-support@ucsf.edu"
     mail(to: account_email, subject: "New sign up from landing page", body: body)
   end
 
@@ -26,7 +26,7 @@ class UserMailer < ApplicationMailer
   def account_request_reply(request_email)
     mail(
       to: request_email,
-      subject: "Thank you for contacting The CZ ID Team"
+      subject: "Thank you for contacting The SeqtoID Team"
     )
   end
 
