@@ -349,7 +349,9 @@ export class DiscoveryView extends React.Component<
     // that does not return a promise (e.g. a mocked loadPage in tests) is tolerated.
     Promise.resolve(this.samples.loadPage(0)).catch(handleDiscoveryLoadError);
     if (domain !== DISCOVERY_DOMAIN_SNAPSHOT) {
-      Promise.resolve(this.projects.loadPage(0)).catch(handleDiscoveryLoadError);
+      Promise.resolve(this.projects.loadPage(0)).catch(
+        handleDiscoveryLoadError,
+      );
       Promise.resolve(this.visualizations.loadPage(0)).catch(
         handleDiscoveryLoadError,
       );
@@ -1207,13 +1209,18 @@ export class DiscoveryView extends React.Component<
         });
       })
       .catch(handleDiscoveryLoadError);
-    fetchTotalWorkflowCounts(projectId).then(
-      (workflowCounts: WorkflowCount) => {
+    // SMP-1497: fetchTotalWorkflowCounts calls fetchProjectIds (REST) and
+    // queryWorkflowRunsTotalCount (Relay, which itself hits /identify), so an expired
+    // session can reject here on the /my_data mount path. SMP-1620 wrapped the other
+    // loaders but missed this one; route it through the same handler so a 401
+    // re-authenticates instead of surfacing as an unhandled rejection.
+    fetchTotalWorkflowCounts(projectId)
+      .then((workflowCounts: WorkflowCount) => {
         this.setState({
           workflowCounts,
         });
-      },
-    );
+      })
+      .catch(handleDiscoveryLoadError);
   };
 
   computeTabs = () => {

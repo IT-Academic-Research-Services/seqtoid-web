@@ -45,6 +45,10 @@ import { getCoverageVizParams } from "~/components/common/CoverageVizBottomSideb
 import ErrorBoundary from "~/components/common/ErrorBoundary";
 import ErrorFallback from "~/components/common/ErrorBoundary/ErrorFallback";
 import csSampleMessage from "~/components/common/SampleMessage/sample_message.scss";
+import {
+  clearRunFailure,
+  recordRunFailure,
+} from "~/components/common/SupportPortal/collectDiagnostics";
 import NarrowContainer from "~/components/layout/NarrowContainer";
 import { IconAlert, IconLoading } from "~/components/ui/icons";
 import {
@@ -60,13 +64,9 @@ import { isNotNullish } from "~/components/utils/typeUtils";
 import {
   getWorkflowTypeFromLabel,
   isMngsWorkflow,
-  WorkflowType,
   WORKFLOW_TABS,
+  WorkflowType,
 } from "~/components/utils/workflows";
-import {
-  clearRunFailure,
-  recordRunFailure,
-} from "~/components/common/SupportPortal/collectDiagnostics";
 import {
   ActionType,
   createAction,
@@ -98,6 +98,7 @@ import {
   Taxon,
 } from "~/interface/shared";
 import { SampleMessage } from "../../common/SampleMessage";
+import { SampleViewSampleQuery } from "./__generated__/SampleViewSampleQuery.graphql";
 import { initialAmrContext } from "./components/AmrView/amrContext/initialState";
 import {
   AmrContext,
@@ -136,10 +137,9 @@ import {
   SPECIES_LEVEL_INDEX,
   TAX_LEVEL_GENUS,
   TAX_LEVEL_SPECIES,
-  urlParser,
   URL_FIELDS,
+  urlParser,
 } from "./utils";
-import { SampleViewSampleQuery } from "./__generated__/SampleViewSampleQuery.graphql";
 
 //  Notes from Suzette on converting SampleView to hooks - Aug 2023
 //  1.  First we need to get any persisted options from local storage and the URL
@@ -534,7 +534,12 @@ const SampleViewComponent = ({
       setAmrDeprecatedData(amrDeprecatedData);
     };
     if (!amrDeprecatedData) {
-      fetchAmrDeprecatedData();
+      // SMP-1497: catch the fire-and-forget load so an expired-session 401 (now a real
+      // Error from api/core, which also redirects to the login flow) does not surface as
+      // an unhandled rejection.
+      fetchAmrDeprecatedData().catch(error => {
+        console.error(error);
+      });
     }
   }, [sampleId, amrDeprecatedData]);
 

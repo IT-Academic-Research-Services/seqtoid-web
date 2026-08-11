@@ -161,4 +161,76 @@ describe("api/core.ts", () => {
   it("exposes the max-samples GET constant", () => {
     expect(MAX_SAMPLES_FOR_GET_REQUEST).toBe(256);
   });
+
+  // SMP-1497 / SMP-1501 / SMP-1476: an expired-session 401 re-authenticates (redirects to
+  // the login flow) and rejects with a REAL Error that still carries the Rails body's
+  // `code` and `error` fields, so uncaught callers no longer emit a non-Error unhandled
+  // rejection and catch handlers that branch on error.code / error.error keep working.
+  describe("expired-session 401 handling", () => {
+    const originalLocation = window.location;
+    const unauthorizedResponse = {
+      response: { status: 401, data: { error: "Unauthorized", code: 401 } },
+    };
+
+    beforeEach(() => {
+      // jsdom's window.location is not writable; swap in a plain stand-in so the
+      // redirect target can be asserted.
+      delete (window as $TSFixMe).location;
+      (window as $TSFixMe).location = { href: "" };
+    });
+
+    afterEach(() => {
+      (window as $TSFixMe).location = originalLocation;
+    });
+
+    const expectUnauthorized = async (promise: Promise<unknown>) => {
+      await expect(promise).rejects.toThrow("Unauthorized");
+      // A real Error, not the bare { error, code } object the app used to leak.
+      await promise.catch(err => {
+        expect(err).toBeInstanceOf(Error);
+        expect(err.message).toBe("Unauthorized");
+        // Preserved for consumers: DiscoveryView isUnauthorizedError, SampleView
+        // persisted-background handling, BulkDownloadModal.
+        expect(err.code).toBe(401);
+        expect(err.error).toBe("Unauthorized");
+      });
+      expect(window.location.href).toBe("/auth0/login");
+    };
+
+    it("get redirects to login and rejects with a real Error carrying code/error", async () => {
+      mockedAxios.get.mockRejectedValueOnce(unauthorizedResponse);
+      await expectUnauthorized(get("/my_data"));
+    });
+
+    it("post also redirects and rejects with a real Error (writes are covered too)", async () => {
+      mockedAxios.post.mockRejectedValueOnce(unauthorizedResponse);
+      await expectUnauthorized(postWithCSRF("/foo"));
+    });
+
+    it("put also redirects and rejects with a real Error", async () => {
+      mockedAxios.put.mockRejectedValueOnce(unauthorizedResponse);
+      await expectUnauthorized(putWithCSRF("/bar"));
+    });
+
+    it("delete also redirects and rejects with a real Error", async () => {
+      mockedAxios.delete.mockRejectedValueOnce(unauthorizedResponse);
+      await expectUnauthorized(deleteWithCSRF("/qux"));
+    });
+
+    it("falls back to a default message when the 401 body has no error string", async () => {
+      mockedAxios.get.mockRejectedValueOnce({
+        response: { status: 401, data: {} },
+      });
+      await expect(get("/my_data")).rejects.toThrow("Unauthorized");
+      expect(window.location.href).toBe("/auth0/login");
+    });
+
+    it("does NOT redirect on a non-401 HTTP error and keeps the raw-body reject shape", async () => {
+      mockedAxios.get.mockRejectedValueOnce({
+        response: { status: 500, data: "server boom" },
+      });
+      await expect(get("/my_data")).rejects.toBe("server boom");
+      expect(window.location.href).toBe("");
+    });
+  });
 });
