@@ -175,13 +175,17 @@ export const sampleErrorInfo = ({
       link = CONTACT_US_LINK;
       break;
     case "LOCAL_UPLOAD_STALLED":
-      status = SampleStatus.INCOMPLETE_ISSUE;
-      pillStatus = "failed";
+      // The upload has NOT finished and has NOT (yet) truly failed -- the sample is still in
+      // progress and has not been sent to the pipeline. Show it as "Uploading" so a slow-but-still-
+      // running upload is not mistaken for an error. (It only becomes LOCAL_UPLOAD_FAILED, a real
+      // error, after the 18h finalization cutoff.) User feedback: a warning/error pill here on
+      // samples not yet in the pipeline reads as "something broke" and drives needless support pings.
+      status = SampleStatus.UPLOADING;
+      pillStatus = "uploading";
       message =
-        "It looks like it is taking a long time to upload your sample file.";
-      linkText = CONTACT_US;
-      type = "warning";
-      link = CONTACT_US_LINK;
+        "Your sample is still uploading. Large files can take a while — " +
+        "no action is needed unless the upload stops making progress.";
+      type = "info";
       break;
     case "DO_NOT_PROCESS":
       status = SampleStatus.PROCESSING_SKIPPED;

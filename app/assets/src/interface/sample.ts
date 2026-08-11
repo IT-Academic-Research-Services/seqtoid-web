@@ -52,6 +52,7 @@ export enum SampleStatus {
   LOADING = "Loading", // This is used for analytics, so leaving the casing as is
   PROCESSING_SKIPPED = "PROCESSING SKIPPED",
   SAMPLE_FAILED = "SAMPLE FAILED",
+  UPLOADING = "UPLOADING",
 }
 
 export default interface Sample {
