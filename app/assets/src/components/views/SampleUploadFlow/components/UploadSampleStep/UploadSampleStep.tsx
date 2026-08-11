@@ -1716,9 +1716,8 @@ class UploadSampleStepCC extends React.Component<
             your upload to a max of 200 samples per month so we can share the
             compute equally. If you need to upload more samples than the limit,
             please reach out to us at{" "}
-            {/* TODO(REBRAND-19): replace help@czid.org with UCSF-provided support email */}
-            <ExternalLink href="mailto:help@czid.org">
-              help@czid.org
+            <ExternalLink href="mailto:seqtoid-support@ucsf.edu">
+              seqtoid-support@ucsf.edu
             </ExternalLink>
             . Thank you for your cooperation!
           </Callout>
