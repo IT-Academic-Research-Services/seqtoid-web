@@ -22,7 +22,7 @@ class AddHostGenomeNeltumaPallidaKiawe < ActiveRecord::Migration[6.1]
   end
 
   def down
-    hg = HostGenome.find_by(name: "Neltuma pallida (kiawe)")
+    hg = HostGenome.find_by(name: "Neltuma pallida - kiawe")
     hg.destroy! if hg
   end
 end

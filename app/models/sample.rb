@@ -3,6 +3,7 @@ require 'json'
 require 'tempfile'
 require 'aws-sdk'
 require 'elasticsearch/model'
+require './lib/secret_redaction'
 # TODO(mark): Move to an initializer. Make sure this works with Rails auto-reloading.
 
 class Sample < ApplicationRecord
@@ -558,7 +559,10 @@ class Sample < ApplicationRecord
       "SampleUploadFailedEvent: #{e}",
       exception: e,
       basespace_dataset_id: basespace_dataset_id,
-      basespace_access_token: basespace_access_token
+      # The token itself is the user's Illumina credential and must not be logged
+      # or sent to Sentry; a non-reversible fingerprint still correlates the
+      # samples that shared one token (SMP-1729).
+      basespace_token_fingerprint: SecretRedaction.fingerprint(basespace_access_token)
     )
 
     self.status = STATUS_CHECKED
