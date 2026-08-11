@@ -408,17 +408,12 @@ describe("LocalUploadProgressModal degenerate payloads", () => {
 });
 
 describe("LocalUploadProgressModal pause semantics", () => {
-  it("leaves a sample unfinalized and pre-pauses the next file when paused mid-transfer", async () => {
+  it("soft-pauses every in-flight sample and leaves them unfinalized when paused mid-transfer", async () => {
+    // Samples upload with bounded concurrency: this 2-sample batch is under the pool size, so
+    // both alpha and beta are in flight at once. Each is held open on `done()` until we release
+    // the gate, so both are mid-transfer when the user pauses.
     const gate = deferred();
-    mockDone.impl = async instance => {
-      if (String(instance.params.Key).startsWith("alpha")) {
-        await gate.promise;
-        return;
-      }
-      const pauseError = new Error("paused");
-      pauseError.name = "PauseError";
-      throw pauseError;
-    };
+    mockDone.impl = () => gate.promise;
     mockInitiateBulkUpload.mockResolvedValue([
       createdSample("alpha", 5),
       createdSample("beta", 6),
@@ -426,24 +421,20 @@ describe("LocalUploadProgressModal pause semantics", () => {
 
     renderModal({ samples: [propSample("alpha"), propSample("beta")] });
 
-    await waitFor(() => expect(mockUploads).toHaveLength(1), WAIT);
+    // Both samples' files start together under the concurrency pool.
+    await waitFor(() => expect(mockUploads).toHaveLength(2), WAIT);
 
     fireEvent.click(screen.getByText("Pause upload"));
-    // The in-flight upload is soft-paused by the Pause handler itself.
+    // The Pause handler soft-pauses every in-flight upload, not just the first.
     await waitFor(() => expect(mockUploads[0].pause).toHaveBeenCalled(), WAIT);
+    await waitFor(() => expect(mockUploads[1].pause).toHaveBeenCalled(), WAIT);
 
-    // Now let alpha's file finish. Because the user paused, the sample must NOT
-    // be marked complete -- it stays in progress for Resume to finish.
+    // Now let the files finish. Because the user paused, NO sample is finalized -- both stay
+    // in progress for Resume to pick up.
     await act(async () => {
       gate.resolve();
       await gate.promise;
     });
-    expect(mockCompleteSampleUpload).not.toHaveBeenCalled();
-
-    // beta's file only starts after the pause, so it is paused before `done()`.
-    await waitFor(() => expect(mockUploads).toHaveLength(2), WAIT);
-    expect(mockUploads[1].params.Key).toBe("beta/R1.fastq");
-    await waitFor(() => expect(mockUploads[1].pause).toHaveBeenCalled(), WAIT);
     expect(mockCompleteSampleUpload).not.toHaveBeenCalled();
   });
 
