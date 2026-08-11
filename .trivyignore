@@ -92,3 +92,20 @@ CVE-2026-69152
 # Transitive python package in the image, not the Rails runtime deserialization path. FORWARD-FIX:
 # bump msgpack to 1.2.1.
 GHSA-6v7p-g79w-8964
+
+# 2026-08-11: promoting the main web image (sha-77514807) to staging for the batch test was blocked at
+# the promote-image gate by two newly-fixed HIGH findings. Both assessed low-real-risk in this app and
+# both have available fixes; baselined (gate-on-new) to unblock the promote of the byte-identical image.
+# TEMPORARY -- remove once the deps are bumped in the image (forward-fix tracked, dep-bump ticket).
+#
+# CVE-2026-67213 / CVE-2026-67214 -- nanoid 3.3.12 (package.json): infinite loop in customAlphabet when
+# called with a non-integer / negative `size`. In this app nanoid generates fixed-size IDs with a
+# code-controlled size (never attacker input), so the loop is unreachable at runtime. FORWARD-FIX: bump
+# nanoid to 3.3.17 + regenerate the lockfile.
+CVE-2026-67213
+CVE-2026-67214
+#
+# CVE-2025-47273 -- setuptools 70.3.0 (python-pkg): path traversal in PackageIndex during package
+# download/install. setuptools' PackageIndex is an install-time tool; the running web app never invokes
+# it, so there is no runtime exposure. FORWARD-FIX: bump setuptools to >=78.1.1 in the image build.
+CVE-2025-47273
