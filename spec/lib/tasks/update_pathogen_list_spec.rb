@@ -47,40 +47,32 @@ describe "update_pathogen_list" do
   end
 
   context "uploading a new list version" do
-    it "should generate the correct input/output and version if the taxon does not exist" do
-      allow(STDIN).to receive(:gets).and_return(@version, deny_dryrun_stdin, accept_nondryrun_stdin, accept_citation_create, create_version_stdin)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_LIST_VERSION)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_NON_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::CONFIRM_VERSION_CREATION % @version)
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::TAXON_NOT_FOUND_TEMPLATE, "species_a", "1"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::CITATION_NOT_FOUND, "test_source"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::PROMPT_CITATION_CREATE, "test_footnote"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "0", "1"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::NOT_FOUND_PATHOGENS_TEMPLATE, "1", '["1"]'))
+    it "should generate the correct version if the taxon does not exist" do
+      ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "false", S3_DATABASE_BUCKET: "test_bucket" do
+        allow(Rails.logger).to receive(:info)
+        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "0", "1"))
+        expect(Rails.logger).to receive(:warn).with(format(PathogenListHelper::TAXON_NOT_FOUND_TEMPLATE, "species_a", "1"))
+        expect(Rails.logger).to receive(:warn).with(format(PathogenListHelper::NOT_FOUND_PATHOGENS_TEMPLATE, 1, ["1"]))
 
-      subject
+        subject
+      end
 
       list_version = PathogenListVersion.find_by(pathogen_list: @global_list)
       expect(list_version.pathogen_list_id).to eq(@global_list.id)
       expect(list_version.pathogens.count).to eq(0)
     end
 
-    it "should generate the correct input/output and version if the taxon exists" do
+    it "should generate the correct version if the taxon exists" do
       taxon = create(:taxon_lineage, species_name: "species_a", taxid: 1, species_taxid: 1)
       allow(TaxonLineage).to receive(:where).with({ taxid: "1" }).and_return([taxon])
       allow(taxon).to receive(:name).and_return("species_a")
 
-      allow(STDIN).to receive(:gets).and_return(@version, deny_dryrun_stdin, accept_nondryrun_stdin, accept_citation_create, create_version_stdin)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_LIST_VERSION)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_NON_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::CONFIRM_VERSION_CREATION % @version)
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::CITATION_NOT_FOUND, "test_source"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::PROMPT_CITATION_CREATE, "test_footnote"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
+      ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "false", S3_DATABASE_BUCKET: "test_bucket" do
+        allow(Rails.logger).to receive(:info)
+        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
 
-      subject
+        subject
+      end
 
       list_version = PathogenListVersion.find_by(pathogen_list: @global_list)
       expect(list_version.pathogen_list_id).to eq(@global_list.id)
@@ -90,30 +82,16 @@ describe "update_pathogen_list" do
   end
 
   context "doing a dry run" do
-    before do
-      # Redirect stdout from running rake task for this task to a var (otherwise it's
-      # very difficult to test for end of output because middle has lots of boilerplate).
-      @capture_stdout = StringIO.new
-      $stdout = @capture_stdout
-    end
+    it "should generate the correct dry-run output if the taxon does not exist" do
+      ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "true", S3_DATABASE_BUCKET: "test_bucket" do
+        allow(Rails.logger).to receive(:info)
+        expect(Rails.logger).to receive(:info).with(/Update Pathogens dry-run complete/)
 
-    it "should generate the correct dry-run input/output and version if the taxon does not exist" do
-      allow(STDIN).to receive(:gets).and_return(@version, accept_dryrun_stdin)
-      subject
-      @capture_stdout.rewind # StringIO objects are treated like tape
-      stdout_lines_for_run = @capture_stdout.read.split("\n")
-      # Verify top matter of run matches expectation before going to pathogen misses CSV.
-      expect(stdout_lines_for_run[0]).to eq(PathogenListHelper::PROMPT_FOR_LIST_VERSION)
-      expect(stdout_lines_for_run[1]).to eq(PathogenListHelper::PROMPT_FOR_DRY_RUN)
-      expect(stdout_lines_for_run[2]).to eq("Resolving taxids from file: pathogen-list/global_pathogen_list_#{@version}.csv")
-      # Pathogen misses CSV is very bottom of output, so check final two lines for that.
-      expect(stdout_lines_for_run[-2]).to eq("csv_name,lineage_name,csv_taxid,lineage_species_taxid,appears_in_latest_lineage_version")
-      expect(stdout_lines_for_run[-1]).to eq("species_a,NOT_FOUND,1,NOT_FOUND,false")
-    end
+        # Expect the call that contains both the CSV header and the mismatched taxon
+        expect(Rails.logger).to receive(:info).with(/csv_name,lineage_name,csv_taxid,lineage_species_taxid,appears_in_latest_lineage_version\nspecies_a,NOT_FOUND,1,NOT_FOUND,false/)
 
-    after do
-      # Return stdout back to original, system STDOUT at end of test.
-      $stdout = STDOUT # return to normal stdout interaction
+        subject
+      end
     end
   end
 
@@ -130,33 +108,15 @@ describe "update_pathogen_list" do
       @list_version.pathogens << @pathogen_b
     end
 
-    it "should raise an error if overwrite permission denied" do
-      allow(STDIN).to receive(:gets).and_return(@version, deny_dryrun_stdin, accept_nondryrun_stdin, no_overwrite_stdin)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_LIST_VERSION)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_NON_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::CONFIRM_LIST_VERSION_OVERWRITE % @version)
+    it "should overwrite the existing list version" do
+      ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "false", S3_DATABASE_BUCKET: "test_bucket" do
+        allow(Rails.logger).to receive(:info)
+        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
 
-      expect do
         subject
-      end.to raise_error(RuntimeError)
+      end
 
-      expect(@list_version.pathogens.count).to eq(1)
-      expect(@list_version.pathogens.first).to eq(@pathogen_b)
-    end
-
-    it "should overwrite the version if overwrite permission confirmed" do
-      allow(STDIN).to receive(:gets).and_return(@version, deny_dryrun_stdin, accept_nondryrun_stdin, overwrite_stdin)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_LIST_VERSION)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::PROMPT_FOR_NON_DRY_RUN)
-      expect(STDOUT).to receive(:puts).with(PathogenListHelper::CONFIRM_LIST_VERSION_OVERWRITE % @version)
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::CITATION_NOT_FOUND, "test_source"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::PROMPT_CITATION_CREATE, "test_footnote"))
-      expect(STDOUT).to receive(:puts).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
-
-      subject
-
+      @list_version.reload
       expect(@list_version.pathogens.count).to eq(1)
       expect(@list_version.pathogens.first).to eq(@pathogen_a)
     end

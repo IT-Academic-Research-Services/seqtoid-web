@@ -53,16 +53,8 @@
 require 'csv'
 require 'aws-sdk-s3'
 
-def prompt_for_input(prompt)
-  puts prompt
-  STDIN.gets.strip
-end
-
 def create_pathogen_list
-  input = prompt_for_input("Global pathogen list not found. Do you want to create one? (yes/NO)")
-  if input != "yes"
-    raise PathogenListHelper::UPDATE_PROCESS_FAILED
-  end
+  Rails.logger.info("Creating global PathogenList")
 
   PathogenList.create(
     creator_id: nil,
@@ -71,10 +63,7 @@ def create_pathogen_list
 end
 
 def create_list_version(global_pathogen_list, version)
-  input = prompt_for_input(PathogenListHelper::CONFIRM_VERSION_CREATION % version)
-  if input != "yes"
-    raise PathogenListHelper::UPDATE_PROCESS_FAILED
-  end
+  Rails.logger.info("Creating PathogenListVersion: #{version}")
 
   PathogenListVersion.create(
     pathogen_list: global_pathogen_list,
@@ -83,16 +72,11 @@ def create_list_version(global_pathogen_list, version)
 end
 
 def create_citation(source_key, source_footnote)
-  puts format(PathogenListHelper::CITATION_NOT_FOUND, source_key)
-  input = prompt_for_input(format(PathogenListHelper::PROMPT_CITATION_CREATE, source_footnote))
-  if input != "yes"
-    nil
-  else
-    Citation.create(
-      key: source_key,
-      footnote: source_footnote
-    )
-  end
+  Rails.logger.info("Creating Citation: source [#{source_key}] footnote [#{source_footnote}]")
+  Citation.create(
+    key: source_key,
+    footnote: source_footnote
+  )
 end
 
 def resolve_taxids_for_pathogens(pathogens)
@@ -118,7 +102,7 @@ def resolve_taxids_for_pathogens(pathogens)
     # used instead for the pathogen list. Thus we can always just use the species_taxid value.
     species_taxids = TaxonLineage.where(taxid: pathogen_taxid).pluck(:species_taxid)
     if species_taxids == []
-      puts format(PathogenListHelper::TAXON_NOT_FOUND_TEMPLATE, pathogen_name, pathogen_taxid)
+      Rails.logger.warn(format(PathogenListHelper::TAXON_NOT_FOUND_TEMPLATE, pathogen_name, pathogen_taxid))
       not_found_pathogen_taxids << pathogen_taxid
     else
       resolved_taxids.merge species_taxids
@@ -126,37 +110,32 @@ def resolve_taxids_for_pathogens(pathogens)
   end
   # Last ditch safety measure: ensure no species taxid is the missing species id.
   if resolved_taxids.delete?(TaxonLineage::MISSING_SPECIES_ID) || resolved_taxids.delete?(TaxonLineage::MISSING_SPECIES_ID_ALT)
-    puts "WARNING: Removed missing species id value from resolved_taxids!"
-    puts "This means one of the pathogens was targeting a genus-level or higher taxon."
-    puts "Please inspect the dry run pathogen misses CSV to find the problematic pathogen(s)."
+    Rails.logger.warn("WARNING: Removed missing species id value from resolved_taxids!")
+    Rails.logger.warn("This means one of the pathogens was targeting a genus-level or higher taxon.")
+    Rails.logger.warn("Please inspect the dry run pathogen misses CSV to find the problematic pathogen(s).")
   end
-  return resolved_taxids, not_found_pathogen_taxids
+  [resolved_taxids, not_found_pathogen_taxids]
 end
 
 def dry_run(pathogens, pathogens_file_path)
   # Run how real ingestion would work except don't add anything to DB, just report it.
-  puts("Resolving taxids from file: #{pathogens_file_path}")
+  Rails.logger.info("Resolving taxids from file: #{pathogens_file_path}")
   resolved_taxids, not_found_pathogen_taxids = resolve_taxids_for_pathogens(pathogens)
-  puts("Found #{resolved_taxids.length} taxids in DB that would make up pathogen list.")
+  Rails.logger.info("Found #{resolved_taxids.length} taxids in DB that would make up pathogen list.")
   unless not_found_pathogen_taxids.empty?
-    puts("#{not_found_pathogen_taxids.length} pathogens had no corresponding entry in DB.")
-    puts("Here are the taxIDs from the input CSV where pathogen was not in DB: #{not_found_pathogen_taxids}")
+    Rails.logger.info("#{not_found_pathogen_taxids.length} pathogens had no corresponding entry in DB.")
+    Rails.logger.info("Here are the taxIDs from the input CSV where pathogen was not in DB: #{not_found_pathogen_taxids}")
   end
-  puts "Below are all the taxids that would be used for the pathogen list."
-  puts "#{'=' * 10} Resolved taxids for file: #{pathogens_file_path} #{'=' * 10}"
-  puts "#{'=' * 10} Run at #{Time.current} #{'=' * 10}" # This includes date info
+  Rails.logger.info("Below are all the taxids that would be used for the pathogen list.")
+  Rails.logger.info("#{'=' * 10} Resolved taxids for file: #{pathogens_file_path} #{'=' * 10}")
+  Rails.logger.info("#{'=' * 10} Run at #{Time.current} #{'=' * 10}") # This includes date info
   # Sort taxids and use line breaks  to enable easier diffing between runs
-  puts resolved_taxids.sort.join("\n")
-  puts "#{'=' * 10} END resolved taxids #{'=' * 10}"
+  Rails.logger.info(resolved_taxids.sort.join(", "))
+  Rails.logger.info("#{'=' * 10} END resolved taxids #{'=' * 10}")
 
-  puts "Preparing CSV of all pathogen misses..."
-  misses_csv_header = [
-    'csv_name',
-    'lineage_name',
-    'csv_taxid',
-    'lineage_species_taxid',
-    'appears_in_latest_lineage_version',
-  ]
+  Rails.logger.info("Preparing CSV of all pathogen misses...")
+  Rails.logger.info("Here are the taxIDs from the input CSV where pathogen was not in DB: #{not_found_pathogen_taxids}")
+  misses_csv_header = %w[csv_name lineage_name csv_taxid lineage_species_taxid appears_in_latest_lineage_version]
   mismatched_taxids = [misses_csv_header]
   latest_lineage_version = TaxonLineage.maximum(:version_end)
   pathogens.each do |pathogen|
@@ -166,99 +145,103 @@ def dry_run(pathogens, pathogens_file_path)
     # Get taxon row for each pathogen that is most recent version available
     taxon = TaxonLineage.where(taxid: pathogen_taxid).order(version_end: :desc).first
     if taxon.nil?
-      mismatched_taxids << [pathogen_name, "NOT_FOUND", pathogen_taxid, "NOT_FOUND", false]
+      mismatched_taxids << [pathogen_name, "NOT_FOUND", pathogen_taxid, "NOT_FOUND", false.to_s]
     else
       is_latest_version = taxon.version_end == latest_lineage_version
       taxon_name = taxon.name
       if (pathogen_name.casecmp(taxon_name) != 0) || (taxon.species_taxid.to_i != pathogen_taxid.to_i)
-        mismatched_taxids << [pathogen_name, taxon_name, pathogen_taxid, taxon.species_taxid, is_latest_version]
+        mismatched_taxids << [pathogen_name, taxon_name, pathogen_taxid, taxon.species_taxid, is_latest_version.to_s]
       end
     end
   end
-  puts(mismatched_taxids.map(&:to_csv).join)
+  Rails.logger.info(mismatched_taxids.map(&:to_csv).join)
+  Rails.logger.info("Update Pathogens dry-run complete")
 end
 
 task update_pathogen_list: :environment do
-  version = prompt_for_input(PathogenListHelper::PROMPT_FOR_LIST_VERSION)
+  version = ENV["PATHOGEN_LIST_VERSION"].presence || '0.2.1'
+  Rails.logger.info("Using global pathogen list version #{version}")
+
   pathogens_file_path = "pathogen-list/global_pathogen_list_#{version}.csv"
   citations_file_path = "pathogen-list/global_citation_list_#{version}.csv"
-  bucket_name = S3_DATABASE_BUCKET
+  bucket_name = ENV["S3_DATABASE_BUCKET"]
+  Rails.logger.info("Loading from bucket [#{bucket_name}] pathogens_file_path [#{pathogens_file_path}] citations_file_path [#{citations_file_path}]")
 
   # Parse csv
-  pathogens = PathogenList.parse_input_file_csv(bucket_name, pathogens_file_path, ["Species", "taxID"])
-  citations = PathogenList.parse_input_file_csv(bucket_name, citations_file_path, ["Source", "Footnote"])
+  pathogens = PathogenList.parse_input_file_csv(bucket_name, pathogens_file_path, %w[Species taxID])
+  citations = PathogenList.parse_input_file_csv(bucket_name, citations_file_path, %w[Source Footnote])
+  Rails.logger.info("Found pathogens #{pathogens.length} citations #{citations.length}")
 
-  if prompt_for_input(PathogenListHelper::PROMPT_FOR_DRY_RUN) == "yes"
+  # Dry run unless told otherwise
+  falsy_values = %w[false f no n 0].freeze
+  unless falsy_values.include?(ENV["DRY_RUN"]&.downcase)
     dry_run(pathogens, pathogens_file_path)
     next # exits the task
   end
 
-  if prompt_for_input(PathogenListHelper::PROMPT_FOR_NON_DRY_RUN) != "yes"
-    raise PathogenListHelper::USER_CANCELLED
-  end
-
-  # Get pathogen list
-  global_pathogen_list = PathogenList.where(is_global: true)
-  if global_pathogen_list.size > 1
-    Rails.logger.error("More than 1 global pathogen list found [count=#{global_pathogen_list.size}")
-    raise PathogenListHelper::UPDATE_PROCESS_FAILED
-  end
-
-  global_pathogen_list = global_pathogen_list.first
-  if global_pathogen_list.nil?
-    global_pathogen_list = create_pathogen_list()
-  end
-
-  # Get pathogen list version
-  list_version = PathogenListVersion.find_by(pathogen_list: global_pathogen_list.id, version: version)
-  if list_version.nil?
-    list_version = create_list_version(global_pathogen_list, version)
-  else
-    input = prompt_for_input(PathogenListHelper::CONFIRM_LIST_VERSION_OVERWRITE % version)
-    if input == "yes"
-      list_version.pathogens.clear
-      list_version.citations.clear
-    else
+  ActiveRecord::Base.transaction do
+    # Query all global pathogen lists
+    global_pathogen_lists = PathogenList.where(is_global: true)
+    if global_pathogen_lists.size > 1
+      Rails.logger.error("More than 1 global pathogen list found [count=#{global_pathogen_lists.size}")
       raise PathogenListHelper::UPDATE_PROCESS_FAILED
     end
-  end
 
-  # Add pathogens to list version
-  resolved_taxids, not_found_pathogen_taxids = resolve_taxids_for_pathogens(pathogens)
-  resolved_taxids.each do |resolved_taxid|
-    # Add Pathogen entries for any taxids we've never had as pathogens before.
-    pathogen = Pathogen.find_by(tax_id: resolved_taxid)
-    if pathogen.nil?
-      pathogen = Pathogen.create(tax_id: resolved_taxid)
-    end
-    list_version.pathogens << pathogen
-  end
+    # Get the only global pathogen list
+    global_pathogen_list = global_pathogen_lists.first.presence || create_pathogen_list
+    Rails.logger.info("Using global pathogen list #{global_pathogen_list&.inspect}")
 
-  # Add citations to list version
-  citations.each do |citation|
-    source_key = citation["Source"].parameterize.underscore.strip
-    source_footnote = citation["Footnote"].strip
-
-    # Skip if citation already exists in the version
-    if list_version.citations.exists?(key: source_key)
-      next
+    # Get pathogen list version
+    list_version = PathogenListVersion.find_by(pathogen_list: global_pathogen_list.id, version: version)
+    if list_version.nil?
+      list_version = create_list_version(global_pathogen_list, version)
+    else
+      list_version.pathogens.clear
+      list_version.citations.clear
     end
 
-    # Get citation if exists, otherwise create
-    citation = Citation.find_by(key: source_key)
-    if citation.nil?
-      citation = create_citation(source_key, source_footnote)
+    # Add pathogens to list version
+    resolved_taxids, not_found_pathogen_taxids = resolve_taxids_for_pathogens(pathogens)
+    resolved_taxids.each do |resolved_taxid|
+      # Add Pathogen entries for any taxids we've never had as pathogens before.
+      pathogen = Pathogen.find_by(tax_id: resolved_taxid)
+      if pathogen.nil?
+        pathogen = Pathogen.create(tax_id: resolved_taxid)
+      end
+      list_version.pathogens << pathogen
     end
 
-    # Add citation to list version
-    unless citation.nil?
-      list_version.citations << citation
+    # Add citations to list version
+    citations.each do |citation|
+      source_key = citation["Source"].parameterize.underscore.strip
+      source_footnote = citation["Footnote"].strip
+
+      # Skip if citation already exists in the version
+      if list_version.citations.exists?(key: source_key)
+        next
+      end
+
+      # Get citation if exists, otherwise create
+      citation = Citation.find_by(key: source_key)
+      if citation.nil?
+        citation = create_citation(source_key, source_footnote)
+      end
+
+      # Add citation to list version
+      unless citation.nil?
+        list_version.citations << citation
+      end
+    end
+
+    # Confirmation
+    Rails.logger.info(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, version, list_version.pathogens.count, list_version.citations.count))
+    unless not_found_pathogen_taxids.empty?
+      Rails.logger.warn(format(PathogenListHelper::NOT_FOUND_PATHOGENS_TEMPLATE, not_found_pathogen_taxids.length, not_found_pathogen_taxids))
     end
   end
-
-  # Confirmation
-  puts format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, version, list_version.pathogens.count, list_version.citations.count)
-  unless not_found_pathogen_taxids.empty?
-    puts format(PathogenListHelper::NOT_FOUND_PATHOGENS_TEMPLATE, not_found_pathogen_taxids.length, not_found_pathogen_taxids)
-  end
+rescue StandardError => ex
+  Rails.logger.error("update_pathogen_list failed: #{ex.message}")
+  cleaned_trace = Rails.backtrace_cleaner.clean(ex.backtrace)
+  Rails.logger.error(cleaned_trace&.join("\n"))
+  raise
 end
