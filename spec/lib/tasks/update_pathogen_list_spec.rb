@@ -50,16 +50,18 @@ describe "update_pathogen_list" do
     it "should generate the correct version if the taxon does not exist" do
       ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "false", S3_DATABASE_BUCKET: "test_bucket" do
         allow(Rails.logger).to receive(:info)
-        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "0", "1"))
+        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
         expect(Rails.logger).to receive(:warn).with(format(PathogenListHelper::TAXON_NOT_FOUND_TEMPLATE, "species_a", "1"))
         expect(Rails.logger).to receive(:warn).with(format(PathogenListHelper::NOT_FOUND_PATHOGENS_TEMPLATE, 1, ["1"]))
 
         subject
       end
 
-      list_version = PathogenListVersion.find_by(pathogen_list: @global_list)
+      list_version = PathogenListVersion.find_by!(pathogen_list: @global_list)
       expect(list_version.pathogen_list_id).to eq(@global_list.id)
-      expect(list_version.pathogens.count).to eq(0)
+      pathogens = list_version.pathogens.order(tax_id: :asc)
+      expect(pathogens.count).to eq(1)
+      expect(pathogens[0].tax_id).to eq(694_003)
     end
 
     it "should generate the correct version if the taxon exists" do
@@ -69,15 +71,17 @@ describe "update_pathogen_list" do
 
       ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "false", S3_DATABASE_BUCKET: "test_bucket" do
         allow(Rails.logger).to receive(:info)
-        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
+        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "2", "1"))
 
         subject
       end
 
-      list_version = PathogenListVersion.find_by(pathogen_list: @global_list)
+      list_version = PathogenListVersion.find_by!(pathogen_list: @global_list)
       expect(list_version.pathogen_list_id).to eq(@global_list.id)
-      expect(list_version.pathogens.count).to eq(1)
-      expect(list_version.citations.count).to eq(1)
+      pathogens = list_version.pathogens.order(tax_id: :asc)
+      expect(pathogens.count).to eq(2)
+      expect(pathogens[0].tax_id).to eq(1)
+      expect(pathogens[1].tax_id).to eq(694_003)
     end
   end
 
@@ -111,14 +115,16 @@ describe "update_pathogen_list" do
     it "should overwrite the existing list version" do
       ClimateControl.modify PATHOGEN_LIST_VERSION: @version, DRY_RUN: "false", S3_DATABASE_BUCKET: "test_bucket" do
         allow(Rails.logger).to receive(:info)
-        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "1", "1"))
+        expect(Rails.logger).to receive(:info).with(format(PathogenListHelper::UPDATE_PROCESS_COMPLETE_TEMPLATE, "0.1.0", "2", "1"))
 
         subject
       end
 
       @list_version.reload
-      expect(@list_version.pathogens.count).to eq(1)
-      expect(@list_version.pathogens.first).to eq(@pathogen_a)
+      pathogens = @list_version.pathogens.order(tax_id: :asc)
+      expect(pathogens.count).to eq(2)
+      expect(pathogens[0]).to eq(@pathogen_a)
+      expect(pathogens[1].tax_id).to eq(694_003)
     end
   end
 end
