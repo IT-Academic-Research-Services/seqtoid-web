@@ -92,3 +92,31 @@ CVE-2026-69152
 # Transitive python package in the image, not the Rails runtime deserialization path. FORWARD-FIX:
 # bump msgpack to 1.2.1.
 GHSA-6v7p-g79w-8964
+
+# 2026-08-11: the 5 HIGH findings blocking the promote-image gate for the env-staging upload-fix image
+# (sha-77514807). All build-time / low-real-risk transitive or install-time deps, same class as the
+# entries above. Baselined gate-on-new so the sanctioned promote pipeline (promote-image -> promote-to-env)
+# can advance the env-staging digest pin; dep-bump forward-fix tracked in platform-overhaul #1134 / SMP.
+#
+# nanoid 3.3.12 (package.json): infinite loop in customAlphabet when called with a non-integer / negative
+# `size`. In this app nanoid generates fixed-size IDs with a code-controlled size (never attacker input),
+# so the loop is unreachable at runtime. FORWARD-FIX: bump nanoid to 3.3.17 + regen lockfile.
+CVE-2026-67213
+CVE-2026-67214
+#
+# setuptools 70.3.0 (python-pkg): path traversal in PackageIndex during package download/install.
+# PackageIndex is an install-time tool; the running web app never invokes it -> no runtime exposure.
+# FORWARD-FIX: bump setuptools to >=78.1.1 in the image build.
+CVE-2025-47273
+#
+# fast-uri 3.1.2 (package.json): host confusion via backslash in the URI authority. Build-time transitive
+# dep (ajv/fastify toolchain), not parsing untrusted runtime input on the request path. FORWARD-FIX: bump
+# fast-uri to 3.1.5.
+CVE-2026-18446
+#
+# js-yaml 3.14.2 (package.json): quadratic CPU consumption in !!omap resolution (DoS). Build-time transitive
+# dep, not parsing untrusted runtime YAML -- the SIBLING of the already-baselined CVE-2026-59869 (same
+# package/version/justification). Trivy matches under both the CVE and its GHSA alias, so baseline both.
+# FORWARD-FIX: bump js-yaml to 3.15.1 + regen lockfile (with #786).
+CVE-2026-59870
+GHSA-5p4m-2wfm-xmqj
