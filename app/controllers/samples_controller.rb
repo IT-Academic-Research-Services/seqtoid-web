@@ -712,8 +712,20 @@ class SamplesController < ApplicationController
     # minimum version here. Bulk upload from CLI goes to this method.
     min_version = Gem::Version.new(MIN_CLI_VERSION)
 
-    version_obj = client && client != "web" && Gem::Version.new(version_string)
-    unless client && (client == "web" || version_obj >= min_version)
+    # A malformed / unparseable client version (e.g. an unversioned dev build, or any
+    # client sending a non-semver string) must be treated as OUTDATED -- not crash the
+    # request. Gem::Version.new raises ArgumentError on garbage like "unversioned", which
+    # previously 500'd bulk_upload_with_metadata; here it should fall through to the
+    # upgrade-required response below.
+    version_obj =
+      if client && client != "web"
+        begin
+          Gem::Version.new(version_string)
+        rescue ArgumentError
+          nil
+        end
+      end
+    unless client && (client == "web" || (version_obj && version_obj >= min_version))
       render json: {
         message: CLI_DEPRECATION_MSG,
         # idseq-cli v0.6.0 only checks the 'errors' field, so ensure users see this.
