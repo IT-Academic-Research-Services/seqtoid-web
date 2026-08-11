@@ -210,6 +210,13 @@ task update_pathogen_list: :environment do
       end
       list_version.pathogens << pathogen
     end
+    # SMP-1448: Removed hardcoded Covid taxid from seeds, and re-added it here.
+    # TODO: We should update the Pathogen list instead., and remove this hardcoded taxid.
+    covid_taxid = 694_003
+    covid_pathogen = Pathogen.find_or_create_by(tax_id: covid_taxid) do |p|
+      p.tax_id = covid_taxid
+    end
+    list_version.pathogens << covid_pathogen
 
     # Add citations to list version
     citations.each do |citation|
