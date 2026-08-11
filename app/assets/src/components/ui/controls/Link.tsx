@@ -1,17 +1,14 @@
 import cx from "classnames";
-import React, { useContext } from "react";
+import React from "react";
 import { useTrackEvent } from "~/api/analytics";
-import { UserContext } from "~/components/common/UserContext";
 import cs from "./link.scss";
+import { useHelpCenterHref } from "./useHelpCenterHref";
 
-// Help-center links are authored as host-relative paths behind this sentinel
-// (e.g. "helpcenter:/articles/sample-qc"). Link is the single place the
-// environment-specific host is applied. Nothing else in the app uses this
-// prefix, so it can never collide with an internal Rails route (e.g. "/terms").
-export const HELP_CENTER_SENTINEL = "helpcenter:";
-// Prod fallback for the out-of-provider case (e.g. the 404 tree), so we never
-// emit a bare "helpcenter:" value to the DOM.
-const HELP_CENTER_HOST_FALLBACK = "https://helpcenter.seqtoid.org";
+// The "helpcenter:" sentinel and its resolution now live in useHelpCenterHref -
+// the single shared resolver - so call sites that must keep third-party styling
+// (SDS <Link>) can resolve without routing through Link. Re-exported here to
+// preserve Link's public surface.
+export { HELP_CENTER_SENTINEL } from "./useHelpCenterHref";
 
 export interface LinkProps {
   // We use black styling for links on a colored background.
@@ -56,14 +53,10 @@ const Link = ({
   style,
 }: LinkProps) => {
   const trackEvent = useTrackEvent();
-  // Resolve the help-center sentinel to the environment's host. useContext may
-  // return undefined if a component renders outside the provider; fall back to
-  // the prod host rather than emitting a bare "helpcenter:" value.
-  const helpCenterHost =
-    useContext(UserContext)?.helpCenterHost ?? HELP_CENTER_HOST_FALLBACK;
-  const resolvedHref = href?.startsWith(HELP_CENTER_SENTINEL)
-    ? helpCenterHost + href.slice(HELP_CENTER_SENTINEL.length)
-    : href;
+  // Resolve the help-center sentinel to the environment's host via the shared
+  // resolver. Internal routes, absolute external URLs, and undefined pass
+  // through unchanged.
+  const resolvedHref = useHelpCenterHref(href);
   const onClick = () => {
     if (analyticsEventName) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
