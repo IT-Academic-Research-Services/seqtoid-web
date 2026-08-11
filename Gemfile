@@ -172,6 +172,7 @@ end
 group :test do
   gem 'rspec-json_expectations'
   gem 'webmock', '~> 3.6'
+  gem 'climate_control'
 end
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
