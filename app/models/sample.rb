@@ -701,6 +701,15 @@ class Sample < ApplicationRecord
         pr.dispatch
       end
     end
+  rescue ErrorHelper::VersionControlErrors::WorkflowVersionLockedError => err
+    # A LOCKED (below-floor) version can't run. Surface it as an upload error instead of letting the
+    # raise roll the whole save back into the stuck "waiting" state called out at the top of this
+    # method. The sample's existing results stay viewable; the user picks a supported version to run
+    # anew. mNGS dispatches through kickoff_pipeline, which already rescues; this method-level rescue
+    # covers the CG/AMR/long-read paths, which raise straight out of the before_save.
+    LogUtil.log_error("Dispatch blocked, workflow version locked: #{err.message}", sample_id: id)
+    # HACK ALERT! Low-level update_columns to skip callbacks -- we are inside a save callback already.
+    update_columns(upload_error: Sample::UPLOAD_ERROR_PIPELINE_KICKOFF) # rubocop:disable Rails/SkipsModelValidations
   end
 
   def create_and_dispatch_workflow_run(workflow, user_id, rerun_from: nil, inputs_json: nil)

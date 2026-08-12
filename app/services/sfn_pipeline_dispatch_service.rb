@@ -36,7 +36,16 @@ class SfnPipelineDispatchService
     # CZID-976: pipeline_branch stays the ADMIN escape hatch (a semver there is used verbatim,
     # bypassing catalog validation); sample.workflow_version is the user's selection and IS
     # validated by the service.
-    @wdl_version = if /\d+\.\d+\.\d+/ =~ pipeline_run.pipeline_branch
+    @wdl_version = if (branch_semver = pipeline_run.pipeline_branch.to_s[/\d+\.\d+\.\d+/])
+                     # ADMIN escape hatch: a semver in pipeline_branch is used verbatim, bypassing the
+                     # catalog gate. The supported-version LOCK still applies here, though -- a version
+                     # below the floor is view-only for everyone, so refuse it even on this path rather
+                     # than dispatch a run that the current infra cannot execute.
+                     floor = WorkflowVersion.supported_floor(WORKFLOW_NAME)
+                     if WorkflowVersion.below_floor?(branch_semver, floor)
+                       raise ErrorHelper::VersionControlErrors::WorkflowVersionLockedError,
+                             ErrorHelper::VersionControlErrors.workflow_version_locked(WORKFLOW_NAME, branch_semver, floor)
+                     end
                      pipeline_run.pipeline_branch
                    else
                      VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.selected_workflow_version(WORKFLOW_NAME))

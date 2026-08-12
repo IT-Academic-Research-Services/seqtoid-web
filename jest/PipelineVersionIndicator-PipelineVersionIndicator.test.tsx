@@ -138,5 +138,31 @@ describe("PipelineVersionIndicator", () => {
 
       expect(onVersionChange).toHaveBeenCalledWith("8.3.9");
     });
+
+    it("shows a LOCKED current version for reference but flags it not runnable", () => {
+      // The project is pinned to 6.11.0, which the catalog endpoint no longer offers because it is
+      // below the supported floor (locked). It must still appear -- so the control is not blank and
+      // does not misreport what the project ran -- but flagged, and the subtext steers the user to a
+      // supported version. The server fail-closes if it is submitted anyway.
+      render(
+        <PipelineVersionIndicator
+          isPipelineVersion={true}
+          version="6.11.0"
+          versionHelpLink="https://help.example/version"
+          availableVersions={VERSIONS}
+          onVersionChange={jest.fn()}
+        />,
+      );
+
+      // The locked label appears in BOTH the dropdown trigger and the option, so match all.
+      expect(
+        screen.getAllByText("6.11.0 (current -- not runnable)").length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getByText(/no longer runnable and is shown for reference/),
+      ).toBeTruthy();
+      // the runnable options are still offered plainly alongside it
+      expect(screen.getByText("8.3.15")).toBeTruthy();
+    });
   });
 });

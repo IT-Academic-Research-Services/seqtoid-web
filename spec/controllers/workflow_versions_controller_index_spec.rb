@@ -39,6 +39,18 @@ RSpec.describe WorkflowVersionsController, type: :controller do
       expect(listed_versions.pluck("version")).to eq(["8.3.15"])
     end
 
+    it "omits LOCKED versions below the workflow's supported floor" do
+      create(:workflow_version, workflow: workflow, version: "8.3.15")
+      # Catalogued and runnable, but 6.11.0 is below the 7.0.0 short-read-mngs floor -> view-only.
+      # Offering it would only produce a run the current infra cannot execute; the dispatch gate
+      # refuses it, so the dropdown must not show it.
+      create(:workflow_version, workflow: workflow, version: "6.11.0", runnable: true)
+
+      get :index, params: { workflow: workflow }
+
+      expect(listed_versions.pluck("version")).to eq(["8.3.15"])
+    end
+
     it "returns deprecated versions but flags them" do
       create(:workflow_version, workflow: workflow, version: "8.3.15")
       create(:workflow_version, workflow: workflow, version: "8.1.0", deprecated: true, notes: "no longer patched")
