@@ -1,6 +1,7 @@
 import { Icon, Tooltip } from "@czi-sds/components";
 import cx from "classnames";
 import React from "react";
+import { Dropdown } from "~/components/ui/controls/dropdowns";
 import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { CatalogedWorkflowVersion } from "~/interface/shared";
 import commonStyles from "../../workflow_selector.scss";
@@ -111,19 +112,20 @@ export const PipelineVersionIndicator = ({
         )}
       </div>
       {isSelectable ? (
-        <select
+        // Use the platform-standard Dropdown (same control the rest of the upload flow uses, e.g.
+        // WetlabSelector) so this matches every other dropdown on the platform, rather than a bare
+        // native <select>. onChange hands back the option value, which is the exact catalogued
+        // version string -- that is what gets submitted and, per VersionRetrievalService, run
+        // verbatim.
+        <Dropdown
           className={cs.version}
-          value={version ?? ""}
-          aria-label={header}
-          data-testid="pipeline-version-select"
-          onChange={event => onVersionChange(event.target.value)}
-        >
-          {versionOptions.map(entry => (
-            <option key={entry.version} value={entry.version}>
-              {versionOptionLabel(entry)}
-            </option>
-          ))}
-        </select>
+          value={version ?? undefined}
+          options={versionOptions.map(entry => ({
+            text: versionOptionLabel(entry),
+            value: entry.version,
+          }))}
+          onChange={(value: string) => onVersionChange(value)}
+        />
       ) : (
         version && <p className={cs.version}>{version}</p>
       )}
