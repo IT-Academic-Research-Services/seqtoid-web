@@ -46,6 +46,32 @@ export class ProjectDescription extends React.Component<
     };
   }
 
+  // The project prop can arrive (or change) after this component has already
+  // mounted: on page load `project` is first set to a stub with no description,
+  // then filled in once /projects.json resolves. Because description is only
+  // copied into state in the constructor, that later value would otherwise never
+  // render. Sync it here.
+  //
+  // We compare the PREVIOUS prop against the current prop (not against state) so
+  // a legitimate external update still syncs even when it happens to equal what
+  // the user last saw. We only sync when the user is not mid-edit (editing) and
+  // has no unsaved keystrokes (changed), so an in-progress edit is never
+  // clobbered by an arriving prop.
+  componentDidUpdate(prevProps: ProjectDescriptionProps) {
+    const prevDescription = prevProps.project.description ?? "";
+    const nextDescription = this.props.project.description ?? "";
+    if (
+      prevDescription !== nextDescription &&
+      !this.state.editing &&
+      !this.state.changed
+    ) {
+      this.setState({
+        description: nextDescription,
+        lastValidDescription: nextDescription,
+      });
+    }
+  }
+
   toggleDisplayDescription() {
     this.setState(prevState => ({ showLess: !prevState.showLess }));
   }
