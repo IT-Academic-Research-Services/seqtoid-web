@@ -194,3 +194,92 @@ describe("ProjectDescription save", () => {
     );
   });
 });
+
+// SMP-1123 / SMP-1475: the project prop can change after mount (the sidebar
+// mounts a stub with no description, then /projects.json fills it in), but
+// description was only copied into state in the constructor, so the loaded value
+// never rendered. componentDidUpdate now syncs the incoming prop, guarded so it
+// never clobbers an in-progress edit.
+describe("ProjectDescription prop sync", () => {
+  const rerenderWith = (rerender: $TSFixMe, project: $TSFixMe) =>
+    rerender(
+      <ProjectDescription
+        project={{ id: 1, name: "P", ...project }}
+        onProjectDescriptionSave={jest.fn()}
+      />,
+    );
+
+  it("renders a description that arrives via props after mount", () => {
+    // Mounts empty (the stub project), then the real value arrives.
+    const { rerender } = renderPD({ description: "" });
+    expect(screen.getByText("No description.")).toBeTruthy();
+
+    rerenderWith(rerender, { description: "Loaded from projects.json" });
+
+    expect(screen.getByTestId("project-description").textContent).toBe(
+      "Loaded from projects.json",
+    );
+  });
+
+  it("does not clobber an in-progress edit when a prop arrives mid-edit", () => {
+    // User opens the editor and types unsaved text...
+    const { rerender } = renderPD({ description: "original", editable: true });
+    fireEvent.click(screen.getByTestId("edit-toggle"));
+    fireEvent.change(screen.getByTestId("textarea"), {
+      target: { value: "user is still typing" },
+    });
+
+    // ...and a fresh prop lands before they save. Their text must survive.
+    rerenderWith(rerender, {
+      description: "external update",
+      editable: true,
+    });
+
+    expect((screen.getByTestId("textarea") as HTMLTextAreaElement).value).toBe(
+      "user is still typing",
+    );
+  });
+
+  it("lands the saved value when the post-save prop arrives (no fight)", async () => {
+    // Full round-trip: edit, save (changed -> false), close the editor, then the
+    // parent re-renders with the just-saved value spread onto a new project.
+    mockSaveProjectDescription.mockResolvedValue({ status: "ok" });
+    const { rerender } = renderPD(
+      { description: "old", editable: true },
+      jest.fn(),
+    );
+    fireEvent.click(screen.getByTestId("edit-toggle"));
+    fireEvent.change(screen.getByTestId("textarea"), {
+      target: { value: "saved value" },
+    });
+    await act(async () => {
+      fireEvent.blur(screen.getByTestId("textarea"));
+    });
+    fireEvent.click(screen.getByTestId("edit-toggle")); // close editor
+
+    // changed is false by now, so the guard allows the sync; it carries the same
+    // value that was saved, so the read view shows it and nothing fights.
+    rerenderWith(rerender, { description: "saved value", editable: true });
+
+    expect(mockSaveProjectDescription).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("project-description").textContent).toBe(
+      "saved value",
+    );
+  });
+
+  it("is a no-op when an empty description stays empty (no state flip / loop)", () => {
+    const setStateSpy = jest.spyOn(ProjectDescription.prototype, "setState");
+    const { rerender } = renderPD({ description: "" });
+    expect(screen.getByText("No description.")).toBeTruthy();
+
+    // A genuinely description-less project: "" mounts, then "" (or null) arrives.
+    setStateSpy.mockClear();
+    rerenderWith(rerender, { description: null });
+
+    // Guard sees prev "" === next "" (both normalized), so it never setStates.
+    expect(setStateSpy).not.toHaveBeenCalled();
+    expect(screen.getByText("No description.")).toBeTruthy();
+    expect(screen.queryByTestId("project-description")).toBeNull();
+    setStateSpy.mockRestore();
+  });
+});
