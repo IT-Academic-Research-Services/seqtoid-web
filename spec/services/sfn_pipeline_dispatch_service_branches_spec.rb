@@ -18,9 +18,9 @@ require 'support/common_stub_constants'
 RSpec.describe SfnPipelineDispatchService, type: :service do
   BRANCHES_SAMPLES_BUCKET = "branches-samples-bucket".freeze
   BRANCHES_SFN_ARN = "branches:fake:sfn:arn".freeze
-  # >= the 7.0.0 short-read-mngs floor (sub-7 is now locked / non-dispatchable) but still < 8, so the
-  # legacy (pre-8) host-filtering arm this spec drives stays intact.
-  BRANCHES_LEGACY_WDL_VERSION = "7.9.0".freeze
+  # >= the 7.0.0 short-read-mngs floor (sub-7 is locked / non-dispatchable) but < 7.2 (the new-host-
+  # filter WDL boundary), so the legacy host-filtering arm this spec drives stays intact.
+  BRANCHES_LEGACY_WDL_VERSION = "7.1.0".freeze
   BRANCHES_WORKFLOW_NAME = WorkflowRun::WORKFLOW[:short_read_mngs]
 
   let(:project) { create(:project) }
