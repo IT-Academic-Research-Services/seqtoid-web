@@ -8,6 +8,7 @@ import {
   HOST_GENOME_SYNONYMS,
 } from "~/components/common/Metadata/constants";
 import NarrowContainer from "~/components/layout/NarrowContainer";
+import { logError } from "~/components/utils/logUtil";
 import {
   HostGenome,
   MetadataBasic,
@@ -260,15 +261,28 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
       return { pipelineVersions: this.state.pipelineVersions[projectId] };
     }
 
-    const { projectPipelineVersions, latestMajorPipelineVersions } =
-      await getProjectPipelineVersions(projectId);
-    this.setState((prevState: SampleUploadFlowState) => ({
-      pipelineVersions: {
-        ...prevState.pipelineVersions,
-        [projectId]: projectPipelineVersions,
-      },
-      latestMajorPipelineVersions,
-    }));
+    // Guard the version fetch: a failure here (e.g. the pipeline-version endpoint 500ing because an
+    // environment's WorkflowVersion catalog is incomplete) must NOT break project creation or the
+    // auto-select that follows it. Selecting a freshly created project calls into here; if this threw,
+    // the create modal never resolved and the project -- already created server-side -- looked stuck
+    // (a retry then hit "name already exists"). Degrade to no version data instead: the version
+    // controls fall back to their read-only rendering and the upload flow keeps working.
+    try {
+      const { projectPipelineVersions, latestMajorPipelineVersions } =
+        await getProjectPipelineVersions(projectId);
+      this.setState((prevState: SampleUploadFlowState) => ({
+        pipelineVersions: {
+          ...prevState.pipelineVersions,
+          [projectId]: projectPipelineVersions,
+        },
+        latestMajorPipelineVersions,
+      }));
+    } catch (error) {
+      logError({
+        message: "Failed to fetch pipeline versions for project",
+        details: { projectId, error },
+      });
+    }
   };
 
   handleStepSelect = (step: UploadStepType) => {

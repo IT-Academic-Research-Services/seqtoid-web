@@ -85,7 +85,15 @@ const AnalysisType = ({
           <span>{title}</span>
         </div>
         <div className={cs.description}>{description}</div>
-        {isSelected && sequencingPlatformOptions}
+        {isSelected && (
+          // The whole tile toggles workflow selection on click. The sub-options panel holds its
+          // own interactive controls (the pipeline-version dropdown, platform radios), and a click
+          // on any of them bubbles up to the tile's onClick and DESELECTS the workflow -- which
+          // unmounts this panel. For AMR that made the version un-selectable: opening the dropdown
+          // collapsed the panel before a choice could register. Stop the panel's clicks at its
+          // boundary; selecting the tile still works via the checkbox/title/icon above.
+          <div onClick={e => e.stopPropagation()}>{sequencingPlatformOptions}</div>
+        )}
       </div>
     </div>
   );

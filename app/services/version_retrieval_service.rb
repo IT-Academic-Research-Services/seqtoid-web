@@ -44,7 +44,16 @@ class VersionRetrievalService
       #
       # Pinning itself is unchanged -- ProjectWorkflowVersion still exists and still decides what
       # happens when the user expresses no preference. Only precedence changed.
-      prepare_specific_workflow_version_for_upload(validated_user_prefix)
+      #
+      # LITERAL SELECTION -- an explicit choice runs EXACTLY as chosen; it is NOT expanded to the
+      # latest version sharing its prefix. Selecting "8.0.0" runs 8.0.0, never 8.3.15. The old
+      # latest-of-prefix expansion here silently substituted a different version than the one the
+      # dropdown showed, so the user believed they were running a version they were not. The
+      # per-run selector only ever submits full, catalogued version strings, so exact resolution is
+      # the correct and unambiguous behaviour; a prefix that names no catalog entry is an honest
+      # not-found rather than a silent upgrade. Prefix expansion still lives on the pin/default path
+      # below, where "no selection" legitimately means "latest of what this project is pinned to".
+      prepare_exact_workflow_version(validated_user_prefix)
     elsif !@existing_version_prefix || (default_version && default_version.start_with?(@existing_version_prefix))
       # Allows us to use the version set in app_config even if it's not the latest version
       validated_default_version
@@ -106,6 +115,20 @@ class VersionRetrievalService
     version, deprecated, runnable = fetch_latest_version_for_version_prefix(prefix).values_at(:version, :deprecated, :runnable)
     handle_workflow_version_issues(version, deprecated, runnable)
     version
+  end
+
+  # LITERAL SELECTION -- resolve an explicit user choice to that EXACT catalogued version. No
+  # prefix expansion: the value must name a real workflow_versions row or it is a clear not-found.
+  # This is what keeps "what the dropdown shows" identical to "what runs". The same catalog gate the
+  # pinned path applies (runnable / deprecated) still runs here.
+  def prepare_exact_workflow_version(version)
+    catalog_entry = WorkflowVersion.find_by(workflow: @workflow, version: version)
+    if catalog_entry.nil?
+      raise VersionControlErrors.workflow_version_not_found(@workflow, version)
+    end
+
+    handle_workflow_version_issues(catalog_entry.version, catalog_entry.deprecated, catalog_entry.runnable)
+    catalog_entry.version
   end
 
   def handle_workflow_version_issues(version, deprecated, runnable)
