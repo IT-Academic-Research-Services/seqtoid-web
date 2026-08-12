@@ -134,7 +134,15 @@ class VersionRetrievalService
   def handle_workflow_version_issues(version, deprecated, runnable)
     # In the future, surface the error to the user when the user is allowed to control their workflow versions
     # For now, we'll just raise an error
-    if !runnable
+    floor = WorkflowVersion.supported_floor(@workflow)
+    if WorkflowVersion.below_floor?(version, floor)
+      # LOCKED: older than the supported floor. Raise the TYPED error (not a bare string) so the
+      # upload path can rescue it and surface a clean message rather than a stuck rollback. A locked
+      # row is also forced non-runnable at the data layer, but check the floor explicitly so the
+      # message says "locked / view-only" rather than the generic "not runnable".
+      raise VersionControlErrors::WorkflowVersionLockedError,
+            VersionControlErrors.workflow_version_locked(@workflow, version, floor)
+    elsif !runnable
       raise VersionControlErrors.workflow_version_not_runnable(@workflow, version)
     elsif deprecated
       raise VersionControlErrors.workflow_version_deprecated(@workflow, version)

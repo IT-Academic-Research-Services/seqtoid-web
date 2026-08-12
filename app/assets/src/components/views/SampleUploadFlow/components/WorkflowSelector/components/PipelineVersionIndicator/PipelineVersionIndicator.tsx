@@ -55,12 +55,19 @@ export const PipelineVersionIndicator = ({
   //
   // That only holds if the current version is actually one of the options. The catalog endpoint
   // lists runnable versions, and a project can be pinned to one that has since been marked
-  // non-runnable or deprecated -- in which case `value` matches no <option> and the browser renders
-  // the select BLANK, silently misreporting what the run will use. Prepending it keeps the default
-  // truthful; it is marked so nobody reads it as a normal choice.
+  // non-runnable (e.g. LOCKED below the supported floor -- older than the current infra can run).
+  // If we drop it, `value` matches no <option> and the control renders BLANK, silently misreporting
+  // what the project ran. So it is still shown -- but ONLY to tell the truth: it is labelled "not
+  // runnable", and the server fail-closes with a clear "version locked" message if it is submitted,
+  // which steers the user to pick a supported version for any NEW run. Existing results are unaffected.
+  const currentVersionLocked =
+    isSelectable && !!version && !availableVersions.some(entry => entry.version === version);
   const versionOptions =
-    isSelectable && version && !availableVersions.some(entry => entry.version === version)
-      ? [{ version, deprecated: false, notes: "current version for this project" }, ...availableVersions]
+    currentVersionLocked && version
+      ? [
+          { version, deprecated: false, notes: "current version -- no longer runnable" },
+          ...(availableVersions ?? []),
+        ]
       : (availableVersions ?? []);
   const newVersionAvailableText = (
     <div>
@@ -74,7 +81,15 @@ export const PipelineVersionIndicator = ({
 
   const versionText = isPipelineVersion ? "version" : "NCBI Index";
   let versionSubtext: string | JSX.Element = "";
-  if (version) {
+  if (version && currentVersionLocked) {
+    versionSubtext = (
+      <span>
+        This {versionText} is no longer runnable and is shown for reference only. Your existing
+        results remain viewable; choose a supported {versionText} to run new samples.{" "}
+        <ExternalLink href={versionHelpLink}>Learn More</ExternalLink>
+      </span>
+    );
+  } else if (version) {
     versionSubtext = (
       <span>
         <span>
@@ -121,7 +136,12 @@ export const PipelineVersionIndicator = ({
           className={cs.version}
           value={version ?? undefined}
           options={versionOptions.map(entry => ({
-            text: versionOptionLabel(entry),
+            // The locked current version is called out distinctly so it never reads as a normal,
+            // runnable choice; every other option uses the standard (possibly "deprecated") label.
+            text:
+              currentVersionLocked && entry.version === version
+                ? `${entry.version} (current -- not runnable)`
+                : versionOptionLabel(entry),
             value: entry.version,
           }))}
           onChange={(value: string) => onVersionChange(value)}

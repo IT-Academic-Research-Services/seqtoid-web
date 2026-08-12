@@ -234,7 +234,14 @@ module PipelineRunsHelper
   PIPELINE_VERSION_2 = '2.0'.freeze
   ASSEMBLY_PIPELINE_VERSION = '3.1'.freeze
   COVERAGE_VIZ_PIPELINE_VERSION = '3.6'.freeze
-  NEW_HOST_FILTERING_PIPELINE_VERSION = '8'.freeze
+  # The new (bowtie2/hisat2/kallisto) host-filter stage. The WDL rewrite that replaced the legacy
+  # STAR+gsnap stage with this one actually landed at short-read-mngs v7.2.0, not v8 -- so for the
+  # v7.2.0..v8.0.0 band the app was sending legacy inputs (star_genome, ...) to a WDL that only has
+  # the new inputs, which miniwdl rejects with `unknown input: star_genome`. Aligning the threshold
+  # to the real WDL boundary (7.2) fixes those ported versions and is a no-op for everything else:
+  # v8+ was already >= this, and v7.0/v7.1 stay legacy. (ERCC-reads thresholds below are separate,
+  # matching their own later WDL boundaries.)
+  NEW_HOST_FILTERING_PIPELINE_VERSION = '7.2'.freeze
   BOWTIE2_ERCC_READS_PIPELINE_VERSION = "8.1".freeze
   BOWTIE2_ERCC_READS_BEFORE_QUALITY_FILTERING_PIPELINE_VERSION = "8.2".freeze
 

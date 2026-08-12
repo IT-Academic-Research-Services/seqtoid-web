@@ -9,21 +9,22 @@ RSpec.describe VersionRetrievalService, type: :service do
 
   describe "pinned prefix that the app-config default already satisfies" do
     before do
-      # default_version (from app_config) is "2.0.0".
-      AppConfigHelper.set_workflow_version(short_read_mngs_workflow, "2.0.0")
+      # default_version (from app_config) is "9.0.0". (>= the 7.0.0 short-read floor -- a sub-7
+      # version would be locked, which is a different arm than the one under test here.)
+      AppConfigHelper.set_workflow_version(short_read_mngs_workflow, "9.0.0")
       @project = create(:project)
-      # Pin the project to prefix "2.0" -- which "2.0.0" starts with.
+      # Pin the project to prefix "9.0" -- which "9.0.0" starts with.
       create(:project_workflow_version, project_id: @project.id,
-                                        workflow: short_read_mngs_workflow, version_prefix: "2.0")
+                                        workflow: short_read_mngs_workflow, version_prefix: "9.0")
     end
 
     it "returns the app-config default (the `default_version.start_with?(prefix)` true arm)" do
       # In fetch_and_validate_version_to_run the elsif right-hand side is TRUE, so it
       # returns default_version and NEVER calls prepare_specific_workflow_version...
-      # There is deliberately NO WorkflowVersion row matching "2.0%", so if this arm
+      # There is deliberately NO WorkflowVersion row matching "9.0%", so if this arm
       # were removed the else path would raise workflow_version_not_found instead of
-      # returning "2.0.0".
-      expect(VersionRetrievalService.call(@project.id, short_read_mngs_workflow)).to eq("2.0.0")
+      # returning "9.0.0".
+      expect(VersionRetrievalService.call(@project.id, short_read_mngs_workflow)).to eq("9.0.0")
     end
   end
 

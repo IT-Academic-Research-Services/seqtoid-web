@@ -18,7 +18,9 @@ require 'support/common_stub_constants'
 RSpec.describe SfnPipelineDispatchService, type: :service do
   BRANCHES_SAMPLES_BUCKET = "branches-samples-bucket".freeze
   BRANCHES_SFN_ARN = "branches:fake:sfn:arn".freeze
-  BRANCHES_LEGACY_WDL_VERSION = "4.9.0".freeze
+  # >= the 7.0.0 short-read-mngs floor (sub-7 is locked / non-dispatchable) but < 7.2 (the new-host-
+  # filter WDL boundary), so the legacy host-filtering arm this spec drives stays intact.
+  BRANCHES_LEGACY_WDL_VERSION = "7.1.0".freeze
   BRANCHES_WORKFLOW_NAME = WorkflowRun::WORKFLOW[:short_read_mngs]
 
   let(:project) { create(:project) }
@@ -90,6 +92,16 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
 
       expect(result[:pipeline_version]).to eq("9.3")
       expect(pipeline_run.reload.wdl_version).to eq("9.3.1")
+    end
+
+    it "still refuses a semver pipeline_branch BELOW the supported floor -- the admin escape hatch " \
+       "is not exempt from the lock" do
+      # short-read-mngs floor is 7.0.0; 6.11.0 is view-only, so even the verbatim-branch path must
+      # refuse it rather than dispatch a run the current infra cannot execute.
+      pipeline_run = create(:pipeline_run, sample: sample, pipeline_branch: "6.11.0")
+
+      expect { described_class.call(pipeline_run) }
+        .to raise_error(ErrorHelper::VersionControlErrors::WorkflowVersionLockedError, /locked/)
     end
   end
 
