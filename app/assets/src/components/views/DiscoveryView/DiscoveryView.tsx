@@ -530,24 +530,43 @@ export class DiscoveryView extends React.Component<
 
     // this event is triggered when a user clicks "Back" in their browser
     // to make sure session sorting parameters are preserved, we need
-    // to set the correct order parameters in the state
-    window.onpopstate = () => {
-      this.setState(
-        {
-          ...history.state,
-          ...this.getOrderStateFieldsFor(
-            history.state.currentTab,
-            history.state.workflow,
-          ),
-        },
-        () => {
-          this.resetData({
-            callback: this.initialLoad,
-          });
-        },
-      );
-    };
+    // to set the correct order parameters in the state.
+    //
+    // SMP-1501 / SMP-1476: use addEventListener + removeEventListener (in
+    // componentWillUnmount) instead of assigning window.onpopstate. The bare assignment
+    // was never removed on unmount, so the handler leaked globally: once DiscoveryView
+    // had mounted, EVERY browser back/forward -- including from the sample view -- re-ran
+    // resetData + initialLoad, re-issuing the discovery fan-out. That fan-out includes
+    // fetchNextGenWorkflowRuns (a fedWorkflowRuns query -- federation-era name, now
+    // Rails), whose response shares a Relay dataID with the sample's SampleForReport
+    // record and flipped a SUCCEEDED run to the SAMPLE FAILED screen.
+    window.addEventListener("popstate", this.handlePopState);
   }
+
+  componentWillUnmount() {
+    // Remove the leaked-on-unmount popstate handler (SMP-1501 / SMP-1476). Without this,
+    // the handler kept firing from other views after DiscoveryView unmounted.
+    window.removeEventListener("popstate", this.handlePopState);
+  }
+
+  // Back/forward WITHIN DiscoveryView still resets sorting state and reloads; only the
+  // cross-view leak is removed. Body preserved verbatim from the former window.onpopstate.
+  handlePopState = () => {
+    this.setState(
+      {
+        ...history.state,
+        ...this.getOrderStateFieldsFor(
+          history.state.currentTab,
+          history.state.workflow,
+        ),
+      },
+      () => {
+        this.resetData({
+          callback: this.initialLoad,
+        });
+      },
+    );
+  };
 
   /** This grabs orderBy and orderDir from sessionStorage. */
   getConditionsWithSessionStorage = (
