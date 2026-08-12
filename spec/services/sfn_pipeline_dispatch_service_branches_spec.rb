@@ -91,6 +91,16 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
       expect(result[:pipeline_version]).to eq("9.3")
       expect(pipeline_run.reload.wdl_version).to eq("9.3.1")
     end
+
+    it "still refuses a semver pipeline_branch BELOW the supported floor -- the admin escape hatch " \
+       "is not exempt from the lock" do
+      # short-read-mngs floor is 7.0.0; 6.11.0 is view-only, so even the verbatim-branch path must
+      # refuse it rather than dispatch a run the current infra cannot execute.
+      pipeline_run = create(:pipeline_run, sample: sample, pipeline_branch: "6.11.0")
+
+      expect { described_class.call(pipeline_run) }
+        .to raise_error(ErrorHelper::VersionControlErrors::WorkflowVersionLockedError, /locked/)
+    end
   end
 
   describe "new host filtering stage (pipeline_version >= 8)" do

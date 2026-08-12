@@ -28,6 +28,22 @@ class WorkflowVersion < ApplicationRecord
   # reaches a `LIKE '<prefix>%'` query, so it is validated at both ends.
   USER_VERSION_PREFIX_FORMAT = /\A\d+(\.\d+){0,2}\z/
 
+  # SUPPORTED-VERSION FLOOR (view-only "lock" for versions older than what the current infra can run).
+  #
+  # Per-workflow oldest supported version. A catalogued version BELOW its workflow's floor is LOCKED:
+  # existing samples + their results stay fully viewable (results rendering never consults this
+  # catalog), but the version can no longer be dispatched or re-run -- it is forced non-`runnable`
+  # (see `lock_below_supported_floor`) so it drops out of the selector, the dispatch gate, and every
+  # rerun path, and any attempt to force it surfaces a clear "locked" error instead of a run that
+  # would fail on the new infra.
+  #
+  # short-read-mngs < 7.0.0 is not runnable on the current infra (per CZI, 2026-08-12). Other
+  # workflows have NO floor set (nil = unconstrained, unchanged behaviour) until their oldest
+  # supported version is decided -- add an entry here to lock a workflow's older line.
+  SUPPORTED_VERSION_FLOORS = {
+    "short-read-mngs" => "7.0.0",
+  }.freeze
+
   validates :tier, inclusion: { in: TIERS }, allow_nil: true
   validates :image_digest, format: { with: IMAGE_DIGEST_FORMAT }, allow_nil: true
   validates :wdl_checksum, format: { with: CHECKSUM_FORMAT }, allow_nil: true
@@ -136,6 +152,28 @@ class WorkflowVersion < ApplicationRecord
 
     version_sort_key(version).first.take(prefix_segments.length) == prefix_segments
   end
+
+  # The oldest supported version for `workflow`, or nil when the workflow has no floor.
+  def self.supported_floor(workflow)
+    SUPPORTED_VERSION_FLOORS[workflow]
+  end
+
+  # True when `version` sorts strictly below `floor`, using the same segment-aware ordering as the
+  # rest of the catalog. A `version` that carries no numeric segment (an alignment-config name, etc.)
+  # has no place on a version line, so it is treated as NOT below the floor -- the floor only governs
+  # real semver-shaped versions.
+  def self.below_floor?(version, floor)
+    return false if floor.blank?
+    return false if version_sort_key(version).first.empty?
+
+    (version_sort_key(version) <=> version_sort_key(floor)).negative?
+  end
+
+  # LOCKED = catalogued but older than the workflow's supported floor -> view-only, not runnable.
+  def below_supported_floor?
+    self.class.below_floor?(version, self.class.supported_floor(workflow))
+  end
+  alias_method :locked?, :below_supported_floor?
 
   # Returns latest value of `version` for specified workflow / versioned attribute.
   # Ex: WorkflowVersion.latest_version_of(HostGenome::HUMAN_HOST) ==> "2"

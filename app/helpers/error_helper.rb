@@ -1,5 +1,19 @@
 module ErrorHelper
   module VersionControlErrors
+    # A dispatch was attempted at a version older than the workflow's supported floor. Raised as a
+    # distinct TYPE (not a bare string like the sibling helpers) so the upload path can rescue it
+    # specifically and surface a clean "locked" message instead of rolling the sample back into a
+    # stuck waiting state. The old version's existing results remain fully viewable regardless.
+    class WorkflowVersionLockedError < StandardError; end
+
+    # Message for a locked (below-floor) version: names the floor and points the user at re-running
+    # on a supported version, since the old one is view-only.
+    def self.workflow_version_locked(workflow, version, floor)
+      "WorkflowVersion #{workflow} #{version} is locked: it is older than the oldest supported " \
+        "version (#{floor}) and can no longer be run. Existing results for this version are still " \
+        "viewable; choose #{floor} or newer to run a new analysis."
+    end
+
     def self.workflow_version_not_found(workflow, version_prefix)
       "WorkflowVersion for workflow=#{workflow} and version_prefix=#{version_prefix} does not exist"
     end

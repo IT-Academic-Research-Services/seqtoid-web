@@ -39,6 +39,8 @@ class WorkflowVersionsController < ApplicationController
   #
   # Non-runnable versions are omitted entirely: they cannot be dispatched
   # (VersionRetrievalService refuses them), so offering them would only produce a failed upload.
+  # LOCKED versions (older than the workflow's supported floor) are omitted for the same reason --
+  # they are view-only, and the dispatch gate refuses them -- so they never appear as a run choice.
   # Deprecated versions ARE returned, flagged, so the client can show them as a discouraged choice
   # -- they still run, they are just no longer patched.
   def index
@@ -55,6 +57,7 @@ class WorkflowVersionsController < ApplicationController
     versions = if versioned_selection_enabled?
                  WorkflowVersion
                    .where(workflow: workflow, runnable: true)
+                   .reject(&:below_supported_floor?)
                    .sort_by { |wv| WorkflowVersion.version_sort_key(wv.version) }
                    .reverse
                else
