@@ -151,8 +151,10 @@ RSpec.describe VersionRetrievalService, type: :service do
       # CZID-976: this previously expected project_workflow_version_already_pinned. Selection is now
       # per-run and the user's choice WINS over the pin -- the raise made the feature impossible in
       # practice, since every project is pinned. The pin now only supplies the default.
-      it "honours the user's selection instead of raising" do
-        expect(VersionRetrievalService.call(@project.id, cg_workflow, "2.0")).to eq("2.0.9")
+      #
+      # LITERAL SELECTION: the choice is the exact catalogued version and runs verbatim.
+      it "honours the user's exact selection instead of raising" do
+        expect(VersionRetrievalService.call(@project.id, cg_workflow, "2.0.9")).to eq("2.0.9")
       end
 
       it "still refuses a selection that resolves to nothing" do
@@ -162,12 +164,10 @@ RSpec.describe VersionRetrievalService, type: :service do
     end
 
     context "when the project is not already pinned to a specific version for a workflow" do
-      let(:latest_workflow_version_for_version_prefix) { "2.0.9" }
+      subject { VersionRetrievalService.call(@project.id, cg_workflow, "2.0.9") }
 
-      subject { VersionRetrievalService.call(@project.id, cg_workflow, "2.0") }
-
-      it "should return the latest workflow version for the specified prefix" do
-        expect(subject).to eq(latest_workflow_version_for_version_prefix)
+      it "should return the exact selected version" do
+        expect(subject).to eq("2.0.9")
       end
     end
 

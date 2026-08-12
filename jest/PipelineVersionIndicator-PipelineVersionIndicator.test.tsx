@@ -93,17 +93,31 @@ describe("PipelineVersionIndicator", () => {
     it("offers every catalogued version, newest first as the server ordered them", () => {
       renderSelectable();
 
-      const options = screen.getAllByRole("option") as HTMLOptionElement[];
-      expect(options.map(o => o.value)).toEqual(["8.3.15", "8.3.9", "8.1.0"]);
+      // The platform Dropdown renders each option as a menu item keyed by its label
+      // (kebab-cased). "8.1.0 (deprecated: ...)" -> "8-1-0-deprecated-no-longer-patched".
+      const ordered = [
+        "8-3-15",
+        "8-3-9",
+        "8-1-0-deprecated-no-longer-patched",
+      ].map(id => screen.getByTestId(id));
+      // every catalogued version is offered...
+      ordered.forEach(item => expect(item).toBeTruthy());
+      // ...in the order the server provided (newest first).
+      expect(
+        ordered[0].compareDocumentPosition(ordered[1]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        ordered[1].compareDocumentPosition(ordered[2]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     });
 
     it("preselects the version the project resolves to", () => {
       renderSelectable();
 
-      expect(
-        (screen.getByTestId("pipeline-version-select") as HTMLSelectElement)
-          .value,
-      ).toBe("8.3.15");
+      // The dropdown trigger surfaces the resolved version as its current value.
+      expect(screen.getByTestId("filter-value").textContent).toBe("8.3.15");
     });
 
     it("marks a deprecated version rather than hiding it", () => {
@@ -119,9 +133,8 @@ describe("PipelineVersionIndicator", () => {
     it("reports the user's choice", () => {
       const onVersionChange = renderSelectable();
 
-      fireEvent.change(screen.getByTestId("pipeline-version-select"), {
-        target: { value: "8.3.9" },
-      });
+      // Clicking an option reports its exact version value (which the backend then runs verbatim).
+      fireEvent.click(screen.getByTestId("8-3-9"));
 
       expect(onVersionChange).toHaveBeenCalledWith("8.3.9");
     });
