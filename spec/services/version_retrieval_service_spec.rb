@@ -8,16 +8,21 @@ RSpec.describe VersionRetrievalService, type: :service do
   let(:index_version) { AlignmentConfig::NCBI_INDEX }
   let(:default_index_version) { "01-22-2021" }
 
+  # short-read-mngs has a supported-version FLOOR of 7.0.0 (versions below it are locked / view-only),
+  # so these fixtures live at or above 7.0.0. The version FAMILY is shifted up by +7 on the major from
+  # the original 0.x/1.x/2.x set, which preserves every relative ordering and prefix relationship the
+  # cases below rely on -- the point of this spec is prefix resolution and deprecated/not-runnable
+  # handling, not the floor itself (that has its own spec).
   before do
-    AppConfigHelper.set_workflow_version(short_read_mngs_workflow, "2.0.0")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "1.9.9-beta")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "1.9.8")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "1.2.2")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "1.1.1")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "1.0.5")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "1.0.4")
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "0.9.9", deprecated: true)
-    create(:workflow_version, workflow: short_read_mngs_workflow, version: "0.0.1", deprecated: true, runnable: false)
+    AppConfigHelper.set_workflow_version(short_read_mngs_workflow, "9.0.0")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "8.9.9-beta")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "8.9.8")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "8.2.2")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "8.1.1")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "8.0.5")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "8.0.4")
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "7.9.9", deprecated: true)
+    create(:workflow_version, workflow: short_read_mngs_workflow, version: "7.0.1", deprecated: true, runnable: false)
 
     create(:workflow_version, workflow: cg_workflow, version: "2.0.9")
     create(:workflow_version, workflow: amr_workflow, version: "1.0.2")
@@ -29,7 +34,7 @@ RSpec.describe VersionRetrievalService, type: :service do
   describe "when user_specified_prefix is not present" do
     context "when the project does not have the workflow pinned to a specific version" do
       before do
-        AppConfigHelper.set_workflow_version(short_read_mngs_workflow, "1.0.0")
+        AppConfigHelper.set_workflow_version(short_read_mngs_workflow, "8.0.0")
         create(:app_config, key: AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME, value: default_index_version)
         @project = create(:project)
         @default_versions_for_workflow = {
@@ -49,7 +54,7 @@ RSpec.describe VersionRetrievalService, type: :service do
       before do
         @project = create(:project)
         @workflow_version_prefixes = {
-          short_read_mngs_workflow => "2.0.0",
+          short_read_mngs_workflow => "9.0.0",
           cg_workflow => "2.0",
           amr_workflow => "1",
           long_read_mngs_workflow => "0.0.1",
@@ -73,8 +78,8 @@ RSpec.describe VersionRetrievalService, type: :service do
     end
 
     context "when the project is already pinned to a specific version for one workflow" do
-      let(:version_prefix) { "1" }
-      let(:latest_workflow_version_for_version_prefix) { "1.9.9-beta" }
+      let(:version_prefix) { "8" }
+      let(:latest_workflow_version_for_version_prefix) { "8.9.9-beta" }
 
       before do
         @project = create(:project)
@@ -88,8 +93,8 @@ RSpec.describe VersionRetrievalService, type: :service do
       end
 
       context "when the workflow version pinned is deprecated" do
-        let(:version_prefix) { "0.9.9" }
-        let(:latest_workflow_version_for_version_prefix) { "0.9.9" }
+        let(:version_prefix) { "7.9.9" }
+        let(:latest_workflow_version_for_version_prefix) { "7.9.9" }
 
         before do
           @project = create(:project)
@@ -104,8 +109,8 @@ RSpec.describe VersionRetrievalService, type: :service do
       end
 
       context "when the workflow version pinned is not runnable" do
-        let(:version_prefix) { "0.0.1" }
-        let(:latest_workflow_version_for_version_prefix) { "0.0.1" }
+        let(:version_prefix) { "7.0.1" }
+        let(:latest_workflow_version_for_version_prefix) { "7.0.1" }
 
         before do
           @project = create(:project)
@@ -120,7 +125,7 @@ RSpec.describe VersionRetrievalService, type: :service do
       end
 
       context "when a worklow version for the specified version prefix is not found" do
-        let(:version_prefix) { "0.0.0" }
+        let(:version_prefix) { "7.0.0" }
 
         before do
           @project = create(:project)

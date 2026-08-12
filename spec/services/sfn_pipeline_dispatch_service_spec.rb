@@ -16,7 +16,9 @@ FAKE_REGION = "fake-region".freeze
 FAKE_SFN_ARN = "fake:sfn:arn".freeze
 TEST_WORKFLOW_NAME = WorkflowRun::WORKFLOW[:short_read_mngs]
 PIPELINE_RUN_STAGE_NAMES = PipelineRunStage::STAGE_INFO.values.pluck(:dag_name)
-FAKE_WDL_VERSION = "4.9.0".freeze
+# >= the 7.0.0 short-read-mngs supported floor (a sub-7 version would now be locked / non-dispatchable)
+# while still < 8, so the legacy (pre-8) code paths this spec exercises stay on their intended arm.
+FAKE_WDL_VERSION = "7.9.0".freeze
 FAKE_STATES_CLIENT = Aws::States::Client.new(
   stub_responses: {
     start_execution: {

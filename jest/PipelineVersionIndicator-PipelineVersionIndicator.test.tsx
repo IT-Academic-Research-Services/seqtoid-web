@@ -154,7 +154,10 @@ describe("PipelineVersionIndicator", () => {
         />,
       );
 
-      expect(screen.getByText("6.11.0 (current -- not runnable)")).toBeTruthy();
+      // The locked label appears in BOTH the dropdown trigger and the option, so match all.
+      expect(
+        screen.getAllByText("6.11.0 (current -- not runnable)").length,
+      ).toBeGreaterThan(0);
       expect(
         screen.getByText(/no longer runnable and is shown for reference/),
       ).toBeTruthy();
