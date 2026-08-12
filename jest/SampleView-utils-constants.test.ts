@@ -8,6 +8,8 @@
 import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import {
   BACKGROUND_DEPENDENT_READS_THRESHOLDS,
+  getWorkflowRunStatusCategory,
+  isKnownWorkflowRunStatus,
   LONG_READS_THRESHOLDS,
   METRIC_DECIMAL_PLACES,
   NON_BACKGROUND_DEPENDENT_SHORT_READS_THRESHOLDS,
@@ -16,6 +18,7 @@ import {
   THRESHOLDS,
   TREE_METRICS,
   TREE_VIZ_TOOLTIP_METRICS,
+  WORKFLOW_RUN_STATUS_CATEGORY,
 } from "~/components/views/SampleView/utils/constants";
 
 describe("BACKGROUND_DEPENDENT_READS_THRESHOLDS", () => {
@@ -100,6 +103,71 @@ describe("TREE_VIZ_TOOLTIP_METRICS aggregators", () => {
         );
       });
     });
+  });
+});
+
+// SMP-1501 / SMP-1476: every value of BOTH Rails status vocabularies -- the raw
+// WorkflowRun::STATUS (SampleForReport) and the SFN-mapped form (fedWorkflowRuns), which
+// can overwrite each other on the shared Relay record -- must classify explicitly, and an
+// unknown value must NOT fall through to the failure screen.
+describe("getWorkflowRunStatusCategory", () => {
+  const CASES: Array<
+    [string, "success" | "inProgress" | "waiting" | "failed"]
+  > = [
+    // success -- both vocabularies
+    ["SUCCEEDED", "success"], // raw Rails
+    ["SUCCEEDED_WITH_ISSUE", "success"], // raw Rails
+    ["COMPLETE", "success"], // SFN-mapped -- the SMP-1501 regression
+    ["COMPLETE - ISSUE", "success"], // SFN-mapped
+    // in progress
+    ["RUNNING", "inProgress"],
+    ["STARTED", "inProgress"],
+    // waiting
+    ["CREATED", "waiting"],
+    ["PENDING", "waiting"],
+    // failed
+    ["FAILED", "failed"],
+    ["TIMED_OUT", "failed"],
+    ["ABORTED", "failed"],
+  ];
+
+  it.each(CASES)("classifies %s as %s", (status, category) => {
+    expect(getWorkflowRunStatusCategory(status)).toBe(category);
+  });
+
+  it("covers every key in WORKFLOW_RUN_STATUS_CATEGORY", () => {
+    const tested = new Set(CASES.map(([status]) => status));
+    Object.keys(WORKFLOW_RUN_STATUS_CATEGORY).forEach(status => {
+      expect(tested.has(status)).toBe(true);
+    });
+  });
+
+  it.each([null, undefined, ""])(
+    "treats the absent status %p as in progress, never failed",
+    status => {
+      expect(getWorkflowRunStatusCategory(status)).toBe("inProgress");
+    },
+  );
+
+  it("defaults an UNRECOGNISED status to in progress, never failed", () => {
+    expect(getWorkflowRunStatusCategory("SOME_NEW_STATUS")).toBe("inProgress");
+    // A value colliding with an Object.prototype member must not resolve to a
+    // prototype function via a bare bracket lookup.
+    expect(getWorkflowRunStatusCategory("toString")).toBe("inProgress");
+    expect(getWorkflowRunStatusCategory("constructor")).toBe("inProgress");
+  });
+});
+
+describe("isKnownWorkflowRunStatus", () => {
+  it("is true for every mapped status and false otherwise", () => {
+    Object.keys(WORKFLOW_RUN_STATUS_CATEGORY).forEach(status => {
+      expect(isKnownWorkflowRunStatus(status)).toBe(true);
+    });
+    ["SOME_NEW_STATUS", "toString", "constructor", "", null, undefined].forEach(
+      status => {
+        expect(isKnownWorkflowRunStatus(status)).toBe(false);
+      },
+    );
   });
 });
 

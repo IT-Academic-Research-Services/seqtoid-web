@@ -358,6 +358,70 @@ export const CREATED_STATE = "CREATED";
 export const RUNNING_STATE = "RUNNING";
 export const SUCCEEDED_STATE = "SUCCEEDED";
 
+// SMP-1501 / SMP-1476: the render category a workflow run's `status` maps to.
+//
+// SampleReportContent reads workflowRun.status from the Relay store, where a dataID
+// collision (environment.ts has no getDataID) lets two Rails GraphQL responses for the
+// same workflow-run id overwrite each other: whichever resolves last wins. They disagree
+// because they are two Rails translations of the SAME raw WorkflowRun::STATUS column:
+//   - RAW vocabulary -- SampleForReport serializes the column verbatim:
+//     CREATED / RUNNING / SUCCEEDED / SUCCEEDED_WITH_ISSUE / FAILED / TIMED_OUT / ABORTED
+//   - SFN-MAPPED vocabulary -- fedWorkflowRuns runs it through
+//     WorkflowRun::SFN_STATUS_MAPPING in WorkflowRunsFetching#format_workflow_runs
+//     (SUCCEEDED -> COMPLETE, SUCCEEDED_WITH_ISSUE -> "COMPLETE - ISSUE"):
+//     CREATED / RUNNING / COMPLETE / "COMPLETE - ISSUE" / FAILED
+//     (TIMED_OUT / ABORTED are unmapped there and arrive as null)
+// So the status can arrive in EITHER vocabulary, and the old `status === "SUCCEEDED"`-
+// else-fail logic misclassified the SFN-mapped success values ("COMPLETE") as failures.
+// Every value of both is mapped explicitly here, plus the two PENDING / STARTED keys that
+// only appear in the federation-era NEXT_GEN_TO_LEGACY_STATUS leftover.
+export type WorkflowRunStatusCategory =
+  | "success"
+  | "inProgress"
+  | "waiting"
+  | "failed";
+
+export const WORKFLOW_RUN_STATUS_CATEGORY: Record<
+  string,
+  WorkflowRunStatusCategory
+> = {
+  // success -- render the report
+  SUCCEEDED: "success", // raw
+  SUCCEEDED_WITH_ISSUE: "success", // raw
+  COMPLETE: "success", // SFN-mapped -- the SMP-1501 regression
+  "COMPLETE - ISSUE": "success", // SFN-mapped
+  // in progress -- results are being generated
+  RUNNING: "inProgress",
+  STARTED: "inProgress",
+  // waiting -- queued, not yet started
+  CREATED: "waiting",
+  PENDING: "waiting",
+  // failed -- terminal failure
+  FAILED: "failed",
+  TIMED_OUT: "failed",
+  ABORTED: "failed",
+};
+
+// True only for a status that is an OWN key of the category map. Uses hasOwnProperty
+// (not the `in` operator or a truthy bracket lookup) so a value that collides with an
+// Object.prototype member -- e.g. a status literally named "toString" -- is treated as
+// unrecognised rather than resolving to a prototype function.
+export const isKnownWorkflowRunStatus = (status?: string | null): boolean =>
+  status != null &&
+  Object.prototype.hasOwnProperty.call(WORKFLOW_RUN_STATUS_CATEGORY, status);
+
+// Classify a workflow run status into a render category. An absent or UNRECOGNISED
+// status is deliberately treated as "inProgress", never "failed": defaulting an unknown
+// value to the failure screen is exactly the bug this fixes (a real success shown as
+// failed). "inProgress" is safe and self-correcting. Callers should log an unrecognised
+// (non-empty) value so a new status vocabulary does not silently degrade the UI.
+export const getWorkflowRunStatusCategory = (
+  status?: string | null,
+): WorkflowRunStatusCategory =>
+  isKnownWorkflowRunStatus(status)
+    ? WORKFLOW_RUN_STATUS_CATEGORY[status as string]
+    : "inProgress";
+
 // Taxonomy levels
 export const TAX_LEVEL_GENUS = "genus";
 export const TAX_LEVEL_SPECIES = "species";
