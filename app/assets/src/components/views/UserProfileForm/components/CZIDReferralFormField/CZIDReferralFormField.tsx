@@ -60,6 +60,7 @@ export function CZIDReferralFormField({
           setSelectedCheckboxes={setSelectedReferralCheckboxes}
           isCheckboxChecked={isOtherCheckboxChecked}
           prefix={CHECKBOX_WITH_INPUT_PREFIX}
+          groupId="czid-referral"
         />
       </div>
     </div>
