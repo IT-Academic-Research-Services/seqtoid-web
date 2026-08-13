@@ -81,6 +81,7 @@ export function CZIDUsecaseFormField({
             }
             isCheckboxChecked={isOtherCheckboxChecked}
             prefix={CHECKBOX_WITH_INPUT_PREFIX}
+            groupId="czid-usecase"
           />
         </div>
       </div>
