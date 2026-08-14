@@ -18,6 +18,14 @@ class ConsensusGenomeWorkflowRun < WorkflowRun
 
   SARS_COV_2_TAXON_ID = "2697049".freeze
   SARS_COV_2_ACCESSION_ID = "MN908947.3".freeze
+  # SARS-CoV-2 has two interchangeable references for the identical Wuhan-Hu-1 genome:
+  # MN908947.3 (GenBank; the app's canonical CG reference) and NC_045512.2 (NCBI RefSeq).
+  # A consensus genome built against EITHER is SARS-CoV-2 and aligns to Nextclade's sars-cov-2
+  # dataset, so BOTH must be eligible for Nextclade clade export. Filtering on the single
+  # GenBank accession silently dropped RefSeq-based SC2 runs (400 "No valid WorkflowRuns" ->
+  # "Failed to send", nothing logged). Keep the singular constant for the dispatch ref_fasta
+  # path, which uses the app's canonical GenBank reference. (SMP-1782)
+  SARS_COV_2_ACCESSION_IDS = [SARS_COV_2_ACCESSION_ID, "NC_045512.2"].freeze
 
   WETLAB_PROTOCOL = {
     # See: https://www.illumina.com/products/by-brand/ampliseq.html

@@ -225,8 +225,10 @@ class WorkflowRunsController < ApplicationController
     # implicitly returned PK order); keep workflow_run_ids deterministic.
     workflow_runs = current_power.workflow_runs.where(id: workflow_run_ids).consensus_genomes.active.order(:id)
 
-    # Remove the line below if generalizing beyond SARS-CoV-2
-    workflow_runs = workflow_runs.select { |wr| wr.get_input("accession_id") == ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_ID }
+    # Remove the line below if generalizing beyond SARS-CoV-2. Accept either SARS-CoV-2
+    # reference accession (GenBank MN908947.3 or RefSeq NC_045512.2) -- both are the same
+    # Wuhan-Hu-1 genome and align to Nextclade's sars-cov-2 dataset.
+    workflow_runs = workflow_runs.select { |wr| ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_IDS.include?(wr.get_input("accession_id")) }
     workflow_run_ids = workflow_runs.pluck(:id)
 
     if workflow_run_ids.empty?
