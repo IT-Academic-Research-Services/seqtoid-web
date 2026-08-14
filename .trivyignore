@@ -125,3 +125,8 @@ GHSA-5p4m-2wfm-xmqj
 # optimizer in the asset toolchain -- never runs on the request path / untrusted runtime SVG. FORWARD-FIX:
 # bump svgo to >=4.0.2 + regen lockfile.
 CVE-2026-73650
+#
+# postcss 7.0.39 (package.json): path traversal via previous-source-map auto-loading. Build-time CSS
+# toolchain dep (webpack/asset pipeline), never processes untrusted runtime CSS on the request path.
+# Flagged across ~7 node_modules copies (one CVE, many instances). FORWARD-FIX: bump postcss to >=8.5.18.
+CVE-2026-73646
