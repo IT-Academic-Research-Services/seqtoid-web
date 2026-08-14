@@ -291,15 +291,18 @@ export const OverflowMenu = ({
           while and counts toward the daily re-run limit. Continue?
         </DialogContent>
         <DialogActions>
+          {/* These wrappers render their label from the `text` prop, not children
+              (see Button.tsx); passing the label as children leaves the button blank. */}
           <SecondaryButton
             sdsStyle="rounded"
+            text="Cancel"
             onClick={() => setIsRerunConfirmOpen(false)}
-          >
-            Cancel
-          </SecondaryButton>
-          <PrimaryButton sdsStyle="rounded" onClick={confirmRerun}>
-            Re-run
-          </PrimaryButton>
+          />
+          <PrimaryButton
+            sdsStyle="rounded"
+            text="Re-run"
+            onClick={confirmRerun}
+          />
         </DialogActions>
       </Dialog>
     </>

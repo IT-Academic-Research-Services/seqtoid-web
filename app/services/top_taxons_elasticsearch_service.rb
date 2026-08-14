@@ -21,7 +21,19 @@ class TopTaxonsElasticsearchService
     @params = params
     @samples = samples_for_heatmap
     @should_remove_zscore = background_for_heatmap.nil?
-    @background_id = background_for_heatmap || Rails.configuration.x.constants.default_background
+    @background_id = background_for_heatmap || resolve_default_background
+  end
+
+  # The app-wide default_background (config/application.rb) is an id assumed to exist in every
+  # environment. A freshly-provisioned env may not have that id seeded (env-staging had no bg 26),
+  # which left the heatmap falling back to a phantom background -> empty results. Use the configured
+  # default only when it actually exists; otherwise fall back to the first public background so the
+  # heatmap still renders. (SMP-1789)
+  def resolve_default_background
+    configured = Rails.configuration.x.constants.default_background
+    return configured if Background.where(id: configured).exists?
+
+    Background.where(public_access: 1).order(:id).limit(1).pick(:id)
   end
 
   def call

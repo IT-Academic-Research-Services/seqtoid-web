@@ -158,6 +158,13 @@ class SfnPipelineDispatchService
                       nr_db: @pipeline_run.alignment_config.s3_nr_db_path,
                       nr_loc_db: @pipeline_run.alignment_config.s3_nr_loc_db_path,
                       lineage_db: @pipeline_run.alignment_config.s3_lineage_path,
+                      # Postprocess (contig taxid assignment / coverage viz) needs accession2taxid too.
+                      # Without this override the czid_postprocess WDL falls back to its hardcoded
+                      # s3://czid-public-references default, which DownloadFails in the seqtoid account
+                      # and fails the postprocess outputs (taxon_counts, contig_counts,
+                      # accession_coverage_stats). Every other Postprocess DB is already overridden
+                      # here; accession2taxid_db was the lone omission.
+                      accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
                       taxon_blacklist: @pipeline_run.alignment_config.s3_taxon_blacklist_path,
                       use_deuterostome_filter: @sample.skip_deutero_filter_flag != 1,
                       deuterostome_db: @pipeline_run.alignment_config.s3_deuterostome_db_path,
