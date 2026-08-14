@@ -1845,13 +1845,11 @@ class SamplesHeatmapViewCC extends React.Component<
           This can take a moment and will appear automatically.
         </div>
       );
-    } else if (
-      this.state.loading ||
-      !this.state.data ||
-      !this.state.metadataTypes
-    ) {
+    } else if (this.state.loading) {
       return <div className={cs.noDataMsg}>Loading&hellip;</div>;
     } else if (
+      !this.state.data ||
+      !this.state.metadataTypes ||
       // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2538
       !(this.state.data[this.state.selectedOptions.metric] || []).length ||
       !this.state.taxonIds.length
