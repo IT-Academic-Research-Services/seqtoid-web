@@ -120,3 +120,18 @@ CVE-2026-18446
 # FORWARD-FIX: bump js-yaml to 3.15.1 + regen lockfile (with #786).
 CVE-2026-59870
 GHSA-5p4m-2wfm-xmqj
+
+# 2026-08-14: a trivy DB-refresh HIGH wave wedged the promote-image / dev-CD trivy gate again (first
+# surfaced hard-failing the env-staging Nextclade tree-fix hotfix promote, SMP-1782). Both are
+# build-time / low-real-risk transitive JS toolchain deps, same class as the entries above; baselined
+# gate-on-new so the main image build (dev CD) and the promote pipeline can advance.
+#
+# svgo 4.0.1 (package.json): removeScripts plugin leaves some executable scripts intact. Build-time SVG
+# optimizer in the asset toolchain -- never runs on the request path / untrusted runtime SVG. FORWARD-FIX:
+# bump svgo to >=4.0.2 + regen lockfile.
+CVE-2026-73650
+#
+# postcss 7.0.39 (package.json): path traversal via previous-source-map auto-loading. Build-time CSS
+# toolchain dep (webpack/asset pipeline), never processes untrusted runtime CSS on the request path.
+# Flagged across ~7 node_modules copies (one CVE, many instances). FORWARD-FIX: bump postcss to >=8.5.18.
+CVE-2026-73646
