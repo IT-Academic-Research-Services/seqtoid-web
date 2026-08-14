@@ -73,7 +73,12 @@ module ProjectsDiscovery
     editable = Arel.sql("BIT_OR(CASE WHEN users.id=#{current_user.id} OR #{current_user.admin?} THEN 1 ELSE 0 END) AS editable")
     creator = Arel.sql("creators_projects.name AS creator")
     creator_id = Arel.sql("creators_projects.id AS creator_id")
-    mngs_runs_count = Arel.sql("COUNT(DISTINCT CASE WHEN samples.initial_workflow='#{WorkflowRun::WORKFLOW[:short_read_mngs]}' THEN samples.id ELSE NULL END) AS mngs_runs_count")
+    # The "mNGS" project count includes BOTH Illumina (short-read) and Nanopore (long-read) mNGS
+    # samples -- long-read-mngs is an mNGS variant in our taxonomy (isMngsWorkflow, "mNGS" shorthand),
+    # and the per-project Counts widget has no separate Nanopore bucket, so long-read samples were
+    # otherwise dropped from the breakdown entirely. Deliberate divergence from CZID, which counts
+    # short-read only.
+    mngs_runs_count = Arel.sql("COUNT(DISTINCT CASE WHEN samples.initial_workflow IN ('#{WorkflowRun::WORKFLOW[:short_read_mngs]}', '#{WorkflowRun::WORKFLOW[:long_read_mngs]}') THEN samples.id ELSE NULL END) AS mngs_runs_count")
     cg_runs_count = Arel.sql("COUNT(DISTINCT (CASE
                                 WHEN workflow_runs.workflow = '#{WorkflowRun::WORKFLOW[:consensus_genome]}' AND workflow_runs.deprecated = false AND workflow_runs.deleted_at IS NULL THEN workflow_runs.id
                                 WHEN samples.initial_workflow = '#{WorkflowRun::WORKFLOW[:consensus_genome]}' THEN samples.id

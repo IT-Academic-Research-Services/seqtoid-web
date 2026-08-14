@@ -86,6 +86,14 @@ RSpec.describe MetadataHelper, type: :helper do
     it "returns nil when no field matches" do
       expect(helper.get_available_matching_field(sample, "nonexistent")).to be_nil
     end
+
+    it "matches collection_location_v2 via the exported 'collection_location' header (round-trip alias)" do
+      location_field = create(:metadata_field, name: "collection_location_v2", display_name: "Collection Location")
+      project.metadata_fields << location_field
+      # get_csv_headers_for_metadata_fields exports this field's header as "collection_location";
+      # re-uploading that header must still resolve to the required collection_location_v2 field.
+      expect(helper.get_available_matching_field(sample, "collection_location")).to eq(location_field)
+    end
   end
 
   describe "#get_matching_core_field" do

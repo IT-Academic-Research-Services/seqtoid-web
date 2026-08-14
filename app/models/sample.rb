@@ -955,7 +955,7 @@ class Sample < ApplicationRecord
   end
 
   def get_existing_metadatum(key)
-    metadata.includes(:metadata_field).find { |metadatum| metadatum.metadata_field.name == key || metadatum.metadata_field.display_name == key }
+    metadata.includes(:metadata_field).find { |metadatum| metadata_field_matches_header?(metadatum.metadata_field, key) }
   end
 
   # Ensure that an appropriate metadata field exists for the given key.
