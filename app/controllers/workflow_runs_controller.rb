@@ -17,7 +17,7 @@ class WorkflowRunsController < ApplicationController
   # A client-supplied reference-tree key must match EXACTLY what consensus_genome_clade_export_tree_url
   # mints (5 alphanumerics under the scratch prefix). Validating against this before presigning a GET
   # stops a client from obtaining a signed URL for any other object in the bucket.
-  CLADE_REFERENCE_TREE_KEY_FORMAT = %r{\Aclade_exports/trees/temp-[A-Za-z0-9]{5}\z}.freeze
+  CLADE_REFERENCE_TREE_KEY_FORMAT = %r{\Aclade_exports/trees/temp-[A-Za-z0-9]{5}\z}
   # A parsed SARS-CoV-2 Auspice reference tree is a few MB at most. Cap the upload we hand to Nextclade
   # so the direct-to-S3 path (which skips the app and its edge WAF body limit) cannot be abused.
   CLADE_REFERENCE_TREE_MAX_BYTES = 100 * 1024 * 1024
@@ -265,6 +265,7 @@ class WorkflowRunsController < ApplicationController
       if tree_size.nil? || tree_size > CLADE_REFERENCE_TREE_MAX_BYTES
         render(json: { status: "Invalid reference tree" }, status: :bad_request) and return
       end
+
       tree_url = get_presigned_s3_url(bucket_name: SAMPLES_BUCKET_NAME, key: tree_key, duration: 300)
       options["input-tree"] = tree_url if tree_url
     end
