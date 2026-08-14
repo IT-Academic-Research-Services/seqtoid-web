@@ -63,11 +63,16 @@ RSpec.describe WorkflowRunsController, type: :controller do
   end
 
   describe "POST #consensus_genome_clade_export with a reference tree" do
-    it "uploads the tree as well and adds input-tree to the Nextclade link" do
-      expect(S3Util).to receive(:upload_to_s3).twice
+    let(:tree_key) { "clade_exports/trees/temp-abcde" }
+
+    it "adds a presigned input-tree for a validated tree key, uploading only the fasta itself" do
+      # The browser already PUT the tree straight to S3 (presigned PUT), so the app uploads only the
+      # fasta and merely validates + presigns the supplied tree key.
+      expect(S3Util).to receive(:upload_to_s3).once
+      allow(controller).to receive(:s3_object_size).and_return(1234)
 
       post :consensus_genome_clade_export, params: { workflowRunIds: [@run_one.id],
-                                                     referenceTree: "{\"tree\": true}", }
+                                                     referenceTreeS3Key: tree_key, }
 
       expect(response).to have_http_status(:ok)
       external_url = JSON.parse(response.body)["external_url"]
@@ -77,19 +82,11 @@ RSpec.describe WorkflowRunsController, type: :controller do
       expect(response.body).not_to include("\\u0026")
     end
 
-    it "uploads the tree contents that the caller supplied to the clade-tree key" do
-      captured_bodies = []
-      allow(S3Util).to receive(:upload_to_s3) do |_bucket, key, content|
-        captured_bodies << [key, content]
-      end
-
+    it "rejects a tree key outside the minted scratch-prefix format" do
       post :consensus_genome_clade_export, params: { workflowRunIds: [@run_one.id],
-                                                     referenceTree: "my-tree-payload", }
+                                                     referenceTreeS3Key: "some/other/object", }
 
-      expect(response).to have_http_status(:ok)
-      tree_upload = captured_bodies.find { |key, _content| key.start_with?("clade_exports/trees/") }
-      expect(tree_upload).not_to be_nil
-      expect(tree_upload.last).to eq("my-tree-payload")
+      expect(response).to have_http_status(:bad_request)
     end
   end
 end
