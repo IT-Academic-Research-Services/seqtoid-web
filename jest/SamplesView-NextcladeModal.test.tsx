@@ -10,12 +10,15 @@
 const mockValidateWorkflowRunIds = jest.fn();
 const mockGetWorkflowRunsInfo = jest.fn();
 const mockCreateConsensusGenomeCladeExport = jest.fn();
+const mockGetConsensusGenomeCladeExportTreeUrl = jest.fn();
 const mockOpenUrlInNewTab = jest.fn();
 const mockTrackEvent = jest.fn();
 
 jest.mock("~/api", () => ({
   createConsensusGenomeCladeExport: (...args: unknown[]) =>
     mockCreateConsensusGenomeCladeExport(...args),
+  getConsensusGenomeCladeExportTreeUrl: (...args: unknown[]) =>
+    mockGetConsensusGenomeCladeExportTreeUrl(...args),
   getWorkflowRunsInfo: (...args: unknown[]) => mockGetWorkflowRunsInfo(...args),
 }));
 
@@ -139,6 +142,12 @@ beforeEach(() => {
   mockCreateConsensusGenomeCladeExport.mockResolvedValue({
     external_url: "https://clades.nextstrain.org/export/abc",
   });
+  mockGetConsensusGenomeCladeExportTreeUrl.mockResolvedValue({
+    url: "https://s3.example/put-tree",
+    key: "clade_exports/trees/temp-abcde",
+  });
+  // The reference tree is PUT straight to S3 via the presigned url; stub fetch to succeed.
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 }) as $TSFixMe;
 });
 
 describe("NextcladeModal validation on mount", () => {
@@ -316,7 +325,7 @@ describe("NextcladeModal export flow", () => {
     await waitFor(() =>
       expect(mockCreateConsensusGenomeCladeExport).toHaveBeenCalledWith({
         workflowRunIds: ["1", "2"],
-        referenceTree: null,
+        referenceTreeS3Key: null,
       }),
     );
     expect(mockOpenUrlInNewTab).toHaveBeenCalledWith(
@@ -341,8 +350,14 @@ describe("NextcladeModal export flow", () => {
     await waitFor(() =>
       expect(mockCreateConsensusGenomeCladeExport).toHaveBeenCalledWith({
         workflowRunIds: ["1", "2"],
-        referenceTree: '{"tree":1}',
+        referenceTreeS3Key: "clade_exports/trees/temp-abcde",
       }),
+    );
+    // The validated tree was PUT directly to S3 via the presigned url, not sent through the app.
+    expect(mockGetConsensusGenomeCladeExportTreeUrl).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://s3.example/put-tree",
+      expect.objectContaining({ method: "PUT" }),
     );
   });
 

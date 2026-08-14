@@ -2,7 +2,11 @@ import { Icon } from "@czi-sds/components";
 import { cx } from "@emotion/css";
 import { difference } from "lodash/fp";
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import { createConsensusGenomeCladeExport, getWorkflowRunsInfo } from "~/api";
+import {
+  createConsensusGenomeCladeExport,
+  getConsensusGenomeCladeExportTreeUrl,
+  getWorkflowRunsInfo,
+} from "~/api";
 import { validateWorkflowRunIds } from "~/api/access_control";
 import { ANALYTICS_EVENT_NAMES, useTrackEvent } from "~/api/analytics";
 import { UserContext } from "~/components/common/UserContext";
@@ -136,10 +140,26 @@ export const NextcladeModal = ({
   }, [checkAdminSelections, validWorkflowInfo]);
 
   const openExportLink = async () => {
+    let referenceTreeS3Key = null;
+    // Upload the already-validated reference tree straight to S3 via a presigned PUT, then hand the
+    // backend only its key. This keeps multi-MB trees off the app request body and the edge WAF body
+    // limit (which was rejecting them and breaking the Upload-a-Tree link-out). Errors bubble to the
+    // callers' try/catch, which surface the export error modal. (SMP-1660)
+    if (selectedTreeType === "upload" && referenceTreeContents) {
+      const { url, key } = await getConsensusGenomeCladeExportTreeUrl();
+      const putResponse = await fetch(url, {
+        method: "PUT",
+        body: new Blob([referenceTreeContents], { type: "application/json" }),
+      });
+      if (!putResponse.ok) {
+        throw new Error(`Reference tree upload failed (${putResponse.status})`);
+      }
+      referenceTreeS3Key = key;
+    }
+
     const link = await createConsensusGenomeCladeExport({
       workflowRunIds: Array.from(validWorkflowRunIds),
-      referenceTree:
-        selectedTreeType === "upload" ? referenceTreeContents : null,
+      referenceTreeS3Key,
     });
     openUrlInNewTab(link.external_url);
   };

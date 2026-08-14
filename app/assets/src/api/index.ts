@@ -750,12 +750,18 @@ const getMassNormalizedBackgroundAvailability = (sampleIds: $TSFixMe) =>
 
 const createConsensusGenomeCladeExport = ({
   workflowRunIds = [],
-  referenceTree,
+  referenceTreeS3Key = null,
 }: $TSFixMe) =>
   postWithCSRF("/workflow_runs/consensus_genome_clade_export", {
     workflowRunIds,
-    referenceTree,
+    referenceTreeS3Key,
   });
+
+// Mints a presigned S3 PUT URL for a Nextclade reference tree so the browser can upload it directly to
+// S3, bypassing the app request body and the edge WAF body-size limit. Returns { url, key }; the key is
+// handed to createConsensusGenomeCladeExport once the PUT succeeds.
+const getConsensusGenomeCladeExportTreeUrl = () =>
+  postWithCSRF("/workflow_runs/consensus_genome_clade_export_tree_url", {});
 
 const kickoffConsensusGenome = ({
   sampleId,
@@ -838,6 +844,7 @@ export {
   bulkKickoffWorkflowRuns,
   createBackground,
   createConsensusGenomeCladeExport,
+  getConsensusGenomeCladeExportTreeUrl,
   createPhyloTree,
   createProject,
   getAlignmentData,
