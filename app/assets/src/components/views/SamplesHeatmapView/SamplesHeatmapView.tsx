@@ -305,8 +305,12 @@ class SamplesHeatmapViewCC extends React.Component<
       metric: "NT.rpm",
       categories: [],
       subcategories: {},
-      // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532
-      background: backgrounds[0].value,
+      // Null-safe (CZID-8698 / SMP-1789): a user with no accessible background -- e.g. an environment
+      // with no PUBLIC background, or a user who owns none -- gets an empty backgrounds list. Reading
+      // backgrounds[0].value then threw "undefined is not an object", crashing the whole heatmap view.
+      // A null background is a valid state: TopTaxonsElasticsearchService treats nil as "drop z-score /
+      // fall back to the default", so default to null instead of crashing.
+      background: backgrounds?.[0]?.value ?? null,
       species: 1,
       sampleSortType: "cluster",
       taxaSortType: "cluster",
