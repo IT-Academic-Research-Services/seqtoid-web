@@ -3,14 +3,26 @@ require 'csv'
 module MetadataHelper
   include ErrorHelper
 
+  # A metadata field matches a CSV header when the header equals its machine name or its display
+  # name. collection_location is the one field whose EXPORTED header differs from its name:
+  # get_csv_headers_for_metadata_fields emits "collection_location" for the field actually named
+  # "collection_location_v2". Without aliasing that back on input, a round-trip (export metadata,
+  # then re-upload it) fails to satisfy the required Collection Location field. Every other field's
+  # exported header already equals its name, so this alias is the only special case.
+  def metadata_field_matches_header?(field, header)
+    field.name == header ||
+      field.display_name == header ||
+      (header == "collection_location" && field.name == "collection_location_v2")
+  end
+
   def get_available_matching_field(sample, name)
     available_fields = sample.project.metadata_fields.to_a
-    return available_fields.find { |field| field.name == name || field.display_name == name }
+    return available_fields.find { |field| metadata_field_matches_header?(field, name) }
   end
 
   def get_matching_core_field(sample, name)
     fields = sample.host_genome.metadata_fields.where(is_core: true).to_a
-    return fields.find { |field| field.name == name || field.display_name == name }
+    return fields.find { |field| metadata_field_matches_header?(field, name) }
   end
 
   def get_new_custom_field(name)
@@ -197,7 +209,7 @@ module MetadataHelper
       elsif MetadataField::HOST_GENOME_SYNONYMS.include?(col)
         MetadataField::HOST_GENOME_SYNONYMS.map { |key| column_to_index[key] = index }
       else
-        matching_field = existing_fields.select { |field| field.name == col || field.display_name == col }
+        matching_field = existing_fields.select { |field| metadata_field_matches_header?(field, col) }
 
         if !matching_field.empty?
           column_to_index[matching_field[0].name] = index
@@ -286,7 +298,7 @@ module MetadataHelper
     metadata["headers"].each_with_index do |col, index|
       next if MetadataField::RESERVED_NAMES.include?(col)
 
-      matching_field = existing_fields.select { |field| field.name == col || field.display_name == col }
+      matching_field = existing_fields.select { |field| metadata_field_matches_header?(field, col) }
 
       if matching_field.empty?
         warning_aggregator.add_error(:custom_field_creation, [index + 1, col])

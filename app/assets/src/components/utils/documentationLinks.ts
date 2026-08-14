@@ -23,7 +23,7 @@ export const NEXTCLADE_TREE_ROOT_LINK =
 export const VISUALIZATIONS_DOC_LINK =
   "helpcenter:/articles/creating-a-heatmap/";
 export const ARTIC_PIPELINE_LINK =
-  "https://artic.network/ncov-2019/ncov2019-bioinformatics-sop.html";
+  "https://artic.network/viruses/sars-cov-2";
 export const CG_ILLUMINA_PIPELINE_GITHUB_LINK =
   "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/consensus-genome";
 export const MNGS_ILLUMINA_PIPELINE_GITHUB_LINK =
