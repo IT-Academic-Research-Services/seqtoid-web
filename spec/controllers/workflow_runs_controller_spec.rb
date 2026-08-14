@@ -1090,6 +1090,24 @@ RSpec.describe WorkflowRunsController, type: :controller do
         end
       end
 
+      context "when the consensus genome uses the RefSeq SARS-CoV-2 accession (NC_045512.2)" do
+        it "treats it as SARS-CoV-2 and creates the external link" do
+          refseq_inputs_json = { "accession_id" => "NC_045512.2", "accession_name" => "Severe acute respiratory syndrome coronavirus 2, complete genome", "taxon_id" => 2_697_049, "taxon_name" => "Severe acute respiratory syndrome coronavirus 2", "technology" => "Illumina", "wetlab_protocol" => "artic" }.to_json
+          refseq_run = create(:workflow_run, sample: @sample1, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded], inputs_json: refseq_inputs_json)
+
+          expect(ConsensusGenomeConcatService).to receive(:call).and_return(@fasta)
+          expect(S3Util).to receive(:upload_to_s3).and_call_original
+          expect(controller).to receive(:get_presigned_s3_url).and_call_original
+
+          post :consensus_genome_clade_export, params: { workflowRunIds: [refseq_run.id] }
+          body = JSON.parse(response.body)
+
+          expect(response).to have_http_status(:success)
+          expect(body).to include("external_url")
+          expect(body["external_url"]).to include("https://clades.nextstrain.org")
+        end
+      end
+
       context "when no workflow runs are valid" do
         it "returns a bad request error" do
           post :consensus_genome_clade_export, params: { workflowRunIds: [@bad_workflow_run.id] }
