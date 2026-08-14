@@ -47,6 +47,9 @@ module ElasticsearchQueryHelper
 
   # Check is the data exists in ES for background_id and pipeline_run_ids if not then invoke taxon-indexing lambda job
   # to calculate and save scores in the ES index
+  # Returns the pipeline_run_ids that were missing from ES and thus (re)indexed this call. Callers use
+  # a non-empty return to detect a cold index -- the just-written docs may not be searchable until the
+  # index refreshes, so an immediately-empty query is "still preparing", not "no data". (SMP-1795)
   def self.update_es_for_missing_data(background_id, pipeline_run_ids)
     missing_pipeline_run_ids = find_pipeline_runs_missing_from_es(
       background_id,
@@ -58,6 +61,7 @@ module ElasticsearchQueryHelper
         missing_pipeline_run_ids
       )
     end
+    missing_pipeline_run_ids
   end
 
   # updates the last_read_at timestamp in the pipeline_runs index

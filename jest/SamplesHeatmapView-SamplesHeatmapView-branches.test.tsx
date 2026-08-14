@@ -264,7 +264,7 @@ const sample = (over: $TSFixMe = {}) => ({
 });
 
 // Two species so a test can remove one and still have the vis rendered
-// (renderHeatmap bails out to "No data to render" when taxonIds empties).
+// (renderHeatmap bails out to the "No taxa match the current filters" empty-state when taxonIds empties).
 const twoTaxaSample = () =>
   sample({
     taxons: [
@@ -698,7 +698,9 @@ describe("SamplesHeatmapView -- initial load notifications", () => {
     renderView();
     await flush();
 
-    expect(screen.queryByText("No data to render")).not.toBeNull();
+    expect(
+      screen.queryByText(/No taxa match the current filters/),
+    ).not.toBeNull();
     expect(childProps.vis).toBeUndefined();
   });
 
@@ -707,7 +709,9 @@ describe("SamplesHeatmapView -- initial load notifications", () => {
     renderView();
     await flush();
 
-    expect(screen.queryByText("No data to render")).not.toBeNull();
+    expect(
+      screen.queryByText(/No taxa match the current filters/),
+    ).not.toBeNull();
   });
 });
 
@@ -814,7 +818,9 @@ describe("SamplesHeatmapView -- extractData", () => {
     renderView();
     await flush();
 
-    expect(screen.queryByText("No data to render")).not.toBeNull();
+    expect(
+      screen.queryByText(/No taxa match the current filters/),
+    ).not.toBeNull();
   });
 
   it("disables mass-normalized backgrounds when a sample has no ERCC reads", async () => {

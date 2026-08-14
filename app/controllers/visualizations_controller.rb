@@ -247,7 +247,16 @@ class VisualizationsController < ApplicationController
         samples_for_heatmap: samples_for_heatmap,
         background_for_heatmap: background_for_heatmap
       )
-      render json: heatmap_es_dict
+      # The service returns { status: "indexing" } when these runs are still being (re)indexed into
+      # the heatmap ES domain (e.g. right after new data is added, or after an ES domain rebuild):
+      # the data is being prepared, not absent. Surface that as 202 so the client shows a preparing
+      # state and retries, instead of a misleading empty heatmap. (SMP-1795; SMP-1796 hardens the
+      # synchronous index path itself.)
+      if heatmap_es_dict.is_a?(Hash) && heatmap_es_dict[:status] == "indexing"
+        render json: heatmap_es_dict, status: :accepted
+      else
+        render json: heatmap_es_dict
+      end
     else
       @sample_taxons_dict = HeatmapHelper.sample_taxons_dict(
         params,

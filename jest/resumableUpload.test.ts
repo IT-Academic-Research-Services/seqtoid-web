@@ -153,4 +153,137 @@ describe("ResumableUpload", () => {
     expect(calls).not.toContain("CreateMultipartUploadCommand");
     expect(calls).toContain("CompleteMultipartUploadCommand");
   });
+
+  // ---------------------------------------------------------------------------
+  // SMP-1747: a batch of local uploads silently stalled because a hung part
+  // upload (a stalled socket under batch concurrency) never settled, so done()
+  // never resolved and the whole batch hung with no surfaced error. These tests
+  // pin the timeout + bounded-retry behavior that makes every request settle,
+  // and confirm part concurrency stays bounded by queueSize.
+  // ---------------------------------------------------------------------------
+
+  it("rejects a hung part upload via the request timeout instead of stalling forever", async () => {
+    const send = jest.fn(async (command: { constructor: { name: string } }) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return { UploadId: "upload-123" };
+      }
+      if (command instanceof UploadPartCommand) {
+        // Never resolves -- simulates a stalled socket / saturated connection pool.
+        return new Promise(() => undefined);
+      }
+      if (command instanceof CompleteMultipartUploadCommand) {
+        return { Location: "https://s3/done" };
+      }
+      return {};
+    });
+
+    const upload = new ResumableUpload({
+      client: { send } as never,
+      params: baseParams(blobOf(PART_SIZE * 2)),
+      leavePartsOnError: true,
+      // Tiny timeout / delay so the test exercises the real timeout path fast.
+      requestTimeoutMs: 20,
+      maxAttempts: 2,
+      retryBaseDelayMs: 0,
+    });
+
+    // The key property: done() SETTLES (rejects) rather than hanging the batch.
+    await expect(upload.done()).rejects.toThrow(/exceeded \d+ms/);
+  });
+
+  it("retries a transient part failure and then succeeds (bounded retry that settles)", async () => {
+    let uploadPartCalls = 0;
+    const send = jest.fn(async (command: { constructor: { name: string } }) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return { UploadId: "upload-123" };
+      }
+      if (command instanceof UploadPartCommand) {
+        uploadPartCalls += 1;
+        // Fail only the very first attempt; the retry should succeed.
+        if (uploadPartCalls === 1) {
+          throw new Error("transient network blip");
+        }
+        return { ETag: `"part-etag-${uploadPartCalls}"` };
+      }
+      if (command instanceof CompleteMultipartUploadCommand) {
+        return { Location: "https://s3/done" };
+      }
+      throw new Error(`Unexpected command: ${command.constructor.name}`);
+    });
+
+    const upload = new ResumableUpload({
+      client: { send } as never,
+      params: baseParams(blobOf(PART_SIZE * 2)), // 2 parts
+      leavePartsOnError: true,
+      queueSize: 1, // single worker -> deterministic ordering
+      maxAttempts: 3,
+      retryBaseDelayMs: 0,
+    });
+
+    // Resolves despite the first part failing once: part1 (fail -> retry ok) + part2 (ok) = 3 calls.
+    await expect(upload.done()).resolves.toBeDefined();
+    expect(uploadPartCalls).toBe(3);
+  });
+
+  it("gives up after maxAttempts and surfaces the error (does not retry forever)", async () => {
+    let uploadPartCalls = 0;
+    const send = jest.fn(async (command: { constructor: { name: string } }) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return { UploadId: "upload-123" };
+      }
+      if (command instanceof UploadPartCommand) {
+        uploadPartCalls += 1;
+        throw new Error("boom");
+      }
+      return {};
+    });
+
+    const upload = new ResumableUpload({
+      client: { send } as never,
+      params: baseParams(blobOf(PART_SIZE * 2)),
+      leavePartsOnError: true,
+      queueSize: 1, // single worker -> the first part is attempted exactly maxAttempts times
+      maxAttempts: 3,
+      retryBaseDelayMs: 0,
+    });
+
+    await expect(upload.done()).rejects.toThrow("boom");
+    expect(uploadPartCalls).toBe(3);
+  });
+
+  it("never runs more than queueSize part uploads concurrently", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const send = jest.fn(async (command: { constructor: { name: string } }) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return { UploadId: "upload-123" };
+      }
+      if (command instanceof UploadPartCommand) {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return {
+          ETag: `"part-etag-${(command as { input: { PartNumber: number } }).input.PartNumber}"`,
+        };
+      }
+      if (command instanceof CompleteMultipartUploadCommand) {
+        return { Location: "https://s3/done" };
+      }
+      throw new Error(`Unexpected command: ${command.constructor.name}`);
+    });
+
+    const upload = new ResumableUpload({
+      client: { send } as never,
+      params: baseParams(blobOf(PART_SIZE * 6)), // 6 parts
+      queueSize: 2,
+    });
+
+    await upload.done();
+
+    // Concurrency is capped at queueSize (bounded fan-out, no connection-pool blowout)...
+    expect(maxInFlight).toBeLessThanOrEqual(2);
+    // ...but is genuinely parallel up to that cap.
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
 });
