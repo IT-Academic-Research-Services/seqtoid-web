@@ -136,6 +136,10 @@ interface SamplesHeatmapViewState {
   downloadModalOpen: boolean;
   loading: boolean;
   loadingFailed: boolean;
+  // True while the heatmap ES index is still catching up for these runs (preparing state), so we
+  // show "Preparing your heatmap" and retry instead of a misleading "No data to render". (SMP-1795)
+  heatmapIndexing: boolean;
+  heatmapIndexingRetries: number;
   selectedMetadata: string[];
   sampleIds: $TSFixMe[];
   invalidSampleNames: $TSFixMe[];
@@ -239,6 +243,8 @@ class SamplesHeatmapViewCC extends React.Component<
       downloadModalOpen: false,
       loading: false,
       loadingFailed: false,
+      heatmapIndexing: false,
+      heatmapIndexingRetries: 0,
       selectedMetadata: this.urlParams.selectedMetadata || [
         "collection_location_v2",
       ],
@@ -834,6 +840,31 @@ class SamplesHeatmapViewCC extends React.Component<
     } catch (err) {
       this.handleLoadingFailure(err);
       return; // Return early so that loadingFailed is not set to false later
+    }
+
+    // The backend returns { status: "indexing" } (HTTP 202) when these runs are not yet searchable in
+    // the heatmap ES index -- e.g. right after new data is added, or after an ES domain rebuild. The
+    // data is being prepared, not absent, so show a "preparing" state and retry rather than an empty
+    // heatmap that reads as broken. (SMP-1795)
+    const MAX_HEATMAP_INDEXING_RETRIES = 6;
+    const HEATMAP_INDEXING_RETRY_MS = 5000;
+    if (heatmapData && (heatmapData as $TSFixMe).status === "indexing") {
+      const retries = this.state.heatmapIndexingRetries;
+      if (retries < MAX_HEATMAP_INDEXING_RETRIES) {
+        this.setState({
+          heatmapIndexing: true,
+          heatmapIndexingRetries: retries + 1,
+          loading: false,
+        });
+        setTimeout(() => this.fetchViewData(), HEATMAP_INDEXING_RETRY_MS);
+      } else {
+        // Stop auto-retrying but keep the honest "still preparing" message; a refresh will re-check.
+        this.setState({ heatmapIndexing: true, loading: false });
+      }
+      return;
+    }
+    if (this.state.heatmapIndexing || this.state.heatmapIndexingRetries > 0) {
+      this.setState({ heatmapIndexing: false, heatmapIndexingRetries: 0 });
     }
 
     const pipelineVersions = compact(
@@ -1807,15 +1838,30 @@ class SamplesHeatmapViewCC extends React.Component<
           type="error"
         />
       );
+    } else if (this.state.heatmapIndexing) {
+      return (
+        <div className={cs.noDataMsg}>
+          Preparing your heatmap&hellip; newly added data is still being indexed.
+          This can take a moment and will appear automatically.
+        </div>
+      );
     } else if (
       this.state.loading ||
       !this.state.data ||
+      !this.state.metadataTypes
+    ) {
+      return <div className={cs.noDataMsg}>Loading&hellip;</div>;
+    } else if (
       // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2538
       !(this.state.data[this.state.selectedOptions.metric] || []).length ||
-      !this.state.metadataTypes ||
       !this.state.taxonIds.length
     ) {
-      return <div className={cs.noDataMsg}>No data to render</div>;
+      return (
+        <div className={cs.noDataMsg}>
+          No taxa match the current filters. Try broadening the categories or
+          thresholds, or unchecking &ldquo;Known Pathogens Only.&rdquo;
+        </div>
+      );
     }
     const scaleIndex = this.state.selectedOptions.dataScaleIdx;
     return (

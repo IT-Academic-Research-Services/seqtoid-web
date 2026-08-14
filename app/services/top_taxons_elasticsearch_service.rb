@@ -48,7 +48,7 @@ class TopTaxonsElasticsearchService
 
     pr_id_to_sample_id = HeatmapHelper.get_latest_pipeline_runs_for_samples(@samples)
 
-    ElasticsearchQueryHelper.update_es_for_missing_data(
+    indexed_run_ids = ElasticsearchQueryHelper.update_es_for_missing_data(
       filter_param[:background_id],
       pr_id_to_sample_id.keys
     )
@@ -68,7 +68,24 @@ class TopTaxonsElasticsearchService
       @samples,
       @should_remove_zscore
     )
+
+    # If we had to (re)index runs this request and the query still returned no taxa, the just-written
+    # docs are almost certainly not searchable yet (ES index refresh lag), not truly absent -- e.g.
+    # the first heatmap view after new data or an ES domain rebuild. Signal "indexing" so the client
+    # shows a preparing state and retries, instead of a misleading empty heatmap. (SMP-1795)
+    return { status: "indexing" } if indexed_run_ids.present? && heatmap_dict_empty?(dict)
+
     return dict
+  end
+
+  # The ES heatmap dict is an array of per-sample entries, each carrying a :taxons list; "empty" means
+  # no sample has any taxa to render.
+  def heatmap_dict_empty?(dict)
+    return true if dict.blank?
+
+    Array(dict).all? do |entry|
+      !entry.is_a?(Hash) || (entry[:taxons] || entry["taxons"] || []).empty?
+    end
   end
 
   def build_filter_param_hash
