@@ -191,13 +191,15 @@ export const DiscoveryHeader = ({
           content={
             disableSidebars ? (
               <div className={cs.popupText}>
-                Info
+                Show details
                 <div className={cs.popupSubtitle}>
                   Not available on this tab
                 </div>
               </div>
+            ) : showStats ? (
+              "Hide details"
             ) : (
-              "Info"
+              "Show details"
             )
           }
           basic={false}
