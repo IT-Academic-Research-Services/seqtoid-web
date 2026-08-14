@@ -167,6 +167,16 @@ RSpec.describe VisualizationsController, type: :controller do
       expect(JSON.parse(response.body)).to eq("taxon" => 1)
     end
 
+    it "returns 202 with an indexing status when the ES service is still preparing the data" do
+      @joe.add_allowed_feature("heatmap_elasticsearch")
+      allow(TopTaxonsElasticsearchService).to receive(:call).and_return(status: "indexing")
+
+      get :samples_taxons, params: { sampleIds: [@sample.id] }
+
+      expect(response).to have_http_status(:accepted)
+      expect(JSON.parse(response.body)).to eq("status" => "indexing")
+    end
+
     it "uses the SQL heatmap helper when the feature is off" do
       allow(HeatmapHelper).to receive(:sample_taxons_dict).and_return("taxon" => 2)
       expect(TopTaxonsElasticsearchService).not_to receive(:call)
