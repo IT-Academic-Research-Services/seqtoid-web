@@ -20,18 +20,34 @@ import {
   CompleteMultipartUploadCommand,
   CompleteMultipartUploadCommandOutput,
   CreateMultipartUploadCommand,
+  CreateMultipartUploadCommandOutput,
   ListPartsCommand,
+  ListPartsCommandOutput,
   PutObjectCommand,
   PutObjectCommandInput,
   PutObjectCommandOutput,
   S3Client,
   UploadPartCommand,
+  UploadPartCommandOutput,
 } from "@aws-sdk/client-s3";
 
 // S3 multipart minimum part size (5 MiB) and hard cap on parts.
 const MIN_PART_SIZE = 1024 * 1024 * 5;
 const DEFAULT_QUEUE_SIZE = 4;
 const MAX_PARTS = 10000;
+
+// Per-request timeout for a single S3 API call. Without it a stalled socket -- e.g. the browser
+// connection pool saturating while a whole batch of samples uploads at once -- leaves client.send()
+// pending forever, which silently hangs the entire batch with no surfaced error (samples sit at
+// status=created and are swept to LOCAL_UPLOAD_STALLED; SMP-1747). The timeout converts a hung
+// request into a rejection so it can be retried and, if it keeps failing, surfaced.
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+// Bounded retry for a single request. After this many attempts the error propagates so a genuine
+// failure surfaces (and, with leavePartsOnError, the multipart parts are left on S3 to resume)
+// rather than retrying forever.
+const DEFAULT_MAX_ATTEMPTS = 3;
+// Base for the linear backoff between retries (attempt 1 -> base, attempt 2 -> 2*base, ...).
+const DEFAULT_RETRY_BASE_DELAY_MS = 500;
 
 export interface Progress {
   loaded?: number;
@@ -52,6 +68,10 @@ export interface ResumableUploadOptions {
   uploadId?: string;
   partSize?: number;
   queueSize?: number;
+  // Per-request timeout / bounded-retry knobs (exposed mainly so tests can drive them fast).
+  requestTimeoutMs?: number;
+  maxAttempts?: number;
+  retryBaseDelayMs?: number;
 }
 
 interface DataPart {
@@ -109,6 +129,9 @@ export class ResumableUpload {
   private readonly partSize: number;
   private readonly queueSize: number;
   private readonly totalBytes: number;
+  private readonly requestTimeoutMs: number;
+  private readonly maxAttempts: number;
+  private readonly retryBaseDelayMs: number;
   private readonly abortController = new AbortController();
 
   private uploadId?: string;
@@ -134,6 +157,11 @@ export class ResumableUpload {
     this.leavePartsOnError = options.leavePartsOnError ?? false;
     this.partSize = options.partSize ?? MIN_PART_SIZE;
     this.queueSize = options.queueSize ?? DEFAULT_QUEUE_SIZE;
+    this.requestTimeoutMs =
+      options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    this.retryBaseDelayMs =
+      options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
     if (this.partSize < MIN_PART_SIZE) {
       throw new Error(
         `EntityTooSmall: partSize ${this.partSize} is smaller than the 5MB minimum.`,
@@ -141,6 +169,9 @@ export class ResumableUpload {
     }
     if (this.queueSize < 1) {
       throw new Error("Queue size: must have at least one uploading queue.");
+    }
+    if (this.maxAttempts < 1) {
+      throw new Error("maxAttempts: must allow at least one attempt.");
     }
     this.uploadId = options.uploadId;
     this.totalBytes = (this.params.Body as Blob).size;
@@ -204,6 +235,65 @@ export class ResumableUpload {
     this.progressListener?.(progress);
   }
 
+  // Send a single S3 command with a bounded timeout + retry so it ALWAYS settles. A stalled socket
+  // otherwise leaves client.send() pending forever, silently hanging the whole batch upload with no
+  // surfaced error (LOCAL_UPLOAD_STALLED, SMP-1747). On timeout the in-flight request is aborted and
+  // the call is retried up to maxAttempts; after the last attempt the error propagates so the failure
+  // surfaces (and, with leavePartsOnError, the multipart parts are left on S3 for a later resume).
+  // Commands are immutable input holders, so the same instance is safely re-sent across retries.
+  private async sendWithRetry<T>(
+    command: Parameters<S3Client["send"]>[0],
+  ): Promise<T> {
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    for (;;) {
+      attempt++;
+      // A user pause/abort short-circuits before spending another attempt.
+      if (this.abortController.signal.aborted) {
+        throw this.interruptError();
+      }
+      const timeoutController = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await new Promise<T>((resolve, reject) => {
+          timer = setTimeout(() => {
+            const error = new Error(
+              `TimeoutError: S3 request exceeded ${this.requestTimeoutMs}ms.`,
+            );
+            error.name = "TimeoutError";
+            // Abort the underlying fetch so a stalled request doesn't leak past the timeout.
+            timeoutController.abort();
+            reject(error);
+          }, this.requestTimeoutMs);
+          (
+            this.client.send(command, {
+              abortSignal: timeoutController.signal,
+            }) as Promise<T>
+          ).then(resolve, reject);
+        });
+      } catch (error) {
+        // Never retry an intentional pause/abort -- surface it so the caller can persist/resume.
+        if (this.abortController.signal.aborted) {
+          throw this.interruptError();
+        }
+        if (attempt >= this.maxAttempts) {
+          throw error;
+        }
+        await this.retryDelay(attempt);
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      }
+    }
+  }
+
+  private retryDelay(attempt: number): Promise<void> {
+    return new Promise(resolve =>
+      setTimeout(resolve, this.retryBaseDelayMs * attempt),
+    );
+  }
+
   // CreateMultipartUpload / CompleteMultipartUpload inputs don't accept a Body; strip it from params.
   private paramsWithoutBody(): Omit<PutObjectCommandInput, "Body"> {
     const { Body, ...rest } = this.params;
@@ -221,7 +311,7 @@ export class ResumableUpload {
     let numPartsRetrieved = 0;
     while (moreResults) {
       moreResults = false;
-      const response = await this.client.send(
+      const response = await this.sendWithRetry<ListPartsCommandOutput>(
         new ListPartsCommand({
           Bucket,
           Key,
@@ -251,7 +341,7 @@ export class ResumableUpload {
 
   private async uploadUsingPut(dataPart: DataPart): Promise<void> {
     this.isMultiPart = false;
-    this.putResponse = await this.client.send(
+    this.putResponse = await this.sendWithRetry<PutObjectCommandOutput>(
       new PutObjectCommand({
         ...this.params,
         Body: await toBytes(dataPart.data),
@@ -270,12 +360,12 @@ export class ResumableUpload {
   // Guarded so concurrent workers create the multipart upload exactly once.
   private async createMultipartUpload(): Promise<void> {
     if (!this.createMultipartPromise) {
-      this.createMultipartPromise = this.client
-        .send(new CreateMultipartUploadCommand(this.paramsWithoutBody()))
-        .then(result => {
-          this.uploadId = result.UploadId;
-          this.createdMultipartUploadListener?.(this.uploadId ?? null);
-        });
+      this.createMultipartPromise = this.sendWithRetry<CreateMultipartUploadCommandOutput>(
+        new CreateMultipartUploadCommand(this.paramsWithoutBody()),
+      ).then(result => {
+        this.uploadId = result.UploadId;
+        this.createdMultipartUploadListener?.(this.uploadId ?? null);
+      });
     }
     await this.createMultipartPromise;
   }
@@ -342,7 +432,7 @@ export class ResumableUpload {
             }),
           });
         } else {
-          const partResult = await this.client.send(
+          const partResult = await this.sendWithRetry<UploadPartCommandOutput>(
             new UploadPartCommand({
               ...this.params,
               UploadId: this.uploadId,
@@ -413,7 +503,7 @@ export class ResumableUpload {
     this.uploadedParts.sort(
       (a, b) => (a.PartNumber ?? 0) - (b.PartNumber ?? 0),
     );
-    return this.client.send(
+    return this.sendWithRetry<CompleteMultipartUploadCommandOutput>(
       new CompleteMultipartUploadCommand({
         ...this.paramsWithoutBody(),
         UploadId: this.uploadId,
