@@ -50,16 +50,33 @@ module ElasticsearchQueryHelper
   # Returns the pipeline_run_ids that were missing from ES and thus (re)indexed this call. Callers use
   # a non-empty return to detect a cold index -- the just-written docs may not be searchable until the
   # index refreshes, so an immediately-empty query is "still preparing", not "no data". (SMP-1795)
-  def self.update_es_for_missing_data(background_id, pipeline_run_ids)
+  #
+  # async: false (default) invokes the indexing lambda inline and blocks until it returns -- used by the
+  # heatmap:reindex backfill rake, which relies on the synchronous call raising on failure. async: true
+  # instead enqueues the existing IndexTaxons Resque job (retry + dead-letter) per missing run and returns
+  # immediately, so the interactive heatmap first-load does not block on the ~synchronous lambda (SMP-1788).
+  # Either way the returned missing-run list is identical, so callers' "indexing" preparing-state signal
+  # (SMP-1795) fires the same and the client keeps polling until the docs are searchable.
+  def self.update_es_for_missing_data(background_id, pipeline_run_ids, async: false)
     missing_pipeline_run_ids = find_pipeline_runs_missing_from_es(
       background_id,
       pipeline_run_ids
     )
     if missing_pipeline_run_ids.present?
-      call_taxon_indexing_lambda(
-        background_id,
-        missing_pipeline_run_ids
-      )
+      if async
+        # Fire-and-forget: hand the (re)indexing to Resque instead of invoking the lambda inline, so the
+        # request returns immediately. Enqueue one IndexTaxons job per run, mirroring the eager per-run
+        # enqueue done when a run finalizes (pipeline_run.rb) and reusing its retry + dead-letter so a
+        # failed index is retried and visible rather than silently dropped.
+        missing_pipeline_run_ids.each do |pipeline_run_id|
+          Resque.enqueue(IndexTaxons, background_id, pipeline_run_id)
+        end
+      else
+        call_taxon_indexing_lambda(
+          background_id,
+          missing_pipeline_run_ids
+        )
+      end
     end
     missing_pipeline_run_ids
   end
