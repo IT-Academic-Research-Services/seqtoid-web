@@ -147,8 +147,19 @@ class TopTaxonsElasticsearchService
       filter_params[:categories] = params[:categories]
     end
     if params.include?("subcategories")
-      subcategories = JSON.parse(params[:subcategories])
-      filter_params[:include_phage] = subcategories && subcategories["Viruses"] && subcategories["Viruses"].include?("Phage")
+      # subcategories arrives in two shapes, same String-vs-Hash ambiguity handled above for
+      # thresholdFilters. A JSON.stringify'd value is a String to parse -> {"Viruses" => ["Phage"]}.
+      # But the Rails nested-object query encoding (subcategories[Viruses][0]=Phage) is parsed by
+      # Rails into a HashWithIndifferentAccess -> {"Viruses" => {"0" => "Phage"}}; JSON.parse-ing that
+      # raised "no implicit conversion of HashWithIndifferentAccess into String" and 500'd the heatmap
+      # whenever the "Phage" filter was selected (the only filter that sends subcategories). Also note
+      # {"0" => "Phage"}.include?("Phage") checks KEYS and is false, so normalize the Viruses value to
+      # its list of names either way.
+      raw_subcategories = params[:subcategories]
+      subcategories = raw_subcategories.is_a?(String) ? JSON.parse(raw_subcategories.presence || "{}") : (raw_subcategories || {})
+      viruses_subcategories = subcategories["Viruses"]
+      virus_subcategory_names = viruses_subcategories.is_a?(Hash) ? viruses_subcategories.values : Array(viruses_subcategories)
+      filter_params[:include_phage] = virus_subcategory_names.include?("Phage")
     end
     filter_params[:taxon_level] = params[:species].to_i == TaxonCount::TAX_LEVEL_SPECIES ? TaxonCount::TAX_LEVEL_SPECIES : TaxonCount::TAX_LEVEL_GENUS
     if params.include?("readSpecificity")

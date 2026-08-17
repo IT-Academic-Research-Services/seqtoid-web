@@ -13,6 +13,13 @@ const mockCreateConsensusGenomeCladeExport = jest.fn();
 const mockGetConsensusGenomeCladeExportTreeUrl = jest.fn();
 const mockOpenUrlInNewTab = jest.fn();
 const mockTrackEvent = jest.fn();
+// Fake handle for the pre-opened Nextclade tab: the fix calls window.open synchronously inside the
+// click gesture, then navigates it once the export url is ready (avoids the popup blocker).
+let mockNextcladeTab: {
+  location: { href: string };
+  opener: unknown;
+  close: jest.Mock;
+};
 
 jest.mock("~/api", () => ({
   createConsensusGenomeCladeExport: (...args: unknown[]) =>
@@ -147,7 +154,13 @@ beforeEach(() => {
     key: "clade_exports/trees/temp-abcde",
   });
   // The reference tree is PUT straight to S3 via the presigned url; stub fetch to succeed.
-  global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 }) as $TSFixMe;
+  global.fetch = jest
+    .fn()
+    .mockResolvedValue({ ok: true, status: 200 }) as $TSFixMe;
+  // The export opens the Nextclade tab synchronously (window.open) and navigates it after the async
+  // work; give window.open a fake handle so the pre-open path is exercised.
+  mockNextcladeTab = { location: { href: "" }, opener: {}, close: jest.fn() };
+  window.open = jest.fn(() => mockNextcladeTab) as $TSFixMe;
 });
 
 describe("NextcladeModal validation on mount", () => {
@@ -328,7 +341,7 @@ describe("NextcladeModal export flow", () => {
         referenceTreeS3Key: null,
       }),
     );
-    expect(mockOpenUrlInNewTab).toHaveBeenCalledWith(
+    expect(mockNextcladeTab.location.href).toBe(
       "https://clades.nextstrain.org/export/abc",
     );
     expect(mockTrackEvent).toHaveBeenCalledTimes(2);
@@ -359,6 +372,11 @@ describe("NextcladeModal export flow", () => {
       "https://s3.example/put-tree",
       expect.objectContaining({ method: "PUT" }),
     );
+    // The key regression check: after the async tree PUT + export, the pre-opened tab is navigated
+    // to Nextclade (a deferred window.open here would be popup-blocked and never open).
+    expect(mockNextcladeTab.location.href).toBe(
+      "https://clades.nextstrain.org/export/abc",
+    );
   });
 
   it("shows the error modal when the export fails, and retries successfully", async () => {
@@ -383,7 +401,7 @@ describe("NextcladeModal export flow", () => {
     const retry = await screen.findByText("Try Again");
     fireEvent.click(retry.closest("button") as HTMLElement);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(mockOpenUrlInNewTab).toHaveBeenCalledWith(
+    expect(mockNextcladeTab.location.href).toBe(
       "https://clades.nextstrain.org/export/abc",
     );
     errorSpy.mockRestore();
