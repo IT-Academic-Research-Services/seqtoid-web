@@ -507,11 +507,18 @@ class Sample < ApplicationRecord
             name: file_name,
             source_path: file[:source_path],
             download_path: [file[:download_path]],
+            # Known byte size from BaseSpace, threaded through as --expected-size
+            # for the streaming upload (SMP-1730). When lanes are concatenated the
+            # sizes sum; if any lane's size is unknown the total is unknown (nil)
+            # and the upload omits --expected-size.
+            size: file[:size],
           }
         # Otherwise, just append
         else
           files_concat[read_index][:source_path] << "," << file[:source_path]
           files_concat[read_index][:download_path].push(file[:download_path])
+          existing_size = files_concat[read_index][:size]
+          files_concat[read_index][:size] = existing_size && file[:size] ? existing_size + file[:size] : nil
         end
       end
     end
@@ -525,7 +532,7 @@ class Sample < ApplicationRecord
 
       Rails.logger.info("Starting upload of sample '#{name}' (#{id}) file '#{file[:name]}' from Basespace")
       while try < max_tries
-        success = upload_from_basespace_to_s3(file[:download_path], sample_input_s3_path, file[:name])
+        success = upload_from_basespace_to_s3(file[:download_path], sample_input_s3_path, file[:name], file[:size])
 
         if success
           break

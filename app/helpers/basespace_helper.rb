@@ -203,20 +203,36 @@ module BasespaceHelper
         # Store the file id for debugging purposes.
         # Without a valid access token, the file cannot be accessed using the file id.
         source_path: file["Href"],
+        # Size in bytes as reported by the BaseSpace v2 files API. Threaded through
+        # to the streaming upload as --expected-size so the AWS CLI can size the
+        # multipart plan for a non-seekable stdin (SMP-1730). May be nil if the
+        # API omits it, in which case the upload falls back to no --expected-size.
+        size: file["Size"],
       }
     end
   end
 
-  def upload_from_basespace_to_s3(basespace_paths, s3_path, file_name)
+  def upload_from_basespace_to_s3(basespace_paths, s3_path, file_name, expected_size = nil)
     # Make sure lanes are concatenated in ascending order (Lane 1 -> 8)
     basespace_paths.sort! if basespace_paths.is_a?(Array)
+
+    # The upload streams curl's stdout into `aws s3 cp -`, so the CLI reads from a
+    # NON-SEEKABLE stdin and cannot discover the object size up front. Without
+    # --expected-size the CLI plans the multipart upload with the default 8 MiB
+    # part size; at the 10,000-part hard limit that caps a single object at
+    # ~78 GB, below the ~100 GB configured limit (SMP-1730). Passing the known
+    # BaseSpace file size lets the CLI choose a part size large enough for the
+    # full range. If the size is unknown here we omit the flag and keep the prior
+    # behavior rather than sending a wrong size.
+    aws_cp_command = ["aws", "s3", "cp", "-", "#{s3_path}/#{file_name}"]
+    aws_cp_command += ["--expected-size", expected_size.to_s] if expected_size.to_i.positive?
 
     # Run the piped commands and save stderr
     success, stderr = Syscall.pipe(
       # Don't show the cURL progress bar, but do show any errors.
       # Fail if the HTTP status code is an error.
       ["curl", "--fail", "-s", "--show-error", *basespace_paths],
-      ["aws", "s3", "cp", "-", "#{s3_path}/#{file_name}"]
+      aws_cp_command
     )
 
     unless success
