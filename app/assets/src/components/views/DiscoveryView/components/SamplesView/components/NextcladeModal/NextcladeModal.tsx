@@ -140,28 +140,53 @@ export const NextcladeModal = ({
   }, [checkAdminSelections, validWorkflowInfo]);
 
   const openExportLink = async () => {
-    let referenceTreeS3Key = null;
-    // Upload the already-validated reference tree straight to S3 via a presigned PUT, then hand the
-    // backend only its key. This keeps multi-MB trees off the app request body and the edge WAF body
-    // limit (which was rejecting them and breaking the Upload-a-Tree link-out). Errors bubble to the
-    // callers' try/catch, which surface the export error modal. (SMP-1660)
-    if (selectedTreeType === "upload" && referenceTreeContents) {
-      const { url, key } = await getConsensusGenomeCladeExportTreeUrl();
-      const putResponse = await fetch(url, {
-        method: "PUT",
-        body: new Blob([referenceTreeContents], { type: "application/json" }),
-      });
-      if (!putResponse.ok) {
-        throw new Error(`Reference tree upload failed (${putResponse.status})`);
-      }
-      referenceTreeS3Key = key;
+    // Open the destination tab SYNCHRONOUSLY here, inside the click's user activation, before any
+    // await. The Upload-a-Tree path below does async S3 work (presigned PUT of the tree) plus the
+    // export request before we have a URL; by the time those awaits resolve the browser has dropped
+    // the transient activation, so a deferred window.open is treated as an unsolicited popup and
+    // blocked -- the Nextclade tab then silently never opened (Karyna, 2026-08-15, large 6m tree).
+    // Pre-open a blank tab now and navigate it once we have the URL.
+    const nextcladeTab = window.open("about:blank", "_blank");
+    // Match openUrlInNewTab's noreferrer/noopener intent for the external Nextclade target.
+    if (nextcladeTab) {
+      nextcladeTab.opener = null;
     }
 
-    const link = await createConsensusGenomeCladeExport({
-      workflowRunIds: Array.from(validWorkflowRunIds),
-      referenceTreeS3Key,
-    });
-    openUrlInNewTab(link.external_url);
+    try {
+      let referenceTreeS3Key = null;
+      // Upload the already-validated reference tree straight to S3 via a presigned PUT, then hand the
+      // backend only its key. This keeps multi-MB trees off the app request body and the edge WAF body
+      // limit (which was rejecting them and breaking the Upload-a-Tree link-out). (SMP-1660)
+      if (selectedTreeType === "upload" && referenceTreeContents) {
+        const { url, key } = await getConsensusGenomeCladeExportTreeUrl();
+        const putResponse = await fetch(url, {
+          method: "PUT",
+          body: new Blob([referenceTreeContents], { type: "application/json" }),
+        });
+        if (!putResponse.ok) {
+          throw new Error(
+            `Reference tree upload failed (${putResponse.status})`,
+          );
+        }
+        referenceTreeS3Key = key;
+      }
+
+      const link = await createConsensusGenomeCladeExport({
+        workflowRunIds: Array.from(validWorkflowRunIds),
+        referenceTreeS3Key,
+      });
+      if (nextcladeTab) {
+        nextcladeTab.location.href = link.external_url;
+      } else {
+        // Pre-open was blocked outright (hard popup blocker); best-effort fallback.
+        openUrlInNewTab(link.external_url);
+      }
+    } catch (error) {
+      // Don't leave an orphaned blank tab if the tree upload or export failed; the callers'
+      // catch still surfaces the error modal.
+      nextcladeTab?.close();
+      throw error;
+    }
   };
 
   // The picker hands back head(acceptedFiles), which is undefined for an empty
