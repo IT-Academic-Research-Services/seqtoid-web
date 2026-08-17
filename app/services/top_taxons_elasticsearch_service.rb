@@ -48,9 +48,14 @@ class TopTaxonsElasticsearchService
 
     pr_id_to_sample_id = HeatmapHelper.get_latest_pipeline_runs_for_samples(@samples)
 
+    # Kick off any needed (re)indexing asynchronously (async: true) so first-load returns immediately
+    # instead of blocking on the taxon-indexing lambda (SMP-1788). indexed_run_ids still holds the runs
+    # we just enqueued indexing for, so the "indexing" preparing-state below fires the same way and the
+    # client keeps polling until the freshly-indexed docs are searchable (SMP-1795).
     indexed_run_ids = ElasticsearchQueryHelper.update_es_for_missing_data(
       filter_param[:background_id],
-      pr_id_to_sample_id.keys
+      pr_id_to_sample_id.keys,
+      async: true
     )
 
     ElasticsearchQueryHelper.update_last_read_at(
