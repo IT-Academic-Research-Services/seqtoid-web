@@ -916,6 +916,16 @@ const SampleViewComponent = ({
                 newBackgroundId: selectedOptions?.background,
               });
             }
+          } else if (/fail/i.test(reportMetadata?.pipelineRunStatus ?? "")) {
+            // SMP-1791: A genuinely failed pipeline run also lands here with a
+            // falsy report result (its report request errors or returns no
+            // report), but a failed run is NOT an incompatible background.
+            // Suppress the misleading "invalid background" toast and clear the
+            // spinner so SampleViewMessage falls through to the run's failure
+            // state/message instead of hanging on "Loading report data." The
+            // run status comes from reportMetadata.pipelineRunStatus, the same
+            // signal recordRunFailure uses to detect mNGS failures.
+            setLoadingReport(false);
           } else {
             handleInvalidBackgroundSelection({
               invalidBackgroundId: selectedOptions?.background,
@@ -936,6 +946,7 @@ const SampleViewComponent = ({
     previousBackground,
     prevPipelineVersion,
     pipelineVersion,
+    reportMetadata?.pipelineRunStatus,
   ]);
 
   const globalContext = useContext(GlobalContext);
