@@ -276,7 +276,7 @@ module BasespaceHelper
     end
   end
 
-  def upload_from_basespace_to_s3(basespace_paths, s3_path, file_name, expected_size = nil)
+  def upload_from_basespace_to_s3(basespace_paths, s3_path, file_name, expected_size = nil, tags = nil)
     # Make sure lanes are concatenated in ascending order (Lane 1 -> 8)
     basespace_paths.sort! if basespace_paths.is_a?(Array)
 
@@ -299,7 +299,16 @@ module BasespaceHelper
       aws_cp_command
     )
 
-    unless success
+    if success
+      # SMP-1731: the streaming `aws s3 cp -` upload writes the object with NO
+      # tags, so BaseSpace was the only ingress path whose objects were invisible
+      # to tag-driven S3 retention/lifecycle rules. The stream cannot tag inline,
+      # so apply the same lifecycle tag set every other ingress path uses (see the
+      # S3Util.copy_with_tags call sites) once the object exists. A tagging
+      # failure must surface rather than be silently swallowed: it is deliberately
+      # not rescued here, so it propagates to the caller and fails the transfer.
+      S3Util.put_object_tags("#{s3_path}/#{file_name}", tags) if tags.present?
+    else
       # basespace_paths are HrefContent download URLs -- presigned, so the query
       # string IS the credential. Log the origin and object path (which is what
       # identifies the file) with the signature stripped. curl's stderr is passed

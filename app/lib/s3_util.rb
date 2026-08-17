@@ -179,4 +179,21 @@ module S3Util
       )
     end
   end
+
+  # Apply an S3 object tag set to an object that already exists. copy_with_tags
+  # tags an object as part of a server-side copy; a streaming upload
+  # (`aws s3 cp -` from a non-seekable stdin) cannot tag inline, so callers that
+  # stream to S3 use this to apply the same lifecycle tag set once the object is
+  # written (SMP-1731). Replaces the object's entire tag set, matching the
+  # REPLACE semantics of copy_with_tags.
+  def self.put_object_tags(s3_path, tags = {})
+    bucket, key = parse_s3_path(s3_path)
+    tag_set = tags.map { |tag_key, tag_value| { key: tag_key.to_s, value: tag_value.to_s } }
+    Rails.logger.debug("Tagging S3 [#{bucket}/#{key}] tags [#{URI.encode_www_form(tags)}]")
+    AwsClient[:s3].put_object_tagging(
+      bucket: bucket,
+      key: key,
+      tagging: { tag_set: tag_set }
+    )
+  end
 end

@@ -277,6 +277,50 @@ RSpec.describe BasespaceHelper, type: :helper do
       end
     end
 
+    # SMP-1731: streaming `aws s3 cp -` writes the object untagged, so the tags
+    # are applied to the completed object afterwards with the same lifecycle tag
+    # set every other ingress path uses. This must run only on a successful
+    # upload, and a tagging failure must surface rather than be swallowed.
+    context "S3 lifecycle tagging after a successful upload" do
+      let(:fake_tags) { { type: "sample", id: "123" } }
+
+      it "tags the uploaded object with the given tag set" do
+        allow(Syscall).to receive(:pipe).and_return([true, ""])
+        expect(S3Util).to receive(:put_object_tags).with(
+          "#{fake_s3_path}/#{fake_file_name}", fake_tags
+        ).exactly(1).times
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil, fake_tags)
+        expect(success).to be true
+      end
+
+      it "does not tag when the upload fails" do
+        allow(Syscall).to receive(:pipe).and_return([false, "boom"])
+        allow(LogUtil).to receive(:log_error)
+        expect(S3Util).to receive(:put_object_tags).exactly(0).times
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil, fake_tags)
+        expect(success).to be false
+      end
+
+      it "does not tag when no tag set is provided" do
+        allow(Syscall).to receive(:pipe).and_return([true, ""])
+        expect(S3Util).to receive(:put_object_tags).exactly(0).times
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name)
+        expect(success).to be true
+      end
+
+      it "surfaces a tagging failure instead of swallowing it" do
+        allow(Syscall).to receive(:pipe).and_return([true, ""])
+        allow(S3Util).to receive(:put_object_tags).and_raise(StandardError.new("tagging denied"))
+
+        expect do
+          helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil, fake_tags)
+        end.to raise_error(StandardError, "tagging denied")
+      end
+    end
+
     describe "#revoke_access_token" do
       let(:fake_access_token) { "fake_access_token" }
 

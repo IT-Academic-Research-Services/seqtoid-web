@@ -150,9 +150,10 @@ RSpec.describe Sample, type: :model do
       expect(sample.input_files[1].source).to eq("https://src/1/r2,https://src/2/r2")
       # both lanes' download paths are handed to the uploader as one list, and
       # the concatenated object's expected size is the sum of the lane sizes
-      # (SMP-1730): 1_000 + 1_000 == 2_000.
+      # (SMP-1730): 1_000 + 1_000 == 2_000. The lifecycle tag set (SMP-1731) is
+      # passed through as the final argument.
       expect(sample).to have_received(:upload_from_basespace_to_s3)
-        .with(["https://dl/1/r1", "https://dl/2/r1"], anything, "sample_R1.fastq.gz", 2_000)
+        .with(["https://dl/1/r1", "https://dl/2/r1"], anything, "sample_R1.fastq.gz", 2_000, { type: "sample", id: sample.id.to_s })
     end
 
     it "keeps the lane suffix in the name for a single dataset (should_concat_lanes false)" do
