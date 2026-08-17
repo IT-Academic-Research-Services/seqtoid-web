@@ -89,6 +89,111 @@ RSpec.describe BasespaceHelper, type: :helper do
     end
   end
 
+  # SMP-1733. Basespace caps a single list response at BASESPACE_PAGE_SIZE (1024)
+  # items. These examples prove the client follows Limit/Offset pagination and
+  # returns the full concatenated list instead of silently truncating at 1024.
+  describe "pagination" do
+    let(:access_token) { "token" }
+
+    # v1pre3 projects nest their list under "Response"; v2 datasets do not.
+    def project_page(items)
+      { "Response" => { "Items" => items } }
+    end
+
+    def project_items(count, offset = 0)
+      Array.new(count) { |i| { "Id" => (offset + i).to_s, "Name" => "P#{offset + i}" } }
+    end
+
+    def dataset_page(items)
+      { "Items" => items }
+    end
+
+    def dataset_items(count, offset = 0)
+      Array.new(count) do |i|
+        n = offset + i
+        {
+          "Id" => n.to_s,
+          "Name" => "s#{n}",
+          "TotalSize" => 10,
+          "Project" => { "Name" => "proj" },
+          "DatasetType" => { "Name" => "fastq" },
+          "Attributes" => { "common_fastq" => { "IsPairedEnd" => false } },
+        }
+      end
+    end
+
+    context "#basespace_projects" do
+      it "makes a single request when the first page is short" do
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .once.and_return(project_page(project_items(3)))
+
+        result = helper.basespace_projects(access_token)
+        expect(result.length).to eq(3)
+        expect(result.first).to eq(id: "0", name: "P0")
+      end
+
+      it "requests successive offsets and returns the full list when there are more than 1024 projects" do
+        first_page = project_page(project_items(BASESPACE_PAGE_SIZE, 0))
+        second_page = project_page(project_items(10, BASESPACE_PAGE_SIZE))
+
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(first_page)
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: BASESPACE_PAGE_SIZE, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(second_page)
+
+        result = helper.basespace_projects(access_token)
+        expect(result.length).to eq(BASESPACE_PAGE_SIZE + 10)
+        expect(result.first).to eq(id: "0", name: "P0")
+        expect(result.last).to eq(id: (BASESPACE_PAGE_SIZE + 9).to_s, name: "P#{BASESPACE_PAGE_SIZE + 9}")
+      end
+
+      it "stops on the trailing empty page when the total is an exact multiple of the page size" do
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(project_page(project_items(BASESPACE_PAGE_SIZE, 0)))
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: BASESPACE_PAGE_SIZE, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(project_page([]))
+
+        result = helper.basespace_projects(access_token)
+        expect(result.length).to eq(BASESPACE_PAGE_SIZE)
+      end
+    end
+
+    context "#samples_for_basespace_project" do
+      let(:url) { BASESPACE_PROJECT_DATASETS_URL % "p1" }
+
+      it "makes a single request when the first page is short" do
+        expect(HttpHelper).to receive(:get_json)
+          .with(url, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .once.and_return(dataset_page(dataset_items(2)))
+
+        result = helper.samples_for_basespace_project("p1", access_token)
+        expect(result.length).to eq(2)
+      end
+
+      it "requests successive offsets and returns the full list when there are more than 1024 datasets" do
+        first_page = dataset_page(dataset_items(BASESPACE_PAGE_SIZE, 0))
+        second_page = dataset_page(dataset_items(5, BASESPACE_PAGE_SIZE))
+
+        expect(HttpHelper).to receive(:get_json)
+          .with(url, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(first_page)
+        expect(HttpHelper).to receive(:get_json)
+          .with(url, hash_including(offset: BASESPACE_PAGE_SIZE, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(second_page)
+
+        result = helper.samples_for_basespace_project("p1", access_token)
+        expect(result.length).to eq(BASESPACE_PAGE_SIZE + 5)
+        expect(result.first[:basespace_dataset_id]).to eq("0")
+        expect(result.last[:basespace_dataset_id]).to eq((BASESPACE_PAGE_SIZE + 4).to_s)
+      end
+    end
+  end
+
   describe "#upload_from_basespace_to_s3" do
     let(:fake_basespace_path) { "fake_basespace_path" }
     let(:fake_s3_path) { "fake_s3_path" }
