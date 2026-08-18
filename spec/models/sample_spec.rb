@@ -336,12 +336,12 @@ describe Sample, type: :model do
         allow(Kernel).to receive(:sleep)
 
         # Fail the first attempt (stale URL), succeed the second (fresh URL).
-        # The 4th arg is the BaseSpace-reported byte size threaded through as
-        # --expected-size (SMP-1730); these fixture files carry no size, so it is nil.
+        # 4th arg = BaseSpace byte size for --expected-size (SMP-1730), nil for these fixtures;
+        # 5th arg = the S3 lifecycle tag set (SMP-1731). Both matched with `anything`.
         expect(@sample).to receive(:upload_from_basespace_to_s3)
-          .with([stale_href_content], anything, file_one_name, anything).ordered.and_return(false)
+          .with([stale_href_content], anything, file_one_name, anything, anything).ordered.and_return(false)
         expect(@sample).to receive(:upload_from_basespace_to_s3)
-          .with([fresh_href_content], anything, file_one_name, anything).ordered.and_return(true)
+          .with([fresh_href_content], anything, file_one_name, anything, anything).ordered.and_return(true)
         expect(@sample).to receive(:kickoff_pipeline).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)

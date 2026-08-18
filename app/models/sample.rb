@@ -503,7 +503,11 @@ class Sample < ApplicationRecord
 
       Rails.logger.info("Starting upload of sample '#{name}' (#{id}) file '#{file[:name]}' from Basespace")
       while try < max_tries
-        success = upload_from_basespace_to_s3(file[:download_path], sample_input_s3_path, file[:name], file[:size])
+        # SMP-1731: tag the uploaded object with the same lifecycle tag set every
+        # other ingress path applies via S3Util.copy_with_tags (see
+        # initiate_fastq_files_s3_cp), so BaseSpace-sourced FASTQs are visible to
+        # tag-driven S3 retention/lifecycle rules.
+        success = upload_from_basespace_to_s3(file[:download_path], sample_input_s3_path, file[:name], file[:size], type: "sample", id: id.to_s)
 
         if success
           break

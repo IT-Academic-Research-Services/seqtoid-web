@@ -142,4 +142,25 @@ RSpec.describe S3Util do
       S3Util.copy_with_tags(source_path, dest_path, tags)
     end
   end
+
+  # SMP-1731: a streaming `aws s3 cp -` upload cannot tag inline, so the BaseSpace
+  # ingress path tags the completed object with put_object_tags. It must apply the
+  # same lifecycle tag set the other ingress paths use via copy_with_tags.
+  describe "#put_object_tags" do
+    let(:dest_path) { "s3://dst-bucket/samples/1/2/fastqs/big_R1.fastq.gz" }
+    let(:tags) { { type: "sample", id: "2" } }
+
+    it "applies the tag set to the existing object via put_object_tagging" do
+      tagging_args = nil
+      allow(@mock_aws_clients[:s3]).to receive(:put_object_tagging) { |args| tagging_args = args }
+
+      S3Util.put_object_tags(dest_path, tags)
+
+      expect(tagging_args).to eq(
+        bucket: "dst-bucket",
+        key: "samples/1/2/fastqs/big_R1.fastq.gz",
+        tagging: { tag_set: [{ key: "type", value: "sample" }, { key: "id", value: "2" }] }
+      )
+    end
+  end
 end
