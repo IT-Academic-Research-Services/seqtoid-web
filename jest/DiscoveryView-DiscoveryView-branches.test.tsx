@@ -1308,9 +1308,14 @@ describe("DiscoveryView branch coverage", () => {
         (t: $TSFixMe) => t.value === WorkflowType.SHORT_READ_MNGS,
       );
       instance.handleWorkflowTabChange(srIndex);
-      await waitFor(() => expect(instance.state.currentDisplay).toBe("plqc"));
-      // Sample-entity workflow, so the selectable ids are refreshed.
-      expect(instance.state.selectableSampleIds).toEqual(["s1", "s2"]);
+      // currentDisplay is already "plqc" going in, so wait on the value that
+      // actually transitions (selectableSampleIds) to guarantee the async
+      // setState has flushed before asserting.
+      await waitFor(() =>
+        expect(instance.state.selectableSampleIds).toEqual(["s1", "s2"]),
+      );
+      // Sample-entity workflow, so the display stays PLQC.
+      expect(instance.state.currentDisplay).toBe("plqc");
     });
   });
 
