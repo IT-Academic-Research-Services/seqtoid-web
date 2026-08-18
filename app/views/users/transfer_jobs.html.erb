@@ -1,0 +1,17 @@
+<div id='user_transfer_jobs_page' style="height: calc(100vh - 60px); display: flex; flex-direction: column">
+  <% if current_user && current_user.admin %>
+    <div style="flex: 0 0 auto">
+      <p id="notice"><%= notice %></p>
+      <h1>S3 Transfer Jobs for <%= @user.email %></h1>
+      <div><%= link_to "← Back to users", users_path %></div>
+      <br/>
+    </div>
+    <div style="flex: 1 0 0; overflow: auto;">
+      <%= render "s3_transfer_jobs/jobs_table", transfer_jobs: @transfer_jobs, show_user: false %>
+    </div>
+  <% else %>
+    <%= javascript_tag do %>
+      react_component('ForbiddenPage', 'user_transfer_jobs_page');
+    <% end %>
+  <% end %>
+</div>

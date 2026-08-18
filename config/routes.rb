@@ -313,8 +313,13 @@ Rails.application.routes.draw do
     member do
       post :update_user_data
       post :post_user_data_to_airtable
+      get :export_data
+      post :initiate_s3_transfer
+      get :transfer_jobs
     end
   end
+
+  resources :s3_transfer_jobs, only: [:index]
 
   resource :metadata do
     collection do
