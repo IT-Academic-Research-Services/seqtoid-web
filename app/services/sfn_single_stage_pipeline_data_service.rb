@@ -140,7 +140,10 @@ class SfnSingleStagePipelineDataService
       }
     end
 
-    pipeline_status = pipeline_job_status(all_redefined_statuses)
+    # Mark the (single) stage finished when the run itself succeeded, otherwise infer from
+    # steps. Mirrors the SUCCEEDED stage-header override in SfnPipelineDataService so a
+    # completed ONT run shows a green header instead of an inferred blue one (alpha bug 29).
+    pipeline_status = analysis_run_succeeded? ? "finished" : pipeline_job_status(all_redefined_statuses)
     [steps, pipeline_status]
   end
 
@@ -174,6 +177,12 @@ class SfnSingleStagePipelineDataService
   end
 
   def redefine_job_status(step_status)
+    # A completed run has, by definition, finished every step, so force each step node
+    # green. The single-stage (ONT/long-read) pipeline has no per-stage status arg and
+    # its per-step *_status2.json is not always written on completion, so without this
+    # a done run renders gray step nodes (alpha bug 29).
+    return "finished" if analysis_run_succeeded?
+
     case step_status
     when "instantiated", nil
       "notStarted"
@@ -188,8 +197,18 @@ class SfnSingleStagePipelineDataService
     when "running", "finished_running"
       # Should be errored if pipeline_run or workflow run is killed and the step_status file isn't updated.
       analysis_run_status == WorkflowRun::STATUS[:failed] ? "pipelineErrored" : "inProgress"
+    else
+      # An unknown terminal literal must never fall through to nil (which the
+      # frontend renders gray); treat it as still-running rather than dropping it.
       "inProgress"
     end
+  end
+
+  # A nanopore run is a PipelineRun (terminal success == CHECKED); a non-nanopore run is a
+  # WorkflowRun (terminal success == SUCCEEDED). analysis_run_status abstracts which column
+  # to read, so compare against both terminal-success literals here.
+  def analysis_run_succeeded?
+    [PipelineRun::STATUS_CHECKED, WorkflowRun::STATUS[:succeeded]].include?(analysis_run_status)
   end
 
   def analysis_run_status
