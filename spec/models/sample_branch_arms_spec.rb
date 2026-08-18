@@ -128,8 +128,8 @@ RSpec.describe Sample, type: :model do
 
     def lane_files(lane)
       [
-        { name: "sample_L00#{lane}_R1.fastq.gz", download_path: "https://dl/#{lane}/r1", source_path: "https://src/#{lane}/r1" },
-        { name: "sample_L00#{lane}_R2.fastq.gz", download_path: "https://dl/#{lane}/r2", source_path: "https://src/#{lane}/r2" },
+        { name: "sample_L00#{lane}_R1.fastq.gz", download_path: "https://dl/#{lane}/r1", source_path: "https://src/#{lane}/r1", size: 1_000 },
+        { name: "sample_L00#{lane}_R2.fastq.gz", download_path: "https://dl/#{lane}/r2", source_path: "https://src/#{lane}/r2", size: 1_000 },
       ]
     end
 
@@ -148,9 +148,11 @@ RSpec.describe Sample, type: :model do
       # dataset_index != 0 -> the second lane's source is appended, comma separated
       expect(sample.input_files[0].source).to eq("https://src/1/r1,https://src/2/r1")
       expect(sample.input_files[1].source).to eq("https://src/1/r2,https://src/2/r2")
-      # both lanes' download paths are handed to the uploader as one list
+      # both lanes' download paths are handed to the uploader as one list, and
+      # the concatenated object's expected size is the sum of the lane sizes
+      # (SMP-1730): 1_000 + 1_000 == 2_000.
       expect(sample).to have_received(:upload_from_basespace_to_s3)
-        .with(["https://dl/1/r1", "https://dl/2/r1"], anything, "sample_R1.fastq.gz")
+        .with(["https://dl/1/r1", "https://dl/2/r1"], anything, "sample_R1.fastq.gz", 2_000)
     end
 
     it "keeps the lane suffix in the name for a single dataset (should_concat_lanes false)" do

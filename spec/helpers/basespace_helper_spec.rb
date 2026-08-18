@@ -24,12 +24,14 @@ RSpec.describe BasespaceHelper, type: :helper do
                 "HrefContent" => file_one_href_content,
                 "Href" => file_one_href,
                 "Id" => "1",
+                "Size" => 1_234,
               },
               {
                 "Name" => file_two_name,
                 "HrefContent" => file_two_href_content,
                 "Href" => file_two_href,
                 "Id" => "2",
+                "Size" => 5_678,
               },
             ]
           )
@@ -44,11 +46,13 @@ RSpec.describe BasespaceHelper, type: :helper do
               name: file_one_name,
               download_path: file_one_href_content,
               source_path: file_one_href,
+              size: 1_234,
             },
             {
               name: file_two_name,
               download_path: file_two_href_content,
               source_path: file_two_href,
+              size: 5_678,
             },
           ]
         )
@@ -210,6 +214,43 @@ RSpec.describe BasespaceHelper, type: :helper do
         expect(LogUtil).to receive(:log_error).exactly(0).times
 
         success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name)
+        expect(success).to be true
+      end
+    end
+
+    # SMP-1730: the stream is non-seekable, so the AWS CLI needs --expected-size
+    # to plan a part size large enough for the full ~100 GB range. When the file
+    # size is known it must be passed; when it is unknown the flag is omitted.
+    context "when the file size is known" do
+      it "passes --expected-size to aws s3 cp" do
+        expect(Syscall).to receive(:pipe).with(
+          ["curl", "--fail", "-s", "--show-error", fake_basespace_path],
+          ["aws", "s3", "cp", "-", "#{fake_s3_path}/#{fake_file_name}", "--expected-size", "90000000000"]
+        ).exactly(1).times.and_return([true, ""])
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, 90_000_000_000)
+        expect(success).to be true
+      end
+    end
+
+    context "when the file size is unknown" do
+      it "omits --expected-size (nil size)" do
+        expect(Syscall).to receive(:pipe).with(
+          ["curl", "--fail", "-s", "--show-error", fake_basespace_path],
+          ["aws", "s3", "cp", "-", "#{fake_s3_path}/#{fake_file_name}"]
+        ).exactly(1).times.and_return([true, ""])
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil)
+        expect(success).to be true
+      end
+
+      it "omits --expected-size (non-positive size)" do
+        expect(Syscall).to receive(:pipe).with(
+          ["curl", "--fail", "-s", "--show-error", fake_basespace_path],
+          ["aws", "s3", "cp", "-", "#{fake_s3_path}/#{fake_file_name}"]
+        ).exactly(1).times.and_return([true, ""])
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, 0)
         expect(success).to be true
       end
     end
