@@ -214,6 +214,9 @@ RSpec.describe RetrievePipelineVizGraphDataService do
     [
       {
         name: "Host Filtering",
+        # Keep the run in progress so the step-status derivation (notStarted / inProgress)
+        # stays exercised; the SUCCEEDED force-green path is covered in the branches spec.
+        job_status: PipelineRunStage::STATUS_STARTED,
         dag_json: {
           output_dir_s3: output_dir,
           targets: {
@@ -242,6 +245,7 @@ RSpec.describe RetrievePipelineVizGraphDataService do
       },
       {
         name: "Experimental",
+        job_status: PipelineRunStage::STATUS_STARTED,
         dag_json: {
           output_dir_s3: output_dir,
           targets: {

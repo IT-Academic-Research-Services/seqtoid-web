@@ -88,6 +88,13 @@ class RetrievePipelineVizGraphDataService
   end
 
   def redefine_job_status(step_status, stage_status)
+    # A stage the pipeline marked SUCCEEDED has, by definition, finished every step,
+    # so force each step node green. With every step "finished" the stage header also
+    # greens via stage_job_status. This guards against a completed run whose per-step
+    # status file is missing (step_status nil) or carries an unrecognized terminal
+    # literal, either of which would otherwise render gray under a done run (alpha bug 29).
+    return "finished" if stage_status == PipelineRunStage::STATUS_SUCCEEDED
+
     case step_status
     when "instantiated", nil
       "notStarted"
@@ -102,6 +109,10 @@ class RetrievePipelineVizGraphDataService
     when "running", "finished_running"
       # Should be errored if pipeline is killed and the step_status file isn't updated.
       stage_status == PipelineRunStage::STATUS_FAILED ? "pipelineErrored" : "inProgress"
+    else
+      # An unknown terminal literal must never fall through to nil (which the
+      # frontend renders gray); treat it as still-running rather than dropping it.
+      "inProgress"
     end
   end
 

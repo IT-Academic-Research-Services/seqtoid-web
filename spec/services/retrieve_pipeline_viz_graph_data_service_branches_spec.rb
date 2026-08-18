@@ -48,8 +48,20 @@ RSpec.describe RetrievePipelineVizGraphDataService, type: :service do
       expect(service.send(:redefine_job_status, "running", PipelineRunStage::STATUS_FAILED)).to eq("pipelineErrored")
     end
 
-    it "returns nil for a status it does not recognize (no when matches)" do
-      expect(service.send(:redefine_job_status, "some_new_status", nil)).to be_nil
+    it "greens every step of a SUCCEEDED stage even when its status literal is not 'uploaded'" do
+      # alpha bug 29: a completed stage must render green regardless of the raw per-step literal.
+      expect(service.send(:redefine_job_status, nil, PipelineRunStage::STATUS_SUCCEEDED)).to eq("finished")
+      expect(service.send(:redefine_job_status, "some_new_status", PipelineRunStage::STATUS_SUCCEEDED)).to eq("finished")
+      expect(service.send(:redefine_job_status, "instantiated", PipelineRunStage::STATUS_SUCCEEDED)).to eq("finished")
+    end
+
+    it "does not green a step whose stage FAILED" do
+      expect(service.send(:redefine_job_status, "some_new_status", PipelineRunStage::STATUS_FAILED)).not_to eq("finished")
+      expect(service.send(:redefine_job_status, "running", PipelineRunStage::STATUS_FAILED)).to eq("pipelineErrored")
+    end
+
+    it "maps an unrecognized literal to inProgress rather than nil (no gray fall-through)" do
+      expect(service.send(:redefine_job_status, "some_new_status", nil)).to eq("inProgress")
     end
   end
 
