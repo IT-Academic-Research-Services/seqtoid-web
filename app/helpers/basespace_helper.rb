@@ -6,9 +6,18 @@ BASESPACE_CURRENT_PROJECTS_URL = "https://api.basespace.illumina.com/v1pre3/user
 BASESPACE_PROJECT_DATASETS_URL = "https://api.basespace.illumina.com/v2/projects/%s/datasets".freeze
 BASESPACE_DATASET_FILES_URL = "https://api.basespace.illumina.com/v2/datasets/%s/files?filehrefcontentresolution=true".freeze
 BASESPACE_DELETE_ACCESS_TOKEN_URL = "https://api.basespace.illumina.com/v2/oauthv2tokens/current".freeze
-# 1024 is the maximum limit allowed by Basespace.
-# If users reach this limit, we will need to implement multiple requests to fetch all the samples.
+# 1024 is the maximum page size (Limit) allowed by Basespace. Listings with more
+# than one page of results are retrieved by fetch_all_basespace_pages, which
+# follows Basespace's Limit/Offset pagination to fetch every item rather than
+# silently stopping at the first 1024 (SMP-1733).
 BASESPACE_PAGE_SIZE = 1024
+
+# Upper bound on the number of pages fetch_all_basespace_pages will request for a
+# single listing. At the 1024-item page size this covers just over one million
+# items -- far beyond any real Basespace account -- so reaching it means the API
+# is misbehaving (for example never advancing past an Offset) and we stop rather
+# than loop forever.
+BASESPACE_MAX_PAGES = 1024
 
 # Environment variables that must all be set for the BaseSpace OAuth handshake
 # to be possible. If any is missing, BaseSpace upload cannot work in this
@@ -77,24 +86,76 @@ module BasespaceHelper
     )
   end
 
-  module_function :revoke_access_token, :verify_access_token_revoked, :fetch_from_basespace
+  # Follow Basespace's Limit/Offset pagination to retrieve EVERY item from a list
+  # endpoint instead of only the first page. Basespace caps a single response at
+  # BASESPACE_PAGE_SIZE (1024) items, so an account or project with more than that
+  # would otherwise be silently truncated with no signal to the user or the logs
+  # (SMP-1733).
+  #
+  # We request full pages at an increasing Offset and concatenate their items. The
+  # block is handed each page and must return that page's Items array; this keeps
+  # the helper agnostic to response shape, because the v1pre3 "projects" endpoint
+  # nests items under "Response" while the v2 endpoints return them at the top
+  # level. If the block returns nil the page is an error or an unexpected shape:
+  # we stop and return [nil, that_page] so the caller's existing error handling
+  # can inspect and log it. On success we return [all_items, nil].
+  #
+  # Pages are requested until a short page (fewer than a full page of items)
+  # arrives -- Basespace only returns a short page for the final page -- or until
+  # BASESPACE_MAX_PAGES is reached, which guards against looping forever on an API
+  # that never advances past an Offset.
+  def fetch_all_basespace_pages(url, access_token, params = {})
+    all_items = []
+    offset = 0
+
+    BASESPACE_MAX_PAGES.times do
+      page = fetch_from_basespace(url, access_token, params.merge(offset: offset))
+      items = yield(page)
+
+      # Error or unexpected shape: hand the page back so the caller can log it.
+      return [nil, page] if items.nil?
+
+      all_items.concat(items)
+
+      # A full page means more may remain; a short page is the last page.
+      return [all_items, nil] if items.length < BASESPACE_PAGE_SIZE
+
+      offset += BASESPACE_PAGE_SIZE
+    end
+
+    # Hit the page cap without ever seeing a short page. Rather than loop
+    # forever, log it (fingerprint only -- never the token) and return what we
+    # have so the user still sees a large-but-partial list.
+    LogUtil.log_error(
+      "Basespace listing exceeded #{BASESPACE_MAX_PAGES} pages; returning a partial list",
+      basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
+      url: url,
+      items_fetched: all_items.length
+    )
+    [all_items, nil]
+  end
+
+  module_function :revoke_access_token, :verify_access_token_revoked, :fetch_from_basespace, :fetch_all_basespace_pages
 
   def basespace_projects(access_token)
     begin
-      response = fetch_from_basespace(BASESPACE_CURRENT_PROJECTS_URL, access_token)
+      # The v1pre3 projects endpoint nests its list under "Response".
+      items, error_response = fetch_all_basespace_pages(BASESPACE_CURRENT_PROJECTS_URL, access_token) do |page|
+        page.dig("Response", "Items")
+      end
 
-      if response.dig("Response", "Items").nil?
-        if response.dig("ResponseStatus", "Message").present?
+      if items.nil?
+        if error_response.dig("ResponseStatus", "Message").present?
           LogUtil.log_error(
-            "Fetch Basespace projects failed with error: #{response['ResponseStatus']['Message']}",
+            "Fetch Basespace projects failed with error: #{error_response['ResponseStatus']['Message']}",
             basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
-            response: SecretRedaction.scrub(response)
+            response: SecretRedaction.scrub(error_response)
           )
         else
           LogUtil.log_error(
             "Failed to fetch Basespace projects",
             basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
-            response: SecretRedaction.scrub(response)
+            response: SecretRedaction.scrub(error_response)
           )
         end
         return nil
@@ -108,7 +169,7 @@ module BasespaceHelper
     end
 
     # Just return selected fields.
-    response["Response"]["Items"].map do |dataset|
+    items.map do |dataset|
       {
         id: dataset["Id"],
         name: dataset["Name"],
@@ -118,22 +179,25 @@ module BasespaceHelper
 
   def samples_for_basespace_project(project_id, access_token)
     begin
-      response = fetch_from_basespace(BASESPACE_PROJECT_DATASETS_URL % project_id, access_token)
+      # The v2 datasets endpoint returns its list at the top level.
+      items, error_response = fetch_all_basespace_pages(BASESPACE_PROJECT_DATASETS_URL % project_id, access_token) do |page|
+        page["Items"]
+      end
 
-      if response["Items"].nil?
-        if response["ErrorMessage"].present?
+      if items.nil?
+        if error_response["ErrorMessage"].present?
           LogUtil.log_error(
-            "Fetch samples for Basespace project failed with error: #{response['ErrorMessage']}",
+            "Fetch samples for Basespace project failed with error: #{error_response['ErrorMessage']}",
             project_id: project_id,
             basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
-            response: SecretRedaction.scrub(response)
+            response: SecretRedaction.scrub(error_response)
           )
         else
           LogUtil.log_error(
             "Failed to fetch samples for Basespace project",
             project_id: project_id,
             basespace_token_fingerprint: SecretRedaction.fingerprint(access_token),
-            response: SecretRedaction.scrub(response)
+            response: SecretRedaction.scrub(error_response)
           )
         end
         return nil
@@ -148,7 +212,7 @@ module BasespaceHelper
     end
 
     # Just return selected fields.
-    formatted_samples = response["Items"].map do |dataset|
+    formatted_samples = items.map do |dataset|
       {
         basespace_dataset_id: dataset["Id"],
         name: dataset["Name"],
