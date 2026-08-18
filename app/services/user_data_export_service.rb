@@ -172,8 +172,8 @@ class UserDataExportService
 
     # ID lists drive the per-table streams. These are integer arrays only (a few
     # thousand entries even for large users), safe to hold in memory. Pipeline runs
-    # are filtered to migration-eligible ones — non-deprecated, non-deleted, and
-    # (short-read) pipeline_version >= 7.0.0; ONT exempt — matching the S3 transfer,
+    # are filtered to migration-eligible ones (non-deprecated, non-deleted, and
+    # for short-read pipeline_version >= 7.0.0; ONT exempt), matching the S3 transfer,
     # so the pipeline_runs table and its children only include runs whose S3 outputs
     # are actually transferred (no dangling references on import).
     sample_ids = @user.samples.pluck(:id)
