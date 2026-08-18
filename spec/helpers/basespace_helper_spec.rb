@@ -24,12 +24,14 @@ RSpec.describe BasespaceHelper, type: :helper do
                 "HrefContent" => file_one_href_content,
                 "Href" => file_one_href,
                 "Id" => "1",
+                "Size" => 1_234,
               },
               {
                 "Name" => file_two_name,
                 "HrefContent" => file_two_href_content,
                 "Href" => file_two_href,
                 "Id" => "2",
+                "Size" => 5_678,
               },
             ]
           )
@@ -44,11 +46,13 @@ RSpec.describe BasespaceHelper, type: :helper do
               name: file_one_name,
               download_path: file_one_href_content,
               source_path: file_one_href,
+              size: 1_234,
             },
             {
               name: file_two_name,
               download_path: file_two_href_content,
               source_path: file_two_href,
+              size: 5_678,
             },
           ]
         )
@@ -89,6 +93,111 @@ RSpec.describe BasespaceHelper, type: :helper do
     end
   end
 
+  # SMP-1733. Basespace caps a single list response at BASESPACE_PAGE_SIZE (1024)
+  # items. These examples prove the client follows Limit/Offset pagination and
+  # returns the full concatenated list instead of silently truncating at 1024.
+  describe "pagination" do
+    let(:access_token) { "token" }
+
+    # v1pre3 projects nest their list under "Response"; v2 datasets do not.
+    def project_page(items)
+      { "Response" => { "Items" => items } }
+    end
+
+    def project_items(count, offset = 0)
+      Array.new(count) { |i| { "Id" => (offset + i).to_s, "Name" => "P#{offset + i}" } }
+    end
+
+    def dataset_page(items)
+      { "Items" => items }
+    end
+
+    def dataset_items(count, offset = 0)
+      Array.new(count) do |i|
+        n = offset + i
+        {
+          "Id" => n.to_s,
+          "Name" => "s#{n}",
+          "TotalSize" => 10,
+          "Project" => { "Name" => "proj" },
+          "DatasetType" => { "Name" => "fastq" },
+          "Attributes" => { "common_fastq" => { "IsPairedEnd" => false } },
+        }
+      end
+    end
+
+    context "#basespace_projects" do
+      it "makes a single request when the first page is short" do
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .once.and_return(project_page(project_items(3)))
+
+        result = helper.basespace_projects(access_token)
+        expect(result.length).to eq(3)
+        expect(result.first).to eq(id: "0", name: "P0")
+      end
+
+      it "requests successive offsets and returns the full list when there are more than 1024 projects" do
+        first_page = project_page(project_items(BASESPACE_PAGE_SIZE, 0))
+        second_page = project_page(project_items(10, BASESPACE_PAGE_SIZE))
+
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(first_page)
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: BASESPACE_PAGE_SIZE, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(second_page)
+
+        result = helper.basespace_projects(access_token)
+        expect(result.length).to eq(BASESPACE_PAGE_SIZE + 10)
+        expect(result.first).to eq(id: "0", name: "P0")
+        expect(result.last).to eq(id: (BASESPACE_PAGE_SIZE + 9).to_s, name: "P#{BASESPACE_PAGE_SIZE + 9}")
+      end
+
+      it "stops on the trailing empty page when the total is an exact multiple of the page size" do
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(project_page(project_items(BASESPACE_PAGE_SIZE, 0)))
+        expect(HttpHelper).to receive(:get_json)
+          .with(BASESPACE_CURRENT_PROJECTS_URL, hash_including(offset: BASESPACE_PAGE_SIZE, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(project_page([]))
+
+        result = helper.basespace_projects(access_token)
+        expect(result.length).to eq(BASESPACE_PAGE_SIZE)
+      end
+    end
+
+    context "#samples_for_basespace_project" do
+      let(:url) { BASESPACE_PROJECT_DATASETS_URL % "p1" }
+
+      it "makes a single request when the first page is short" do
+        expect(HttpHelper).to receive(:get_json)
+          .with(url, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .once.and_return(dataset_page(dataset_items(2)))
+
+        result = helper.samples_for_basespace_project("p1", access_token)
+        expect(result.length).to eq(2)
+      end
+
+      it "requests successive offsets and returns the full list when there are more than 1024 datasets" do
+        first_page = dataset_page(dataset_items(BASESPACE_PAGE_SIZE, 0))
+        second_page = dataset_page(dataset_items(5, BASESPACE_PAGE_SIZE))
+
+        expect(HttpHelper).to receive(:get_json)
+          .with(url, hash_including(offset: 0, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(first_page)
+        expect(HttpHelper).to receive(:get_json)
+          .with(url, hash_including(offset: BASESPACE_PAGE_SIZE, limit: BASESPACE_PAGE_SIZE), anything, anything)
+          .ordered.and_return(second_page)
+
+        result = helper.samples_for_basespace_project("p1", access_token)
+        expect(result.length).to eq(BASESPACE_PAGE_SIZE + 5)
+        expect(result.first[:basespace_dataset_id]).to eq("0")
+        expect(result.last[:basespace_dataset_id]).to eq((BASESPACE_PAGE_SIZE + 4).to_s)
+      end
+    end
+  end
+
   describe "#upload_from_basespace_to_s3" do
     let(:fake_basespace_path) { "fake_basespace_path" }
     let(:fake_s3_path) { "fake_s3_path" }
@@ -105,6 +214,43 @@ RSpec.describe BasespaceHelper, type: :helper do
         expect(LogUtil).to receive(:log_error).exactly(0).times
 
         success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name)
+        expect(success).to be true
+      end
+    end
+
+    # SMP-1730: the stream is non-seekable, so the AWS CLI needs --expected-size
+    # to plan a part size large enough for the full ~100 GB range. When the file
+    # size is known it must be passed; when it is unknown the flag is omitted.
+    context "when the file size is known" do
+      it "passes --expected-size to aws s3 cp" do
+        expect(Syscall).to receive(:pipe).with(
+          ["curl", "--fail", "-s", "--show-error", fake_basespace_path],
+          ["aws", "s3", "cp", "-", "#{fake_s3_path}/#{fake_file_name}", "--expected-size", "90000000000"]
+        ).exactly(1).times.and_return([true, ""])
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, 90_000_000_000)
+        expect(success).to be true
+      end
+    end
+
+    context "when the file size is unknown" do
+      it "omits --expected-size (nil size)" do
+        expect(Syscall).to receive(:pipe).with(
+          ["curl", "--fail", "-s", "--show-error", fake_basespace_path],
+          ["aws", "s3", "cp", "-", "#{fake_s3_path}/#{fake_file_name}"]
+        ).exactly(1).times.and_return([true, ""])
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil)
+        expect(success).to be true
+      end
+
+      it "omits --expected-size (non-positive size)" do
+        expect(Syscall).to receive(:pipe).with(
+          ["curl", "--fail", "-s", "--show-error", fake_basespace_path],
+          ["aws", "s3", "cp", "-", "#{fake_s3_path}/#{fake_file_name}"]
+        ).exactly(1).times.and_return([true, ""])
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, 0)
         expect(success).to be true
       end
     end
@@ -128,6 +274,50 @@ RSpec.describe BasespaceHelper, type: :helper do
 
         success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name)
         expect(success).to be false
+      end
+    end
+
+    # SMP-1731: streaming `aws s3 cp -` writes the object untagged, so the tags
+    # are applied to the completed object afterwards with the same lifecycle tag
+    # set every other ingress path uses. This must run only on a successful
+    # upload, and a tagging failure must surface rather than be swallowed.
+    context "S3 lifecycle tagging after a successful upload" do
+      let(:fake_tags) { { type: "sample", id: "123" } }
+
+      it "tags the uploaded object with the given tag set" do
+        allow(Syscall).to receive(:pipe).and_return([true, ""])
+        expect(S3Util).to receive(:put_object_tags).with(
+          "#{fake_s3_path}/#{fake_file_name}", fake_tags
+        ).exactly(1).times
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil, fake_tags)
+        expect(success).to be true
+      end
+
+      it "does not tag when the upload fails" do
+        allow(Syscall).to receive(:pipe).and_return([false, "boom"])
+        allow(LogUtil).to receive(:log_error)
+        expect(S3Util).to receive(:put_object_tags).exactly(0).times
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil, fake_tags)
+        expect(success).to be false
+      end
+
+      it "does not tag when no tag set is provided" do
+        allow(Syscall).to receive(:pipe).and_return([true, ""])
+        expect(S3Util).to receive(:put_object_tags).exactly(0).times
+
+        success = helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name)
+        expect(success).to be true
+      end
+
+      it "surfaces a tagging failure instead of swallowing it" do
+        allow(Syscall).to receive(:pipe).and_return([true, ""])
+        allow(S3Util).to receive(:put_object_tags).and_raise(StandardError.new("tagging denied"))
+
+        expect do
+          helper.upload_from_basespace_to_s3(fake_basespace_path, fake_s3_path, fake_file_name, nil, fake_tags)
+        end.to raise_error(StandardError, "tagging denied")
       end
     end
 
