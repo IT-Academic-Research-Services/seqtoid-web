@@ -26,7 +26,7 @@ class SupportRequestMailer < ApplicationMailer
   SUBJECT_MAX = 160
 
   def service_now_ticket(payload)
-    @p = (payload || {}).deep_symbolize_keys
+    @p = payload.to_h.deep_symbolize_keys
     @links = (@p[:log_links] || {})
     @failure = @p[:pipeline_failure]
     @evidence = evidence_links
