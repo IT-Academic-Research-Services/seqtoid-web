@@ -488,36 +488,14 @@ class Sample < ApplicationRecord
     basespace_dataset_ids = basespace_dataset_id.split(",")
     should_concat_lanes = basespace_dataset_ids.size > 1
 
-    # Combine URLs for the lanes we want to concatenate
-    files_concat = []
-    basespace_dataset_ids.each_with_index do |dataset_id, dataset_index|
-      files = files_for_basespace_dataset(dataset_id, basespace_access_token)
-
-      # Raise error if fetching the files failed, or we fetched zero files (since we can't proceed with zero files)
-      raise SampleUploadErrors.error_fetching_basespace_files_for_dataset(dataset_id, name, id) if files.nil?
-      raise SampleUploadErrors.no_files_in_basespace_dataset(dataset_id, name, id) if files.empty?
-
-      # Concatenate each read pair separately (i.e. R1 lanes separately from R2 lanes)
-      files.each_with_index do |file, read_index|
-        # The first time, we need to initialize the object
-        if dataset_index == 0
-          # If we're concatenating multiple lanes, remove the lane number from the file name
-          file_name = should_concat_lanes ? file[:name].sub(/_L00[1-8]/, "") : file[:name]
-          files_concat[read_index] = {
-            name: file_name,
-            source_path: file[:source_path],
-            download_path: [file[:download_path]],
-          }
-        # Otherwise, just append
-        else
-          files_concat[read_index][:source_path] << "," << file[:source_path]
-          files_concat[read_index][:download_path].push(file[:download_path])
-        end
-      end
-    end
+    # Combine URLs for the lanes we want to concatenate. The download_path values
+    # are BaseSpace presigned URLs (bearer credentials that expire), so this is a
+    # point-in-time snapshot. The retry loop below re-mints fresh URLs on each
+    # retry rather than reusing this snapshot (SMP-1732).
+    files_concat = basespace_files_concat(basespace_dataset_ids, should_concat_lanes, basespace_access_token)
 
     # Retry uploading three times, in case of transient network failures.
-    files_concat.each do |file|
+    files_concat.each_with_index do |file, file_index|
       max_tries = 3
       try = 0
       # Use exponential backoff in case the issue is overload on Illumina servers.
@@ -534,6 +512,16 @@ class Sample < ApplicationRecord
           try += 1
           if try < max_tries
             Kernel.sleep(time_between_tries[try - 1])
+            # The presigned download URLs were minted before this loop and are now
+            # up to several minutes old (60s + 300s of backoff), so they may have
+            # expired -- and an expired presigned URL can never recover on a later
+            # try, which would fail the transfer permanently even though a fresh
+            # URL would work. Re-mint fresh URLs from BaseSpace so the next attempt
+            # uses valid credentials (SMP-1732). We only re-mint on retry, never on
+            # the first attempt, so the happy path makes no extra BaseSpace calls.
+            # The per-lane ordering of download_path is preserved by re-minting the
+            # whole snapshot and reading this file's entry by index.
+            file[:download_path] = refresh_basespace_download_paths(file_index, basespace_dataset_ids, should_concat_lanes, basespace_access_token)
           else
             raise SampleUploadErrors.upload_from_basespace_failed(name, id, file[:name], basespace_dataset_id, max_tries)
           end
@@ -1296,6 +1284,50 @@ class Sample < ApplicationRecord
   end
 
   private
+
+  # Fetch the files for each BaseSpace dataset (lane) and combine them into one
+  # entry per read pair. Each entry's download_path is the ordered list of the
+  # lanes' BaseSpace presigned download URLs, so lane order is preserved for the
+  # concatenating uploader. The download URLs are minted fresh by every call,
+  # which is what lets the retry loop re-mint them (SMP-1732).
+  def basespace_files_concat(basespace_dataset_ids, should_concat_lanes, basespace_access_token)
+    files_concat = []
+    basespace_dataset_ids.each_with_index do |dataset_id, dataset_index|
+      files = files_for_basespace_dataset(dataset_id, basespace_access_token)
+
+      # Raise error if fetching the files failed, or we fetched zero files (since we can't proceed with zero files)
+      raise SampleUploadErrors.error_fetching_basespace_files_for_dataset(dataset_id, name, id) if files.nil?
+      raise SampleUploadErrors.no_files_in_basespace_dataset(dataset_id, name, id) if files.empty?
+
+      # Concatenate each read pair separately (i.e. R1 lanes separately from R2 lanes)
+      files.each_with_index do |file, read_index|
+        # The first time, we need to initialize the object
+        if dataset_index == 0
+          # If we're concatenating multiple lanes, remove the lane number from the file name
+          file_name = should_concat_lanes ? file[:name].sub(/_L00[1-8]/, "") : file[:name]
+          files_concat[read_index] = {
+            name: file_name,
+            source_path: file[:source_path],
+            download_path: [file[:download_path]],
+          }
+        # Otherwise, just append
+        else
+          files_concat[read_index][:source_path] << "," << file[:source_path]
+          files_concat[read_index][:download_path].push(file[:download_path])
+        end
+      end
+    end
+    files_concat
+  end
+
+  # Re-mint fresh BaseSpace presigned download URLs for a single read pair on
+  # retry (SMP-1732). We rebuild the whole snapshot so multi-lane ordering matches
+  # the original build, then return only this file's download_path list. Only the
+  # (expiring) download URLs are refreshed; the file name and source_path are
+  # stable identifiers and are left untouched.
+  def refresh_basespace_download_paths(file_index, basespace_dataset_ids, should_concat_lanes, basespace_access_token)
+    basespace_files_concat(basespace_dataset_ids, should_concat_lanes, basespace_access_token)[file_index][:download_path]
+  end
 
   # CZID-975 -- the selection map must be {workflow => version}, with known workflow keys and
   # version-shaped values. The values reach a `LIKE '<prefix>%'` query in VersionRetrievalService,
