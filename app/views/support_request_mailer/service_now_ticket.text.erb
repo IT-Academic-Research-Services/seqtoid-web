@@ -1,0 +1,64 @@
+A SeqToID user submitted an in-app support report. Details below.
+
+============================================================
+JUMP STRAIGHT TO THE LOGS (no need to search the platform)
+============================================================
+<% if @evidence.any? %>
+<% @evidence.each do |link| %>
+* <%= link[:label] %>:
+  <%= link[:url] %>
+<% end %>
+<% else %>
+(Log deep-links are not configured for this environment yet -- set
+SUPPORT_LOG_GROUP and OTEL_DASHBOARD_BASE_URL. Use the Correlation ID below to
+search the Grafana Support Inbox.)
+<% end %>
+Correlation ID: <%= @p[:correlation_id] %>
+  (search this ID in the Grafana Support Inbox to see the same report + its
+   automatic enrichment.)
+
+============================================================
+WHAT HAPPENED
+============================================================
+Summary : <%= @p[:summary].presence || @p[:error].presence || "(none provided)" %>
+Error   : <%= @p[:error].presence || "(none)" %>
+Task    : <%= @p[:task].presence || "(none)" %>
+Project : <%= @p[:project].presence || "(none)" %>
+
+User's note:
+<%= @p[:description].presence || "(none)" %>
+
+<% if @p[:runbook].is_a?(Hash) && @p[:runbook][:runbook].present? %>
+============================================================
+SUGGESTED RUNBOOK
+============================================================
+<%= @p[:runbook][:label] %>:
+  <%= @p[:runbook][:runbook] %>
+
+<% end %>
+<% if @failure.is_a?(Hash) %>
+============================================================
+FAILED RUN
+============================================================
+Stage         : <%= @failure[:failed_stage].presence || @failure[:stage].presence || "(unknown)" %>
+Error message : <%= @failure[:error_message].presence || "(none)" %>
+Workflow      : <%= @failure[:workflow].presence || "(none)" %>
+SFN execution : <%= @failure[:sfn_execution_arn].presence || "(none)" %>
+User-facing   : <%= @failure[:user_facing].presence || "(none)" %>
+
+<% end %>
+============================================================
+WHO
+============================================================
+User    : <%= @p[:user_email] %> (id <%= @p[:user_id] %>, role <%= @p[:user_role] %>)
+Account : <%= @p[:account_name].presence || "(none)" %>
+
+============================================================
+CONTEXT
+============================================================
+Environment : <%= @p[:environment] %>
+Deployed SHA: <%= @p[:git_release_sha].presence || "(unknown)" %>
+Submitted   : <%= @p[:submitted_at] %>
+
+--
+Sent automatically by SeqToID. Reply to this email to respond to the user.

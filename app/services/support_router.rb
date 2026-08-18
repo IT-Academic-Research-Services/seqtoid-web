@@ -27,8 +27,10 @@ class SupportRouter
     # Primary, load-bearing sink -- raises on failure (controller turns it into 500).
     grafana_log_sink
 
-    # Secondary sinks go here, each best-effort (own rescue), on the DataDog/ServiceNow
-    # cutover so one cannot fail the submit. None yet.
+    # Secondary sinks: each best-effort (own rescue) so a secondary outage can never fail
+    # the user's submit -- only the primary Grafana/Loki record above is load-bearing.
+    servicenow_email_sink
+
     nil
   end
 
@@ -60,6 +62,24 @@ class SupportRouter
       "Support request from user #{@user.id} (#{@payload[:correlation_id]})",
       to_sentry: false,
       **@payload
+    )
+  end
+
+  # Secondary sink (best-effort): email the report to the ServiceNow inbound address so it
+  # spawns a ticket -- the customer requires ServiceNow, and we have no ServiceNow API, so
+  # SES email is the route. Gated on SUPPORT_INBOX_EMAIL so it stays inert in environments
+  # (local/test/unconfigured) where no inbox is set. Wrapped so a mail/SES/ServiceNow outage
+  # NEVER fails the submit: the durable Grafana record above already succeeded, so we log the
+  # failure for monitoring and move on rather than 500-ing a user whose report WAS recorded.
+  def servicenow_email_sink
+    return if ENV["SUPPORT_INBOX_EMAIL"].blank?
+
+    SupportRequestMailer.service_now_ticket(@payload).deliver_later
+  rescue StandardError => e
+    LogUtil.log_error(
+      "ServiceNow support-email sink failed (report still durable in Grafana)",
+      exception: e,
+      correlation_id: @payload[:correlation_id]
     )
   end
 end
