@@ -172,10 +172,14 @@ class UserDataExportService
 
     # ID lists drive the per-table streams. These are integer arrays only (a few
     # thousand entries even for large users), safe to hold in memory. Pipeline runs
-    # are filtered to the migratable ones (short-read >= 7.0.0; ONT exempt) so both
-    # the pipeline_runs table and its children only include migrated runs.
+    # are filtered to migration-eligible ones — non-deprecated, non-deleted, and
+    # (short-read) pipeline_version >= 7.0.0; ONT exempt — matching the S3 transfer,
+    # so the pipeline_runs table and its children only include runs whose S3 outputs
+    # are actually transferred (no dangling references on import).
     sample_ids = @user.samples.pluck(:id)
-    pr_ids = PipelineRun.where(sample_id: sample_ids)
+    pr_ids = PipelineRun.non_deprecated
+                        .non_deleted
+                        .where(sample_id: sample_ids)
                         .select(:id, :technology, :pipeline_version)
                         .select(&:migratable?)
                         .map(&:id)
@@ -726,7 +730,8 @@ class UserDataExportService
   # dedupes rows matching both.
   def stream_workflow_runs(sample_ids)
     stream_table("workflow_runs") do |out|
-      WorkflowRun.where(sample_id: sample_ids).or(WorkflowRun.where(user_id: @user_id))
+      WorkflowRun.non_deprecated.non_deleted.where(sample_id: sample_ids)
+                 .or(WorkflowRun.non_deprecated.non_deleted.where(user_id: @user_id))
                  .distinct.find_each(batch_size: BATCH_SIZE) { |wr| out.call(row_workflow_run(wr)) }
     end
   end

@@ -172,6 +172,20 @@ RSpec.describe UserDataExportService do
         expect(bundle[:taxon_counts].pluck(:pipeline_run_id)).not_to include(old_run.id)
       end
 
+      it "excludes deprecated and soft-deleted pipeline runs (and their children)" do
+        deprecated_run = create(:pipeline_run, sample: sample, pipeline_version: "8.0.0", deprecated: true)
+        deleted_run = create(:pipeline_run, sample: sample, pipeline_version: "8.0.0", deleted_at: Time.now.utc)
+        create(:taxon_count, pipeline_run: deprecated_run)
+
+        _result, bundle = export_bundle(user_id: user.id)
+
+        pr_ids = bundle[:pipeline_runs].pluck(:id)
+        expect(pr_ids).to include(pipeline_run.id)        # current, migratable
+        expect(pr_ids).not_to include(deprecated_run.id)  # deprecated excluded
+        expect(pr_ids).not_to include(deleted_run.id)     # soft-deleted excluded
+        expect(bundle[:taxon_counts].pluck(:pipeline_run_id)).not_to include(deprecated_run.id)
+      end
+
       context "with taxon counts" do
         let!(:taxon_count) { create(:taxon_count, pipeline_run: pipeline_run) }
 
@@ -256,6 +270,18 @@ RSpec.describe UserDataExportService do
         expect(bundle[:workflow_runs].first[:id]).to eq(workflow_run.id)
         expect(bundle[:workflow_runs].first[:user_id]).to eq(user.id)
         expect(bundle[:workflow_runs].first[:sample_id]).to eq(sample.id)
+      end
+
+      it "excludes deprecated and soft-deleted workflow runs" do
+        deprecated_wr = create(:workflow_run, sample: sample, user: user, deprecated: true)
+        deleted_wr = create(:workflow_run, sample: sample, user: user, deleted_at: Time.now.utc)
+
+        _result, bundle = export_bundle(user_id: user.id)
+
+        ids = bundle[:workflow_runs].pluck(:id)
+        expect(ids).to include(workflow_run.id)
+        expect(ids).not_to include(deprecated_wr.id)
+        expect(ids).not_to include(deleted_wr.id)
       end
     end
 
