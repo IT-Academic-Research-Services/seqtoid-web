@@ -2,7 +2,7 @@
 
 require "zlib"
 
-# Service to import user data from a streaming NDJSON export bundle (schema 3.0)
+# Service to import user data from a streaming NDJSON export bundle (schema 1.0)
 # into the database. Counterpart to UserDataExportService.
 #
 # MIGRATION STRATEGY: PRESERVE IDS, REMAP THE USER
@@ -22,7 +22,7 @@ require "zlib"
 # single-user migration. A warning is recorded where this may dangle.
 #
 # =============================================================================
-# INPUT FORMAT (schema 3.0)
+# INPUT FORMAT (schema 1.0)
 # =============================================================================
 # The importer reads a directory produced by UserDataExportService:
 #   * manifest.json          -- schema version, source metadata, per-table counts

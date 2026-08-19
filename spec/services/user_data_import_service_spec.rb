@@ -23,7 +23,7 @@ RSpec.describe UserDataImportService do
   let!(:host_genome) { create(:host_genome) }
   let(:now) { "2026-01-01T00:00:00Z" }
 
-  # Per-table payload (schema 3.0). Reference data (host_genome) uses a real,
+  # Per-table payload (schema 1.0). Reference data (host_genome) uses a real,
   # existing ID; everything else uses the high synthetic IDs above.
   def bundle_tables(email: "migrated@example.com")
     {
@@ -111,7 +111,7 @@ RSpec.describe UserDataImportService do
     }
   end
 
-  # Writes a schema-3.0 bundle into a fresh temp dir and returns its path.
+  # Writes a schema-1.0 bundle into a fresh temp dir and returns its path.
   def write_bundle(tables: bundle_tables, schema_version: "1.0")
     dir = Dir.mktmpdir("import_spec")
     (@import_dirs ||= []) << dir
