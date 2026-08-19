@@ -98,6 +98,10 @@ GEM
       rest-client (~> 2.1)
       retryable (~> 3.0)
       zache (~> 0.12)
+    aws-actionmailer-ses (1.2.0)
+      actionmailer (>= 7.1.0)
+      aws-sdk-ses (~> 1, >= 1.50.0)
+      aws-sdk-sesv2 (~> 1, >= 1.34.0)
     aws-eventstream (1.4.0)
     aws-partitions (1.1259.0)
     aws-sdk (3.3.0)
@@ -2513,6 +2517,7 @@ DEPENDENCIES
   amazing_print
   analytics-ruby (~> 2.0.0)
   auth0
+  aws-actionmailer-ses (~> 1)
   aws-sdk
   aws-sdk-ecs
   aws-sdk-resources
