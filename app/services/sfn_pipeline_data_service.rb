@@ -345,6 +345,14 @@ class SfnPipelineDataService
   end
 
   def redefine_job_status(step_status, stage_status)
+    # A stage the pipeline marked SUCCEEDED has, by definition, finished every step,
+    # so force each step node green to match the SUCCEEDED stage header (see the
+    # jobStatus override in create_stage_nodes_scaffolding). This is required because
+    # the modernized miniwdl plugin does not always write a per-step *_status2.json:
+    # on completed mNGS runs those files are absent, so step_status arrives as nil and
+    # would otherwise render "notStarted" (gray) under a green header (alpha bug 29).
+    return "finished" if stage_status == PipelineRunStage::STATUS_SUCCEEDED
+
     case step_status
     when "instantiated", nil
       "notStarted"
@@ -359,6 +367,10 @@ class SfnPipelineDataService
     when "running", "finished_running"
       # Should be errored if pipeline is killed and the step_status file isn't updated.
       stage_status == PipelineRunStage::STATUS_FAILED ? "pipelineErrored" : "inProgress"
+    else
+      # An unknown terminal literal must never fall through to nil (which the
+      # frontend renders gray); treat it as still-running rather than dropping it.
+      "inProgress"
     end
   end
 

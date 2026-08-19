@@ -80,7 +80,10 @@ RSpec.describe SfnPipelineDataService do
       expect(stages[0][:steps][0][:description]).to eq("")
     end
 
-    it "reports a stage as finished from its succeeded run stage even while its steps are not started" do
+    it "greens the steps of a succeeded run stage even when their per-step status file is missing" do
+      # alpha bug 29: with no per-step status entry the raw step status is nil; a SUCCEEDED
+      # stage must still render its steps green to match the (already green) stage header,
+      # instead of the previous notStarted/gray-under-green-header mismatch.
       svc = service(
         "@pipeline_run" => pipeline_run_double([{}]),
         "@stages_wdl_info" => [stage_info],
@@ -90,7 +93,7 @@ RSpec.describe SfnPipelineDataService do
 
       stages = svc.send(:create_stage_nodes_scaffolding)
 
-      expect(stages[0][:steps][0][:status]).to eq("notStarted")
+      expect(stages[0][:steps][0][:status]).to eq("finished")
       expect(stages[0][:jobStatus]).to eq("finished")
     end
 

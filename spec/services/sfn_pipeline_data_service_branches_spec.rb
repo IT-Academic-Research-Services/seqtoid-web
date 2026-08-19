@@ -82,8 +82,22 @@ RSpec.describe SfnPipelineDataService do
       expect(service.send(:redefine_job_status, "running", PipelineRunStage::STATUS_FAILED)).to eq("pipelineErrored")
     end
 
-    it "returns nil for a status it does not know about" do
-      expect(service.send(:redefine_job_status, "something_new", nil)).to be_nil
+    it "greens every step of a SUCCEEDED stage even when its status literal is not 'uploaded'" do
+      # alpha bug 29: completed mNGS runs often have no per-step status file, so the raw
+      # step status is nil (or an unrecognized literal); a SUCCEEDED stage must still render green.
+      expect(service.send(:redefine_job_status, nil, PipelineRunStage::STATUS_SUCCEEDED)).to eq("finished")
+      expect(service.send(:redefine_job_status, "something_new", PipelineRunStage::STATUS_SUCCEEDED)).to eq("finished")
+      expect(service.send(:redefine_job_status, "instantiated", PipelineRunStage::STATUS_SUCCEEDED)).to eq("finished")
+    end
+
+    it "does not green a step whose stage FAILED" do
+      expect(service.send(:redefine_job_status, "something_new", PipelineRunStage::STATUS_FAILED)).not_to eq("finished")
+      expect(service.send(:redefine_job_status, "running", PipelineRunStage::STATUS_FAILED)).to eq("pipelineErrored")
+    end
+
+    it "maps an unknown literal to inProgress rather than nil (no gray fall-through)" do
+      expect(service.send(:redefine_job_status, "something_new", nil)).to eq("inProgress")
+      expect(service.send(:redefine_job_status, "something_new", PipelineRunStage::STATUS_STARTED)).to eq("inProgress")
     end
   end
 
