@@ -143,6 +143,17 @@ RSpec.describe ExportControl::Descartes::ResolutionClient, type: :service do
         .to raise_error(described_class::Error)
     end
 
+    # SMP-1693 completeness (gap C-125): a malformed body still carries party identity, and a parser
+    # error message can quote the offending markup. The parse-failure raise must NOT leak SHname/SHcompany.
+    it 'raises on a malformed body WITHOUT leaking any party name -- parse-error path' do
+      malformed = '<SH><SHresult><SHname>Wayne Smith</SHname><SHcompany>ACME</SHcompany></SHresult><unterminated'
+      stub_request(:post, soap_url).to_return(status: 200, headers: xml_headers, body: malformed)
+      expect { described_class.new(config: configured).poll(time_from: time_from, time_to: time_to) }
+        .to raise_error(described_class::Error) { |e|
+          expect(e.message).not_to match(/Wayne|ACME/)
+        }
+    end
+
     # SMP-1693 (gap C-125): the SOAP body carries SHname/SHcompany for EVERY party in the polling
     # window. A job-fatal raise must surface only the fixed vendor MARKER, never the body -- otherwise
     # every party in the window leaks into the log/Sentry/Resque failure record.
