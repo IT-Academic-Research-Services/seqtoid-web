@@ -43,15 +43,12 @@ module Czid
     # ActionMailer settings
     config.action_mailer.raise_delivery_errors = true
     config.action_mailer.perform_caching = false
-    config.action_mailer.delivery_method = :smtp
-    config.action_mailer.smtp_settings = {
-      address: "email-smtp.us-west-2.amazonaws.com",
-      authentication: :login,
-      domain: "seqtoid.org",
-      enable_starttls_auto: true,
-      password: ENV["SMTP_PASSWORD"],
-      port: 587,
-      user_name: ENV["SMTP_USER"],
+    # Send via SES v2 using the AWS SDK. Credentials come from the default AWS
+    # credential chain (IRSA in-cluster), so no static SMTP user/password is needed.
+    # The :ses_v2 delivery method is registered by the aws-actionmailer-ses gem.
+    config.action_mailer.delivery_method = :ses_v2
+    config.action_mailer.ses_v2_settings = {
+      region: "us-west-2",
     }
 
     # ResqueMiddleware to make it more secure:
