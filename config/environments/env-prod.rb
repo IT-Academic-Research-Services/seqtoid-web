@@ -80,7 +80,7 @@ Rails.application.configure do
   # Deployed logging: JSON lograge to stdout.
   config.lograge.enabled = true
   config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
+  config.lograge.logger = ActiveSupport::Logger.new($stdout)
   param_filtered = %w[controller action]
   config.lograge.custom_options = lambda do |event|
     { time: event.time,
@@ -91,12 +91,12 @@ Rails.application.configure do
   end
   config.colorize_logging = false
   config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-  ActiveRecord::Base.logger = Logger.new(STDOUT)
+  ActiveRecord::Base.logger = Logger.new($stdout)
 
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
 
-  logger           = ActiveSupport::Logger.new(STDOUT)
+  logger           = ActiveSupport::Logger.new($stdout)
   logger.formatter = config.log_formatter
   config.logger    = ActiveSupport::TaggedLogging.new(logger)
   config.log_to = %w[stdout]
