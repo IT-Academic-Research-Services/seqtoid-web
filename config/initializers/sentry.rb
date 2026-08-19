@@ -29,7 +29,7 @@ if ENV['SENTRY_DSN_BACKEND']
     # We only want to send events to Sentry in these environments. This replaces
     # raven's `config.environments`; events raised in any other environment
     # (e.g. test) are dropped before send.
-    config.enabled_environments = %w[sandbox staging prod dev development]
+    config.enabled_environments = %w[sandbox staging prod env-prod dev development]
 
     # Error-reporting parity only: do NOT enable performance tracing here
     # (OpenTelemetry owns traces/metrics - see config/initializers/opentelemetry.rb).
