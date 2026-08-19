@@ -3,7 +3,7 @@ require 'zlib'
 require 'tmpdir'
 require 'fileutils'
 
-# UserDataExportService streams a per-table NDJSON bundle (schema 3.0) into an
+# UserDataExportService streams a per-table NDJSON bundle (schema 1.0) into an
 # output directory. These specs run a real export into a temp dir and read the
 # bundle back into a convenient Hash to assert on.
 RSpec.describe UserDataExportService do
@@ -69,7 +69,7 @@ RSpec.describe UserDataExportService do
         expect(bundle[:user][:name]).to eq(user.name)
       end
 
-      it "writes a manifest with schema version 3.0 and source metadata" do
+      it "writes a manifest with schema version 1.0 and source metadata" do
         result, bundle = export_bundle(user_id: user.id)
 
         expect(result[:schema_version]).to eq("1.0")
