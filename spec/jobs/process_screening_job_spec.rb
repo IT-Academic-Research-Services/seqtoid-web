@@ -38,6 +38,43 @@ RSpec.describe ProcessScreeningJob do
     described_class.new.run(payload)
   end
 
+  it 'HOLDS the applicant signup (PendingSignup) for later resolution when held' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:held))
+    expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
+
+    signup = PendingSignup.pending_for('User:42')
+    expect(signup.screening_id).to eq('scr-1')
+    expect(signup.callback_url).to eq('http://web/internal/v1/screening_result')
+    expect(signup.account_payload['email']).to eq('jane@ucsf.edu')
+  end
+
+  it 'also holds a signup on an error outcome (fail-closed but recoverable by the poller)' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
+    expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
+  end
+
+  it 'does NOT hold a signup on the disabled bypass (nil outcome)' do
+    allow(svc).to receive(:screen_if_enabled).and_return(nil)
+    expect { described_class.new.run(payload) }.not_to change(PendingSignup, :count)
+  end
+
+  it 'does NOT hold a signup on a solid pass (the callback fires inline, nothing to resolve later)' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:allowed))
+    allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+    expect { described_class.new.run(payload) }.not_to change(PendingSignup, :count)
+  end
+
+  it 'does NOT persist a signup when there is no account payload (a non-signup screen)' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:held))
+    expect { described_class.new.run(payload.except('account')) }.not_to change(PendingSignup, :count)
+  end
+
+  it 'is idempotent: a replayed held screen updates the pending signup, not a duplicate' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:held))
+    described_class.new.run(payload)
+    expect { described_class.new.run(payload) }.not_to change(PendingSignup, :count)
+  end
+
   it 'posts NO approval when the screen errors' do
     allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
     expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)

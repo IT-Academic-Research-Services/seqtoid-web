@@ -13,26 +13,93 @@ deployed: &deployed
   <<: *default
   host: <%= ENV['RDS_ADDRESS'] %>
 
-development:
+# The app database (primary). database_tasks stays ON by default so migrate / schema:load /
+# maintain_test_schema! / ci-migrate-check behave exactly as before. Only the screening-service role sets
+# PRIMARY_DB_TASKS=false -- it must NOT migrate the shared app DB (the web role owns that schema); it only
+# READS app_configs (the feature flags) from it and migrates its OWN screening store (below).
+primary_local: &primary_local
   <<: *default
-  # idseq_dev matches the dev RDS (not idseq_development). DB_NAME lets a per-PR preview
-  # sandbox (which runs as RAILS_ENV=development) point at its OWN schema on the shared dev
-  # Aurora, e.g. idseq_pr_N. Unset -> idseq_dev, byte-identical to today.
-  database: <%= ENV['DB_NAME'] || 'idseq_dev' %>
+  database_tasks: <%= ENV.fetch('PRIMARY_DB_TASKS', 'true') == 'true' %>
+
+primary_deployed: &primary_deployed
+  <<: *deployed
+  database_tasks: <%= ENV.fetch('PRIMARY_DB_TASKS', 'true') == 'true' %>
+
+# --- The standalone export-control SCREENING service's connection (Option A) ---------------------------
+# The screening models (ScreeningResult, Hold, PendingSignup, via ScreeningRecord) route HERE. It is a
+# ROUTING ALIAS to the primary DB everywhere EXCEPT the screening-service role, where SCREENING_DB_*
+# points it at the dedicated, ISOLATED screening Aurora cluster (infra/state-foundation/screening-db).
+# So in dev / test / the web app it is the same physical database as primary -- the screening tables live
+# in the primary schema.rb, unchanged -- and only the screening-service pods (which set SCREENING_DB_* +
+# SCREENING_DB_TASKS=true) get an isolated store.
+#
+# database_tasks defaults OFF so schema:load / maintain_test_schema! / ci-migrate-check operate on the
+# PRIMARY only (the single-DB envs already carry these tables in schema.rb). schema_dump:false for the same
+# reason: the primary schema.rb owns them; the isolated cluster is built from db/screening_migrate, which
+# runs ONLY in the service role.
+screening_conn: &screening_conn
+  adapter: mysql2
+  username: <%= ENV['SCREENING_DB_USERNAME'] || ENV['DB_USERNAME'] || 'root' %>
+  password: <%= ENV['SCREENING_DB_PASSWORD'] || ENV['DB_PASSWORD'] %>
+  port: <%= ENV['SCREENING_DB_PORT'] || ENV['DB_PORT'] || 3306 %>
+  encoding: utf8mb4
+  collation: utf8mb4_unicode_ci
+  pool: <%= ENV['DB_CONNECTION_POOL'] || 5 %>
+  migrations_paths: db/screening_migrate
+  schema_dump: false
+  database_tasks: <%= ENV.fetch('SCREENING_DB_TASKS', 'false') == 'true' %>
+
+development:
+  primary:
+    <<: *primary_local
+    # idseq_dev matches the dev RDS (not idseq_development). DB_NAME lets a per-PR preview
+    # sandbox (which runs as RAILS_ENV=development) point at its OWN schema on the shared dev
+    # Aurora, e.g. idseq_pr_N. Unset -> idseq_dev, byte-identical to today.
+    database: <%= ENV['DB_NAME'] || 'idseq_dev' %>
+  screening:
+    <<: *screening_conn
+    host: <%= ENV['SCREENING_DB_ADDRESS'] || ENV['RDS_ADDRESS'] || ENV['DB_HOST'] || '127.0.0.1' %>
+    database: <%= ENV['SCREENING_DB_NAME'] || ENV['DB_NAME'] || 'idseq_dev' %>
 
 prod:
-  <<: *deployed
+  primary:
+    <<: *primary_deployed
+  screening:
+    <<: *screening_conn
+    host: <%= ENV['SCREENING_DB_ADDRESS'] || ENV['RDS_ADDRESS'] %>
+    database: <%= ENV['SCREENING_DB_NAME'] || "idseq_#{Rails.env}" %>
 staging:
-  <<: *deployed
+  primary:
+    <<: *primary_deployed
+  screening:
+    <<: *screening_conn
+    host: <%= ENV['SCREENING_DB_ADDRESS'] || ENV['RDS_ADDRESS'] %>
+    database: <%= ENV['SCREENING_DB_NAME'] || "idseq_#{Rails.env}" %>
 sandbox:
-  <<: *deployed
+  primary:
+    <<: *primary_deployed
+  screening:
+    <<: *screening_conn
+    host: <%= ENV['SCREENING_DB_ADDRESS'] || ENV['RDS_ADDRESS'] %>
+    database: <%= ENV['SCREENING_DB_NAME'] || "idseq_#{Rails.env}" %>
 # env-prod (REAL prod, account 283694049553): same deployed anchor (host from RDS_ADDRESS). Database is
-# idseq_env-prod (from Rails.env); db:create makes it on the fresh Aurora cluster during dataload.
+# idseq_env-prod (from Rails.env); db:create makes it on the fresh Aurora cluster during dataload. Its
+# screening role points SCREENING_DB_* at the dedicated screening cluster.
 env-prod:
-  <<: *deployed
+  primary:
+    <<: *primary_deployed
+  screening:
+    <<: *screening_conn
+    host: <%= ENV['SCREENING_DB_ADDRESS'] || ENV['RDS_ADDRESS'] %>
+    database: <%= ENV['SCREENING_DB_NAME'] || "idseq_#{Rails.env}" %>
 test:
-  <<: *default
-  # parallel_tests gives each worker its own DB via TEST_ENV_NUMBER (empty for
-  # process 1, "2","3",… for the rest) so N processes share the one MySQL container
-  # without stepping on each other. Serial runs (no TEST_ENV_NUMBER) stay idseq_test.
-  database: idseq_test<%= ENV['TEST_ENV_NUMBER'] %>
+  primary:
+    <<: *primary_local
+    # parallel_tests gives each worker its own DB via TEST_ENV_NUMBER (empty for
+    # process 1, "2","3",… for the rest) so N processes share the one MySQL container
+    # without stepping on each other. Serial runs (no TEST_ENV_NUMBER) stay idseq_test.
+    database: idseq_test<%= ENV['TEST_ENV_NUMBER'] %>
+  screening:
+    <<: *screening_conn
+    host: <%= ENV['SCREENING_DB_ADDRESS'] || ENV['RDS_ADDRESS'] || ENV['DB_HOST'] || '127.0.0.1' %>
+    database: <%= ENV['SCREENING_DB_NAME'] || "idseq_test#{ENV['TEST_ENV_NUMBER']}" %>

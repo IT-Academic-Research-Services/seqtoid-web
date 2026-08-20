@@ -8,7 +8,7 @@
 #     exactly "Passed" holds (blank / unknown / "On Hold-RPS" all hold).
 #   - alert_level (SEVERITY detail): nomatch/wl/al are clean-or-allow-listed; yellow/red/double_red/
 #     triple_red describe HOW BAD a match is, for the human compliance officer. Secondary to transstatus.
-class ScreeningResult < ApplicationRecord
+class ScreeningResult < ScreeningRecord
   # --- transstatus (primary signal) ---
   TRANSSTATUS_PASSED  = "Passed".freeze
   TRANSSTATUS_ON_HOLD = "On Hold-RPS".freeze

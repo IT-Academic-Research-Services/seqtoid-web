@@ -400,6 +400,12 @@ screening:
     replicaCount: 1
     port: 3000
     resources: {}
+  # Piece 5b: an initContainer migrates the ISOLATED screening store (db/screening_migrate) against the
+  # screening cluster before the API serves. Runs with PRIMARY_DB_TASKS=false / SCREENING_DB_TASKS=true so
+  # it only touches the screening connection, never the shared app DB.
+  migrate:
+    enabled: true
+    command: ["rails", "db:migrate"]
 
 workers:
   # Option A screening worker: the async screen (process_screening) + the resolution poller
