@@ -62,4 +62,11 @@ class ScreeningResult < ApplicationRecord
   def alert_allowed?
     ALLOWED_LEVELS.include?(alert_level)
   end
+
+  # Effective severity for triage/display. A sanctioned-jurisdiction association (jurisdiction_risk,
+  # stamped at screen time from our embargo list or the vendor's risk_country) is RED regardless of the
+  # vendor's name-match severity -- the zero-tolerance geo rule. Otherwise the vendor alert_level.
+  def effective_alert_level
+    jurisdiction_risk? ? ALERT_RED : alert_level
+  end
 end

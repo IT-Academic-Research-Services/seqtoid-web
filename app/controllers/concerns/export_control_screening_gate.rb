@@ -98,6 +98,10 @@ module ExportControlScreeningGate
       subject_type: "User",
       name: current_user.name,
       soptionalid: current_user.id.to_s,
+      # Generic (country-level) location so the vendor can populate risk_country for
+      # high-risk-jurisdiction detection. CloudFront-Viewer-Country is an ISO-3166 alpha-2
+      # derived from the request geo -- country granularity only, never a precise address.
+      country: request.headers["CloudFront-Viewer-Country"].presence,
       # SMP-1684: email is used ONLY for the ScreeningPolicy whitelist domain match (e.g. "ucsf.edu");
       # it is never sent to the vendor and never logged.
       email: current_user.email
