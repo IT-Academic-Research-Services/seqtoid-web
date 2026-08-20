@@ -44,6 +44,10 @@ module ExportControl
       case provider_name
       when "descartes"    then Providers::Descartes
       when "world_check"  then Providers::WorldCheck
+      # Option A: the web-role pods delegate to the standalone screening service over HTTP (async +
+      # callback), so no Descartes call ever runs in a web request. The screening-role pods run the same
+      # image with provider="descartes" and do the real work.
+      when "screening_service" then Providers::ScreeningServiceHttp
       # when "sanctions_api" → add the module when that vendor is chosen (TODO(vendor)).
       else
         # Any unknown/blank value (and the "reference_stub" default) FAILS CLOSED to the stub.
