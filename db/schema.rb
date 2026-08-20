@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_20_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_21_000000) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -433,6 +433,21 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_20_120000) do
     t.datetime "updated_at", null: false
     t.bigint "citation_id"
     t.index ["citation_id"], name: "index_pathogens_on_citation_id"
+  end
+
+  create_table "pending_signups", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.string "subject_ref", null: false
+    t.string "screening_id"
+    t.text "callback_url"
+    t.text "account_email"
+    t.text "account_name"
+    t.text "account_institution"
+    t.string "status", default: "pending", null: false
+    t.string "decision"
+    t.datetime "resolved_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["subject_ref", "status"], name: "index_pending_signups_on_subject_ref_and_status"
   end
 
   create_table "persisted_backgrounds", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|

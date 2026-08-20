@@ -28,12 +28,19 @@ class ProcessScreeningJob
     outcome = ExportControl::ScreeningService.new.screen_if_enabled(subject_from(payload))
     if outcome&.allowed?
       post_callback(payload, decision: 'approved', path: 'auto', account: payload['account'])
-    else
-      # Held / error / disabled: no auto-approval. Nothing to seed now; the poller resolves it later.
+    elsif outcome
+      # Held / error: no auto-approval. HOLD the applicant account data (piece 5b) so the resolution
+      # poller can drive the approved/denied callback once a compliance officer adjudicates -- the
+      # original request is long gone by then. A screen with no account payload (a non-signup screen)
+      # holds nothing to provision, so skip persisting one.
+      hold_pending_signup(payload) if payload['account'].present?
       Rails.logger.info(
         "[ProcessScreeningJob] #{payload['correlation_id']} not auto-approved " \
-        "(decision=#{outcome&.decision.inspect}) -- awaiting manual resolution"
+        "(decision=#{outcome.decision.inspect}) -- held for manual resolution"
       )
+    else
+      # Disabled / bypass (flag off): the screen is a full no-op; there is nothing to hold or resolve.
+      Rails.logger.info("[ProcessScreeningJob] #{payload['correlation_id']} screening disabled -- no-op")
     end
   rescue StandardError => e
     # Fail-closed: never post an approval on error. The applicant stays unscreened/held.
@@ -41,6 +48,21 @@ class ProcessScreeningJob
   end
 
   private
+
+  # Durably hold the applicant's account data so the resolution poller can approve/deny it later. Its own
+  # rescue: a persistence failure must not re-raise into the screen path (that would re-bill the vendor on
+  # a Resque retry). The hold itself is already recorded by ScreeningService; the officer sees it in
+  # Descartes regardless, so the worst case is losing the auto-provision-on-release convenience.
+  def hold_pending_signup(payload)
+    PendingSignup.hold!(
+      subject_ref: payload['correlation_id'],
+      screening_id: payload['screening_id'],
+      callback_url: payload['callback_url'],
+      account: payload['account']
+    )
+  rescue StandardError => e
+    Rails.logger.error("[ProcessScreeningJob] #{payload['correlation_id']} pending-signup hold failed: #{e.class}")
+  end
 
   def subject_from(payload)
     subject = payload['subject'] || {}

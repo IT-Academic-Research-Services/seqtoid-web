@@ -2,7 +2,7 @@
 # Descartes screen HITS (or the screen fails-closed on error/timeout). Released only after a human
 # compliance officer adjudicates. Written by the ScreeningService (CZID-596); inert until that service is
 # enabled behind its OFF-by-default flag.
-class Hold < ApplicationRecord
+class Hold < ScreeningRecord
   # Why a hold was placed. Kept explicit so the record is self-describing.
   REASON_SCREENING_HIT = "screening_hit".freeze # a real alert-level match
   REASON_SCREENING_ERROR = "screening_error".freeze # fail-closed: vendor error/timeout/misconfig

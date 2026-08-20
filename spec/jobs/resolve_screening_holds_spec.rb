@@ -258,4 +258,55 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect { job.run }.not_to raise_error
     end
   end
+
+  # Piece 5b -- when a hold resolves, drive the account-provisioning callback to the web app from the
+  # PendingSignup held for that subject. (Option A standalone-service model.)
+  describe '#run -- driving the account-provisioning callback on resolution' do
+    before { enable! }
+
+    it 'posts an APPROVED callback (with the held account) and resolves the signup when a hold is released' do
+      held_subject(sdistributedid: '900001', subject_ref: 'User:900')
+      create(:pending_signup, subject_ref: 'User:900', screening_id: 'scr-900',
+                              callback_url: 'http://web/internal/v1/screening_result')
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'Cleared', shresult_id: '900001')])
+
+      expect(captured['decision']).to eq('approved')
+      expect(captured['path']).to eq('manual')
+      expect(captured['correlation_id']).to eq('User:900')
+      expect(captured['account']['email']).to eq('applicant@ucsf.edu')
+      expect(PendingSignup.pending_for('User:900')).to be_nil # resolved
+    end
+
+    it 'posts a DENIED callback (no account) on a True Hit' do
+      held_subject(sdistributedid: '900002', subject_ref: 'User:901')
+      create(:pending_signup, subject_ref: 'User:901', callback_url: 'http://web/internal/v1/screening_result')
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'True Hit', shresult_id: '900002')])
+
+      expect(captured['decision']).to eq('denied')
+      expect(captured).not_to have_key('account')
+    end
+
+    it 'does nothing when there is no held signup for the subject' do
+      held_subject(sdistributedid: '900003', subject_ref: 'User:902')
+      expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)
+      run_with([verdict(status: 'Cleared', shresult_id: '900003')])
+    end
+
+    it 'leaves the signup PENDING when the callback POST fails (retried next poll; never breaks resolution)' do
+      _sr, hold = held_subject(sdistributedid: '900004', subject_ref: 'User:903')
+      create(:pending_signup, subject_ref: 'User:903', callback_url: 'http://web/internal/v1/screening_result')
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed).and_raise(StandardError.new('boom'))
+
+      expect { run_with([verdict(status: 'Cleared', shresult_id: '900004')]) }.not_to raise_error
+
+      expect(PendingSignup.pending_for('User:903')).to be_present # still pending
+      expect(hold.reload).not_to be_active # the hold itself still released (resolution not broken)
+    end
+  end
 end
