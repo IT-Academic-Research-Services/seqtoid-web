@@ -43,17 +43,29 @@ module ExportControl
     }.freeze
 
     # ---------------------------------------------------------------------------------------------
-    # Sanctioned-jurisdiction backstop (counsel-owned). An association with a sanctioned jurisdiction is
-    # a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity, regardless of name-match or
-    # transstatus. ISO-3166 alpha-2. This is Layer B (account/access screening); it MUST stay in parity
-    # with the Layer A edge geo-block (WAF rule group *-web-waf-geoblocking, CZID-323) so a party the
-    # edge would refuse is also refused an account if they reach screening via an allowlisted IP or a
-    # geo-IP-spoofing VPN. Kept equal to that WAF CountryCodes list.
-    # TODO(counsel, CZID-322): the authoritative list is counsel-owned -- ratify. RU is a program-specific
-    # sanction (not a comprehensive embargo); UA is an intentional over-block standing in for the
-    # sub-national Crimea/DNR/LNR programs, which cannot be expressed at country granularity.
+    # Sanctioned-jurisdiction backstop (Layer B: account/access screening). An association with a
+    # sanctioned jurisdiction is a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity,
+    # regardless of name-match or transstatus.
+    #
+    # SINGLE SOURCE OF TRUTH: the enforced list is NOT edited here. It is read from the SAME
+    # blocked-jurisdictions.json that the Layer-1 WAF geo rule + the Layer-2 edge Lambda consume
+    # (CZID-322, owned by compliance/counsel). We vendor a copy at config/export_control/ and the
+    # blocked-jurisdictions-parity CI job fails the build if it drifts from the infra canonical -- so all
+    # three enforcement layers can never diverge. To change the list, edit the canonical in the infra
+    # repo, then sync the vendored copy; never hand-edit the array here.
     # ---------------------------------------------------------------------------------------------
-    SANCTIONED_COUNTRIES = %w[CU IR KP RU SY UA].freeze
+    BLOCKED_JURISDICTIONS_FILE = "config/export_control/blocked-jurisdictions.json"
+
+    SANCTIONED_COUNTRIES = begin
+      path = defined?(Rails) ? Rails.root.join(BLOCKED_JURISDICTIONS_FILE) : BLOCKED_JURISDICTIONS_FILE
+      codes = JSON.parse(File.read(path, encoding: "UTF-8")).fetch("blocked_country_codes")
+      codes.map { |c| c.to_s.strip.upcase }.freeze
+    rescue StandardError => e
+      # Fail-safe: if the vendored list is unreadable, fall back to the known embargo set so the
+      # jurisdiction rule never silently disables. The parity CI job guards the file's correctness.
+      Rails.logger.warn("[ScreeningPolicy] blocked-jurisdictions.json unreadable (#{e.class}); using fallback") if defined?(Rails)
+      %w[CU IR KP RU SY UA].freeze
+    end
 
     # True when the screened party's country is on the in-house embargo list. Blank => false (the
     # vendor's risk_country flag is the other half of the jurisdiction signal; see ScreeningService).
