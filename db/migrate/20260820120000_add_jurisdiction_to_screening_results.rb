@@ -5,7 +5,8 @@
 # Both nullable-safe/defaulted -- additive, no backfill needed (existing rows predate the rule).
 class AddJurisdictionToScreeningResults < ActiveRecord::Migration[7.2]
   def change
-    add_column :screening_results, :country, :string
-    add_column :screening_results, :jurisdiction_risk, :boolean, default: false, null: false
+    # if_not_exists keeps the migration re-runnable (bin/ci-migrate-check replays a partial-apply state).
+    add_column :screening_results, :country, :string, if_not_exists: true
+    add_column :screening_results, :jurisdiction_risk, :boolean, default: false, null: false, if_not_exists: true
   end
 end

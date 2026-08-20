@@ -132,8 +132,11 @@ class DescartesMockServer
     JSON.dump(
       'transstatus' => 'On Hold-RPS', 'smaxalert' => smaxalert, 'sguid' => 'mock-hit',
       'searches' => [{
+        # riskcountry 0: a pure NAME-match hit. The sanctioned-jurisdiction path (riskcountry >= 1 or an
+        # embargoed subject country) takes precedence and uses REASON_SANCTIONED_JURISDICTION, so it is
+        # exercised with its own fixtures rather than piggy-backing on every name-match mock hit.
         'soptionalid' => search['soptionalid'], 'scountry' => search['scountry'],
-        'riskcountry' => '1', 'nomatch' => '0', 'sdistributedid' => sdistributedid,
+        'riskcountry' => '0', 'nomatch' => '0', 'sdistributedid' => sdistributedid,
         'results' => [{
           'dp_id' => 'DBP000063', 'list' => list, 'name' => (search['sname'].presence || search['scompany']),
           'alerttype' => smaxalert,
