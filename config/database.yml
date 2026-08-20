@@ -26,6 +26,10 @@ staging:
   <<: *deployed
 sandbox:
   <<: *deployed
+# env-prod (REAL prod, account 283694049553): same deployed anchor (host from RDS_ADDRESS). Database is
+# idseq_env-prod (from Rails.env); db:create makes it on the fresh Aurora cluster during dataload.
+env-prod:
+  <<: *deployed
 test:
   <<: *default
   # parallel_tests gives each worker its own DB via TEST_ENV_NUMBER (empty for
