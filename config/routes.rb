@@ -393,6 +393,9 @@ Rails.application.routes.draw do
     # Option A: the web-role pods POST an applicant here (via the in-cluster screening Service). The
     # screening-role pods run the real engine + return the decision via a signed callback.
     post 'v1/screenings' => 'screenings#create'
+    # The screening service posts its decision back here (signed). approved -> provision the account
+    # (Auth0 + DB + activation email); denied -> the "unable to accept" email.
+    post 'v1/screening_result' => 'screening_results#create'
   end
 
   get '/favicon.ico', to: proc { |_env|
