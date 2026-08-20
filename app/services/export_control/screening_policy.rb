@@ -42,6 +42,25 @@ module ExportControl
       'police' => '4', 'banking' => '5', 'international' => '6'
     }.freeze
 
+    # ---------------------------------------------------------------------------------------------
+    # Sanctioned-jurisdiction backstop (counsel-owned). OFAC comprehensively-embargoed countries as an
+    # in-house fail-closed list ON TOP OF the vendor's risk_country flag: an association with a
+    # sanctioned jurisdiction is a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity,
+    # regardless of name-match or transstatus. ISO-3166 alpha-2.
+    # TODO(counsel): review/refresh this list. Sub-national programs (Crimea, DNR/LNR) cannot be
+    # expressed at country granularity and are handled by geofencing, not here.
+    # ---------------------------------------------------------------------------------------------
+    SANCTIONED_COUNTRIES = %w[CU IR KP SY].freeze
+
+    # True when the screened party's country is on the in-house embargo list. Blank => false (the
+    # vendor's risk_country flag is the other half of the jurisdiction signal; see ScreeningService).
+    def sanctioned_country?(country)
+      code = country.to_s.strip.upcase
+      return false if code.empty?
+
+      SANCTIONED_COUNTRIES.include?(code)
+    end
+
     # The srpsgroupbypass string, e.g. "12" for Export+Munitions. "" => Descartes profile default.
     def rps_groups
       raw = AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_RPS_GROUPS).presence ||

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_05_030000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_20_120000) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -686,6 +686,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_05_030000) do
     t.string "transstatus"
     t.string "alert_level", null: false
     t.integer "risk_country"
+    t.string "country"
+    t.boolean "jurisdiction_risk", default: false, null: false
     t.string "list"
     t.string "sdistributedid"
     t.string "incident_id"
