@@ -43,14 +43,17 @@ module ExportControl
     }.freeze
 
     # ---------------------------------------------------------------------------------------------
-    # Sanctioned-jurisdiction backstop (counsel-owned). OFAC comprehensively-embargoed countries as an
-    # in-house fail-closed list ON TOP OF the vendor's risk_country flag: an association with a
-    # sanctioned jurisdiction is a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity,
-    # regardless of name-match or transstatus. ISO-3166 alpha-2.
-    # TODO(counsel): review/refresh this list. Sub-national programs (Crimea, DNR/LNR) cannot be
-    # expressed at country granularity and are handled by geofencing, not here.
+    # Sanctioned-jurisdiction backstop (counsel-owned). An association with a sanctioned jurisdiction is
+    # a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity, regardless of name-match or
+    # transstatus. ISO-3166 alpha-2. This is Layer B (account/access screening); it MUST stay in parity
+    # with the Layer A edge geo-block (WAF rule group *-web-waf-geoblocking, CZID-323) so a party the
+    # edge would refuse is also refused an account if they reach screening via an allowlisted IP or a
+    # geo-IP-spoofing VPN. Kept equal to that WAF CountryCodes list.
+    # TODO(counsel, CZID-322): the authoritative list is counsel-owned -- ratify. RU is a program-specific
+    # sanction (not a comprehensive embargo); UA is an intentional over-block standing in for the
+    # sub-national Crimea/DNR/LNR programs, which cannot be expressed at country granularity.
     # ---------------------------------------------------------------------------------------------
-    SANCTIONED_COUNTRIES = %w[CU IR KP SY].freeze
+    SANCTIONED_COUNTRIES = %w[CU IR KP RU SY UA].freeze
 
     # True when the screened party's country is on the in-house embargo list. Blank => false (the
     # vendor's risk_country flag is the other half of the jurisdiction signal; see ScreeningService).
