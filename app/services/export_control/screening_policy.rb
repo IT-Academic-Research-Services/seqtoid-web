@@ -42,6 +42,40 @@ module ExportControl
       'police' => '4', 'banking' => '5', 'international' => '6'
     }.freeze
 
+    # ---------------------------------------------------------------------------------------------
+    # Sanctioned-jurisdiction backstop (Layer B: account/access screening). An association with a
+    # sanctioned jurisdiction is a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity,
+    # regardless of name-match or transstatus.
+    #
+    # SINGLE SOURCE OF TRUTH: the enforced list is NOT edited here. It is read from the SAME
+    # blocked-jurisdictions.json that the Layer-1 WAF geo rule + the Layer-2 edge Lambda consume
+    # (CZID-322, owned by compliance/counsel). We vendor a copy at config/export_control/ and the
+    # blocked-jurisdictions-parity CI job fails the build if it drifts from the infra canonical -- so all
+    # three enforcement layers can never diverge. To change the list, edit the canonical in the infra
+    # repo, then sync the vendored copy; never hand-edit the array here.
+    # ---------------------------------------------------------------------------------------------
+    BLOCKED_JURISDICTIONS_FILE = "config/export_control/blocked-jurisdictions.json"
+
+    SANCTIONED_COUNTRIES = begin
+      path = defined?(Rails) ? Rails.root.join(BLOCKED_JURISDICTIONS_FILE) : BLOCKED_JURISDICTIONS_FILE
+      codes = JSON.parse(File.read(path, encoding: "UTF-8")).fetch("blocked_country_codes")
+      codes.map { |c| c.to_s.strip.upcase }.freeze
+    rescue StandardError => e
+      # Fail-safe: if the vendored list is unreadable, fall back to the known embargo set so the
+      # jurisdiction rule never silently disables. The parity CI job guards the file's correctness.
+      Rails.logger.warn("[ScreeningPolicy] blocked-jurisdictions.json unreadable (#{e.class}); using fallback") if defined?(Rails)
+      %w[CU IR KP RU SY UA].freeze
+    end
+
+    # True when the screened party's country is on the in-house embargo list. Blank => false (the
+    # vendor's risk_country flag is the other half of the jurisdiction signal; see ScreeningService).
+    def sanctioned_country?(country)
+      code = country.to_s.strip.upcase
+      return false if code.empty?
+
+      SANCTIONED_COUNTRIES.include?(code)
+    end
+
     # The srpsgroupbypass string, e.g. "12" for Export+Munitions. "" => Descartes profile default.
     def rps_groups
       raw = AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_RPS_GROUPS).presence ||

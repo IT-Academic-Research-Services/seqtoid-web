@@ -1,0 +1,64 @@
+# Export-control drift guard: the Layer-B screening embargo list (vendored here at
+# config/export_control/blocked-jurisdictions.json, read by ExportControl::ScreeningPolicy) MUST match
+# the single source of truth in the infra repo (export-control/blocked-jurisdictions.json), which the
+# Layer-1 WAF geo rule and the Layer-2 edge Lambda also consume. If they drift, a party the edge would
+# refuse could still be screened/allowed (or vice versa). Fail the build on any drift in the enforced
+# blocked_country_codes set. Governance: EXPORT-CONTROL-LIST-GOVERNANCE.md (infra repo).
+name: blocked-jurisdictions-parity
+
+on:
+  pull_request:
+    paths:
+      - "config/export_control/blocked-jurisdictions.json"
+      - "app/services/export_control/screening_policy.rb"
+      - ".github/workflows/blocked-jurisdictions-parity.yml"
+  push:
+    branches: [integration, main]
+    paths:
+      - "config/export_control/blocked-jurisdictions.json"
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    # Only where the app token is configured (the canonical IT-ARS repo). Forks cannot read the infra
+    # repo and skip -- same convention as chart-appproject-kinds.yml.
+    if: ${{ vars.CI_APP_ENABLED == 'true' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v6
+
+      - name: Generate app token
+        id: app_token
+        uses: chanzuckerberg/github-app-token@365b1f2db827eb8f17288ec335b1a7e3c03ff683 # v1.1.4
+        with:
+          app_id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private_key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+
+      - name: Checkout infra (source of truth)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.SSOT_INFRA_REPO || format('{0}/seqtoid-ssot-infra', github.repository_owner) }}
+          token: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN }}
+          path: infra
+          sparse-checkout: export-control/blocked-jurisdictions.json
+          sparse-checkout-cone-mode: false
+
+      - name: blocked_country_codes must match the infra canonical
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          app = json.load(open("config/export_control/blocked-jurisdictions.json", encoding="utf-8"))["blocked_country_codes"]
+          infra = json.load(open("infra/export-control/blocked-jurisdictions.json", encoding="utf-8"))["blocked_country_codes"]
+          a = sorted(c.strip().upper() for c in app)
+          b = sorted(c.strip().upper() for c in infra)
+          if a != b:
+              print("::error::blocked-jurisdictions DRIFT between Layer-B screening and the infra canonical")
+              print(f"  app (config/export_control/blocked-jurisdictions.json): {a}")
+              print(f"  infra (export-control/blocked-jurisdictions.json):     {b}")
+              print("  Re-sync the vendored copy from the infra canonical (never hand-edit the list).")
+              sys.exit(1)
+          print(f"parity OK: {a}")
+          PY

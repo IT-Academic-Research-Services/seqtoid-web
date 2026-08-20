@@ -6,7 +6,10 @@ class Hold < ApplicationRecord
   # Why a hold was placed. Kept explicit so the record is self-describing.
   REASON_SCREENING_HIT = "screening_hit".freeze # a real alert-level match
   REASON_SCREENING_ERROR = "screening_error".freeze # fail-closed: vendor error/timeout/misconfig
-  REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR].freeze
+  # Zero-tolerance geo rule: the screened party is associated with a sanctioned jurisdiction (our
+  # in-house embargo list or the vendor's risk_country flag). A hard HOLD regardless of name-match.
+  REASON_SANCTIONED_JURISDICTION = "sanctioned_jurisdiction".freeze
+  REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR, REASON_SANCTIONED_JURISDICTION].freeze
 
   # Terminal IM adjudication outcomes recorded on the hold (SMP-1253 audit trail).
   DISPOSITION_RELEASED = "released".freeze

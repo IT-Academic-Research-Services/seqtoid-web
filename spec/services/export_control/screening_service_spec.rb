@@ -44,7 +44,10 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
     JSON.dump(
       'transstatus' => 'On Hold-RPS', 'smaxalert' => smaxalert, 'sguid' => 'g-hit',
       'searches' => [{
-        'soptionalid' => '42', 'scountry' => 'IQ', 'riskcountry' => '1', 'nomatch' => '0',
+        # Pure NAME-match hit: riskcountry 0 so this isolates the transstatus/name path. The
+        # sanctioned-jurisdiction path (riskcountry >= 1 / embargoed subject country) is covered
+        # separately below, since it takes precedence and uses a different hold reason.
+        'soptionalid' => '42', 'scountry' => 'GB', 'riskcountry' => '0', 'nomatch' => '0',
         'sdistributedid' => sdistributedid,
         'results' => [{ 'dp_id' => 'DBP000063', 'list' => 'AECA Debarred Parties [DDTC]',
                         'name' => 'SMITH, Wayne P.', 'alerttype' => smaxalert, }],
@@ -96,7 +99,8 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
           expect(@outcome.decision).to eq(:held)
           expect(sr.transstatus).to eq(ScreeningResult::TRANSSTATUS_ON_HOLD)
           expect(sr.alert_level).to eq(mapped_level)
-          expect(sr.risk_country).to eq(1)
+          expect(sr.risk_country).to eq(0)
+          expect(sr.jurisdiction_risk).to be(false)
           expect(sr.sdistributedid).to eq('295395313516552')
           expect(sr).to be_hold_required
 
@@ -108,6 +112,41 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
           expect(@outcome.to_provider_result.result).to eq(ExportControlClearance::SCREENING_HIT)
         end
       end
+    end
+  end
+
+  describe '#screen -- sanctioned-jurisdiction rule (hard HOLD/red, overrides transstatus)' do
+    it 'HOLDs a party from an embargoed country even on a clean Passed/nomatch screen' do
+      embargoed = ExportControl::ScreeningService::Subject.new(
+        subject_ref: 'User:99', subject_type: 'User', name: 'Jane Clean', country: 'IR', soptionalid: '99'
+      )
+      stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
+
+      expect { @outcome = service.screen(embargoed) }
+        .to change(ScreeningResult, :count).by(1)
+        .and(change(Hold, :count).by(1))
+
+      sr = @outcome.screening_result
+      expect(@outcome.decision).to eq(:held)
+      expect(sr.jurisdiction_risk).to be(true)
+      expect(sr.country).to eq('IR')
+      expect(sr.transstatus).to eq(ScreeningResult::TRANSSTATUS_PASSED) # would have ALLOWED on name-screen alone
+      expect(sr.effective_alert_level).to eq(ScreeningResult::ALERT_RED)
+      expect(@outcome.hold.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
+      expect(@outcome.to_provider_result.result).to eq(ExportControlClearance::SCREENING_HIT)
+    end
+
+    it 'HOLDs on the vendor risk_country flag even when the subject country is not embargoed' do
+      risky_clean = JSON.dump(
+        'transstatus' => 'Passed', 'smaxalert' => '', 'sguid' => 'g-rc',
+        'searches' => [{ 'soptionalid' => '42', 'riskcountry' => '1', 'nomatch' => '1', 'results' => [] }]
+      )
+      stub_request(:post, search_url).to_return(status: 200, body: risky_clean, headers: json_headers)
+
+      expect { @outcome = service.screen(party) }.to change(Hold, :count).by(1) # party.country == 'US'
+      expect(@outcome.decision).to eq(:held)
+      expect(@outcome.screening_result.jurisdiction_risk).to be(true)
+      expect(@outcome.hold.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
     end
   end
 

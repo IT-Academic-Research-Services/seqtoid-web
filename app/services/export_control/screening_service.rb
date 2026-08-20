@@ -141,6 +141,13 @@ module ExportControl
       # SMP-1253: stamp the OTel trace id onto the durable evidence row so each compliance
       # record cross-links to its distributed trace. nil when tracing is off (local/test/CI).
       trace_id = ExportControl::ScreeningAudit.current_trace_id
+      # Zero-tolerance geo rule (counsel): an association with a sanctioned jurisdiction is a hard HOLD
+      # regardless of name-match or transstatus. Two independent sources: our in-house embargo list
+      # (subject.country) and the vendor's own risk_country flag. Stamped onto the row so the decision
+      # is durable evidence even if the embargo list later changes.
+      jurisdiction_risk =
+        ExportControl::ScreeningPolicy.sanctioned_country?(subject.country) ||
+        response.risk_country.to_i >= 1
       screening_result = ScreeningResult.create!(
         subject_ref: subject.subject_ref,
         subject_type: subject.subject_type,
@@ -148,6 +155,8 @@ module ExportControl
         transstatus: response.transstatus,
         alert_level: response.alert_level,
         risk_country: response.risk_country,
+        country: subject.country,
+        jurisdiction_risk: jurisdiction_risk,
         list: response.list || configured_list_label,
         sdistributedid: response.sdistributedid,
         incident_id: nil, # populated later by the CZID-598 resolution poller
@@ -156,6 +165,20 @@ module ExportControl
         raw_response_ref: response.raw_ref,
         trace_id: trace_id
       )
+
+      # Jurisdiction rule takes precedence over the transstatus/name-match path: a sanctioned-jurisdiction
+      # association HOLDs (RED) even if the name screen returned "Passed"/nomatch.
+      if jurisdiction_risk
+        hold = create_hold(subject, Hold::REASON_SANCTIONED_JURISDICTION, screening_result)
+        ExportControl::ScreeningAudit.record(
+          "screen.held",
+          subject_ref: subject.subject_ref, decision: "held",
+          alert_level: screening_result.effective_alert_level, reason: Hold::REASON_SANCTIONED_JURISDICTION,
+          screening_result_id: screening_result.id, hold_id: hold.id,
+          provider: PROVIDER, trace_id: trace_id
+        )
+        return Outcome.new(decision: :held, screening_result: screening_result, hold: hold)
+      end
 
       if screening_result.hold_required?
         # SMP-1684: record counsel's hit-handling policy; never downgrade a hit to an allow.

@@ -128,4 +128,26 @@ RSpec.describe ExportControl::ScreeningPolicy do
       end
     end
   end
+
+  describe '.sanctioned_country? / SANCTIONED_COUNTRIES (single source of truth)' do
+    it 'is true for embargoed countries (case- and space-insensitive)' do
+      expect(described_class.sanctioned_country?('IR')).to be(true)
+      expect(described_class.sanctioned_country?(' ir ')).to be(true)
+      expect(described_class.sanctioned_country?('RU')).to be(true)
+    end
+
+    it 'is false for non-embargoed, blank, and nil' do
+      expect(described_class.sanctioned_country?('US')).to be(false)
+      expect(described_class.sanctioned_country?('')).to be(false)
+      expect(described_class.sanctioned_country?(nil)).to be(false)
+    end
+
+    it 'loads SANCTIONED_COUNTRIES from the vendored blocked-jurisdictions.json (the WAF source of truth)' do
+      canonical = JSON.parse(
+        File.read(Rails.root.join('config/export_control/blocked-jurisdictions.json'), encoding: 'UTF-8')
+      ).fetch('blocked_country_codes').map { |c| c.to_s.strip.upcase }
+      expect(described_class::SANCTIONED_COUNTRIES).to match_array(canonical)
+      expect(described_class::SANCTIONED_COUNTRIES).not_to be_empty
+    end
+  end
 end

@@ -1,0 +1,25 @@
+{
+  "_README": "SINGLE SOURCE OF TRUTH for the export-control blocked-jurisdiction list (CZID-322). The authoritative, versioned list is owned by the compliance office / counsel -- engineering only wires it. This ONE file is consumed by the Layer-1 WAF geo rule (Terraform, via jsondecode(file(...))), the Layer-2 edge Lambda (bundled by build.sh and read at load), and the account-screening layer (seqtoid-web, vendored copy guarded by the blocked-jurisdictions-parity CI job). 'blocked_country_codes' is the enforced authority; 'rationale' annotates it; 'staged_for_counsel' are candidates NOT yet enforced. Change the enforced set HERE only, then re-plan the WAF + rebuild the Lambda + sync the seqtoid-web copy + re-run the CZID-333 harness. Governance: EXPORT-CONTROL-LIST-GOVERNANCE.md. Validate before commit: tools/validate-blocked-jurisdictions.py.",
+  "schema_version": 1,
+  "list_version": "2026-08-20.1",
+  "owner": "compliance office / counsel (CZID-322)",
+  "last_reviewed": "2026-08-20",
+  "ratified": "2026-08-20",
+
+  "blocked_country_codes": ["CU", "IR", "KP", "RU", "SY", "UA"],
+
+  "rationale": {
+    "CU": { "basis": "comprehensive embargo (OFAC)", "note": "ratified 2026-08-20" },
+    "IR": { "basis": "comprehensive embargo (OFAC/EAR)", "note": "ratified 2026-08-20" },
+    "KP": { "basis": "comprehensive embargo (OFAC/EAR)", "note": "ratified 2026-08-20" },
+    "SY": { "basis": "comprehensive embargo (OFAC/EAR)", "note": "ratified 2026-08-20" },
+    "UA": { "basis": "region sanctions: Crimea / DNR / LNR", "note": "Ratified 2026-08-20. WAF geo-match is country-granular, so this blocks ALL of Ukraine; sub-national region precision is handled by Layer 2 (CZID-327). The whole-country over-block is ratified." },
+    "RU": { "basis": "program-specific sanctions (not a comprehensive embargo)", "note": "Ratified 2026-08-20. All-Russia over-block accepted; carries known business impact." }
+  },
+
+  "staged_for_counsel": {
+    "BY": { "basis": "program-specific sanctions", "note": "Belarus -- candidate; awaiting counsel decision. NOT enforced." },
+    "VE": { "basis": "program-specific sanctions", "note": "Venezuela -- candidate; awaiting counsel decision. NOT enforced." },
+    "MM": { "basis": "program-specific sanctions", "note": "Myanmar/Burma -- candidate; awaiting counsel decision. NOT enforced." }
+  }
+}
