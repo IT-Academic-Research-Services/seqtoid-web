@@ -31,6 +31,28 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if $root.Values.screening.migrate.enabled }}
+      # Piece 5b: build the ISOLATED screening store before the API serves. Runs against the SCREENING
+      # chamber (SCREENING_DB_* -> the dedicated screening cluster). PRIMARY_DB_TASKS=false so it never
+      # touches the shared app DB; SCREENING_DB_TASKS=true so db:migrate applies db/screening_migrate to the
+      # screening connection. Idempotent -- a no-op once the cluster is up to date.
+      initContainers:
+        - name: screening-migrate
+          image: {{ include "seqtoid-web.image" $root | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args:
+            {{- toYaml $root.Values.screening.migrate.command | nindent 12 }}
+          env:
+            {{- include "seqtoid-web.commonEnv" $root | nindent 12 }}
+            {{- with $root.Values.screening.chamberService }}
+            - name: CHAMBER_SERVICE
+              value: {{ . | quote }}
+            {{- end }}
+            - name: PRIMARY_DB_TASKS
+              value: "false"
+            - name: SCREENING_DB_TASKS
+              value: "true"
+      {{- end }}
       containers:
         - name: screening
           image: {{ include "seqtoid-web.image" $root | quote }}
