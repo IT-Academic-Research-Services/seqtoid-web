@@ -52,6 +52,16 @@ class UserMailer < ApplicationMailer
     )
   end
 
+  # Export-control: the applicant's account request could not be accepted (a denied-party or
+  # sanctioned-jurisdiction outcome). Deliberately generic -- no screening details to the applicant.
+  def account_creation_denied(email)
+    @email = email
+    mail(
+      to: email,
+      subject: "Your CZ ID account request"
+    )
+  end
+
   # See: app/views/user_mailer/no_account_found.html.erb.
   def no_account_found(email)
     mail(
