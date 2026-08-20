@@ -390,7 +390,32 @@ extraEnv: []
 # absent). A preview sandbox sets `workers.shoryuken.enabled: false` so it does not become
 # a competing consumer on dev's shared SQS queue — it uses POLLING (result-monitor +
 # pipeline-monitor against its own DB) instead.
+# Option A: the standalone export-control screening SERVICE -- same image, its own deployment + chamber
+# + DB, so Descartes never runs in a web request. The API Deployment/Service is templates/screening.yaml;
+# the async worker + poller are workers.screening below. Dark by default (enabled: false).
+screening:
+  enabled: false
+  chamberService: ""   # e.g. seqtoid-env-prod-screening -- DESCARTES_RPS_* + the dedicated screening DB live here
+  api:
+    replicaCount: 1
+    port: 3000
+    resources: {}
+
 workers:
+  # Option A screening worker: the async screen (process_screening) + the resolution poller
+  # (resolve_screening_holds). Uses the SCREENING chamber, not the web chamber. Dark by default.
+  # Named screening-worker so it does not collide with the screening API Deployment (-screening).
+  screening-worker:
+    enabled: false
+    args: ["rake", "resque:workers"]
+    replicaCount: 1
+    queue: "process_screening,resolve_screening_holds"
+    chamberService: ""
+    samplesBucket: false
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
   resque:
     args: ["rake", "resque:workers"]
     replicaCount: 1
