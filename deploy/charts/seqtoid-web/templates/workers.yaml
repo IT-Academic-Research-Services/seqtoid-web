@@ -56,6 +56,12 @@ spec:
             - name: QUEUE
               value: {{ . | quote }}
             {{- end }}
+            {{- with $w.chamberService }}
+            # Per-worker chamber override (Option A: the screening worker uses the screening chamber,
+            # not the web chamber). Emitted after commonEnv/extraEnv, so this CHAMBER_SERVICE wins.
+            - name: CHAMBER_SERVICE
+              value: {{ . | quote }}
+            {{- end }}
             {{- if $w.samplesBucket }}
             {{- $bucket := include "seqtoid-web.samplesBucket" $root }}
             {{- with $bucket }}
