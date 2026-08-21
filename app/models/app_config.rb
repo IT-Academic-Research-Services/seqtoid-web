@@ -51,6 +51,14 @@ class AppConfig < ApplicationRecord
   # an email domain ("ucsf.edu" / "@ucsf.edu"), case-insensitive. Blank/unset => NOBODY is whitelisted
   # (fail-closed default). Example: ["ucsf.edu", "User:1"].
   EXPORT_CONTROL_SCREENING_WHITELIST = 'export_control_screening_whitelist'.freeze
+  # JSON array of counsel-cleared identities that pass IDENTITY VERIFICATION with no vendor call (the IDV
+  # allow-table, IdentityVerificationProvider.whitelisted?). SEPARATE from the screening whitelist above:
+  # identity verification (are you who you say) and denied-party screening (are you sanctioned) are
+  # distinct controls, so they are cleared independently. Same entry format -- a subject_ref ("User:42")
+  # or an email domain ("ucsf.edu" / "@ucsf.edu"), case-insensitive. Blank/unset => NOBODY is verified
+  # (fail-closed default): until this OR a real IDV vendor is set, no user can clear the gate. Because
+  # passed? requires verified AND clear, a fully cleared user must appear on BOTH allow-tables.
+  EXPORT_CONTROL_IDV_WHITELIST = 'export_control_idv_whitelist'.freeze
   # Re-screen cadence in DAYS -- how long a passing screen stays valid before a re-screen is due. Blank,
   # zero, or non-positive => always re-screen (most conservative). Counsel sets the operational value.
   EXPORT_CONTROL_RESCREEN_CADENCE_DAYS = 'export_control_rescreen_cadence_days'.freeze

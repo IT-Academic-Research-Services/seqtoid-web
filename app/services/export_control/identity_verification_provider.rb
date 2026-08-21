@@ -28,8 +28,38 @@ module ExportControl
     module_function
 
     # Resolve + delegate to the configured provider module. Provider modules implement `.verify`.
+    #
+    # WHITELIST FIRST: a counsel-cleared identity is VERIFIED with no vendor call, mirroring the
+    # denied-party screening whitelist (ScreeningPolicy). This is the ONLY affirmative-"verified" path
+    # until a real IDV vendor is wired -- without it verify() can only ever PENDING (the reference stub),
+    # so NO user can clear the gate (passed? = verified AND clear) and the platform admits nobody. This
+    # is NOT an allow-on-uncertainty: it is an EXPLICIT counsel clearance recorded in AppConfig. Empty/
+    # unset allow-table verifies NOBODY (fail-closed default), exactly like the screening whitelist.
     def verify(user, ctx = {})
+      if whitelisted?(user)
+        return Result.new(status: ExportControlClearance::VERIFICATION_VERIFIED, provider: "whitelist", evidence_ref: nil)
+      end
+
       provider_module.verify(user, ctx)
+    end
+
+    # True only if this user is on the counsel-cleared IDV allow-table (EXPORT_CONTROL_IDV_WHITELIST),
+    # matched by subject_ref ("User:<id>") or by email domain, case-insensitive -- the same semantics as
+    # ScreeningPolicy.whitelisted?. Blank/unset => false (nobody), so the gate stays fail-closed.
+    def whitelisted?(user)
+      return false if user.nil?
+
+      entries = Array(AppConfigHelper.get_json_app_config(AppConfig::EXPORT_CONTROL_IDV_WHITELIST, []))
+                .map { |entry| entry.to_s.downcase.strip }.reject(&:blank?)
+      return false if entries.empty?
+
+      ref = "user:#{user.id}".downcase.strip
+      return true if entries.include?(ref)
+
+      domain = user.try(:email).to_s.downcase.strip.split("@").last
+      return false if domain.blank?
+
+      entries.any? { |e| e == domain || e == "@#{domain}" }
     end
 
     def provider_module
