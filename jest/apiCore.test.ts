@@ -40,9 +40,21 @@ describe("api/core.ts", () => {
       });
       expect(result).toEqual({ ok: true });
     });
-    it("rejects with the response data on error", async () => {
+    it("rejects without the response data on error with unexpected format", async () => {
       mockedAxios.post.mockRejectedValueOnce({ response: { data: "bad" } });
-      await expect(postWithCSRF("/foo")).rejects.toBe("bad");
+      await expect(postWithCSRF("/foo")).rejects.toStrictEqual({
+        response: { data: "bad" },
+      });
+    });
+    it("rejects with the response data on error with expected format", async () => {
+      mockedAxios.post.mockRejectedValueOnce({
+        response: { data: { code: 1234, error: "bad" } },
+      });
+      await expect(postWithCSRF("/foo")).rejects.toStrictEqual({
+        code: 1234,
+        error: "bad",
+        response: { data: { code: 1234, error: "bad" } },
+      });
     });
   });
 
@@ -56,9 +68,21 @@ describe("api/core.ts", () => {
       });
       expect(result).toEqual({ updated: 1 });
     });
-    it("rejects with the response data on error", async () => {
+    it("rejects without the response data on error with unexpected format", async () => {
       mockedAxios.put.mockRejectedValueOnce({ response: { data: "err" } });
-      await expect(putWithCSRF("/bar")).rejects.toBe("err");
+      await expect(putWithCSRF("/bar")).rejects.toStrictEqual({
+        response: { data: "err" },
+      });
+    });
+    it("rejects with the response data on error with expected format", async () => {
+      mockedAxios.put.mockRejectedValueOnce({
+        response: { data: { code: 789, error: "err" } },
+      });
+      await expect(putWithCSRF("/foo")).rejects.toStrictEqual({
+        code: 789,
+        error: "err",
+        response: { data: { code: 789, error: "err" } },
+      });
     });
   });
 
@@ -72,12 +96,21 @@ describe("api/core.ts", () => {
     });
     it("rejects with the response data on error", async () => {
       mockedAxios.get.mockRejectedValueOnce({ response: { data: "nope" } });
-      await expect(get("/baz")).rejects.toBe("nope");
+      await expect(get("/baz")).rejects.toStrictEqual({
+        response: { data: "nope" },
+      });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
     });
 
     it("does NOT retry a real HTTP error -- rejects on the first attempt", async () => {
-      mockedAxios.get.mockRejectedValueOnce({ response: { data: "boom" } });
-      await expect(get("/baz")).rejects.toBe("boom");
+      mockedAxios.get.mockRejectedValueOnce({
+        response: { data: { code: 1111, error: "boom" } },
+      });
+      await expect(get("/baz")).rejects.toStrictEqual({
+        code: 1111,
+        error: "boom",
+        response: { data: { code: 1111, error: "boom" } },
+      });
       expect(mockedAxios.get).toHaveBeenCalledTimes(1);
     });
 
@@ -125,9 +158,22 @@ describe("api/core.ts", () => {
       });
       expect(result).toEqual({ deleted: true });
     });
-    it("rejects with the response data on error", async () => {
+    it("rejects with the response data on error with unexpected format", async () => {
       mockedAxios.delete.mockRejectedValueOnce({ response: { data: "fail" } });
-      await expect(deleteWithCSRF("/qux")).rejects.toBe("fail");
+      await expect(deleteWithCSRF("/qux")).rejects.toStrictEqual({
+        response: { data: "fail" },
+      });
+    });
+
+    it("rejects with the response data on error with expected format", async () => {
+      mockedAxios.delete.mockRejectedValueOnce({
+        response: { data: { code: 9876, error: "fail" } },
+      });
+      await expect(deleteWithCSRF("/qux")).rejects.toStrictEqual({
+        code: 9876,
+        error: "fail",
+        response: { data: { code: 9876, error: "fail" } },
+      });
     });
   });
 
@@ -141,11 +187,11 @@ describe("api/core.ts", () => {
     const netErr = { message: "Network Error", code: "ERR_NETWORK" };
     it("post rejects with the error, not a TypeError", async () => {
       mockedAxios.post.mockRejectedValueOnce(netErr);
-      await expect(postWithCSRF("/foo")).rejects.toBe(netErr);
+      await expect(postWithCSRF("/foo")).rejects.toStrictEqual(netErr);
     });
     it("put rejects with the error, not a TypeError", async () => {
       mockedAxios.put.mockRejectedValueOnce(netErr);
-      await expect(putWithCSRF("/bar")).rejects.toBe(netErr);
+      await expect(putWithCSRF("/bar")).rejects.toStrictEqual(netErr);
     });
     // NOTE: `get` also rejects with the raw network error rather than a TypeError,
     // but since SMP-1589 it does so only after retrying the transient error -- that
@@ -154,7 +200,7 @@ describe("api/core.ts", () => {
     // wait. post/put/delete are NOT retried, so they still reject on first attempt.
     it("delete rejects with the error, not a TypeError", async () => {
       mockedAxios.delete.mockRejectedValueOnce(netErr);
-      await expect(deleteWithCSRF("/qux")).rejects.toBe(netErr);
+      await expect(deleteWithCSRF("/qux")).rejects.toStrictEqual(netErr);
     });
   });
 
@@ -227,9 +273,14 @@ describe("api/core.ts", () => {
 
     it("does NOT redirect on a non-401 HTTP error and keeps the raw-body reject shape", async () => {
       mockedAxios.get.mockRejectedValueOnce({
-        response: { status: 500, data: "server boom" },
+        response: { status: 500, statusText: "Invalid", data: "server boom" },
       });
-      await expect(get("/my_data")).rejects.toBe("server boom");
+      await expect(get("/my_data")).rejects.toStrictEqual({
+        code: 500,
+        response: { data: "server boom", status: 500, statusText: "Invalid" },
+        status: 500,
+        statusText: "Invalid",
+      });
       expect(window.location.href).toBe("");
     });
   });
