@@ -1,5 +1,5 @@
 import React from "react";
-import MediaBlockImg from "~/images/landing_page/czid-mediablock-img.png";
+import MediaBlockImg from "~/images/landing_page/mediablock-img.png";
 import cs from "./MediaBlock.scss";
 
 const MediaBlock = () => {
