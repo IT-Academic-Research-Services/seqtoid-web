@@ -38,21 +38,47 @@ RSpec.describe MngsReadsStatsLoadService do
 
   before do
     count_files = steps.map do |k, v|
-      ["#{version_prefix}/#{k}.count", { body: { "#{k}": v.to_s }.to_json }]
+      ["#{version_prefix}/#{k}.count", { body: { "#{k}": v }.to_json }]
     end.to_h
-    count_files["#{version_prefix}/#{PipelineRun::FASTP_JSON_FILE}"] = { body: fastp_json.to_json }
+    # Ensure the fastp file uses the constant as the key
+    count_files["#{version_prefix}/#{PipelineRun::FASTP_JSON_FILE}"] = { body: { "filtering_result" => fastp_json["filtering_result"] }.to_json }
 
     @mock_aws_clients = { s3: Aws::S3::Client.new(stub_responses: true) }
-    allow(AwsClient).to receive(:[]) { |client| @mock_aws_clients[client] }
+    # Properly mock the AwsClient lookup used in the service
+    allow(AwsClient).to receive(:[]).with(:s3).and_return(@mock_aws_clients[:s3])
+    # Also stub the global S3_CLIENT if the service uses it directly
+    stub_const("S3_CLIENT", @mock_aws_clients[:s3])
+    stub_const("SAMPLES_BUCKET_NAME", "test-bucket")
+
+    # Mock the S3 Resource chain
+    @mock_s3_resource = instance_double(Aws::S3::Resource)
+    @mock_bucket = instance_double(Aws::S3::Bucket)
+    @mock_object_collection = instance_double(Aws::S3::Object::Collection)
+
+    # Include the fastp file in the mock objects
+    all_files = steps.keys.map { |f| "#{version_prefix}/#{f}.count" } + ["#{version_prefix}/#{PipelineRun::FASTP_JSON_FILE}"]
+    @mock_objects = all_files.map do |path|
+      obj = instance_double(Aws::S3::Object)
+      allow(obj).to receive(:key).and_return(path)
+      obj
+    end
+
+    allow(Aws::S3::Resource).to receive(:new).with(client: @mock_aws_clients[:s3]).and_return(@mock_s3_resource)
+    allow(@mock_s3_resource).to receive(:bucket).with("test-bucket").and_return(@mock_bucket)
+    # Match any prefix that ends with version_prefix
+    allow(@mock_bucket).to receive(:objects).with(hash_including(:prefix)).and_return(@mock_object_collection)
+
+    keys = @mock_objects.map(&:key)
+    allow(@mock_object_collection).to receive(:map).and_return(keys)
 
     @mock_aws_clients[:s3].stub_responses(
-      :list_objects_v2, contents: steps.keys.map do |filename|
-        { key: File.join("#{fake_sample_bucket}/#{version_prefix}/", "#{filename}.count") }
-      end
-    )
-    @mock_aws_clients[:s3].stub_responses(
       :get_object, lambda { |context|
-        count_files[context.params[:key]] || { body: "{}" }
+        # Mock S3 get_object based on the key, return JSON string as body
+        if count_files.key?(context.params[:key])
+          { body: count_files[context.params[:key]][:body] }
+        else
+          { body: "{}" }
+        end
       }
     )
 
@@ -62,7 +88,7 @@ RSpec.describe MngsReadsStatsLoadService do
     @pipeline_run = create(:pipeline_run,
                            technology: PipelineRun::TECHNOLOGY_INPUT[:illumina],
                            pipeline_execution_strategy: "step_function",
-                           s3_output_prefix: fake_sample_bucket,
+                           s3_output_prefix: "s3://#{fake_sample_bucket}",
                            sfn_execution_arn: fake_arn,
                            wdl_version: "8.0",
                            pipeline_version: "8.0")
