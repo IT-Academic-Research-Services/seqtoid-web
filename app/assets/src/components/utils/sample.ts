@@ -101,11 +101,7 @@ export const sampleErrorInfo = ({
   let type: IconAlertType;
   let link: string | undefined;
   let pipelineVersionUrlParam: string;
-  switch (
-    sampleUploadError ||
-    (pipelineRun && pipelineRun.known_user_error) ||
-    error.label
-  ) {
+  switch (sampleUploadError || pipelineRun?.known_user_error || error.label) {
     // For samples run using SFN, error messages are sent from the server;
     // this function just sets the status, error type, and followup link
     // for frontend display.
