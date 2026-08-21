@@ -28,11 +28,18 @@ class ProcessScreeningJob
     outcome = ExportControl::ScreeningService.new.screen_if_enabled(subject_from(payload))
     if outcome&.allowed?
       post_callback(payload, decision: 'approved', path: 'auto', account: payload['account'])
+    elsif sanctioned_jurisdiction?(outcome)
+      # Zero-tolerance geo rule (CZID-321): an association with a SANCTIONED JURISDICTION (the applicant's
+      # declared country is on the embargo list, or the vendor flagged risk_country) is an UNAMBIGUOUS,
+      # hard denial -- the same list the edge WAF geo-block enforces. Auto-DENY immediately (no 48h manual
+      # queue, no held signup to resolve): a party who must not be admitted is denied at once.
+      post_callback(payload, decision: 'denied', path: 'auto', account: nil)
+      Rails.logger.warn("[ProcessScreeningJob] #{payload['correlation_id']} auto-denied: sanctioned jurisdiction")
     elsif outcome
-      # Held / error: no auto-approval. HOLD the applicant account data (piece 5b) so the resolution
-      # poller can drive the approved/denied callback once a compliance officer adjudicates -- the
-      # original request is long gone by then. A screen with no account payload (a non-signup screen)
-      # holds nothing to provision, so skip persisting one.
+      # A NAME-MATCH hit or a fail-closed error -- genuine ambiguity that needs a human. HOLD the applicant
+      # account data (piece 5b) so the resolution poller can drive the approved/denied callback once a
+      # compliance officer adjudicates. A screen with no account payload (a non-signup screen) holds
+      # nothing to provision, so skip persisting one.
       hold_pending_signup(payload) if payload['account'].present?
       Rails.logger.info(
         "[ProcessScreeningJob] #{payload['correlation_id']} not auto-approved " \
@@ -48,6 +55,12 @@ class ProcessScreeningJob
   end
 
   private
+
+  # A hold placed specifically for a sanctioned-jurisdiction association (vs a name-match hit or a
+  # fail-closed error). Only this reason auto-denies; everything else routes to manual review.
+  def sanctioned_jurisdiction?(outcome)
+    outcome&.hold&.reason == Hold::REASON_SANCTIONED_JURISDICTION
+  end
 
   # Durably hold the applicant's account data so the resolution poller can approve/deny it later. Its own
   # rescue: a persistence failure must not re-raise into the screen path (that would re-bill the vendor on
