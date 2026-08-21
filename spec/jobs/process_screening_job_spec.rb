@@ -19,6 +19,12 @@ RSpec.describe ProcessScreeningJob do
     ExportControl::ScreeningService::Outcome.new(decision: decision, screening_result: nil, hold: nil)
   end
 
+  # A held outcome whose hold was placed for a sanctioned-jurisdiction association (the auto-deny trigger).
+  def sanctioned_outcome
+    hold = Hold.new(subject_ref: 'User:42', reason: Hold::REASON_SANCTIONED_JURISDICTION)
+    ExportControl::ScreeningService::Outcome.new(decision: :held, screening_result: nil, hold: hold)
+  end
+
   it 'posts an approved callback carrying the account on a solid pass (allowed)' do
     allow(svc).to receive(:screen_if_enabled).and_return(outcome(:allowed))
     captured = nil
@@ -51,6 +57,18 @@ RSpec.describe ProcessScreeningJob do
   it 'also holds a signup on an error outcome (fail-closed but recoverable by the poller)' do
     allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
     expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
+  end
+
+  it 'AUTO-DENIES a sanctioned-jurisdiction signup immediately (denied callback, no manual hold)' do
+    allow(svc).to receive(:screen_if_enabled).and_return(sanctioned_outcome)
+    captured = nil
+    allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_url, body| captured = JSON.parse(body) }
+
+    expect { described_class.new.run(payload) }.not_to change(PendingSignup, :count)
+
+    expect(captured['decision']).to eq('denied')
+    expect(captured['path']).to eq('auto')
+    expect(captured).not_to have_key('account') # no account is ever seeded for a denial
   end
 
   it 'does NOT hold a signup on the disabled bypass (nil outcome)' do
