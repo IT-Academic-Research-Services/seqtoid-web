@@ -43,7 +43,7 @@ RSpec.describe SupportRequestMailer, type: :mailer do
 
     it "builds a ServiceNow short_description-style subject" do
       mail = described_class.service_now_ticket(payload)
-      expect(mail.subject).to eq("[SeqToID dev] Upload failed -- Doe Lab")
+      expect(mail.subject).to eq("[SeqtoID dev] Upload failed -- Doe Lab")
     end
 
     it "surfaces the Grafana + CloudWatch deep-links at the top" do

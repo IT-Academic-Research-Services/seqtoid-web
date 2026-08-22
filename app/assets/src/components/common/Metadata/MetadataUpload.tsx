@@ -25,8 +25,8 @@ import { IconAlert } from "~ui/icons";
 import IssueGroup from "~ui/notifications/IssueGroup";
 import LoadingMessage from "../LoadingMessage";
 import { METADATA_FIELDS_UNAVAILABLE_BY_WORKFLOW } from "./constants";
-import MetadataManualInput from "./MetadataManualInput";
 import cs from "./metadata_upload.scss";
+import MetadataManualInput from "./MetadataManualInput";
 import {
   MetadataCSVLocationsMenuProps,
   MetadataUploadProps,
@@ -332,8 +332,8 @@ class MetadataUpload extends React.Component<
           <div>
             <button
               className={cx(cs.link, "noStyleButton")}
-              onClick={() => onShowCSVInstructions}
-              onKeyDown={() => onShowCSVInstructions}
+              onClick={() => onShowCSVInstructions()}
+              onKeyDown={() => onShowCSVInstructions()}
             >
               View CSV Upload Instructions
             </button>
