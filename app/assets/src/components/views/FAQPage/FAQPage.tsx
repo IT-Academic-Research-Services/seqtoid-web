@@ -216,7 +216,7 @@ export class FAQPage extends React.Component {
           {/* Address copied verbatim from TermsOfUse.tsx section 12 Contact Information. */}
           <p>Our mailing address is:</p>
           <p>
-            SeqToID Administrator<br />
+            SeqtoID Administrator<br />
             1855 Folsom St, Suite 601<br />
             San Francisco, CA 94143<br />
             USA

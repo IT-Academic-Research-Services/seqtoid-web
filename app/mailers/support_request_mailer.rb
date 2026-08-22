@@ -43,12 +43,12 @@ class SupportRequestMailer < ApplicationMailer
 
   private
 
-  # "[SeqToID <env>] <error or task> -- <account>" -> ServiceNow short_description.
+  # "[SeqtoID <env>] <error or task> -- <account>" -> ServiceNow short_description.
   def service_now_subject
     env = @p[:environment].presence || Rails.env
     headline = @p[:error].presence || @p[:task].presence || "Support request"
     who = @p[:account_name].presence
-    subject = "[SeqToID #{env}] #{headline}"
+    subject = "[SeqtoID #{env}] #{headline}"
     subject += " -- #{who}" if who
     subject.truncate(SUBJECT_MAX)
   end

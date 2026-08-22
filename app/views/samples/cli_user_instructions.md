@@ -1,10 +1,10 @@
-# SeqToID CLI
+# SeqtoID CLI
 
 This project is under active development and in its beta phase. It should be fairly stable but there may be some issues. If you experience an issue please [let us know](https://github.com/IT-Academic-Research-Services/seqtoid-cli/issues).
 
-A **C**ommand **L**ine **I**nterface for [SeqToID](https://seqtoid.org/). 
+A **C**ommand **L**ine **I**nterface for [SeqtoID](https://seqtoid.org/). 
 
-SeqToID CLI is an in-house fork of https://github.com/chanzuckerberg/czid-cli (itself a rewrite of chanzuckerberg/idseq-cli), rebranded for SeqToID.
+SeqtoID CLI is an in-house fork of https://github.com/chanzuckerberg/czid-cli (itself a rewrite of chanzuckerberg/idseq-cli), rebranded for SeqtoID.
 
 ## Getting Started
 
@@ -34,7 +34,7 @@ There are lots of options to install on Linux.
 ##### Other Linux: Install via Homebrew for Linux
 
 1. Make sure you have [Homebrew for Linux](https://docs.brew.sh/Homebrew-on-Linux)
-1. Add the SeqToID tap: `brew tap IT-Academic-Research-Services/tap`
+1. Add the SeqtoID tap: `brew tap IT-Academic-Research-Services/tap`
 1. Install the package: `brew install seqtoid`
 
 ##### Other Linux: Without Homebrew
@@ -48,7 +48,7 @@ seqtoid-cli is available via homebrew and natively supports Apple Silicon! (via 
 ##### Install via Homebrew
 
 1. Make sure you have [Homebrew for Linux](https://docs.brew.sh/Homebrew-on-Linux)
-1. Add the SeqToID tap: `brew tap IT-Academic-Research-Services/tap`
+1. Add the SeqtoID tap: `brew tap IT-Academic-Research-Services/tap`
 1. Install the package: `brew install seqtoid`
 
 ##### Without Homebrew
@@ -81,13 +81,13 @@ Note on MacOS: Currently we don't sign our binary so you will need to manually r
 
 #### Setup
 
-First log in with your SeqToID account:
+First log in with your SeqtoID account:
 
 ```bash
 seqtoid login
 ```
 
-You will be prompted to log in with your SeqToID account via the web.
+You will be prompted to log in with your SeqtoID account via the web.
 
 Accept the user agreement:
 
@@ -99,7 +99,7 @@ This will print the user agreement and prompt you for your agreement.
 
 #### Upload a Single Sample
 
-You can use the SeqToID CLI to upload samples to upload a single sample to SeqToID. You can upload a single file for single end reads or two files for paired end reads. Supported file types: `.fastq`/`.fq`/`.fasta`/`.fa`/`.fastq.gz`/`.fq.gz`/`.fasta.gz`/`.fa.gz`.
+You can use the SeqtoID CLI to upload samples to upload a single sample to SeqtoID. You can upload a single file for single end reads or two files for paired end reads. Supported file types: `.fastq`/`.fq`/`.fasta`/`.fa`/`.fastq.gz`/`.fq.gz`/`.fasta.gz`/`.fa.gz`.
 
 Optionally, you can create a metadata CSV file for your sample. You can skip this step and specify your metadata with command line flags. For instructions on creating this file see:
 
@@ -109,7 +109,7 @@ Optionally, you can create a metadata CSV file for your sample. You can skip thi
 
 Be sure to set the sample name in the `Sample Name` column of the CSV to the same name you pass to the `upload-sample` command with `-s`/`--sample-name`. If you would like to specify your metadata entirely with `-m` flags you don't need to include a `--metadata-csv`. If you have specified all of your metadata in the metadata csv you don't need to include any `-m` flags. `-m` flags override metadata from the csv.
 
-Once you have set up you can use the `upload-sample` command to upload your sample to SeqToID.
+Once you have set up you can use the `upload-sample` command to upload your sample to SeqtoID.
 
 **Illumina**
 
@@ -189,7 +189,7 @@ seqtoid amr upload-sample `
 
 #### Upload Multiple Samples
 
-The SeqToID CLI can search a directory for read files and upload supported files as samples. Supported file types are: `.fastq`/`.fq`/`.fasta`/`.fa`/`.fastq.gz`/`.fq.gz`/`.fasta.gz`/`.fa.gz`. Sample names are computed based on the names of the files. Sample names the base name of the file with the extension, `_R1`, `_R2`, `_R1_001`, and `_R2_001` removed. If two files have the same sample name and one has `R1` and the other has `R2` the files will be uploaded to the same sample as paired reads. Since only the base name of the file and no parent directories are taken into account file names must be globally unique (except for the same sample's `R1` and `R2` files). Here are a few examples of sample names for various paths:
+The SeqtoID CLI can search a directory for read files and upload supported files as samples. Supported file types are: `.fastq`/`.fq`/`.fasta`/`.fa`/`.fastq.gz`/`.fq.gz`/`.fasta.gz`/`.fa.gz`. Sample names are computed based on the names of the files. Sample names the base name of the file with the extension, `_R1`, `_R2`, `_R1_001`, and `_R2_001` removed. If two files have the same sample name and one has `R1` and the other has `R2` the files will be uploaded to the same sample as paired reads. Since only the base name of the file and no parent directories are taken into account file names must be globally unique (except for the same sample's `R1` and `R2` files). Here are a few examples of sample names for various paths:
 
 - `your_directory_of_samples/my_sample.fasta` => `my_sample`
 - `your_directory_of_samples/sample_one/sample_one_R1.fastq.gz` => `sample_one`
@@ -206,7 +206,7 @@ Optionally, you can create a metadata CSV file for your sample. You can skip thi
 
 To associate a row of metadata with a sample you must enter the correct sample name in the `Sample Name` column of the CSV. If you would like to specify your metadata entirely with `-m` flags you don't need to include a `--metadata-csv`. If you have specified all of your metadata in the metadata csv you don't need to include any `-m` flags. `-m` flags override metadata from the csv.
 
-Once you have set up you can use the `upload-samples` command to upload your directory to SeqToID.
+Once you have set up you can use the `upload-samples` command to upload your directory to SeqtoID.
 
 **Illumina**
 
@@ -284,7 +284,7 @@ seqtoid-cli can be configured with environment variables or files. By default co
 
 ### Configuration Options
 
-- `secret`: a secret used to persistently authenticate with SeqToID. Generated by running: `seqtoid login --persistent`
+- `secret`: a secret used to persistently authenticate with SeqtoID. Generated by running: `seqtoid login --persistent`
 - `accepted_user_agreement`: set to `Y` if the user has accepted the user agreement. Setting this manually means you accept the user agreement. Also set via: `seqtoid accept-user-agreement`
 
 ## Differences from version 1
@@ -294,14 +294,14 @@ seqtoid-cli can be configured with environment variables or files. By default co
 - Distributed as a single binary for easier installation that doesn't rely on dependencies on the user's machine
 - Shell completion support
 - Structured with commands and subcommands to make room for future functionality
-- Log in in the web via your SeqToID account instead of using a static token
+- Log in in the web via your SeqtoID account instead of using a static token
 - Critical bugfixes
 - Uploads without the need for user prompts
 - Supports configuration files and environment variable configuration instead of relying solely on flags
 
 ## Contributing
 
-This project is not seeking contributions at this time. It is tighly coupled to the SeqToID Web App, it's features, it's APIs, and it's development goals. Please feel free to raise issues for feature requests or bugs.
+This project is not seeking contributions at this time. It is tighly coupled to the SeqtoID Web App, it's features, it's APIs, and it's development goals. Please feel free to raise issues for feature requests or bugs.
 
 This project adheres to the Contributor Covenant [code of conduct](https://www.contributor-covenant.org/). By participating, you are expected to uphold this code. Please report unacceptable behavior to opensource@chanzuckerberg.com.
 
