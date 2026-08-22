@@ -16,10 +16,6 @@ export class FAQPage extends React.Component {
         <div className={cs.title}>
           <h1>Frequently Asked Questions</h1>
         </div>
-        {/* TODO(REBRAND-15): Pending UCSF input -- contact emails privacy@czid.org
-            and security@czid.org (multiple occurrences below) still need UCSF
-            replacements, and the "SeqtoID Security White Paper" (/security_white_paper)
-            content is pending UCSF review. Left as-is per rebrand ground rules. */}
         <Accordion
           className={cs.question}
           header={
@@ -95,7 +91,7 @@ export class FAQPage extends React.Component {
                 to filter out and remove host sequence data in order to generate
                 Reports. If you are able to find human sequence data elsewhere
                 in SeqtoID, please let us know at{" "}
-                <a href="mailto:privacy@czid.org">privacy@czid.org</a>, and we
+                <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>, and we
                 will remove it. The fastq files you uploaded are only available
                 to you, the uploader.
               </React.Fragment>,
@@ -108,7 +104,7 @@ export class FAQPage extends React.Component {
                 assessments, data loss prevention systems, and working to ensure
                 that only authorized staff have access to the data. If you need
                 more information about our security practices please contact us
-                at <a href="mailto:security@czid.org">security@czid.org</a>.
+                at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
               </React.Fragment>,
             ]}
           />
@@ -203,10 +199,9 @@ export class FAQPage extends React.Component {
         >
           <p>
             Please contact{" "}
-            <a href="mailto:security@czid.org">security@czid.org</a> if you have
-            any security-related questions or concerns, and{" "}
-            <a href="mailto:privacy@czid.org">privacy@czid.org</a> if you have
-            any other questions about our privacy practices or legal documents.
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>{" "}
+            with any questions about security, our privacy practices, or our
+            legal documents.
           </p>
         </Accordion>
         <Accordion
@@ -216,7 +211,7 @@ export class FAQPage extends React.Component {
           {/* Address copied verbatim from TermsOfUse.tsx section 12 Contact Information. */}
           <p>Our mailing address is:</p>
           <p>
-            SeqToID Administrator<br />
+            SeqtoID Administrator<br />
             1855 Folsom St, Suite 601<br />
             San Francisco, CA 94143<br />
             USA
@@ -394,7 +389,7 @@ export class FAQPage extends React.Component {
             use and limit their use of data to providing and improving relevant
             services that we use. If you have more questions about our service
             providers, please contact us at{" "}
-            <a href="mailto:privacy@czid.org">privacy@czid.org</a>.
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
           </p>
         </Accordion>
         <Accordion
@@ -409,14 +404,11 @@ export class FAQPage extends React.Component {
           <p>
             The best place to start is SeqtoID’s{" "}
             <a href="/privacy">Privacy Policy</a> and{" "}
-            <a href="/terms">Terms of Use</a>. More technical readers should
-            take a look at the{" "}
-            <a href="/security_white_paper">SeqtoID Security White Paper</a>. In
-            this paper, you can find additional clarity on details regarding our
-            infrastructure, application, and physical security, as well as our
-            security governance and policies. If you have additional questions,
-            please feel free to reach out to our team at{" "}
-            <a href="mailto:security@czid.org">security@czid.org</a>.
+            <a href="/terms">Terms of Use</a>. If you have additional questions
+            about our infrastructure, application, and physical security, or our
+            security governance and policies, please feel free to reach out to
+            our team at{" "}
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
           </p>
         </Accordion>
         </NarrowContainer>
