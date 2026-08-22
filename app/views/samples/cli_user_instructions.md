@@ -103,9 +103,9 @@ You can use the SeqtoID CLI to upload samples to upload a single sample to Seqto
 
 Optionally, you can create a metadata CSV file for your sample. You can skip this step and specify your metadata with command line flags. For instructions on creating this file see:
 
-- Instructions: https://seqtoid.org/metadata/instructions
-- Metadata dictionary and supported host genomes: https://seqtoid.org/metadata/dictionary
-- Metadata CSV template: https://seqtoid.org/metadata/metadata_template_csv
+- [Instructions](/metadata/instructions)
+- [Metadata dictionary and supported host genomes](/metadata/dictionary)
+- [Metadata CSV template](/metadata/metadata_template_csv)
 
 Be sure to set the sample name in the `Sample Name` column of the CSV to the same name you pass to the `upload-sample` command with `-s`/`--sample-name`. If you would like to specify your metadata entirely with `-m` flags you don't need to include a `--metadata-csv`. If you have specified all of your metadata in the metadata csv you don't need to include any `-m` flags. `-m` flags override metadata from the csv.
 
@@ -200,9 +200,9 @@ This is the first pass of directory uploads and we would like to support more di
 
 Optionally, you can create a metadata CSV file for your sample. You can skip this step and specify your metadata with command line flags. For instructions on creating this file see:
 
-- Instructions: https://seqtoid.org/metadata/instructions
-- Metadata dictionary and supported host genomes: https://seqtoid.org/metadata/dictionary
-- Metadata CSV template: https://seqtoid.org/metadata/metadata_template_csv
+- [Instructions](/metadata/instructions)
+- [Metadata dictionary and supported host genomes](/metadata/dictionary)
+- [Metadata CSV template](/metadata/metadata_template_csv)
 
 To associate a row of metadata with a sample you must enter the correct sample name in the `Sample Name` column of the CSV. If you would like to specify your metadata entirely with `-m` flags you don't need to include a `--metadata-csv`. If you have specified all of your metadata in the metadata csv you don't need to include any `-m` flags. `-m` flags override metadata from the csv.
 
@@ -305,6 +305,4 @@ This project is not seeking contributions at this time. It is tightly coupled to
 
 ## Reporting Security Issues
 
-Please note: If you believe you have found a security issue, please responsibly disclose by contacting us at seqtoid-support@ucsf.edu.
-
-See [SECURITY.md](SECURITY.md) for more information.
+Please note: If you believe you have found a security issue, please responsibly disclose by contacting us at [seqtoid-support@ucsf.edu](mailto:seqtoid-support@ucsf.edu).
