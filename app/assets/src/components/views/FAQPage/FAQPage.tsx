@@ -91,7 +91,7 @@ export class FAQPage extends React.Component {
                 to filter out and remove host sequence data in order to generate
                 Reports. If you are able to find human sequence data elsewhere
                 in SeqtoID, please let us know at{" "}
-                <a href="mailto:privacy@czid.org">privacy@czid.org</a>, and we
+                <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>, and we
                 will remove it. The fastq files you uploaded are only available
                 to you, the uploader.
               </React.Fragment>,
@@ -104,7 +104,7 @@ export class FAQPage extends React.Component {
                 assessments, data loss prevention systems, and working to ensure
                 that only authorized staff have access to the data. If you need
                 more information about our security practices please contact us
-                at <a href="mailto:security@czid.org">security@czid.org</a>.
+                at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
               </React.Fragment>,
             ]}
           />
@@ -199,10 +199,9 @@ export class FAQPage extends React.Component {
         >
           <p>
             Please contact{" "}
-            <a href="mailto:security@czid.org">security@czid.org</a> if you have
-            any security-related questions or concerns, and{" "}
-            <a href="mailto:privacy@czid.org">privacy@czid.org</a> if you have
-            any other questions about our privacy practices or legal documents.
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>{" "}
+            with any questions about security, our privacy practices, or our
+            legal documents.
           </p>
         </Accordion>
         <Accordion
@@ -390,7 +389,7 @@ export class FAQPage extends React.Component {
             use and limit their use of data to providing and improving relevant
             services that we use. If you have more questions about our service
             providers, please contact us at{" "}
-            <a href="mailto:privacy@czid.org">privacy@czid.org</a>.
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
           </p>
         </Accordion>
         <Accordion

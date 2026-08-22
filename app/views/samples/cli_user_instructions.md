@@ -305,6 +305,6 @@ This project is not seeking contributions at this time. It is tightly coupled to
 
 ## Reporting Security Issues
 
-Please note: If you believe you have found a security issue, please responsibly disclose by contacting us at security@seqtoid.org.
+Please note: If you believe you have found a security issue, please responsibly disclose by contacting us at seqtoid-support@ucsf.edu.
 
 See [SECURITY.md](SECURITY.md) for more information.

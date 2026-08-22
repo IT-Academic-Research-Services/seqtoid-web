@@ -103,7 +103,7 @@ export const PrivacyNotice = () => {
                 <td>Data about researchers with SeqtoID accounts such as name, email, institution, basic information about how they are using SeqtoID (ex: search queries), and information provided through surveys, during an in-person event, or for user support (ex: resolving support requests).</td>
                 <td>We use this data only to operate, secure, and improve the SeqtoID services.</td>
                 <td>Basic SeqtoID account information such as name and institution may be visible to other SeqtoID Users (ex: with collaborators on a shared project).<br /><br />This data is also shared with service providers (ex: AWS) that help operate, improve, and secure SeqtoID.<br /><br />Service providers will not use any data shared with them for any purpose beyond operating, improving, and securing SeqtoID.<br /><br />We will never sell your data or share it with anyone that does.</td>
-                <td>Users can request deletion of their SeqtoID account data by contacting us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and we will fulfill the request within the timelines set forth under applicable privacy laws. You can learn more about your choices in the Section titled, &quot;Choices About Your Data.&quot;</td>
+                <td>Users can request deletion of their SeqtoID account data by contacting us at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> and we will fulfill the request within the timelines set forth under applicable privacy laws. You can learn more about your choices in the Section titled, &quot;Choices About Your Data.&quot;</td>
               </tr>
               <tr>
                 <td><strong>Device and Analytics Data</strong></td>
@@ -182,13 +182,13 @@ export const PrivacyNotice = () => {
 
         <p>In order to advance SeqtoID&apos;s goal of creating a global pathogen dashboard for researchers, Users will have the option (at their discretion) to share Report Data and Sample Metadata with all SeqtoID Users. Users can also choose to share their Report Data by creating Projects (groups of Reports) and sharing those Projects with other SeqtoID Users.</p>
 
-        <p>If you have questions about how to share your Report Data and Sample Metadata, then please reach out to <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>.</p>
+        <p>If you have questions about how to share your Report Data and Sample Metadata, then please reach out to <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.</p>
 
         <h2>2. Report Data.</h2>
 
         <p>Report Data is information SeqtoID produced from Upload Data. We generate Report Data by processing Upload Data through our Data Pipeline. The &quot;Data Pipeline&quot; cleans (e.g., by removing duplicate nucleotides) and analyzes (e.g., by matching Raw Sample Data nucleotide sequences with known pathogen sequences) the Upload Data. Report Data may include, for example, data about the pathogen sequences identified in the Raw Sample Data and the frequency of such identification (&quot;Pathogen Data&quot;) or raw numeric counts of non-personally identifying gene expression profiles that were found in the Raw Sample Data (&quot;Gene Counts&quot;).</p>
 
-        <p>Once Raw Sample Data has been put through the Data Pipeline, the Report Data that is produced no longer includes any human genetic sequence data, is not personal data, and does not, on its own, permit association with any specific individual. If you are able to find human sequence data in any Reports in SeqtoID, please let us know at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and we will address it.</p>
+        <p>Once Raw Sample Data has been put through the Data Pipeline, the Report Data that is produced no longer includes any human genetic sequence data, is not personal data, and does not, on its own, permit association with any specific individual. If you are able to find human sequence data in any Reports in SeqtoID, please let us know at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> and we will address it.</p>
 
         <p>UCSF acts as steward of processed outputs (Report Data) required for platform operation, quality assurance, research, and public-health use. Users retain ownership of their underlying Upload Data. UCSF will delete Raw Sample Data (e.g., FASTQ) after processing and will not retain access to such data. Users retain the right to publish or otherwise use their data.</p>
 
@@ -228,14 +228,14 @@ export const PrivacyNotice = () => {
         <p>We retain your personal data as long as is reasonably necessary:</p>
         <ul>
           <li>Raw Sample Data is deleted promptly after it is processed by our Data Pipeline.</li>
-          <li>Sample Metadata and Report Data are retained until Users delete it from SeqtoID. Users may submit deletion requests by emailing <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and we will delete the requested Report Data (including Sample Metadata) within the timelines set forth under applicable privacy laws.</li>
-          <li>User Data is retained until Users close their SeqtoID account as such data is required to manage the service. Users may submit a request for account closure by emailing <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>. We will delete your data within 60 days following the close of your account.</li>
+          <li>Sample Metadata and Report Data are retained until Users delete it from SeqtoID. Users may submit deletion requests by emailing <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> and we will delete the requested Report Data (including Sample Metadata) within the timelines set forth under applicable privacy laws.</li>
+          <li>User Data is retained until Users close their SeqtoID account as such data is required to manage the service. Users may submit a request for account closure by emailing <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>. We will delete your data within 60 days following the close of your account.</li>
         </ul>
         <p>Please note that we do not control, and so cannot delete, personal data that Users have copied outside of SeqtoID.</p>
 
         <h2>5. Vendors and Service Providers.</h2>
 
-        <p>We disclose Upload Data, Report Data, Visitor Data, and User Data to service providers, such as Amazon Web Services and ServiceNow. We may also share Visitor and User data with analytics vendors that assist us to improve and optimize SeqtoID. To learn more about our vendors we use, please contact us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>.</p>
+        <p>We disclose Upload Data, Report Data, Visitor Data, and User Data to service providers, such as Amazon Web Services and ServiceNow. We may also share Visitor and User data with analytics vendors that assist us to improve and optimize SeqtoID. To learn more about our vendors we use, please contact us at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.</p>
 
         <p>If we can no longer keep operating SeqtoID or believe that its purpose is better served by having another entity operating it, we will transfer SeqtoID and all data existing therein (Upload Data, Report Data, Visitor Data, and User Data) so that the Users can continue to be served. We will always let you know before this happens, and you will have the option to delete your account and any data you&apos;ve uploaded prior to any such transfer. Should this occur, the entity to which we transfer your data will be obliged to use it in a manner that is consistent with this Privacy Notice and the Terms.</p>
 
@@ -245,7 +245,7 @@ export const PrivacyNotice = () => {
 
         <p>We use industry standard security measures to ensure the confidentiality, integrity and availability of data uploaded into SeqtoID. This includes practices like encrypting connections to SeqtoID using TLS, hosting SeqtoID on leading cloud providers with robust physical security, and ensuring that access to any personal data within SeqtoID by staff working on the tool is strictly limited. And as mentioned above, Raw Sample Data is not shared with anyone other than the User that uploaded the Sample or the service providers necessary to operate the service. Even staff working on SeqtoID cannot access this information except as specifically instructed by a User, such as to debug an issue.</p>
 
-        <p>Security takes ongoing work and we will continue to monitor and adjust our security measures as SeqtoID develops. Please notify us immediately at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> if you suspect your account has been compromised or are aware of any other security issues relating to SeqtoID.</p>
+        <p>Security takes ongoing work and we will continue to monitor and adjust our security measures as SeqtoID develops. Please notify us immediately at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> if you suspect your account has been compromised or are aware of any other security issues relating to SeqtoID.</p>
 
         <h2>7. Choices About Your Data.</h2>
 
@@ -253,8 +253,8 @@ export const PrivacyNotice = () => {
         <ul>
           <li>Users are able to request the deletion of User Data that constitutes their personal data or Raw Sample Data that they submitted to SeqtoID.</li>
           <li>Users are able to access and download Report Data relating to Upload Data they submitted within SeqtoID.</li>
-          <li>Users may also object to the processing of User Data in certain circumstances by emailing <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>. In such cases, we will stop processing that data unless we have legitimate grounds to continue processing it — for example, it is needed for legal reasons.</li>
-          <li>Users can also contact us by emailing <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> should they wish to access, restrict the processing of, or rectify their User Data.</li>
+          <li>Users may also object to the processing of User Data in certain circumstances by emailing <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>. In such cases, we will stop processing that data unless we have legitimate grounds to continue processing it — for example, it is needed for legal reasons.</li>
+          <li>Users can also contact us by emailing <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> should they wish to access, restrict the processing of, or rectify their User Data.</li>
         </ul>
 
         <p>If a User has submitted Upload Data containing your personal data, please see below:</p>
@@ -263,7 +263,7 @@ export const PrivacyNotice = () => {
 
         <p>If you believe your information has been uploaded to SeqtoID, you should contact the researcher or User that uploaded this information to (i) request access to the information, (ii) object to the processing of the information, or (iii) seek deletion, restriction, or rectification of the information. Similarly, if you previously provided consent to a researcher or User, you may have the right to withdraw that consent. You should contact the researcher or User to make such a withdrawal or otherwise exercise your rights.</p>
 
-        <p>Please contact us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> if you would like to exercise the privacy choices discussed above or if you have any questions. We may ask for additional information that allows us to reasonably verify that you are the person about whom we collected personal information. If you would like an authorized agent to make a request for you, have that agent email <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> with information that is sufficient for us to verify that the authorized agent is acting on your behalf. If you would like to appeal a decision with respect to a request to exercise any of these rights, please email us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a> and explain the basis for your appeal. If your data is subject to the EU data protection law (e.g., GDPR) and you wish to raise a concern about our use of your information (and without prejudice to any other rights you may have), you have the right to do so with your local supervisory authority or by emailing us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>.</p>
+        <p>Please contact us at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> if you would like to exercise the privacy choices discussed above or if you have any questions. We may ask for additional information that allows us to reasonably verify that you are the person about whom we collected personal information. If you would like an authorized agent to make a request for you, have that agent email <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> with information that is sufficient for us to verify that the authorized agent is acting on your behalf. If you would like to appeal a decision with respect to a request to exercise any of these rights, please email us at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> and explain the basis for your appeal. If your data is subject to the EU data protection law (e.g., GDPR) and you wish to raise a concern about our use of your information (and without prejudice to any other rights you may have), you have the right to do so with your local supervisory authority or by emailing us at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.</p>
 
         <h2>8. Do Not Track Signals.</h2>
 
@@ -281,7 +281,7 @@ export const PrivacyNotice = () => {
 
         <h2>11. How to Contact Us.</h2>
 
-        <p>If you have any questions, comments, or concerns with this Privacy Notice, you may contact us by email at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>.</p>
+        <p>If you have any questions, comments, or concerns with this Privacy Notice, you may contact us by email at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.</p>
 
         <h2>12. Changes to This Privacy Notice.</h2>
 
