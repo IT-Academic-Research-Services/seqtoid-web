@@ -16,10 +16,6 @@ export class FAQPage extends React.Component {
         <div className={cs.title}>
           <h1>Frequently Asked Questions</h1>
         </div>
-        {/* TODO(REBRAND-15): Pending UCSF input -- contact emails privacy@czid.org
-            and security@czid.org (multiple occurrences below) still need UCSF
-            replacements, and the "SeqtoID Security White Paper" (/security_white_paper)
-            content is pending UCSF review. Left as-is per rebrand ground rules. */}
         <Accordion
           className={cs.question}
           header={
@@ -409,14 +405,11 @@ export class FAQPage extends React.Component {
           <p>
             The best place to start is SeqtoID’s{" "}
             <a href="/privacy">Privacy Policy</a> and{" "}
-            <a href="/terms">Terms of Use</a>. More technical readers should
-            take a look at the{" "}
-            <a href="/security_white_paper">SeqtoID Security White Paper</a>. In
-            this paper, you can find additional clarity on details regarding our
-            infrastructure, application, and physical security, as well as our
-            security governance and policies. If you have additional questions,
-            please feel free to reach out to our team at{" "}
-            <a href="mailto:security@czid.org">security@czid.org</a>.
+            <a href="/terms">Terms of Use</a>. If you have additional questions
+            about our infrastructure, application, and physical security, or our
+            security governance and policies, please feel free to reach out to
+            our team at{" "}
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
           </p>
         </Accordion>
         </NarrowContainer>
