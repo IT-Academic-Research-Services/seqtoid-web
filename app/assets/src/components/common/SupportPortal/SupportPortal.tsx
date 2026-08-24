@@ -143,8 +143,13 @@ const SupportPortal = () => {
       setStatus("success");
     } catch (error) {
       logError({
+        exception: error,
         message: "Failed to submit support request",
-        details: { error },
+        details: {
+          description,
+          quickReport,
+          diagnostics,
+        },
       });
       setStatus("error");
     }
@@ -177,8 +182,8 @@ const SupportPortal = () => {
           <div className={cs.panel} data-testid="support-portal-panel">
             <div className={cs.header}>Report an issue</div>
             <div className={cs.subheader}>
-              Here&apos;s what we noticed. Add anything else below and send it to
-              our team &mdash; we&apos;ll take it from here.
+              Here&apos;s what we noticed. Add anything else below and send it
+              to our team &mdash; we&apos;ll take it from here.
             </div>
 
             {/* (A) MINIMAL user-facing summary: error / task / project / account. */}
@@ -199,9 +204,7 @@ const SupportPortal = () => {
                 ))}
             </div>
 
-            <div className={cs.sectionLabel}>
-              Anything else? (optional)
-            </div>
+            <div className={cs.sectionLabel}>Anything else? (optional)</div>
             <Textarea
               className={cs.textarea}
               value={description}

@@ -48,7 +48,7 @@ const toApiError = (e: $TSFixMe): Error => {
     e.code = e.response.data.code;
   }
   if (!e.error && e.response?.data?.error) {
-    e.error = e.error ?? e.response.data.error;
+    e.error = e.response.data.error;
   }
   if (e.response?.status) {
     e = Object.assign(e, {

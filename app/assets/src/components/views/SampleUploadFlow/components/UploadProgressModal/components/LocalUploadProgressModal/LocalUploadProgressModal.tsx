@@ -247,7 +247,7 @@ export const LocalUploadProgressModal = ({
       ) => {
         logError({
           message: "UploadProgressModal: onCreateSamplesError",
-          details: { errors },
+          details: { errors, erroredSampleNames },
         });
 
         const uploadStatuses = zipObject(
@@ -290,8 +290,9 @@ export const LocalUploadProgressModal = ({
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(SAMPLE_UPLOAD_CONCURRENCY, samples.length) }, () =>
-        runNextSample(),
+      Array.from(
+        { length: Math.min(SAMPLE_UPLOAD_CONCURRENCY, samples.length) },
+        () => runNextSample(),
       ),
     );
 
@@ -579,9 +580,9 @@ export const LocalUploadProgressModal = ({
 
     logError({
       message,
+      exception: error,
       details: {
         sample,
-        error,
       },
     });
   };

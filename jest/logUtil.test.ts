@@ -20,9 +20,18 @@ describe("logUtil.ts logError", () => {
     const exception = new Error("boom");
     logError({ message: "failed", exception, details: { id: 1 } });
     expect(Sentry.captureException).toHaveBeenCalledWith(exception, {
-      extra: { message: "failed", details: { id: 1 } },
+      extra: { message: "failed", id: 1 },
     });
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes to captureMessage when an exception is provided but is no an Error", () => {
+    const exception = "invalid thingy" as unknown as Error;
+    logError({ message: "bad error", exception, details: { id: 77 } });
+    expect(Sentry.captureMessage).toHaveBeenCalledWith("bad error", {
+      extra: { exception: "invalid thingy", id: 77 },
+    });
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("routes to captureMessage when no exception is provided", () => {
