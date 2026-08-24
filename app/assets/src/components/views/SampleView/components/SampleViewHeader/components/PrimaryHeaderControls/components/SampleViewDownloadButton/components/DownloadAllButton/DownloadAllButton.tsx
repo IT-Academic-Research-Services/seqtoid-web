@@ -53,6 +53,7 @@ export const DownloadAllButton = ({
         if (data.ZipLink?.error) {
           logError({
             message: `Zip file retrieval failed with error: ${data.ZipLink.error}`,
+            details: { workflowRun },
           });
           return;
         }

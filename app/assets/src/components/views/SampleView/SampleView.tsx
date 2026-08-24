@@ -844,10 +844,10 @@ const SampleViewComponent = ({
             }
             // Genuinely unexpected failure: keep reporting it.
             logError({
+              exception: error as unknown as Error,
               message:
                 "SampleView: Failed to persist background model selection",
               details: {
-                error,
                 projectId: project?.id,
                 backgroundId: newBackgroundId,
                 hasExistingPersistedBackground: hasPersistedBackground,
