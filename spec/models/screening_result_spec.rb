@@ -18,22 +18,37 @@ RSpec.describe ScreeningResult, type: :model do
     end
   end
 
-  describe "#passed? / #hold_required? (transstatus-primary)" do
-    it "passes ONLY on an exact Passed transstatus" do
+  describe "#passed? / #hold_required?" do
+    it "passes on an exact Passed transstatus" do
       expect(build(:screening_result, transstatus: ScreeningResult::TRANSSTATUS_PASSED)).to be_passed
     end
 
-    it "holds on On Hold-RPS (regardless of alert level)" do
+    it "holds on On Hold-RPS even with a clean alert level (explicit vendor on-hold wins)" do
       res = build(:screening_result, transstatus: ScreeningResult::TRANSSTATUS_ON_HOLD,
                                       alert_level: ScreeningResult::ALERT_NOMATCH)
       expect(res).to be_hold_required
       expect(res).not_to be_passed
     end
 
-    it "fail-closed: holds on a blank/unknown transstatus even with a clean alert level" do
-      expect(build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_NOMATCH))
-        .to be_hold_required
-      expect(build(:screening_result, transstatus: "Weird-New-Status")).to be_hold_required
+    # The SearchEntity screen this app makes returns its verdict in alert_level and leaves transstatus
+    # blank; a clean no-match must PASS (the old transstatus-only logic held every clean subject).
+    it "passes on a clean/allow-listed alert level when transstatus is blank" do
+      [ScreeningResult::ALERT_NOMATCH, ScreeningResult::ALERT_WL, ScreeningResult::ALERT_AL].each do |lvl|
+        res = build(:screening_result, transstatus: nil, alert_level: lvl)
+        expect(res).to be_passed, "expected #{lvl} with blank transstatus to pass"
+      end
+    end
+
+    it "fail-closed: holds on a match or unknown alert level when transstatus is blank" do
+      expect(build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_YELLOW)).to be_hold_required
+      expect(build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_RED)).to be_hold_required
+      expect(build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_TRIPLE_RED)).to be_hold_required
+    end
+
+    it "holds a clean no-match when a sanctioned-jurisdiction association forces effective RED" do
+      res = build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_NOMATCH,
+                                      jurisdiction_risk: true)
+      expect(res).to be_hold_required
     end
   end
 
