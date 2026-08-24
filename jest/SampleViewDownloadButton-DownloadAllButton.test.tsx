@@ -135,6 +135,9 @@ describe("DownloadAllButton", () => {
     act(() => capturedObserver.next({ ZipLink: { error: "boom" } }));
     expect(mockLogError).toHaveBeenCalledWith({
       message: "Zip file retrieval failed with error: boom",
+      details: {
+        workflowRun: expect.objectContaining({ id: 88 }),
+      },
     });
     expect(mockOpenUrl).not.toHaveBeenCalled();
   });

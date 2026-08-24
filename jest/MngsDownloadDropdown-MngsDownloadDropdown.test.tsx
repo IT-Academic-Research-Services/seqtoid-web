@@ -208,7 +208,11 @@ describe("MngsDownloadDropdown", () => {
       expect.objectContaining({
         message:
           "SampleViewControls/DownloadDropdown: Invalid option passed to handleDownload",
-        details: { option: "bogus_option" },
+        details: {
+          option: "bogus_option",
+          pipelineRun: expect.objectContaining({ id: 3 }),
+          sample: expect.objectContaining({ id: 9 }),
+        },
       }),
     );
   });

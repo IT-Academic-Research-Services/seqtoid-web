@@ -8,7 +8,7 @@
 // entity-input throw on the unsorted path, descending creation_source sorting,
 // the nullish-sample throw, and the `?? undefined` fallbacks on every
 // consensus-genome metric.
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { UserContext } from "~/components/common/UserContext";
 import { GlobalContext } from "~/globalContext/reducer";
 
@@ -147,7 +147,7 @@ const renderFC = (props: $TSFixMe = {}) => {
 };
 
 const loggedErrorMessage = () =>
-  mockLogError.mock.calls[0][0].details.error.message;
+  mockLogError.mock.calls[0][0].exception.message;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -168,11 +168,13 @@ describe("DiscoveryViewFC query-input conditionals", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        filters: { locationV2: ["California"] },
-      }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          filters: { locationV2: ["California"] },
+        }),
+      ),
     );
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual([]));
@@ -191,8 +193,10 @@ describe("DiscoveryViewFC query-input conditionals", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC({ domain: "all_data" });
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ orderBy: "nActg", orderDir: "ASC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ orderBy: "nActg", orderDir: "ASC" }),
+      ),
     );
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual([]));
@@ -208,8 +212,10 @@ describe("DiscoveryViewFC query-input conditionals", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: null }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: null }),
+      ),
     );
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual([]));
@@ -228,8 +234,10 @@ describe("DiscoveryViewFC missing-response guards", () => {
     responses[SEQ_READ_IDS] = { fedSequencingReads: null };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", search: "swab" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", search: "swab" }),
+      ),
     );
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
@@ -244,8 +252,10 @@ describe("DiscoveryViewFC missing-response guards", () => {
     responses[CG_IDS] = { fedConsensusGenomes: null };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "gcPercent", orderDir: "ASC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: "gcPercent", orderDir: "ASC" }),
+      ),
     );
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
@@ -263,7 +273,9 @@ describe("DiscoveryViewFC missing-response guards", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
     expect(loggedErrorMessage()).toContain("Couldn't find an entity input");
@@ -275,7 +287,9 @@ describe("DiscoveryViewFC missing-response guards", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     responses[SEQ_READS] = {
@@ -308,13 +322,15 @@ describe("DiscoveryViewFC consensus-genome sort join", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        search: "swab",
-        orderBy: "coverageDepth",
-        orderDir: "DESC",
-      }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          search: "swab",
+          orderBy: "coverageDepth",
+          orderDir: "DESC",
+        }),
+      ),
     );
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wrA"]));
@@ -343,12 +359,14 @@ describe("DiscoveryViewFC creation_source sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        orderBy: "creation_source",
-        orderDir: "DESC",
-      }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "creation_source",
+          orderDir: "DESC",
+        }),
+      ),
     );
 
     await waitFor(() =>
@@ -370,7 +388,9 @@ describe("DiscoveryViewFC row nullish fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     const row = latest().cgRows[0];
@@ -401,7 +421,9 @@ describe("DiscoveryViewFC row nullish fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     const row = latest().cgRows[0];
@@ -452,7 +474,9 @@ describe("DiscoveryViewFC row nullish fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     const row = latest().cgRows[0];
