@@ -41,10 +41,14 @@ module ExportControlScreeningGate
   private
 
   # ---- onboarding gate point (wired as a before_action on ApplicationController) ----
+  # A held (screening-hit) user is sent to the "access under review" page, NOT the IDV clearance form:
+  # under the attestation + Visual Compliance approach there is no document-IDV step for the user to
+  # complete, so a hold is resolved by manual compliance review (auto-released by the resolution poller),
+  # not by the user re-verifying. Both gate points therefore land on export_control_clearance_denied.
   def screen_export_control_onboarding
     enforce_export_control_screen(
       point_enabled: onboarding_screen_gate_enabled?,
-      redirect_path: new_export_control_clearance_path
+      redirect_path: export_control_clearance_denied_path
     )
   end
 
