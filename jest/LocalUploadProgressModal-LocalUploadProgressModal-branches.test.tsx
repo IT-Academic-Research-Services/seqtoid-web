@@ -401,7 +401,7 @@ describe("LocalUploadProgressModal degenerate payloads", () => {
       expect.objectContaining({
         message:
           "UploadProgressModal: Local sample upload error to S3 occurred",
-        details: expect.objectContaining({ error: null }),
+        exception: null,
       }),
     );
   });

@@ -10,7 +10,7 @@
 // generated operation name, and <DiscoveryView> is replaced by a probe that
 // captures the props it is handed - and feeds it the null-heavy payloads those
 // branches need.
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { UserContext } from "~/components/common/UserContext";
 import { GlobalContext } from "~/globalContext/reducer";
 
@@ -185,7 +185,9 @@ describe("consensus-genome row mapper null fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     // The CG-specific row replaces the bare sequencing-read row.
@@ -231,7 +233,9 @@ describe("consensus-genome row mapper null fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     const cgRow = latest().cgRows[0];
@@ -257,7 +261,9 @@ describe("consensus-genome row mapper null fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     // Only the bare sequencing-read row survives; no CG fields were added.
@@ -271,7 +277,9 @@ describe("consensus-genome row mapper null fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     // No taxon at all -> no referenceAccession object is built.
     expect(latest().cgRows[0].referenceAccession).toBeUndefined();
@@ -284,7 +292,9 @@ describe("consensus-genome row mapper null fallbacks", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     // The taxon exists, so the object is built, but its name is nulled out.
     expect(latest().cgRows[0].referenceAccession).toEqual({
@@ -297,7 +307,9 @@ describe("consensus-genome row mapper null fallbacks", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" })),
+    );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     responses[SEQ_READS] = {
@@ -315,8 +327,10 @@ describe("orderBy builders: the null and undefined arms", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: null, orderDir: null }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: null, orderDir: null }),
+      ),
     );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
@@ -334,8 +348,10 @@ describe("orderBy builders: the null and undefined arms", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: undefined, orderDir: "ASC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: undefined, orderDir: "ASC" }),
+      ),
     );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
@@ -349,8 +365,10 @@ describe("orderBy builders: the null and undefined arms", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "createdAt", orderDir: "DESC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: "createdAt", orderDir: "DESC" }),
+      ),
     );
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
@@ -366,8 +384,10 @@ describe("sequencing-read sort path", () => {
     responses[SEQ_READ_IDS] = { fedSequencingReads: [{ id: "sr1" }] };
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy, orderDir: "ASC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy, orderDir: "ASC" }),
+      ),
     );
     return latest;
   };
@@ -387,12 +407,14 @@ describe("sequencing-read sort path", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "technology", orderDir: "ASC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: "technology", orderDir: "ASC" }),
+      ),
     );
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
-    expect(String(mockLogError.mock.calls[0][0].details.error)).toMatch(
+    expect(mockLogError.mock.calls[0][0].exception.message).toMatch(
       /sequencingReads data/,
     );
   });
@@ -407,8 +429,14 @@ describe("consensus-genome sort path", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "coverageDepth", orderDir: "ASC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "coverageDepth",
+          orderDir: "ASC",
+        }),
+      ),
     );
     await waitFor(() => expect(callsFor(CG_IDS)).toHaveLength(1));
     expect(inputFor(CG_IDS).orderBy).toEqual([
@@ -422,8 +450,14 @@ describe("consensus-genome sort path", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "totalReadsCG", orderDir: "DESC" }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "totalReadsCG",
+          orderDir: "DESC",
+        }),
+      ),
     );
     await waitFor(() => expect(callsFor(CG_IDS)).toHaveLength(1));
     expect(inputFor(CG_IDS).orderBy).toEqual([
@@ -432,12 +466,14 @@ describe("consensus-genome sort path", () => {
 
     capturedProps.length = 0;
     const second = renderFC();
-    second().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        orderBy: "referenceAccessionLength",
-        orderDir: "ASC",
-      }),
+    act(() =>
+      second().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "referenceAccessionLength",
+          orderDir: "ASC",
+        }),
+      ),
     );
     await waitFor(() => expect(callsFor(CG_IDS).length).toBeGreaterThan(1));
     expect(inputFor(CG_IDS, 1).orderBy).toEqual([
@@ -451,12 +487,14 @@ describe("consensus-genome sort path", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        orderBy: "referenceAccession",
-        orderDir: "ASC",
-      }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "referenceAccession",
+          orderDir: "ASC",
+        }),
+      ),
     );
     await waitFor(() => expect(callsFor(CG_IDS)).toHaveLength(1));
     expect(inputFor(CG_IDS).orderBy).toEqual([
@@ -470,16 +508,18 @@ describe("consensus-genome sort path", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        orderBy: "coverageDepth",
-        orderDir: "ASC",
-      }),
+    act(() =>
+      latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "coverageDepth",
+          orderDir: "ASC",
+        }),
+      ),
     );
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
-    expect(String(mockLogError.mock.calls[0][0].details.error)).toMatch(
+    expect(mockLogError.mock.calls[0][0].exception.message).toMatch(
       /consensusGenomes data/,
     );
   });

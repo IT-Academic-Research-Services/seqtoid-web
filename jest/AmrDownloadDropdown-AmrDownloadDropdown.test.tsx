@@ -148,7 +148,11 @@ describe("AmrDownloadDropdown", () => {
       expect.objectContaining({
         message:
           "SampleViewControls/AmrDownloadDropdown: Invalid option passed to handleDownload",
-        details: { option: "some-unknown-option" },
+        details: {
+          downloadUrl: "",
+          fileName: "",
+          option: "some-unknown-option",
+        },
       }),
     );
   });
