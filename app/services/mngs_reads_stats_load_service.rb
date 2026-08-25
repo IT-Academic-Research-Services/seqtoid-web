@@ -294,13 +294,14 @@ class MngsReadsStatsLoadService
         Syscall.s3_cp(tmp.path.to_s, "#{res_folder}/#{PipelineRun::STATS_JSON_NAME}")
       rescue StandardError => e
         LogUtil.log_error(
-          "MngsReadsStatsLoadService.upload_stats_file - File not found: s3://#{SAMPLES_BUCKET_NAME}/#{key}",
+          "MngsReadsStatsLoadService.upload_stats_file - Error copying to s3://#{SAMPLES_BUCKET_NAME}/#{key}",
           exception: e,
           tmp_path: tmp.path.to_s,
           res_folder: res_folder,
           STATS_JSON_NAME: PipelineRun::STATS_JSON_NAME,
           pipeline_run: pipeline_run.inspect
         )
+        raise
       end
     end
   end

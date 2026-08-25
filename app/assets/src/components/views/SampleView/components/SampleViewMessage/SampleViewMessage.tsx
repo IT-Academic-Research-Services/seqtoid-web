@@ -84,7 +84,6 @@ export const SampleViewMessage = ({
       // only try to set these fields if the pipeline run started.
       if (pipelineRun) {
         // TODO: pipelineRun is sealed/readonly, so we have to clone it.
-        console.warn("SampleViewMessage.pipelineRun.1", pipelineRun);
         pipelineRun = cloneDeep(pipelineRun);
         pipelineRun.known_user_error =
           pipelineRun.known_user_error ||
@@ -94,7 +93,6 @@ export const SampleViewMessage = ({
           pipelineRun.error_message ||
           sample?.error_message ||
           reportMetadata?.errorMessage;
-        console.warn("SampleViewMessage.pipelineRun.2", pipelineRun);
       }
       ({ status, message, subtitle, linkText, type, link } = sampleErrorInfo({
         sampleId: sample.id,
