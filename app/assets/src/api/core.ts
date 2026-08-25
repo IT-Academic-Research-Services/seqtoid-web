@@ -39,12 +39,25 @@ const buildUnauthorizedError = (data: $TSFixMe) => {
 // and rejects with a real Error; every other failure keeps the existing behavior --
 // reject with the parsed response body, or the raw error when there is no HTTP response
 // (e.g. a transient network error, SMP-1589).
-const rejectApiError = (e: $TSFixMe) => {
-  if (e?.response?.status === 401) {
+const toApiError = (e: $TSFixMe): Error => {
+  if (e.response?.status === 401) {
     window.location.href = LOGIN_URL;
-    return Promise.reject(buildUnauthorizedError(e.response.data));
+    return buildUnauthorizedError(e.response.data);
   }
-  return Promise.reject(e.response?.data ?? e);
+  if (!e.code && e.response?.data?.code) {
+    e.code = e.response.data.code;
+  }
+  if (!e.error && e.response?.data?.error) {
+    e.error = e.response.data.error;
+  }
+  if (e.response?.status) {
+    e = Object.assign(e, {
+      code: e.code ?? e.response.status,
+      status: e.status ?? e.response.status,
+      statusText: e.statusText ?? e.response.statusText ?? "Unknown",
+    });
+  }
+  return e;
 };
 
 const postWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
@@ -58,7 +71,7 @@ const postWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
     // Just return the data.
     return resp.data;
   } catch (e) {
-    return rejectApiError(e);
+    throw toApiError(e);
   }
 };
 
@@ -74,7 +87,7 @@ const putWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
     // Just return the data.
     return resp.data;
   } catch (e) {
-    return rejectApiError(e);
+    throw toApiError(e);
   }
 };
 
@@ -108,7 +121,7 @@ const get = async (url: $TSFixMe, config: $TSFixMe = {}) => {
       );
     }
   }
-  return rejectApiError(lastErr);
+  throw toApiError(lastErr);
 };
 
 const deleteWithCSRF = async (url: $TSFixMe) => {
@@ -121,7 +134,7 @@ const deleteWithCSRF = async (url: $TSFixMe) => {
     });
     return resp.data;
   } catch (e) {
-    return rejectApiError(e);
+    throw toApiError(e);
   }
 };
 

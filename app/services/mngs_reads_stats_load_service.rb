@@ -19,25 +19,25 @@ class MngsReadsStatsLoadService
   # as an array of hashes.
   def fetch_counts(pipeline_run)
     res_folder = pipeline_run.output_s3_path_with_version
-    bucket = ENV['SAMPLES_BUCKET_NAME']
     # To get the prefix excluding the bucket name, split the res_folder
     # into 4 parts and grab the last item from the split.
     prefix = res_folder.split("/", 4)[-1]
 
-    # list_objects_v2 is limited to 1000 objects at a time, so loop
-    # while there are more objects to be fetched.
-    filenames = []
-    pages = AwsClient[:s3].list_objects_v2({
-                                             bucket: bucket,
-                                             prefix: prefix,
-                                           })
-    pages.each do |resp|
-      filenames.concat(resp.contents.map { |object| File.basename(object.key) }.grep(/count$/))
-    end
-
     all_counts = []
-    filenames.each do |fname|
-      resp = AwsClient[:s3].get_object(bucket: bucket, key: "#{prefix}/#{fname}")
+    s3_resource = Aws::S3::Resource.new(client: S3_CLIENT)
+    bucket = s3_resource.bucket(SAMPLES_BUCKET_NAME)
+    bucket.objects(prefix: prefix).map(&:key).grep(/count$/).each do |s3_key|
+      begin
+        resp = S3_CLIENT.get_object(bucket: SAMPLES_BUCKET_NAME, key: s3_key)
+      rescue StandardError => err
+        LogUtil.log_error(
+          "MngsReadsStatsLoadService.fetch_counts() S3_CLIENT.get_object() failed for bucket [#{SAMPLES_BUCKET_NAME}] s3_key [#{s3_key}]",
+          exception: err,
+          bucket: SAMPLES_BUCKET_NAME,
+          s3_key: s3_key
+        )
+        raise
+      end
       contents = JSON.parse(resp.body.read)
       # Ex: {"gsnap_filter_out": 194}
       contents.each do |key, count|
@@ -54,25 +54,44 @@ class MngsReadsStatsLoadService
       all_counts += fetch_fastp_qc_counts(prefix, bowtie2_ercc_filtered[:reads_after]&.to_i || 0)
     end
     all_counts
+  rescue StandardError => e
+    LogUtil.log_error(
+      "MngsReadsStatsLoadService.fetch_counts() failed for bucket [#{SAMPLES_BUCKET_NAME}] pipeline_run #{pipeline_run.inspect}",
+      exception: e,
+      bucket: SAMPLES_BUCKET_NAME,
+      res_folder: res_folder,
+      prefix: prefix,
+      pipeline_run: pipeline_run.inspect,
+      bowtie2_ercc_filtered: bowtie2_ercc_filtered,
+      all_counts: all_counts
+    )
+    raise
   end
 
   def fetch_fastp_qc_counts(s3_prefix, reads_after_bowtie2_ercc_filtering)
-    fastp_qc_counts = []
-    bucket = ENV['SAMPLES_BUCKET_NAME']
     key = "#{s3_prefix}/#{PipelineRun::FASTP_JSON_FILE}"
-    resp = AwsClient[:s3].get_object(bucket: bucket, key: key)
+    resp = S3_CLIENT.get_object(bucket: SAMPLES_BUCKET_NAME, key: key)
     contents = JSON.parse(resp.body.read)["filtering_result"]
 
     reads_after_quality = reads_after_bowtie2_ercc_filtering - contents["low_quality_reads"]
     reads_after_length = reads_after_quality - (contents["too_short_reads"] + contents["too_long_reads"])
     reads_after_complexity = reads_after_length - (contents["low_complexity_reads"] + contents["too_many_N_reads"])
-
-    fastp_qc_counts << { task: "fastp_low_quality_reads", reads_after: reads_after_quality }
-    fastp_qc_counts << { task: "fastp_too_short_reads", reads_after: reads_after_length }
-    fastp_qc_counts << { task: "fastp_low_complexity_reads", reads_after: reads_after_complexity }
-    return fastp_qc_counts
+    [
+      { task: "fastp_low_quality_reads", reads_after: reads_after_quality },
+      { task: "fastp_too_short_reads", reads_after: reads_after_length },
+      { task: "fastp_low_complexity_reads", reads_after: reads_after_complexity },
+    ]
   rescue Aws::S3::Errors::NoSuchKey => e
-    LogUtil.log_error("MngsReadsStatsLoadService - File not found: #{key}", exception: e)
+    LogUtil.log_error(
+      "MngsReadsStatsLoadService.fetch_fastp_qc_counts() - File not found: s3://#{SAMPLES_BUCKET_NAME}/#{key}",
+      exception: e,
+      reads_after_bowtie2_ercc_filtering: reads_after_bowtie2_ercc_filtering,
+      bucket: SAMPLES_BUCKET_NAME,
+      s3_prefix: s3_prefix,
+      key: key,
+      contents: contents
+    )
+    []
   end
 
   # Given the stats fetched from all *.count files, calculates additional stats.
@@ -264,14 +283,27 @@ class MngsReadsStatsLoadService
 
   # Save the compiled stats as stats.json in s3.
   def upload_stats_file(pipeline_run, job_stats)
-    # Write JSON to a file
-    tmp = Tempfile.new
-    tmp.write(job_stats.to_json)
-    tmp.close
+    # Write JSON to a file, and automatically delete it when no longer needed
+    Tempfile.create do |tmp|
+      tmp.write(job_stats.to_json)
+      tmp.close
 
-    # Copy to S3. Overwrite if exists.
-    res_folder = pipeline_run.output_s3_path_with_version
-    Syscall.s3_cp(tmp.path.to_s, "#{res_folder}/#{PipelineRun::STATS_JSON_NAME}")
+      # Copy to S3. Overwrite if exists.
+      res_folder = pipeline_run.output_s3_path_with_version
+      begin
+        Syscall.s3_cp(tmp.path.to_s, "#{res_folder}/#{PipelineRun::STATS_JSON_NAME}")
+      rescue StandardError => e
+        LogUtil.log_error(
+          "MngsReadsStatsLoadService.upload_stats_file - Error copying to s3://#{SAMPLES_BUCKET_NAME}/#{key}",
+          exception: e,
+          tmp_path: tmp.path.to_s,
+          res_folder: res_folder,
+          STATS_JSON_NAME: PipelineRun::STATS_JSON_NAME,
+          pipeline_run: pipeline_run.inspect
+        )
+        raise
+      end
+    end
   end
 
   # Fetch the unmapped reads count from alignment stage then refined counts from

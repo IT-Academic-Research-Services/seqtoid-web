@@ -112,7 +112,11 @@ describe("BulkDeleteModal", () => {
       },
     });
     render(<BulkDeleteModal {...baseProps()} />);
-    expect(mockLogError).toHaveBeenCalledWith({ message: "permission denied" });
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "permission denied",
+      }),
+    );
     expect(screen.queryByTestId("bulk-delete-modal")).toBeNull();
   });
 
@@ -121,9 +125,11 @@ describe("BulkDeleteModal", () => {
       ValidateUserCanDeleteObjects: null,
     });
     render(<BulkDeleteModal {...baseProps()} />);
-    expect(mockLogError).toHaveBeenCalledWith({
-      message: "Error retrieving deletion permissions",
-    });
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Error retrieving deletion permissions",
+      }),
+    );
   });
 
   it("renders the delete dialog with the valid-id count", () => {
@@ -196,9 +202,11 @@ describe("BulkDeleteModal", () => {
     fireEvent.click(screen.getByText("Delete"));
     expect(onClose).toHaveBeenCalled();
     expect(mockShowToast).toHaveBeenCalled();
-    expect(mockLogError).toHaveBeenCalledWith({
-      message: "Delete failed: backend boom",
-    });
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Delete failed: backend boom",
+      }),
+    );
   });
 
   it("delete network error path routes through onError", () => {
@@ -207,8 +215,10 @@ describe("BulkDeleteModal", () => {
     });
     render(<BulkDeleteModal {...baseProps()} />);
     fireEvent.click(screen.getByText("Delete"));
-    expect(mockLogError).toHaveBeenCalledWith({
-      message: "Delete failed: network down",
-    });
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Delete failed: network down",
+      }),
+    );
   });
 });

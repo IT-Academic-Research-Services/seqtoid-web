@@ -113,11 +113,11 @@ export const RemoteUploadProgressModal = ({
           );
         } catch (e) {
           logError({
+            exception: e,
             message:
               "UploadProgressModal: Upload error to s3 occurred for additional input file of remote sample",
             details: {
               sample,
-              e,
             },
           });
         }
@@ -197,8 +197,8 @@ export const RemoteUploadProgressModal = ({
       }
     } catch (error) {
       logError({
+        exception: error,
         message: `UploadProgressModal: ${bulkUploadFnName} error`,
-        details: { error },
       });
 
       setUploadComplete(true);

@@ -67,7 +67,7 @@ export const AmrDownloadDropdown = ({
           logError({
             message:
               "SampleViewControls/AmrDownloadDropdown: Invalid option passed to handleDownload",
-            details: { option },
+            details: { downloadUrl, fileName, option },
           });
         }
         break;

@@ -75,8 +75,8 @@ import { OptionsType } from "./components/SamplesHeatmapFilters/SamplesHeatmapFi
 import { SamplesHeatmapHeader } from "./components/SamplesHeatmapHeader";
 import {
   APPLIED_FILTERS,
-  BackgroundMetricType,
   BACKGROUND_METRICS,
+  BackgroundMetricType,
   HEATMAP_FILTERS,
   METRIC_OPTIONS,
   NONE_BACKGROUND,
@@ -85,9 +85,9 @@ import {
   SORT_SAMPLES_OPTIONS,
   SORT_TAXA_OPTIONS,
   SPECIFICITY_OPTIONS,
-  TAXONS_PER_SAMPLE_RANGE,
   TAXON_LEVEL_OPTIONS,
   TAXON_LEVEL_SELECTED,
+  TAXONS_PER_SAMPLE_RANGE,
 } from "./constants";
 import cs from "./samples_heatmap_view.scss";
 import { metricIsZscore } from "./utils";
@@ -944,9 +944,9 @@ class SamplesHeatmapViewCC extends React.Component<
     const logSingleError = (e: $TSFixMe) => {
       const errorMessage = `SamplesHeatmapView: Error loading heatmap data from ElasticSearch`;
       logError({
+        exception: e,
         message: errorMessage,
         details: {
-          err: e,
           href: window.location.href,
           message: e?.message ?? errorMessage,
           sampleIds,
@@ -1841,8 +1841,8 @@ class SamplesHeatmapViewCC extends React.Component<
     } else if (this.state.heatmapIndexing) {
       return (
         <div className={cs.noDataMsg}>
-          Preparing your heatmap&hellip; newly added data is still being indexed.
-          This can take a moment and will appear automatically.
+          Preparing your heatmap&hellip; newly added data is still being
+          indexed. This can take a moment and will appear automatically.
         </div>
       );
     } else if (this.state.loading) {

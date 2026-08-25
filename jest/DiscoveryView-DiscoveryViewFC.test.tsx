@@ -7,7 +7,7 @@
 // itself is stubbed so the callbacks it is handed can be invoked directly, and
 // relay's fetchQuery is stubbed with a per-query-name response table so every
 // filter/sort/error branch can be driven from the test.
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { UserContext } from "~/components/common/UserContext";
 import { ActionType, GlobalContext } from "~/globalContext/reducer";
 
@@ -233,6 +233,25 @@ describe("DiscoveryViewFC fetchTotalWorkflowCounts", () => {
     expect(input.todoRemove).toEqual({ domain: "my_data", projectId: "5" });
   });
 
+  it("execute with numeric projectId", async () => {
+    responses[TOTAL_COUNT] = totalCountResponse([
+      {
+        count: 3,
+        groupBy: {
+          workflowVersion: { workflow: { name: "consensus-genome" } },
+        },
+      },
+    ]);
+    const counts = await renderFC()().fetchTotalWorkflowCounts(5);
+
+    expect(mockGetProjects).not.toHaveBeenCalled();
+    expect(counts).toEqual({ "consensus-genome": 3 });
+    const input = inputFor(TOTAL_COUNT);
+    expect(input.where.collectionId).toEqual({ _in: [5] });
+    expect(input.where.deprecatedById).toEqual({ _is_null: true });
+    expect(input.todoRemove).toEqual({ domain: "my_data", projectId: "5" });
+  });
+
   it("falls back to the user's project ids when no project is selected", async () => {
     responses[TOTAL_COUNT] = totalCountResponse([]);
     const counts = await renderFC()().fetchTotalWorkflowCounts();
@@ -298,7 +317,9 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions());
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions());
+    });
 
     expect(await waitForRunIds(latest)).toEqual(["wr1"]);
     expect(mockGetProjects).toHaveBeenCalledTimes(1);
@@ -334,7 +355,9 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitForRunIds(latest);
     expect(mockGetProjects).not.toHaveBeenCalled();
@@ -346,7 +369,9 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC({ domain: "all_data" });
-    latest().fetchNextGenWorkflowRuns(conditions());
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions());
+    });
 
     await waitForRunIds(latest);
     expect(mockGetProjects).not.toHaveBeenCalled();
@@ -358,9 +383,11 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "2", filters: { visibility: "private" } }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "2", filters: { visibility: "private" } }),
+      );
+    });
 
     await waitForRunIds(latest);
     // Visibility always forces the Rails lookup, even with a project selected.
@@ -375,9 +402,11 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "99", filters: { visibility: "public" } }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "99", filters: { visibility: "public" } }),
+      );
+    });
 
     await waitForRunIds(latest);
     expect(inputFor(WORKFLOWS).where.collectionId).toEqual({ _in: [] });
@@ -388,12 +417,14 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        nextGenFilters: { taxonNames: [], startedAtIso: "2024-05-01" },
-      }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          nextGenFilters: { taxonNames: [], startedAtIso: "2024-05-01" },
+        }),
+      );
+    });
 
     await waitForRunIds(latest);
     expect(inputFor(WORKFLOWS).where.startedAt).toEqual({
@@ -405,7 +436,9 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
     responses[WORKFLOWS] = { fedWorkflowRuns: null };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
     expect(mockLogError.mock.calls[0][0].message).toContain(
@@ -422,17 +455,19 @@ describe("DiscoveryViewFC sample filters", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        search: "  covid  swab ",
-        filters: {
-          locationV2: ["California"],
-          host: [1, 2],
-          tissue: ["Nasal"],
-        },
-      }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          search: "  covid  swab ",
+          filters: {
+            locationV2: ["California"],
+            host: [1, 2],
+            tissue: ["Nasal"],
+          },
+        }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wr1"]));
     const input = inputFor(SEQ_READ_IDS);
@@ -464,9 +499,11 @@ describe("DiscoveryViewFC sample filters", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", search: "swab" }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", search: "swab" }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wr2"]));
   });
@@ -477,12 +514,14 @@ describe("DiscoveryViewFC sample filters", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        nextGenFilters: { taxonNames: ["Betacoronavirus"] },
-      }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          nextGenFilters: { taxonNames: ["Betacoronavirus"] },
+        }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wr1"]));
     // Two sequencing-read id queries: by taxon, and by CG producing run.
@@ -501,12 +540,14 @@ describe("DiscoveryViewFC sample filters", () => {
     responses[SEQ_READ_IDS] = { fedSequencingReads: null };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        nextGenFilters: { taxonNames: ["Betacoronavirus"] },
-      }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          nextGenFilters: { taxonNames: ["Betacoronavirus"] },
+        }),
+      );
+    });
 
     await waitFor(() => expect(mockLogError).toHaveBeenCalled());
     expect(latest().cgWorkflowIds).toBeUndefined();
@@ -519,9 +560,11 @@ describe("DiscoveryViewFC sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "wdl_version", orderDir: "ASC" }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: "wdl_version", orderDir: "ASC" }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual([]));
     expect(inputFor(WORKFLOWS).orderByArray).toEqual([
@@ -551,9 +594,11 @@ describe("DiscoveryViewFC sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "sample", orderDir: "ASC" }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8", orderBy: "sample", orderDir: "ASC" }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wrB", "wrA"]));
     expect(inputFor(SEQ_READ_IDS).orderByArray).toEqual([
@@ -573,9 +618,11 @@ describe("DiscoveryViewFC sorting", () => {
       "host",
       "collection_date",
     ]) {
-      latest().fetchNextGenWorkflowRuns(
-        conditions({ projectId: "8", orderBy, orderDir: "DESC" }),
-      );
+      await act(async () => {
+        await latest().fetchNextGenWorkflowRuns(
+          conditions({ projectId: "8", orderBy, orderDir: "DESC" }),
+        );
+      });
       // eslint-disable-next-line no-await-in-loop
       await waitFor(() => expect(latest().cgWorkflowIds).toEqual([]));
     }
@@ -620,9 +667,15 @@ describe("DiscoveryViewFC sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8", orderBy: "coverageDepth", orderDir: "ASC" }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "coverageDepth",
+          orderDir: "ASC",
+        }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wrA", "wrB"]));
     expect(inputFor(CG_IDS).orderBy).toEqual([
@@ -648,13 +701,15 @@ describe("DiscoveryViewFC sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        orderBy: "referenceAccessionLength",
-        orderDir: "DESC",
-      }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "referenceAccessionLength",
+          orderDir: "DESC",
+        }),
+      );
+    });
 
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wrB", "wrA"]));
     expect(inputFor(CG_IDS).orderBy).toEqual([
@@ -668,13 +723,17 @@ describe("DiscoveryViewFC sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ orderBy: "referenceAccession", orderDir: "ASC" }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ orderBy: "referenceAccession", orderDir: "ASC" }),
+      );
+    });
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual([]));
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ orderBy: "totalReadsCG", orderDir: "DESC" }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ orderBy: "totalReadsCG", orderDir: "DESC" }),
+      );
+    });
     await waitFor(() => expect(callsFor(CG_IDS)).toHaveLength(2));
 
     expect(inputFor(CG_IDS, 0).orderBy).toEqual([
@@ -709,13 +768,15 @@ describe("DiscoveryViewFC sorting", () => {
     responses[SEQ_READS] = { fedSequencingReads: [] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(
-      conditions({
-        projectId: "8",
-        orderBy: "creation_source",
-        orderDir: "ASC",
-      }),
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({
+          projectId: "8",
+          orderBy: "creation_source",
+          orderDir: "ASC",
+        }),
+      );
+    });
 
     await waitFor(() =>
       expect(latest().cgWorkflowIds).toEqual(["wrNone", "wrA", "wrZ"]),
@@ -730,7 +791,9 @@ describe("DiscoveryViewFC row transforms", () => {
     };
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     expect(latest().cgRows[0].status).toBe("running");
@@ -740,7 +803,9 @@ describe("DiscoveryViewFC row transforms", () => {
     responses[WORKFLOWS] = { fedWorkflowRuns: [workflowRun()] };
     responses[SEQ_READS] = { fedSequencingReads: [] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     expect(latest().cgRows).toEqual([undefined]);
@@ -754,7 +819,9 @@ describe("DiscoveryViewFC row transforms", () => {
     };
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     expect(latest().cgRows[0].status).toBe("complete - issue");
@@ -773,7 +840,9 @@ describe("DiscoveryViewFC row transforms", () => {
     };
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     const row = latest().cgRows[0];
@@ -797,7 +866,9 @@ describe("DiscoveryViewFC row transforms", () => {
     };
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     expect(latest().cgRows[0].referenceAccession).toEqual({
@@ -844,7 +915,9 @@ describe("DiscoveryViewFC row transforms", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     const row = latest().cgRows[0];
@@ -887,7 +960,9 @@ describe("DiscoveryViewFC row transforms", () => {
     };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
 
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
     const row = latest().cgRows[0];
@@ -905,7 +980,9 @@ describe("DiscoveryViewFC row transforms", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     // A later (uncached) page whose query comes back empty surfaces the error.
@@ -920,16 +997,22 @@ describe("DiscoveryViewFC CG paging", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     const firstPageQueries = callsFor(SEQ_READS).length;
-    const page = await latest().fetchCgPage(0);
-    expect(page).toHaveLength(1);
+    await act(async () => {
+      const page = await latest().fetchCgPage(0);
+      expect(page).toHaveLength(1);
+    });
     // The cached promise is reused, so no extra query goes out.
     expect(callsFor(SEQ_READS)).toHaveLength(firstPageQueries);
 
-    await latest().fetchCgPage(50);
+    await act(async () => {
+      await latest().fetchCgPage(50);
+    });
     expect(callsFor(SEQ_READS).length).toBe(firstPageQueries + 1);
     // The later page is past the end of the run list.
     expect(inputFor(SEQ_READS, firstPageQueries).where.id).toEqual({ _in: [] });
@@ -940,7 +1023,9 @@ describe("DiscoveryViewFC CG paging", () => {
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
 
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
     await waitFor(() => expect(latest().cgRows).toHaveLength(1));
 
     const input = inputFor(SEQ_READS);
@@ -957,7 +1042,9 @@ describe("DiscoveryViewFC project aggregates", () => {
     responses[WORKFLOWS] = { fedWorkflowRuns: [workflowRun()] };
     responses[SEQ_READS] = { fedSequencingReads: [sequencingRead()] };
     const latest = renderFC();
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
     await waitFor(() => expect(latest().cgWorkflowIds).toEqual(["wr1"]));
     return latest;
   };
@@ -981,13 +1068,15 @@ describe("DiscoveryViewFC project aggregates", () => {
         ],
       },
     };
-    await latest().fetchWorkflowRunsProjectAggregates(
-      [8],
-      conditions({
-        projectId: "8",
-        filters: emptyFilters,
-      }),
-    );
+    await act(async () => {
+      await latest().fetchWorkflowRunsProjectAggregates(
+        [8],
+        conditions({
+          projectId: "8",
+          filters: emptyFilters,
+        }),
+      );
+    });
 
     await waitFor(() =>
       expect(latest().workflowRunsProjectAggregates).toEqual({
@@ -1011,7 +1100,9 @@ describe("DiscoveryViewFC project aggregates", () => {
         ],
       },
     };
-    await latest().fetchWorkflowRunsProjectAggregates([9], conditions());
+    await act(async () => {
+      await latest().fetchWorkflowRunsProjectAggregates([9], conditions());
+    });
     await waitFor(() =>
       expect(latest().workflowRunsProjectAggregates).toEqual({
         8: { "consensus-genome": 4 },
@@ -1044,18 +1135,24 @@ describe("DiscoveryViewFC project aggregates", () => {
         ],
       },
     };
-    await latest().fetchWorkflowRunsProjectAggregates([8], conditions());
+    await act(async () => {
+      await latest().fetchWorkflowRunsProjectAggregates([8], conditions());
+    });
     await waitFor(() =>
       expect(latest().workflowRunsProjectAggregates).toBeDefined(),
     );
 
-    latest().fetchNextGenWorkflowRuns(
-      conditions({ projectId: "8" }),
-      "consensus-genome",
-    );
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(
+        conditions({ projectId: "8" }),
+        "consensus-genome",
+      );
+    });
     expect(latest().workflowRunsProjectAggregates).toBeDefined();
 
-    latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: "8" }));
+    });
     await waitFor(() =>
       expect(latest().workflowRunsProjectAggregates).toBeUndefined(),
     );

@@ -256,6 +256,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
 
   // *** Project-related functions ***
   // Get pipeline versions associated with a project
+  // TODO: projectId is expected to be both a string _and_ a number. Verify what upstream is actually passing!
   getPipelineVersionsForExistingProject = async projectId => {
     if (this.state.pipelineVersions[projectId]) {
       return { pipelineVersions: this.state.pipelineVersions[projectId] };
@@ -279,8 +280,9 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
       }));
     } catch (error) {
       logError({
+        exception: error,
         message: "Failed to fetch pipeline versions for project",
-        details: { projectId, error },
+        details: { projectId },
       });
     }
   };

@@ -123,7 +123,7 @@ class InfiniteTable extends React.Component<
       // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2722
       onLoadRows({ startIndex, stopIndex }),
     );
-    this.cancelableLoadRowsPromise.promise
+    return this.cancelableLoadRowsPromise.promise
       .then((newRows: unknown[]) => {
         const requestedNumberOfRows = stopIndex - startIndex + 1;
         this.rows.splice(startIndex, requestedNumberOfRows, ...newRows);
@@ -148,7 +148,6 @@ class InfiniteTable extends React.Component<
           console.error("Error loading rows", error);
         }
       });
-    return this.cancelableLoadRowsPromise.promise;
   };
 
   getRow = ({ index }) => {

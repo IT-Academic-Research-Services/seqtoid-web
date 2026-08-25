@@ -16,13 +16,24 @@ export const logError = ({
   exception = null,
   details = {},
 }: LogErrorParams) => {
+  // TODO: Should we log the error to the browser? Makes debugging much easier.
+  console.error("logError:", message, exception, details);
   if (exception) {
-    Sentry.captureException(exception, {
-      extra: {
-        message,
-        details,
-      },
-    });
+    if (Error.isError(exception)) {
+      Sentry.captureException(exception, {
+        extra: {
+          ...details,
+          message,
+        },
+      });
+    } else {
+      Sentry.captureMessage(message, {
+        extra: {
+          ...details,
+          exception,
+        },
+      });
+    }
   } else {
     Sentry.captureMessage(message, {
       extra: details,
