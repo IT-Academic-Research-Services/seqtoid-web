@@ -85,7 +85,7 @@ class ReadsStatsService
     unique_versions = Set.new(pipeline_runs.map { |pr| [pr.wdl_version, pr.pipeline_version] })
     unique_versions.each do |uniq|
       representative_run = pipeline_runs.find { |pr| uniq == [pr.wdl_version, pr.pipeline_version] }
-      ordered_tasks = representative_run.host_filtering_stage.step_statuses.keys
+      ordered_tasks = representative_run.host_filtering_stage&.step_statuses&.keys || []
 
       # Make sure to include ERCC as a step.
       if ordered_tasks.present?
@@ -133,7 +133,7 @@ class ReadsStatsService
 
       step_order = step_orders[wdl_version][pipeline_version]
       if step_order.count.zero?
-        host_filtering_stats = stats_hash[:steps].sort { |a, b| b[:reads_after] <=> a[:reads_after] }
+        host_filtering_stats = stats_hash[:steps].sort_by { |stat| -(stat[:reads_after] || 0) }
         stats_hash[:steps] = host_filtering_stats.map { |stat| { name: StringUtil.humanize_step_name(stat[:name]), readsAfter: stat[:reads_after] } }
       else
         stats_hash[:steps] = step_order.map do |step|
