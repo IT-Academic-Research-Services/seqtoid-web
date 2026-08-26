@@ -1,0 +1,124 @@
+# =============================================================================
+# CodeBuild STANDBY buildspec -- GitHub-independent break-glass build of the
+# seqtoid-web image. Consumed by the `seqtoid-web-standby-build` CodeBuild project
+# (cypherid-web-infra terraform/envs/dev/access-management/codebuild-standby-build.tf).
+#
+# This is the in-account equivalent of .github/workflows/build-docker-image.yml. It
+# reuses bin/build-docker verbatim, so the produced image (tags `sha-<commit8>` +
+# SemVer, cache repo, digest) is IDENTICAL to the Actions-built image. Gate parity is
+# mandatory and enforced here: Trivy (same policy) then cosign sign.
+#
+# Order mirrors the Actions build exactly: bin/build-docker builds amd64 and PUSHES to
+# ECR (buildx docker-container driver cannot --load a build), then Trivy scans the
+# pushed image by ref, then cosign signs it by digest. Scanning/signing the exact
+# pushed manifest is the equivalent gate -- not a weaker one.
+#
+# Trigger: MANUAL only (no webhook) --
+#   aws codebuild start-build --project-name seqtoid-web-standby-build \
+#     --source-version <commit-sha|branch|tag> --region us-west-2
+# See docs/runbooks/CODEBUILD-STANDBY.md.
+#
+# Project env (from terraform): AWS_REGION, AWS_ACCOUNT_ID, COSIGN_KMS_ALIAS,
+# CACHE_MODE=read, TRIVY_EXIT_CODE=1. Pinned tool versions below track the Actions
+# build's Trivy/cosign; bump together with the workflow.
+# =============================================================================
+version: 0.2
+
+env:
+  variables:
+    # Pinned standby tool versions. Keep roughly in step with build-docker-image.yml
+    # (trivy-action ~ trivy 0.36-era policy; cosign v3 installer). Bump deliberately.
+    TRIVY_VERSION: "0.66.0"
+    COSIGN_VERSION: "2.4.3"
+    ECR_REPO_NAMES: "idseq-web seqtoid-web"
+    # NOTE: no secrets here. If a future private-dep credential is needed, add it via a
+    # `parameter-store:` or `secrets-manager:` block REFERENCING /seqtoid-web-standby-build/*
+    # -- never inline. The service role already scopes reads to that path.
+
+phases:
+  install:
+    commands:
+      - set -euo pipefail
+      # Trivy (pinned). Installed to /usr/local/bin.
+      - |
+        curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+          -o /tmp/trivy.tgz
+        tar -xzf /tmp/trivy.tgz -C /tmp trivy
+        install -m 0755 /tmp/trivy /usr/local/bin/trivy
+        trivy --version
+      # cosign (pinned).
+      - |
+        curl -fsSL "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64" \
+          -o /tmp/cosign
+        install -m 0755 /tmp/cosign /usr/local/bin/cosign
+        cosign version
+
+  pre_build:
+    commands:
+      - set -euo pipefail
+      # Resolve identity/region defensively (CodeBuild injects AWS_REGION; AWS_ACCOUNT_ID
+      # comes from the project env, but fall back to STS so the buildspec is self-contained).
+      - export AWS_REGION="${AWS_REGION:-$AWS_DEFAULT_REGION}"
+      - export AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}"
+      # Commit + branch, mirroring the workflow's `${GITHUB_SHA::8}` and `basename $GITHUB_REF`.
+      # CODEBUILD_RESOLVED_SOURCE_VERSION is the full commit SHA CodeBuild checked out.
+      # CODEBUILD_SOURCE_VERSION is the --source-version arg (a SHA, branch, or tag). Using
+      # basename means: pass a SHA (the safe default) and BRANCH != "main", so bin/build-docker
+      # does NOT move the `latest` tag; pass "main" explicitly only if you intend to.
+      - export COMMIT8="$(echo "${CODEBUILD_RESOLVED_SOURCE_VERSION}" | cut -c1-8)"
+      - export BUILD_REF="$(basename "${CODEBUILD_SOURCE_VERSION:-$CODEBUILD_RESOLVED_SOURCE_VERSION}")"
+      - export IMAGE_REF="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/idseq-web:sha-${COMMIT8}"
+      - echo "Standby build -> ref=${BUILD_REF} commit8=${COMMIT8} image_ref=${IMAGE_REF} cache_mode=${CACHE_MODE:-read}"
+      # ECR login (same registry the workflow logs into).
+      - aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+  build:
+    commands:
+      - set -euo pipefail
+      # Build amd64 + push all tags (sha-<8>, SemVer, +latest iff ref==main) to ECR. This is
+      # the SAME script the Actions build runs -- identical tags/digest/cache semantics.
+      # CACHE_MODE=read (from project env): read the shared main cache, never write it.
+      - bin/build-docker "${BUILD_REF}" "${COMMIT8}"
+
+  post_build:
+    commands:
+      - set -euo pipefail
+      # --- GATE 1: Trivy scan of the PUSHED image (parity with build-docker-image.yml) ---
+      # Same policy: HIGH,CRITICAL, ignore-unfixed, .trivyignore baseline. TRIVY_EXIT_CODE=1
+      # (project default) makes a NEW fixable HIGH/CRITICAL FAIL the standby build -- there is
+      # no separate advisory-issue channel or PR gate in the break-glass path, so the standby
+      # itself must enforce. Override to 0 only as a documented emergency bypass.
+      - |
+        trivy image \
+          --severity HIGH,CRITICAL \
+          --ignore-unfixed \
+          --ignorefile .trivyignore \
+          --exit-code "${TRIVY_EXIT_CODE:-1}" \
+          --format table \
+          --output trivy-image-report.txt \
+          "${IMAGE_REF}"
+        echo "----- trivy-image-report.txt (head) -----"
+        sed -n '1,80p' trivy-image-report.txt || true
+      # --- GATE 2: cosign sign (KMS, in-account -- GitHub-independent equivalent of keyless) ---
+      # Resolve the pushed manifest digest (no local image; buildx pushed it) and sign it
+      # --recursive, mirroring the workflow. Signs with the standby KMS key.
+      - |
+        export COSIGN_YES=true
+        DIGEST="$(docker buildx imagetools inspect --format '{{ json .Manifest.Digest }}' "${IMAGE_REF}" | tr -d '"')"
+        SIGN_TARGET="${IMAGE_REF%:*}@${DIGEST}"
+        echo "Signing ${SIGN_TARGET} with awskms:///${COSIGN_KMS_ALIAS}"
+        cosign sign --recursive --key "awskms:///${COSIGN_KMS_ALIAS}" "${SIGN_TARGET}"
+      # --- Emit the digest for the break-glass promote/deploy handoff --------------------
+      # Pin dev via deploy/argocd/values/seqtoid-web/dev.yaml image.tag = sha-<8> (Argo, dev
+      # autoPromotion), or skopeo-copy this digest cross-account for staging/prod promote.
+      - |
+        echo "==================== STANDBY BUILD RESULT ===================="
+        echo "IMAGE_TAG=sha-${COMMIT8}"
+        echo "IMAGE_REF=${IMAGE_REF}"
+        echo "IMAGE_DIGEST=${DIGEST}"
+        echo "PINNED_REF=${IMAGE_REF%:*}@${DIGEST}"
+        echo "============================================================="
+
+# NOTE: the project is configured NO_ARTIFACTS -- the deliverable is the pushed + signed
+# ECR image and the digest echoed above. The Trivy report stays in the CloudWatch log; no
+# artifacts block is declared so CodeBuild does not expect an S3 artifact location.
