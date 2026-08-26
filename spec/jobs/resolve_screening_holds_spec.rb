@@ -309,4 +309,57 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(hold.reload).not_to be_active # the hold itself still released (resolution not broken)
     end
   end
+
+  # SAFETY NET (the second of the two resolution paths): when a compliance officer clears a previously
+  # HELD screen, the poller RELEASES the hold and posts an approved callback to the same
+  # /internal/v1/screening_result receiver that the sync auto-approve path uses. That receiver applies the
+  # decision to the user's export-control CLEARANCE (ExportControl::ClearanceCallback). This proves the
+  # end-to-end chain -- released hold -> approved callback body -> clearance satisfied -- so a clean result
+  # resolves the gate regardless of which path lands, and the shared idempotent write never double-creates.
+  describe '#run -- the released-hold callback satisfies the export-control clearance' do
+    before { enable! }
+
+    it 'a Cleared verdict drives an approved callback that flips the correlated user to verified + clear' do
+      user = create(:user)
+      ref = "User:#{user.id}"
+      # The user is mid-clearance: verified identity, screening still pending (blocked at the gate).
+      create(:export_control_clearance, :screening_pending, user: user, screening_provider: 'screening_service')
+      expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(false)
+
+      held_subject(sdistributedid: '910001', subject_ref: ref)
+      create(:pending_signup, subject_ref: ref, screening_id: 'scr-910',
+                              callback_url: 'http://web/internal/v1/screening_result')
+
+      # Capture the signed callback body the poller posts (instead of a live HTTP round-trip to the
+      # receiver) and apply it exactly as the receiver would.
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'Cleared', shresult_id: '910001')])
+
+      expect(captured['decision']).to eq('approved')
+      expect(captured['correlation_id']).to eq(ref)
+
+      ExportControl::ClearanceCallback.apply(captured)
+      expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(true)
+    end
+
+    it 'a True Hit drives a denied callback that leaves the user blocked (fail-closed)' do
+      user = create(:user)
+      ref = "User:#{user.id}"
+      create(:export_control_clearance, :screening_pending, user: user, screening_provider: 'screening_service')
+
+      held_subject(sdistributedid: '910002', subject_ref: ref)
+      create(:pending_signup, subject_ref: ref, callback_url: 'http://web/internal/v1/screening_result')
+
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'True Hit', shresult_id: '910002')])
+
+      expect(captured['decision']).to eq('denied')
+      ExportControl::ClearanceCallback.apply(captured)
+      expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(false)
+    end
+  end
 end
