@@ -213,11 +213,16 @@ describe("AmrView", () => {
   it("renders the report for a succeeded AMR run and stops loading", async () => {
     await renderView();
 
-    await waitFor(() => expect(screen.getByTestId("amr-report")).toBeTruthy());
-    expect(mockedGetResults).toHaveBeenCalledWith(99);
-    expect(screen.getByTestId("amr-report").getAttribute("data-genes")).toBe(
-      "geneA,geneB,geneC",
+    // amr-report is rendered on the first commit (before the async results
+    // fetch resolves), so its mere presence does not mean the rows have landed.
+    // Wait for the derived gene list to reflect the fetched rows; the fetch's
+    // state updates (rows + loading=false) are batched into that same commit.
+    await waitFor(() =>
+      expect(screen.getByTestId("amr-report").getAttribute("data-genes")).toBe(
+        "geneA,geneB,geneC",
+      ),
     );
+    expect(mockedGetResults).toHaveBeenCalledWith(99);
     expect(
       screen.getByTestId("report-content").getAttribute("data-loading"),
     ).toBe("false");
@@ -228,12 +233,18 @@ describe("AmrView", () => {
     const dispatch = jest.fn();
     await renderView({ dispatch });
 
-    await waitFor(() => expect(screen.getByTestId("amr-report")).toBeTruthy());
+    // The drug-classes action is only dispatched from inside the resolved
+    // results fetch, so wait for it to arrive rather than for amr-report (which
+    // is present on the first, pre-fetch commit).
+    await waitFor(() =>
+      expect(
+        actionsOfType(dispatch, AmrContextActionType.UPDATE_DRUG_CLASSES),
+      ).toHaveLength(1),
+    );
     const drugClassActions = actionsOfType(
       dispatch,
       AmrContextActionType.UPDATE_DRUG_CLASSES,
     );
-    expect(drugClassActions).toHaveLength(1);
     expect(drugClassActions[0].payload.sort()).toEqual([
       "Beta-lactam",
       "Tetracycline",
@@ -261,7 +272,13 @@ describe("AmrView", () => {
 
   it("applies the filter function supplied by the filters sidebar", async () => {
     await renderView();
-    await waitFor(() => expect(screen.getByTestId("amr-report")).toBeTruthy());
+    // Wait for the fetched rows to land before filtering; applying the filter
+    // to an empty (pre-fetch) row set would leave data-genes empty, not "geneA".
+    await waitFor(() =>
+      expect(screen.getByTestId("amr-report").getAttribute("data-genes")).toBe(
+        "geneA,geneB,geneC",
+      ),
+    );
 
     act(() => {
       fireEvent.click(screen.getByTestId("apply-gene-filter"));

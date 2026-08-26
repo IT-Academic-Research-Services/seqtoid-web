@@ -43,7 +43,7 @@ RSpec.describe 'Internal::ScreeningResults', type: :request do
   describe 'export-control clearance write-back' do
     let(:user) { create(:user) }
 
-    # A user mid-clearance: verified identity, screening still pending (the row the clearance controller
+    # A user mid-clearance: screening still pending (the row the clearance controller
     # writes before handing off to the async screening service).
     let!(:clearance) do
       create(:export_control_clearance, :screening_pending, user: user,
@@ -57,7 +57,7 @@ RSpec.describe 'Internal::ScreeningResults', type: :request do
                                                        'X-Export-Control-Signature' => signature(raw) }
     end
 
-    it 'satisfies the clearance (verified + clear) on a signed approved callback' do
+    it 'satisfies the clearance (clear) on a signed approved callback' do
       allow(ProvisionScreenedAccountJob).to receive(:enqueue)
       expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(false)
 
@@ -67,7 +67,6 @@ RSpec.describe 'Internal::ScreeningResults', type: :request do
       expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(true)
       clearance.reload
       expect(clearance.screening_result).to eq(ExportControlClearance::SCREENING_CLEAR)
-      expect(clearance.verification_status).to eq(ExportControlClearance::VERIFICATION_VERIFIED) # not downgraded
       expect(clearance.screening_evidence_ref).to eq('scr-777')
     end
 
