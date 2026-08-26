@@ -134,32 +134,50 @@ jobs:
           gh pr merge "$BRANCH" --repo "$INFRA_REPO" --squash --delete-branch
           echo "Dev advanced to ${TAG} and merged; Argo CD will sync."
 
-  # Sentry release + dev deploy tracking (CZID-552). Runs on the same successful
-  # main build as the advance above, keyed to the exact commit that produced the
-  # image. Creates a Sentry release, associates commits (suspect commits), and
-  # records a dev deploy so new issues get accurate regression windows and can use
-  # "resolve in next release" instead of manual board grooming.
+  # Sentry release + dev deploy tracking (CZID-552) + frontend source-map upload (SMP-1826).
+  # Runs on the same successful main build as the advance above, keyed to the exact commit
+  # that produced the image. Creates a Sentry release, associates commits (suspect commits),
+  # records a dev deploy, and uploads the frontend source maps EXTRACTED FROM THE BUILT IMAGE
+  # so Sentry can symbolicate minified frames (e.g. vendors.bundle.min.js:205) back to source.
   #
-  # DEV-ONLY: this workflow only fires for main builds and hard-codes -e dev. When
-  # the staging/prod pipelines are un-held, mirror this with their own gated deploy
-  # environments -- do NOT broaden this step to those envs here.
+  # DEV-ONLY: this workflow only fires for main builds and hard-codes -e dev + the DEV frontend
+  # project. PR previews are pull_request builds and never reach this job (the main-only `if`),
+  # so they are excluded by construction -- no per-preview guard needed. When staging/prod are
+  # un-held, mirror this with their own gated deploy env + their own SENTRY_PROJECT -- do NOT
+  # broaden this job to those envs here.
   #
-  # Isolated from `advance`: this is a separate job with no needs/dependency, so a
-  # Sentry API hiccup or unprovisioned secret can NEVER block the dev rollout.
+  # Isolated from `advance`: separate job, no needs/dependency, so a Sentry API hiccup or an
+  # unprovisioned secret can NEVER block the dev rollout. The source-map upload additionally
+  # runs continue-on-error (warn, never block -- the deploy already happened) but surfaces any
+  # failure LOUDLY (::error:: annotation + job summary) so a broken upload can't rot unnoticed.
   sentry-release:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC assume-role to pull the built image from ECR (SMP-1826)
     env:
-      # Provision these in the seqtoid-web repo before this does anything (ops half
-      # of CZID-552): SENTRY_AUTH_TOKEN (secret, release scope), SENTRY_ORG +
-      # SENTRY_PROJECT (vars). Until then the step self-skips green (see guard below).
+      # Provision these in the seqtoid-web repo before this does anything (ops half of
+      # CZID-552 / SMP-1826). Until ALL THREE are set, every step below self-skips GREEN:
+      #   SENTRY_AUTH_TOKEN (secret) -- MUST carry `project:releases` AND `org:read`. The
+      #     sourcemap upload needs both; a release-creation-only token creates the release
+      #     fine and then 403s on `sourcemaps upload`. (release creation alone = project:releases)
+      #   SENTRY_ORG     (var) = ucsf-rm
+      #   SENTRY_PROJECT (var) = dev-reactjs-project  -- the DEV FRONTEND project (maps are a
+      #     frontend artifact; NOT the rails/backend project).
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ vars.SENTRY_ORG }}
       SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
       SENTRY_CLI_VERSION: "2.33.1"
       BUILT_SHA: ${{ github.event.workflow_run.head_sha }}
+      # ECR (dev account) coordinates to pull the built image and extract *.map. The image
+      # lives in ECR, NOT GHCR -- builds push to <acct>.dkr.ecr.<region>.amazonaws.com/idseq-web.
+      # Mirrors build-docker-image.yml (same account/region/role).
+      CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+      AWS_REGION: us-west-2
+      GHA_ROLE: ${{ vars.GHA_ROLE || 'czid-dev-gh-actions-build' }}
     steps:
       - name: Checkout seqtoid-web at the built commit (full history for suspect commits)
         uses: actions/checkout@v6
@@ -176,13 +194,14 @@ jobs:
           set -euo pipefail
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
             echo "Sentry CD credentials not provisioned (need SENTRY_AUTH_TOKEN secret + SENTRY_ORG/SENTRY_PROJECT vars)."
-            echo "Skipping Sentry release/deploy tracking -- see CZID-552 ops steps. This is not a failure."
+            echo "Skipping Sentry release/deploy tracking -- see SMP-1826 ops steps. This is not a failure."
             exit 0
           fi
           # Release name == the 8-char commit SHA. This is exactly the value baked into
           # the image as GIT_VERSION (backend config.release) and GIT_RELEASE_SHA
           # (frontend Sentry.init release), so runtime events on both tiers tag to the
-          # release we register here.
+          # release we register here -- and the source maps below upload to this SAME
+          # release, so events and maps share the one 8-char SHA (no mismatch).
           RELEASE="${BUILT_SHA:0:8}"
           echo "Registering Sentry release ${RELEASE} (org=${SENTRY_ORG} project=${SENTRY_PROJECT})"
 
@@ -199,3 +218,109 @@ jobs:
           # and can resolve-in-next-release / window regressions correctly.
           sentry-cli releases deploys "$RELEASE" new -e dev
           echo "Sentry release ${RELEASE} finalized + dev deploy recorded."
+
+      # OIDC assume-role so the upload step can pull the built image from ECR (SMP-1826).
+      # Gated on the Sentry vars so an unprovisioned deployment self-skips cleanly (no role
+      # assumed) exactly like the release step above.
+      # PREREQUISITE (IAM, lives in AWS/infra, NOT verifiable from this repo): the GHA_ROLE
+      # trust policy must permit THIS job -- which is workflow_run-triggered, so its OIDC
+      # subject differs from the build job's -- to assume it. The build role is referenced for
+      # convenience; its trust for this job is UNVERIFIED. If it cannot be assumed, the pull
+      # fails and the "Surface" step below flags it (non-blocking).
+      - name: Configure AWS credentials (OIDC) to pull the built image from ECR
+        if: ${{ vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' }}
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CI_ACCOUNT_ID }}:role/${{ env.GHA_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # SMP-1826: upload the frontend source maps for THIS release. The .map files exist only
+      # INSIDE the built image (webpack devtool: source-map, emitted in the Docker builder
+      # stage) -- never in the build context and never on this runner -- so we pull the exact
+      # image from ECR and extract them. continue-on-error: a failed upload must NOT fail this
+      # (deploy-decoupled) job; the "Surface" step below makes any failure loud instead.
+      #
+      # KNOWN OPEN RISK (SMP-1826): deployed dev serves Sprockets digest-suffixed names
+      # (vendors.debug-<64hex>.js), while the artifacts uploaded here are the raw webpack names
+      # (vendors.bundle.min.js). Whether Sentry's `~/` matching ignores the digest is DOCUMENTED,
+      # NOT OBSERVED -- if it compares full filenames, upload succeeds but traces stay minified.
+      # Verify on the first deploy with `sentry-cli sourcemaps explain <event-id>` (see commit msg).
+      - name: Upload frontend source maps to Sentry (extracted from the built image)
+        id: sourcemaps
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
+            echo "Sentry CD credentials not provisioned -- skipping source-map upload. This is not a failure."
+            exit 0
+          fi
+          RELEASE="${BUILT_SHA:0:8}"
+
+          # sentry-cli was installed to /usr/local/bin by the previous step; it persists across
+          # steps on the same runner. Re-install defensively only if missing.
+          command -v sentry-cli >/dev/null 2>&1 || curl -sSfL https://sentry.io/get-cli/ | INSTALL_DIR=/usr/local/bin bash
+
+          # Extract the webpack dist (bundles + maps) from the exact built image. The image is
+          # in ECR (NOT GHCR): builds push <acct>.dkr.ecr.<region>.amazonaws.com/idseq-web at
+          # tag sha-<sha8> (see build-docker-image.yml). That is the SAME 8-char SHA as $RELEASE,
+          # so the extracted maps match the release. docker create + cp only -- the container is
+          # NEVER started, so no entrypoint / DB / secrets run.
+          REGISTRY="${CI_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REF="${REGISTRY}/idseq-web:sha-${RELEASE}"
+          echo "Extracting source maps from ${REF}"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+          docker pull "$REF"
+          cid="$(docker create "$REF")"
+          rm -rf ./dist-maps
+          docker cp "${cid}:/app/app/assets/dist" ./dist-maps
+          docker rm "$cid" >/dev/null
+
+          # Empty-extraction guard (SMP-1826 item 3): a webpack/devtool/build change could stop
+          # emitting .map files. Uploading zero artifacts would exit 0 and look fine -- fail
+          # LOUDLY instead of silently shipping a release with no maps.
+          mapcount="$(find ./dist-maps -type f -name '*.map' 2>/dev/null | wc -l | tr -d ' ')"
+          echo "Found ${mapcount} .map file(s) in ${REF}."
+          if [ "${mapcount}" = "0" ]; then
+            echo "::error title=Sentry source-map upload::NO .map files in the built image (${REF}). Nothing to upload -- release ${RELEASE} will have NO source maps. Check webpack devtool / the asset build."
+            exit 1
+          fi
+
+          # Upload to the SAME release. sentry-cli reads SENTRY_ORG / SENTRY_PROJECT /
+          # SENTRY_AUTH_TOKEN from the job env. A token missing project:releases 403s here
+          # (non-zero, loud) -- it does NOT silently no-op.
+          sentry-cli sourcemaps upload --release "$RELEASE" ./dist-maps
+
+          # Verify the artifacts actually landed on the release rather than trusting exit 0
+          # (SMP-1826 item 2). Zero .map artifacts on the release == effective failure.
+          filecount="$(sentry-cli releases files "$RELEASE" list 2>/dev/null | grep -c '\.map' || true)"
+          echo "Sentry release ${RELEASE} now lists ${filecount} .map artifact(s)."
+          if [ "${filecount}" = "0" ]; then
+            echo "::error title=Sentry source-map upload::Upload exited 0 but release ${RELEASE} lists 0 .map artifacts (token scope? org/project mismatch?)."
+            exit 1
+          fi
+          echo "Uploaded ${mapcount} .map file(s) to release ${RELEASE}; ${filecount} confirmed on the release."
+
+      # Make a failed/empty upload VISIBLE (SMP-1826 item 1): continue-on-error keeps the job
+      # green, so on its own a broken upload is easy to miss. `outcome` is the step result
+      # BEFORE continue-on-error is applied, so this reliably catches real failures (exit 1)
+      # while treating a clean credentials-skip (exit 0) as success. Emits a run-level ::error::
+      # annotation (red banner on the run page) + a job-summary block a person scanning the
+      # Actions tab will spot.
+      - name: Surface source-map upload result
+        if: always()
+        run: |
+          set -euo pipefail
+          OUTCOME="${{ steps.sourcemaps.outcome }}"
+          RELEASE="${BUILT_SHA:0:8}"
+          if [ "${OUTCOME}" = "failure" ]; then
+            echo "::error title=Sentry source-map upload FAILED::Release ${RELEASE} may have NO usable source maps -- Sentry will show minified frames. See the 'Upload frontend source maps to Sentry' step log."
+            {
+              echo "### ❌ Sentry source-map upload FAILED for release \`${RELEASE}\`"
+              echo ""
+              echo "The dev deploy was **not** blocked, but Sentry may show **minified frames** for this release."
+              echo "Open the **Upload frontend source maps to Sentry** step log above for the cause (empty extraction, token scope, or org/project mismatch)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Sentry source-map step outcome: ${OUTCOME} (upload succeeded, or a clean credentials-skip)."
+            echo "### ✅ Sentry source-map step: \`${OUTCOME}\` for release \`${RELEASE}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
