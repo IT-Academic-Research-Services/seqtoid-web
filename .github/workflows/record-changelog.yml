@@ -1,25 +1,40 @@
-name: record-changelog (append a release to the notes ledger)
+name: record-changelog (append a deploy to the notes ledger)
 
-# Option A collector. Computes what changed since an environment's previous release -- grouped by
-# platform piece, each linked to its PR -- and appends it to the per-env S3 ledger the in-app
-# /releases page reads at runtime. Non-blocking by design: it never gates a deploy.
+# Option A collector. When a repo ships to an environment, it records ONE dated release entry --
+# what changed in THAT repo since its previous deploy, grouped by day -- into the per-env S3 ledger
+# the in-app /releases page reads at runtime. Non-blocking by design: it never gates a deploy.
 #
-# Two entry points:
-#   - workflow_dispatch: run/backfill by hand for an env + sha.
-#   - workflow_call: promote-image can invoke this after a successful env advance (follow-up wiring).
+# Entry points:
+#   - workflow_dispatch: run/backfill by hand.
+#   - workflow_call: any repo's deploy pipeline invokes it after a successful ship, passing its own
+#     component + repo (cross-repo: uses IT-Academic-Research-Services/seqtoid-web/.github/workflows/...).
 
 on:
   workflow_dispatch:
     inputs:
       env_name:
-        description: Environment the release went to (dev | staging | prod).
+        description: Environment shipped to (dev | staging | prod).
         required: true
         type: choice
         options: [dev, staging, prod]
-      new_sha:
-        description: The promoted commit sha (7-8 hex chars, no "sha-" prefix).
+      component:
+        description: Deploy source (web | swipe | pipelines | reference | cli | ssot | workflow-infra).
         required: true
         type: string
+      source_repo:
+        description: OWNER/REPO to diff for PRs (defaults to seqtoid-web).
+        required: false
+        type: string
+        default: IT-Academic-Research-Services/seqtoid-web
+      new_sha:
+        description: The shipped commit sha (7-8 hex, no "sha-" prefix).
+        required: true
+        type: string
+      default_piece:
+        description: Force all this deploy's changes to one piece (single-purpose repos).
+        required: false
+        type: string
+        default: ""
       reason:
         description: Deployment reason (freeze, hotfix, issue id, ...).
         required: false
@@ -27,9 +42,12 @@ on:
         default: ""
   workflow_call:
     inputs:
-      env_name: { required: true, type: string }
-      new_sha:  { required: true, type: string }
-      reason:   { required: false, type: string, default: "" }
+      env_name:       { required: true,  type: string }
+      component:      { required: true,  type: string }
+      source_repo:    { required: false, type: string, default: IT-Academic-Research-Services/seqtoid-web }
+      new_sha:        { required: true,  type: string }
+      default_piece:  { required: false, type: string, default: "" }
+      reason:         { required: false, type: string, default: "" }
 
 permissions:
   id-token: write     # assume the S3-write role via OIDC
@@ -37,14 +55,17 @@ permissions:
 
 jobs:
   record:
-    name: Record ${{ inputs.env_name }} release
+    name: Record ${{ inputs.component }} -> ${{ inputs.env_name }}
     runs-on: ubuntu-latest
-    # The ledger bucket + writer role live per environment (repo/environment vars). If either is unset
-    # (feature not yet provisioned for this env) the job no-ops rather than failing.
+    # Bucket + writer role live per environment (env vars). If unset (feature not yet provisioned for
+    # this env) the job no-ops rather than failing, so it can never affect a deploy.
     environment: ${{ inputs.env_name }}
     steps:
-      - name: Checkout (for the collector script)
+      - name: Checkout seqtoid-web (the collector script)
         uses: actions/checkout@v4
+        with:
+          repository: IT-Academic-Research-Services/seqtoid-web
+          sparse-checkout: script/changelog
 
       - name: Skip if not provisioned
         id: gate
@@ -64,15 +85,17 @@ jobs:
           role-session-name: record-changelog
           aws-region: us-west-2
 
-      - name: Append release to the ledger
+      - name: Append deploy to the ledger
         if: steps.gate.outputs.run == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}   # read seqtoid-web PRs
+          GH_TOKEN: ${{ github.token }}   # read PRs from the source repo
         run: |
           python3 script/changelog/collect.py \
             --env "${{ inputs.env_name }}" \
+            --component "${{ inputs.component }}" \
+            --repo "${{ inputs.source_repo }}" \
             --new-sha "${{ inputs.new_sha }}" \
             --s3-uri "${{ vars.CHANGELOG_S3_URI }}" \
-            --repo "${{ github.repository }}" \
+            --default-piece "${{ inputs.default_piece }}" \
             --reason "${{ inputs.reason }}" \
             --md
