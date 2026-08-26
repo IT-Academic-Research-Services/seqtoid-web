@@ -15,7 +15,10 @@ export const STATUS_TYPE = {
   failed: "error",
   aborted: "error",
   "timed out": "error",
-  // A stalled/unfinished local upload — orange (warning), distinct from red "failed".
+  // An in-progress local upload (incl. a slow one flagged LOCAL_UPLOAD_STALLED before it has
+  // truly failed). Neutral "in progress" styling, NOT an error/warning -- the sample has not been
+  // sent to the pipeline yet, so a red/orange pill here reads as "something broke" to users.
+  uploading: "default",
   incomplete: "warning",
   "complete - issue": "warning",
   "complete*": "warning",
