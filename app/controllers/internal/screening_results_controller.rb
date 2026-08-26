@@ -19,6 +19,13 @@ module Internal
       return head(:unauthorized) unless valid_signature?
 
       payload = JSON.parse(request.raw_post)
+      # Flip the correlated user's export-control CLEARANCE first (a single-row DB write). Without this a
+      # genuinely clean screen (decision=approved) 200'd here but never reached ExportControlClearance, so
+      # the screened-clean user stayed verified+pending and was blocked at the Layer-3 gate forever. This
+      # runs synchronously (it is fast and must not be lost -- a failure raises so the service retries the
+      # whole callback); only the slow Auth0 account provisioning below stays async. Fail-closed: only
+      # decision=approved clears (see ExportControl::ClearanceCallback).
+      ExportControl::ClearanceCallback.apply(payload)
       ProvisionScreenedAccountJob.enqueue(payload)
       head :ok
     rescue JSON::ParserError
