@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     # Bucket + writer role live per environment (env vars). If unset (feature not yet provisioned for
     # this env) the job no-ops rather than failing, so it can never affect a deploy.
-    environment: ${{ inputs.env_name }}
+    environment: changelog-${{ inputs.env_name }}
     steps:
       - name: Checkout seqtoid-web (the collector script)
         uses: actions/checkout@v4
