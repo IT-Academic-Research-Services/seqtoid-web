@@ -436,10 +436,15 @@ module PipelineRunsHelper
 
     # Gets the first pipeline runs for multiple samples in an efficient way.
     pipeline_run_ids = PipelineRun.select("sample_id, MAX(id) as id").where(sample_id: samples.pluck(:id)).group(:sample_id)
+    # Explicit deterministic order: the outer query is otherwise unordered, so `find`-based
+    # callers (e.g. ReadsStatsService's representative selection) would depend on whatever
+    # order MySQL happens to return. Ascending id matches today's de-facto order, so this
+    # pins current behavior rather than changing it.
     valid_pipeline_runs = PipelineRun
                           .select(select_query)
                           .where("(sample_id, id) IN (?)", pipeline_run_ids)
                           .where(finalized: 1)
+                          .order(:id)
 
     if strict && valid_pipeline_runs.length != samples.length
       raise PIPELINE_RUN_STILL_RUNNING_ERROR

@@ -8,6 +8,12 @@ module Internal
   # Subclasses ActionController::Base (NOT ApplicationController): headless service-to-service, HMAC-authed
   # rather than a user session. FAIL CLOSED: disabled (503) if the signing secret is unset.
   class ScreeningResultsController < ActionController::Base # rubocop:disable Rails/ApplicationController
+    # Headless service-to-service endpoint authenticated by a shared HMAC signature (not a user
+    # session), so the request carries no CSRF token. Rails' default_protect_from_forgery applies
+    # verify_authenticity_token to ActionController::Base, which would 422 the signed POST before the
+    # HMAC check runs. Skip forgery protection here; the signature is the auth.
+    skip_forgery_protection
+
     def create
       return head(:service_unavailable) if signing_secret.blank?
       return head(:unauthorized) unless valid_signature?
