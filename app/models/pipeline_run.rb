@@ -507,7 +507,7 @@ class PipelineRun < ApplicationRecord
   end
 
   def should_have_insert_size_metrics
-    host_filtering_step_statuses = host_filtering_stage.step_statuses
+    host_filtering_step_statuses = host_filtering_stage&.step_statuses || {}
 
     if pipeline_version_uses_new_host_filtering_stage(pipeline_version)
       # Only paired-end samples should have insert size metrics.
