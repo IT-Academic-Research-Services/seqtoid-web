@@ -8,7 +8,8 @@ export const HREF = {
   UPLOAD: "/samples/upload",
 };
 export const footer: Record<string, string> = {
-  Github: "https://github.com/chanzuckerberg/czid-workflows#workflows",
+  Github:
+    "https://github.com/IT-Academic-Research-Services/seqtoid-workflows#workflows",
   Careers: "https://boards.greenhouse.io/chanzuckerberginitiative/jobs/3293983",
   Resources: "helpcenter:/",
 };

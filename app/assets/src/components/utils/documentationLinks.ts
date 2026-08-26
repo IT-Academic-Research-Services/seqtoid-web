@@ -25,13 +25,13 @@ export const VISUALIZATIONS_DOC_LINK =
 export const ARTIC_PIPELINE_LINK =
   "https://artic.network/viruses/sars-cov-2";
 export const CG_ILLUMINA_PIPELINE_GITHUB_LINK =
-  "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/consensus-genome";
+  "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/consensus-genome";
 export const MNGS_ILLUMINA_PIPELINE_GITHUB_LINK =
-  "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/short-read-mngs";
+  "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/short-read-mngs";
 export const MNGS_NANOPORE_PIPELINE_GITHUB_LINK =
-  "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/long-read-mngs";
+  "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/long-read-mngs";
 export const AMR_PIPELINE_GITHUB_LINK =
-  "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/amr";
+  "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/amr";
 export const PHYLO_TREE_LINK =
   "helpcenter:/articles/building-a-phylogenetic-tree/";
 export const PAIRWISE_DISTANCE_MATRIX_INSTEAD_OF_TREE_LINK =
@@ -73,7 +73,7 @@ export const WHITE_PAPER_LINK =
   "https://academic.oup.com/gigascience/article/9/10/giaa111/5918865";
 
 export const WORKFLOWS_CHANGELOG_LINK =
-  "https://github.com/chanzuckerberg/czid-workflows/blob/main/CHANGELOG.md"; // generic link for short read mNGS and CG
+  "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/blob/main/CHANGELOG.md"; // generic link for short read mNGS and CG
 
 // Links for pipeline version indicator
 export const MNGS_ILLUMINA_UPLOAD_LINK =
