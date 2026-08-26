@@ -98,12 +98,13 @@ class SupportController < ApplicationController
     login_required unless release_notes_public?
   end
 
-  # True when this deployment serves the public (end-user) release feed. Driven by
-  # an explicit env flag, falling back to detecting a production-like Rails env.
+  # True when this deployment serves the public (end-user) release feed. DEFAULT-CLOSED and driven by an
+  # EXPLICIT flag only: the release-notes page is the auth boundary, and internal envs must never open it
+  # by accident. We deliberately do NOT infer from Rails.env -- staging/dev commonly run
+  # RAILS_ENV=production, which would silently flip an internal env's feed to unauthenticated. Prod opts
+  # in by setting RELEASE_NOTES_PUBLIC=1; everywhere else the feed stays behind login.
   def release_notes_public?
-    return true if ActiveModel::Type::Boolean.new.cast(ENV["RELEASE_NOTES_PUBLIC"])
-
-    Rails.env.to_s.start_with?("prod")
+    ActiveModel::Type::Boolean.new.cast(ENV["RELEASE_NOTES_PUBLIC"])
   end
 
   # The ledger served to the page. On the public feed the records are filtered to
