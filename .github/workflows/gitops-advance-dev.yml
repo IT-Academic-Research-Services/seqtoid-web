@@ -1,10 +1,14 @@
 name: gitops-advance-dev
 
 # CD trigger for the Argo CD blue/green delivery (#444). When a build+push to main
-# succeeds (image idseq-web:<sha8> in ECR, Trivy+Cosign passed), advance image.tag in
-# the DEV env values in cypherid-web-infra. Argo CD (dev, autoPromotionEnabled: true)
-# then syncs and Argo Rollouts promotes on smoke pass. This replaces the czecs deploy
-# for dev — the app never applies to the cluster directly; it just moves a Git pointer.
+# succeeds (image <repo>:sha-<sha8> in ECR, Trivy+Cosign passed), advance BOTH image.tag
+# and image.digest in the DEV env values in cypherid-web-infra. The chart pins by digest
+# when one is set (falling back to tag only when it is absent), so advancing the tag alone
+# left a stale digest and Argo kept serving the old image while reporting Synced; writing
+# both keeps them in lockstep, matching the promote-to-env.yml pattern. Argo CD (dev,
+# autoPromotionEnabled: true) then syncs and Argo Rollouts promotes on smoke pass. This
+# replaces the czecs deploy for dev -- the app never applies to the cluster directly; it
+# just moves a Git pointer.
 #
 # Chained off the build via workflow_run so it only fires on a *successful* build of
 # the exact commit that produced the image.
@@ -26,6 +30,19 @@ jobs:
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The digest resolution below assumes the dev-account ECR-read role via GitHub OIDC.
+      id-token: write
+    env:
+      # Same rotatable CI-identity vars the build + promote workflows use, with the DEV-account
+      # defaults. Resolve the built image's DIGEST from this account's ECR so the advance can pin it.
+      AWS_REGION: us-west-2
+      CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+      GHA_ROLE: ${{ vars.GHA_ROLE || 'czid-dev-gh-actions-build' }}
+      # The ECR repo dev.yaml pins by (image.repository basename). CZID-76 dual-push lands the same
+      # manifest here in the dev account, so this account's ECR holds the digest we advance to.
+      ECR_REPO_NAME: ${{ vars.ECR_REPO_NAME || 'seqtoid-web' }}
     steps:
       # IT-ARS authenticates gitops writes with a GitHub App (repo var CI_APP_ENABLED=true).
       # The thorvath-slower fork has no app installed, so this step is skipped there and every
@@ -50,27 +67,60 @@ jobs:
           curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ}/yq_linux_amd64" -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Advance dev image.tag to the built commit
+      # Resolve the built image's immutable DIGEST so the advance can pin it alongside the tag.
+      # The chart's image helper (seqtoid-web/deploy/charts/seqtoid-web/templates/_helpers.tpl)
+      # renders repository@<digest> whenever image.digest is set and ONLY falls back to :tag when
+      # it is absent -- so advancing the tag while leaving a stale digest keeps Argo serving the old
+      # image while reporting Synced. This job therefore mirrors promote-to-env.yml: write BOTH keys.
+      - name: Configure AWS (dev/CI account, ECR read)
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CI_ACCOUNT_ID }}:role/${{ env.GHA_ROLE }}
+          role-session-name: gitops-advance-dev-digest
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Advance dev image (tag + digest) to the built commit
         id: advance
         env:
           BUILT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           # Match the pushed image tag exactly: bin/push-docker pushes `<repo>:sha-<sha8>`, and the
-          # chart renders `{{ .repository }}:{{ .tag }}` verbatim (no prefix added), so image.tag must
-          # be the full `sha-<sha8>` or Argo pulls a tag that doesn't exist in ECR.
+          # chart renders the readable tag verbatim (no prefix added), so image.tag must be the full
+          # `sha-<sha8>`. The chart PINS by image.digest when present, so we resolve + write it too.
           TAG="sha-${BUILT_SHA:0:8}"
           FILE=deploy/argocd/values/seqtoid-web/dev.yaml
-          CURRENT="$(yq '.image.tag' "$FILE")"
-          echo "current=$CURRENT  new=$TAG"
-          if [ "$CURRENT" = "$TAG" ]; then
+
+          # Immutable digest for this tag, from the dev-account ECR the values pin by. describe-images
+          # returns the manifest digest (sha256:...), the exact form the chart renders as repo@<digest>.
+          DIGEST="$(aws ecr describe-images \
+            --repository-name "$ECR_REPO_NAME" \
+            --image-ids "imageTag=$TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          case "$DIGEST" in
+            sha256:*) : ;;
+            *) echo "::error::could not resolve digest for ${ECR_REPO_NAME}:${TAG} in ${CI_ACCOUNT_ID} ECR (got '${DIGEST}'); refusing to advance dev to an unpinnable image."; exit 1 ;;
+          esac
+
+          CUR_TAG="$(yq '.image.tag // ""' "$FILE")"
+          CUR_DIGEST="$(yq '.image.digest // ""' "$FILE")"
+          echo "current tag=$CUR_TAG digest=$CUR_DIGEST"
+          echo "new     tag=$TAG digest=$DIGEST"
+          # No-op only when BOTH already match; if either drifts, advance both together so the tag and
+          # the digest the chart pins by never diverge (the stale-digest bug that stuck dev, #560-adjacent).
+          if [ "$CUR_TAG" = "$TAG" ] && [ "$CUR_DIGEST" = "$DIGEST" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "dev already at $TAG — nothing to advance."
+            echo "dev already at $TAG ($DIGEST) -- nothing to advance."
             exit 0
           fi
           yq -i ".image.tag = \"$TAG\"" "$FILE"
-          echo "changed=true"  >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
+          yq -i ".image.digest = \"$DIGEST\"" "$FILE"
+          {
+            echo "changed=true"
+            echo "tag=$TAG"
+            echo "digest=$DIGEST"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Close stale dev tag-advance PRs (self-cleaning, #560)
         if: steps.advance.outputs.changed == 'true'
@@ -100,6 +150,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN }}
           TAG: ${{ steps.advance.outputs.tag }}
+          DIGEST: ${{ steps.advance.outputs.digest }}
         run: |
           set -euo pipefail
           BRANCH="gitops/advance-dev-${TAG}"
@@ -107,11 +158,15 @@ jobs:
           git config user.email "gitops@seqtoid.local"
           git checkout -b "$BRANCH"
           git add deploy/argocd/values/seqtoid-web/dev.yaml
-          git commit -m "gitops(dev): advance seqtoid-web image.tag -> ${TAG}"
+          git commit -m "gitops(dev): advance seqtoid-web image -> ${TAG} (${DIGEST})"
           git push -u origin "$BRANCH" --force-with-lease
           gh pr create \
             --title "gitops(dev): advance seqtoid-web -> ${TAG}" \
-            --body "Automated dev tag-advance from a green seqtoid-web build (${TAG}). Auto-merges once its checks pass; Argo CD then syncs (dev auto-promotes on smoke pass). Source build: ${{ github.event.workflow_run.html_url }}" \
+            --body "Automated dev image-advance from a green seqtoid-web build. Pins BOTH image.tag and image.digest so the chart (which renders repository@<digest> when a digest is set) actually serves the built image. Auto-merges once its checks pass; Argo CD then syncs (dev auto-promotes on smoke pass).
+
+          - image tag: \`${TAG}\`
+          - digest: \`${DIGEST}\`
+          - source build: ${{ github.event.workflow_run.html_url }}" \
             --base main --head "$BRANCH" || echo "PR may already exist for $BRANCH"
 
       - name: Auto-merge the dev tag-advance (wait for green, then merge)
