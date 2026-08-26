@@ -193,7 +193,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "logs an error and renders the default message when error_description is missing" do
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error or error_description.",
-        hash_including(:error_type, :error_description)
+        error_type: :unauthorized,
+        error_description: :"",
+        params: /"error"=>"unauthorized"/
       )
 
       # error is present (unauthorized) but error_description is absent: the guard
@@ -207,7 +209,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "logs an error and routes to failure when the error type is entirely missing" do
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error or error_description.",
-        hash_including(:error_type, :error_description)
+        error_type: :"",
+        error_description: :"",
+        params: /"action"=>"omniauth_failure"/
       )
 
       get :omniauth_failure
