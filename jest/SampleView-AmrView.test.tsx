@@ -342,9 +342,20 @@ describe("AmrView", () => {
       },
     };
     await renderView({ dispatch, amrContextState: { activeFilters } });
-    await waitFor(() => expect(screen.getByTestId("amr-report")).toBeTruthy());
+    // The amr-report node is rendered on the very first commit (before the
+    // async results fetch resolves), so waiting on its mere presence does not
+    // guarantee the fetched rows have landed. The CSV-link effect fires once
+    // with an empty `displayedRows` on that first commit and again, with the
+    // three fetched rows, only after the fetch resolves and re-renders. Wait
+    // for the last compute call to reflect the populated rows so the assertion
+    // never reads the pre-fetch (empty) call.
+    await waitFor(() => {
+      expect(mockedComputeCSV).toHaveBeenCalled();
+      expect(
+        Object.values(mockedComputeCSV.mock.calls.at(-1)[0].displayedRows),
+      ).toHaveLength(3);
+    });
 
-    expect(mockedComputeCSV).toHaveBeenCalled();
     const computeArg = mockedComputeCSV.mock.calls.at(-1)[0];
     expect(computeArg.activeFilters).toBe(activeFilters);
     expect(Object.values(computeArg.displayedRows)).toHaveLength(3);
