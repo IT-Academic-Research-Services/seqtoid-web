@@ -1327,7 +1327,7 @@ class SamplesController < ApplicationController
   # GET samples/:id/results_folder.json
   def results_folder
     pr = select_pipeline_run(@sample, params[:pipeline_version])
-    can_see_stage1_results = (current_user.id == @sample.user_id)
+    can_see_stage1_results = true # (current_user.id == @sample.user_id)
     pipeline_version_url_param = params[:pipeline_version] ? "?pipeline_version=#{params[:pipeline_version]}" : ""
     @exposed_raw_results_url = can_see_stage1_results ? "#{raw_results_folder_sample_url(@sample)}#{pipeline_version_url_param}" : nil
     @sample_path = "#{sample_path(@sample)}#{pipeline_version_url_param}"

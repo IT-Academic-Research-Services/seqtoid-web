@@ -1,6 +1,7 @@
 import React from "react";
 import { ANALYTICS_EVENT_NAMES } from "~/api/analytics";
 import { ARTIC_PIPELINE_LINK } from "~/components/utils/documentationLinks";
+import { CatalogedWorkflowVersion } from "~/interface/shared";
 import {
   SEQUENCING_TECHNOLOGY_OPTIONS,
   UploadWorkflows,
@@ -22,6 +23,10 @@ interface ConsensusGenomeWithNanoporeProps {
   selectedWetlabProtocol: string;
   pipelineVersion?: string;
   latestMajorPipelineVersion?: string;
+  // CZID-975 -- version selection for the Nanopore CG path, mirroring the Illumina path.
+  availableVersions?: CatalogedWorkflowVersion[];
+  onVersionChange?: (selected: string) => void;
+  selectedVersion?: string;
 }
 
 const ConsensusGenomeWithNanopore = ({
@@ -37,6 +42,9 @@ const ConsensusGenomeWithNanopore = ({
   selectedWetlabProtocol,
   pipelineVersion,
   latestMajorPipelineVersion,
+  availableVersions,
+  onVersionChange,
+  selectedVersion,
 }: ConsensusGenomeWithNanoporeProps) => {
   const tooltipText = `This pipeline only supports upload from your computer${
     isS3UploadEnabled ? " or S3" : ""
@@ -71,6 +79,9 @@ const ConsensusGenomeWithNanopore = ({
       tooltipText={tooltipText}
       pipelineVersion={pipelineVersion}
       latestMajorPipelineVersion={latestMajorPipelineVersion}
+      availableVersions={availableVersions}
+      onVersionChange={onVersionChange}
+      selectedVersion={selectedVersion}
       versionHelpLink={pipelineVersionLink}
       warningHelpLink={warningLink}
     />

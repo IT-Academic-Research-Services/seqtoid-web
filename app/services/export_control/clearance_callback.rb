@@ -14,16 +14,19 @@
 #      previously-held screen (drive_signup_callback -> approved/denied).
 # Whichever lands first satisfies the clearance; a later re-delivery is an idempotent no-op.
 #
-# FAIL-CLOSED (unchanged posture -- this only makes a genuine pass reach the clearance, it never broadens
-# who passes):
+# FAIL-CLOSED (this only makes a genuine pass reach an EXISTING clearance; it never broadens who passes):
 #   - decision=approved -> screening_result=SCREENING_CLEAR (the only path that can satisfy the gate).
 #   - decision=denied   -> screening_result=SCREENING_HIT (durable deny evidence; still blocked).
 #   - any other/unknown/held/error decision -> writes NOTHING; the clearance stays pending (= blocked).
-#   - verification_status is NEVER downgraded and NEVER manufactured -- a user with no verified identity
-#     stays unsatisfied even on an approved screen.
+#   - no CURRENT-version clearance row for the user -> writes NOTHING (no-op). The gate is now screening-only
+#     (passed == screening_result CLEAR; the document-IDV verification lane was retired), so verification_status
+#     is no longer the fail-closed lever it once was. Creating a CLEAR row from a callback alone would satisfy
+#     the gate for a user who never went through the controller's attestation flow -- so we never CREATE here,
+#     only UPDATE the in-flight row the controller wrote. A callback that outruns that row leaves the user
+#     blocked (fail-closed) until the normal flow writes it.
 #
-# IDEMPOTENT: we find-and-update the user's CURRENT-version clearance row in place (the verified+pending
-# row ExportControlClearancesController#create wrote), so at-least-once callback delivery never stacks
+# IDEMPOTENT: we find-and-update the user's CURRENT-version clearance row in place (the in-flight row
+# ExportControlClearancesController#create wrote), so at-least-once callback delivery never stacks
 # duplicate clear rows.
 module ExportControl
   module ClearanceCallback
@@ -41,7 +44,7 @@ module ExportControl
       result = screening_result_for(payload['decision'])
       return if result.nil? # held / error / pending / unknown -> leave pending (fail-closed)
 
-      upsert_current_clearance(user, result, evidence_ref_from(payload))
+      update_current_clearance(user, result, evidence_ref_from(payload))
     end
 
     # "User:<id>" -> the User, or nil for a blank / malformed correlation id or an unknown user id.
@@ -71,10 +74,13 @@ module ExportControl
         nested['id'].presence
     end
 
-    # Find-or-update the user's CURRENT-version clearance. We update the existing in-flight row in place
-    # rather than appending a second row, so repeated callbacks never stack duplicate clear rows.
-    # verification_status is left exactly as-is -- we never downgrade a verified identity here.
-    def upsert_current_clearance(user, screening_result, evidence_ref)
+    # Update the user's CURRENT-version clearance in place. The clearance controller writes the in-flight
+    # row when the user completes attestation and submits the screen; this write-back only ever UPDATEs
+    # that existing row, so repeated callbacks never stack duplicate rows. It never CREATES a row: with the
+    # gate now screening-only (verification_status retired), a callback with no prior row must NOT be able
+    # to manufacture a satisfying CLEAR clearance -- see the fail-closed no-op branch below.
+    # verification_status is left exactly as-is on update -- we never downgrade it here.
+    def update_current_clearance(user, screening_result, evidence_ref)
       version = ExportControlClearance::CURRENT_VERSION
       clearance = ExportControlClearance
                   .for_version(version)
@@ -93,18 +99,16 @@ module ExportControl
           screening_provider: PROVIDER_NAME
         )
       else
-        # No current-version row exists yet (the callback outran, or outlived, the controller's row). Record
-        # the screening outcome as evidence, but FAIL-CLOSED on verification: with no verified-identity
-        # evidence here, verification_status is PENDING, so an approved screen alone does NOT satisfy the
-        # gate. This never admits a user who lacks a real verification -- it only preserves the evidence.
-        ExportControlClearance.create!(
-          user: user,
-          verification_status: ExportControlClearance::VERIFICATION_PENDING,
-          screening_result: screening_result,
-          screening_provider: PROVIDER_NAME,
-          screening_evidence_ref: evidence_ref,
-          clearance_version: version
+        # FAIL-CLOSED: no current-version clearance row exists (the callback outran, or outlived, the
+        # controller's row). Under the screening-only gate, CREATING a CLEAR row here would satisfy the gate
+        # for a user who never completed the controller's attestation flow -- so we create NOTHING and leave
+        # the user blocked. The normal flow (or a re-delivered callback once the controller row exists) will
+        # clear it. We log so an orphaned callback is visible rather than silently dropped.
+        Rails.logger.warn(
+          "ExportControl::ClearanceCallback: #{screening_result} callback for user_id=#{user.id} with no " \
+          'current-version clearance row; no-op (fail-closed, awaiting controller-written clearance).'
         )
+        nil
       end
     end
   end

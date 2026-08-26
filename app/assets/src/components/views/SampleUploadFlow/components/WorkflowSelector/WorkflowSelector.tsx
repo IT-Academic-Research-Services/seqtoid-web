@@ -321,6 +321,9 @@ const WorkflowSelector = ({
             onTechnologyToggle={onTechnologyToggle}
             projectPipelineVersions={projectPipelineVersions}
             latestMajorPipelineVersions={latestMajorPipelineVersions}
+            versionCatalogs={versionCatalogs}
+            selectedWorkflowVersions={selectedWorkflowVersions}
+            versionChangeHandlerFor={versionChangeHandlerFor}
           />
         }
         customIcon={

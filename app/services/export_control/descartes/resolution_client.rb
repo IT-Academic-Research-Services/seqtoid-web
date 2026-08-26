@@ -162,7 +162,11 @@ module ExportControl
         doc.remove_namespaces!
         doc.xpath('//SHresult').map { |node| verdict_from(node) }
       rescue Nokogiri::XML::SyntaxError => e
-        raise Error, "malformed IMTimeStampSearch response: #{e.message}"
+        # SMP-1693 completeness: a Nokogiri syntax-error message can quote the offending markup, and the
+        # <SH> document carries SHname/SHcompany for every party in the window. Raise the error CLASS only
+        # (no message), mirroring SearchEntityClient#parse, so no screened-party identity can reach
+        # logs/Sentry/the Resque failure record via a parse failure.
+        raise Error, "malformed IMTimeStampSearch response (#{e.class})"
       end
 
       # Parse strictly so a malformed reply RAISES (fail-closed HOLD) instead of Nokogiri's default
