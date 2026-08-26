@@ -8,7 +8,7 @@ require 'rails_helper'
 RSpec.describe ExportControl::ClearanceCallback do
   let(:user) { create(:user) }
 
-  # The in-flight clearance row the controller writes: verified identity, screening still pending.
+  # The in-flight clearance row the controller writes before handoff: screening still pending.
   def pending_clearance(for_user = user)
     create(:export_control_clearance, :screening_pending, user: for_user,
                                                           screening_provider: 'screening_service')
@@ -29,10 +29,13 @@ RSpec.describe ExportControl::ClearanceCallback do
       expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(true)
     end
 
-    it 'does NOT downgrade an already-verified verification_status' do
+    it 'leaves verification_status untouched on update (write-back only touches screening fields)' do
+      # The document-IDV verification lane is retired and no longer gates; the write-back must never write
+      # or clobber verification_status, only the screening_* fields. Guard that it stays exactly as-is.
       clearance = pending_clearance
+      before = clearance.verification_status
       described_class.apply(payload(decision: 'approved'))
-      expect(clearance.reload.verification_status).to eq(ExportControlClearance::VERIFICATION_VERIFIED)
+      expect(clearance.reload.verification_status).to eq(before)
     end
 
     it 'records the screening evidence ref (top-level screening_id)' do
@@ -73,15 +76,15 @@ RSpec.describe ExportControl::ClearanceCallback do
       end
     end
 
-    it 'never manufactures a verification pass: an approved callback with no prior row does not satisfy' do
-      # No clearance row exists. An approved screen alone must not admit a user who was never verified.
+    it 'is a no-op when no prior clearance row exists: never manufactures a satisfying row (fail-closed)' do
+      # No clearance row exists. Under the screening-only gate (passed == screening_result CLEAR), creating a
+      # CLEAR row from a callback alone would admit a user who never completed the controller's attestation
+      # flow -- so the write-back only UPDATEs an existing row and writes NOTHING here. User stays blocked.
       expect do
         described_class.apply(payload(decision: 'approved', screening_id: 'scr-x'))
-      end.to change { ExportControlClearance.where(user_id: user.id).count }.by(1)
+      end.not_to change { ExportControlClearance.where(user_id: user.id).count }
 
-      row = ExportControlClearance.where(user_id: user.id).last
-      expect(row.screening_result).to eq(ExportControlClearance::SCREENING_CLEAR)
-      expect(row.verification_status).to eq(ExportControlClearance::VERIFICATION_PENDING)
+      expect(ExportControlClearance.where(user_id: user.id)).to be_empty
       expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(false)
     end
   end
