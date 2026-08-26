@@ -1237,27 +1237,55 @@ module SamplesHelper
     }
 
     session_name = "#{current_user.id}-CLI-session-#{Time.now.utc.to_i}"
+    policy_json = JSON.dump(policy)
 
-    # 12h upload token via web-identity FEDERATION, not role chaining.
+    # Prefer a 12h token via web-identity FEDERATION; fall back to a 1h chained
+    # token if this env's upload role does not yet trust federation.
     #
     # The web pod already runs on an assumed (IRSA) role, so calling
-    # AwsClient[:sts].assume_role here would be role CHAINING, which AWS
-    # hard-caps at 1h (3600s) no matter the target role's MaxSessionDuration.
-    # Requesting 12h that way raises a ValidationError and the upload 500s.
+    # AwsClient[:sts].assume_role is role CHAINING, which AWS hard-caps at 1h
+    # (3600s) no matter the target role's MaxSessionDuration. Federation
+    # (AssumeRoleWithWebIdentity) instead exchanges the pod ServiceAccount's
+    # own OIDC token for the upload role and honors MaxSessionDuration, so a
+    # 12h (43200s) session is allowed.
     #
-    # AssumeRoleWithWebIdentity instead exchanges the pod ServiceAccount's
-    # own OIDC token (mounted at AWS_WEB_IDENTITY_TOKEN_FILE) directly for
-    # the upload role. Federation honors the role's MaxSessionDuration, so a
-    # 12h (43200s) session is allowed. This serves both the CLI and UI upload
-    # paths, which share this helper.
-    #
-    # REQUIRES the CLI_UPLOAD_ROLE_ARN role's trust policy to federate the EKS
-    # cluster OIDC provider and this ServiceAccount, and MaxSessionDuration >=
-    # 43200 (see cypherid-web-infra). Without the trust change STS returns
-    # AccessDenied (403).
-    web_identity_token = File.read(ENV['AWS_WEB_IDENTITY_TOKEN_FILE'])
+    # Envs whose upload role trust already federates the seqtoid-web SA (dev)
+    # get 12h. Envs not yet wired (or an ECS runtime with no OIDC token file)
+    # transparently fall back to the working 1h chained token -- the user never
+    # sees a 403. Both paths serve the shared CLI + UI upload flow and both
+    # keep the identical scoped session policy, so only the token lifetime
+    # differs between them.
+    begin
+      assume_upload_role_via_web_identity(policy_json, session_name)
+    rescue Aws::STS::Errors::AccessDenied, Errno::ENOENT => e
+      # Narrow rescue only: AccessDenied means the env's upload role does not
+      # trust web-identity federation yet; Errno::ENOENT means no OIDC token
+      # file is mounted (e.g. missing AWS_WEB_IDENTITY_TOKEN_FILE, or ECS).
+      # Any other STS/network error still surfaces as before. Log the class
+      # only (never the token or credentials) so we can see which envs are on
+      # the 1h path.
+      Rails.logger.warn(
+        "get_upload_credentials: web-identity federation unavailable (#{e.class}); " \
+        "falling back to 1h chained assume_role"
+      )
+      assume_upload_role_via_chaining(policy_json, session_name)
+    end
+  end
+
+  # 12h upload token via web-identity federation (AssumeRoleWithWebIdentity).
+  # Requires the CLI_UPLOAD_ROLE_ARN role's trust policy to federate the EKS
+  # cluster OIDC provider + this ServiceAccount, and MaxSessionDuration >=
+  # 43200 (see cypherid-web-infra); otherwise STS raises AccessDenied and the
+  # caller falls back to the 1h chained path.
+  def assume_upload_role_via_web_identity(policy_json, session_name)
+    token_file = ENV['AWS_WEB_IDENTITY_TOKEN_FILE']
+    # A missing/blank token-file path is the "no federation configured" signal;
+    # normalize it to Errno::ENOENT so the caller's fallback handles it.
+    raise Errno::ENOENT, "AWS_WEB_IDENTITY_TOKEN_FILE" if token_file.blank?
+
+    web_identity_token = File.read(token_file)
     upload_sts_client.assume_role_with_web_identity({
-                                                      policy: JSON.dump(policy),
+                                                      policy: policy_json,
                                                       role_arn: ENV['CLI_UPLOAD_ROLE_ARN'],
                                                       role_session_name: session_name,
                                                       web_identity_token: web_identity_token,
@@ -1267,6 +1295,20 @@ module SamplesHelper
                                                       # sample's S3 object paths by the inline session policy above.
                                                       duration_seconds: 43_200,
                                                     })
+  end
+
+  # 1h upload token via role chaining (AssumeRole from the pod's assumed role).
+  # Fallback path: AWS caps chained sessions at 3600s regardless of the upload
+  # role's MaxSessionDuration. Same scoped session policy as the 12h path.
+  def assume_upload_role_via_chaining(policy_json, session_name)
+    AwsClient[:sts].assume_role({
+                                  policy: policy_json,
+                                  role_arn: ENV['CLI_UPLOAD_ROLE_ARN'],
+                                  role_session_name: session_name,
+                                  # Token expires in 1h (default). This can be increased to 12h, but not
+                                  # with role chaining, where role A assumes role B to generate a token.
+                                  duration_seconds: 3_600,
+                                })
   end
 
   # Dedicated STS client for the AssumeRoleWithWebIdentity call above.
