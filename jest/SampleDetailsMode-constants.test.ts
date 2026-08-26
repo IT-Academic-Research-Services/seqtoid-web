@@ -4,10 +4,10 @@
 // every entry is a {name, key} pair, the keys are unique within a workflow, and
 // the workflow-specific fields (Guppy for long read, CARD for AMR, ...) live in
 // exactly the lists that should have them.
+import * as SampleDetailsConstants from "~/components/common/DetailsSidebar/SampleDetailsMode/constants";
 import {
   AMR_WORKFLOW_INFO_FIELDS,
   CG_WORKFLOW_INFO_FIELDS,
-  HOST_FILTERING_WIKI,
   LONG_READ_MNGS_INFO_FIELDS,
   SAMPLE_ADDITIONAL_INFO,
   SHORT_READ_MNGS_INFO_FIELDS,
@@ -144,8 +144,12 @@ describe("SampleDetailsMode/constants", () => {
     });
   });
 
-  it("points the host filtering tooltip at the czid-workflows wiki", () => {
-    expect(HOST_FILTERING_WIKI).toMatch(/^https:\/\/github\.com\//);
-    expect(HOST_FILTERING_WIKI).toContain("Host-Filtering");
+  it("exposes no external host filtering wiki link (no seqtoid-workflows equivalent)", () => {
+    // The czid-workflows host-filtering wiki page was not carried over to the
+    // seqtoid-workflows fork, so the tooltip link was removed rather than
+    // repointed. This pins that a dead external link is not reintroduced.
+    expect(
+      (SampleDetailsConstants as Record<string, unknown>).HOST_FILTERING_WIKI,
+    ).toBeUndefined();
   });
 });

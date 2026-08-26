@@ -114,7 +114,7 @@ describe("LandingHeaderV1", () => {
       expect(screen.getByText(label)).toBeTruthy();
     });
     expect(screen.getByText("GitHub").getAttribute("href")).toBe(
-      "https://github.com/chanzuckerberg/czid-workflows",
+      "https://github.com/IT-Academic-Research-Services/seqtoid-workflows",
     );
   });
 });

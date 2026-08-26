@@ -46,9 +46,9 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
 
     // For Illumina option:
     // - Github ""here"" link opens Githbu new tab:
-    // https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/consensus-genome
+    // https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/consensus-genome
     expect(await linkedPage.url()).toEqual(
-      "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/consensus-genome",
+      "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/consensus-genome",
     );
     await linkedPage.close();
     // #endregion 5. Cilck on Github ""here"" LINK
