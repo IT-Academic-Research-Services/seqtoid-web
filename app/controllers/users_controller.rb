@@ -1,7 +1,7 @@
 class UsersController < ApplicationController
   skip_before_action :authenticate_user!, only: [:password_new, :register]
   before_action :admin_required, except: [:password_new, :register, :update_user_data, :post_user_data_to_airtable]
-  before_action :set_user, only: [:edit, :update, :destroy, :update_user_data, :post_user_data_to_airtable]
+  before_action :set_user, only: [:edit, :update, :destroy, :update_user_data, :post_user_data_to_airtable, :initiate_s3_transfer, :transfer_jobs]
 
   # GET /users
   # GET /users.json
@@ -184,6 +184,64 @@ class UsersController < ApplicationController
         status: :ok
       )
     end
+  end
+
+  # GET /users/1/export_data
+  # Admin-only: triggers a streaming user-data export (per-table NDJSON bundle,
+  # schema 1.0), uploads it to S3, and returns the manifest + bundle location
+  # rather than the (potentially multi-GB) data. Prefer the rake task for large
+  # users. Runs on the SOURCE (CZ ID) side to produce a bundle for import.
+  def export_data
+    # Dir.mktmpdir gives a scratch directory (auto-removed at block exit) for the
+    # service to stream the bundle into before we push it to S3. We keep it
+    # disk-backed rather than piping straight to S3 so the endpoint shares the
+    # exact code path as the rake task (which keeps a local /mnt copy); the bundle
+    # is tiny per-file and cleaned up immediately.
+    Dir.mktmpdir("user_data_export") do |dir|
+      result = UserDataExportService.call(user_id: params[:id], output_dir: dir)
+
+      bucket = ENV["SAMPLES_BUCKET_NAME_V1"]
+      s3_location = nil
+      if bucket.present?
+        prefix = "user_data_exports/#{result[:user_id]}/user_#{result[:user_id]}_export_#{Time.current.strftime('%Y%m%dT%H%M%SZ')}"
+        # The bundle is already gzipped per table (<table>.ndjson.gz); we upload
+        # the files individually under one S3 prefix rather than wrapping them in
+        # a single .zip/.tar.gz, because a single archive needs each entry's size
+        # up front, which would defeat the streaming write. The S3 "folder" is the
+        # bundle.
+        result[:files].each do |filename|
+          S3Util.upload_file(bucket, "#{prefix}/#{filename}", File.join(dir, filename))
+        end
+        s3_location = "s3://#{bucket}/#{prefix}/"
+      end
+
+      render json: {
+        user_id: result[:user_id],
+        schema_version: result[:schema_version],
+        table_counts: result[:table_counts],
+        s3_location: s3_location,
+        warnings: result[:warnings],
+      }, status: :ok
+    end
+  rescue UserDataExportService::UserNotFoundError
+    render json: { error: "User not found" }, status: :not_found
+  rescue UserDataExportService::ExportError => e
+    render json: { error: e.message }, status: :internal_server_error
+  end
+
+  # POST /users/1/initiate_s3_transfer
+  def initiate_s3_transfer
+    transfer_job = S3TransferDispatchService.call(@user.id)
+    redirect_to users_url, notice: "Started S3 transfer for #{@user.email} (job ##{transfer_job.id}, #{transfer_job.file_count} files)."
+  rescue S3TransferDispatchService::NoFilesError
+    redirect_to users_url, alert: "No transferable files found for #{@user.email}."
+  rescue StandardError => err
+    redirect_to users_url, alert: "Failed to start S3 transfer for #{@user.email}: #{err.message}"
+  end
+
+  # GET /users/1/transfer_jobs
+  def transfer_jobs
+    @transfer_jobs = @user.s3_transfer_jobs.order(created_at: :desc)
   end
 
   private

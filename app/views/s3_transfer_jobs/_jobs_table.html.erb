@@ -1,0 +1,37 @@
+<% show_user = local_assigns.fetch(:show_user, false) %>
+<% if transfer_jobs.empty? %>
+  <p>No S3 transfer jobs found.</p>
+<% else %>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <% if show_user %><th>User</th><% end %>
+        <th>Status</th>
+        <th>Files</th>
+        <th>Destination bucket</th>
+        <th>Batch job ID</th>
+        <th>Executed at</th>
+        <th>Created at</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% transfer_jobs.each do |job| %>
+        <tr>
+          <td><%= job.id %></td>
+          <% if show_user %>
+            <td><%= link_to(job.user.email, edit_user_path(job.user)) if job.user %></td>
+          <% end %>
+          <td><%= job.status %></td>
+          <td><%= job.file_count %></td>
+          <td><%= job.destination_bucket %></td>
+          <td><%= job.batch_job_id %></td>
+          <td><%= job.executed_at %></td>
+          <td><%= job.created_at %></td>
+          <td><%= job.error_message %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

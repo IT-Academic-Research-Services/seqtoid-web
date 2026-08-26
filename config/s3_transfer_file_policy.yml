@@ -1,0 +1,366 @@
+# =============================================================================
+# S3 TRANSFER FILE POLICY  (user-data platform migration — Part 2 / file transfer)
+# =============================================================================
+#
+# PURPOSE
+# When migrating a user to a partner instance we copy their S3 objects to the
+# partner bucket. This file is the SINGLE, EXPLICIT policy for *which* output
+# files get copied — every file a workflow can write to its S3 results prefix is
+# classified here as `transfer: true` or `transfer: false`.
+#
+# SOURCE OF TRUTH
+# The transfer/skip decisions below are transcribed from the authoritative
+# "Should Transfer?" file-table list (per workflow: short-read-mngs, long-read-mngs,
+# consensus-genome, amr) provided by the team. Where the list's spelling clearly
+# disagrees with the real S3 filename it is corrected to match reality (noted
+# inline) — matching the actual object key is what makes the copy work.
+#
+# WITHHELD host-genomic data (still enforced): every file that can carry HOST,
+# especially HUMAN, genomic sequence (raw/validated/quality-filtered reads before
+# host+human filtering, and host/human-aligned BAMs) is `transfer: false`
+# ("PII-adjacent"). This matches the list and is the one hard constraint.
+#
+# COMPLETENESS CONTRACT
+# The enumerator classifies every basename it finds in a run's results prefix:
+#   * matches transfer:true   -> copied
+#   * matches transfer:false  -> explicitly skipped (on the record)
+#   * matches NO entry/pattern -> UNCLASSIFIED -> flagged (logged), never silently
+#                                 transferred or dropped.
+# So a file that isn't copied is always either an explicit reject or a loud
+# "unclassified" signal. Do not add a catch-all.
+#
+# MATCHING  (first match wins)
+#   1. exact basename under the workflow's `files:`
+#   2. the workflow's own `patterns:` (glob, in file order)
+#   3. the top-level cross-workflow `patterns:` (glob, in file order)
+#   4. otherwise :unclassified
+# Keys are matched by BASENAME. Verified against staging: the SFN-WDL harness
+# flattens WDL output subdirs (assembly/, coverage_viz/) into the results root,
+# and results live at samples/<proj>/<sample>/<id>/<workflow>-<major>/. Names that
+# differ per workflow (e.g. contigs.fasta transfers for short-read but not
+# long-read; sample_validated.fastq transfers for long-read but valid_input does
+# not for short-read) are handled by the per-workflow `files:` sections.
+#
+# VERSIONING
+# Version-agnostic (keyed by workflow, not version). Historical-version filename
+# drift surfaces as :unclassified rather than being silently transferred/dropped.
+# =============================================================================
+
+# Original uploaded reads (input_files.source). WITHHELD: pre-host-filter, the most
+# host/human-genomic (PII-adjacent) data in the graph.
+raw_inputs:
+  transfer: false
+  reason: "Original user-uploaded reads; pre-host-filter, host genomic sequence (PII-adjacent)."
+
+# Cross-workflow patterns (lowest precedence). Not in the file-table list; these are
+# orchestration/description artifacts, decided here.
+patterns:
+  "*.description.md":
+    transfer: false
+    reason: "Per-step description; ingested into the DB (step_description_md). Not a data file."
+  "*_status2.json":
+    transfer: false
+    reason: "SFN-WDL orchestration status file (e.g. _status2.json, genome_status2.json)."
+  "*_status.json":
+    transfer: false
+    reason: "SFN-WDL orchestration status file."
+
+workflows:
+
+  # ---------------------------------------------------------------------------
+  short-read-mngs:
+    status: reviewed
+    files:
+      # host filtering
+      "config.json":                       { transfer: false, reason: "stage config input" }
+      "fastqs.count":                      { transfer: true,  reason: "input read count" }
+      "valid_input1.fastq":                { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "valid_input2.fastq":                { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "validate_input_summary.json":       { transfer: false, reason: "input-validation summary" }
+      "ercc_index_tar":                    { transfer: false, reason: "reference index input" }
+      "bowtie2_ercc_filtered1.fastq":      { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "bowtie2_ercc_filtered2.fastq":      { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "bowtie2_ERCC_counts.tsv":           { transfer: true,  reason: "per-ERCC-transcript read counts (list spells 'ercc'; real file is 'ERCC')" }
+      "adapter_fasta":                     { transfer: false, reason: "reference input" }
+      "fastp1.fastq":                      { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "fastp2.fastq":                      { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "fastp.html":                        { transfer: true,  reason: "fastp QC report" }
+      "fastp.json":                        { transfer: true,  reason: "fastp QC report (machine-readable)" }
+      "kallisto_idx":                      { transfer: false, reason: "reference index input" }
+      "reads_per_transcript.kallisto.tsv": { transfer: true,  reason: "kallisto transcript abundance" }
+      "ERCC_counts.tsv":                   { transfer: true,  reason: "ERCC est_counts" }
+      "transcript_to_gene_mapping.kallisto.tsv": { transfer: false, reason: "reference mapping; regenerable" }
+      "bowtie2_index_tar":                 { transfer: false, reason: "reference index input" }
+      "bowtie2_host_filtered1.fastq":      { transfer: false, reason: "host-stage reads (PII-adjacent)" }
+      "bowtie2_host_filtered2.fastq":      { transfer: false, reason: "host-stage reads (PII-adjacent)" }
+      "bowtie2_host.bam":                  { transfer: false, reason: "host-aligned BAM (PII-adjacent)" }
+      "hisat2_index_tar":                  { transfer: false, reason: "reference index input" }
+      "hisat2_host_filtered1.fastq":       { transfer: false, reason: "host-stage reads (PII-adjacent)" }
+      "hisat2_host_filtered2.fastq":       { transfer: false, reason: "host-stage reads (PII-adjacent)" }
+      "picard_insert_metrics.txt":         { transfer: true,  reason: "Picard insert-size metrics" }
+      "insert_size_histogram.pdf":         { transfer: true,  reason: "Picard insert-size histogram" }
+      "human_bowtie2_index_tar":           { transfer: false, reason: "reference index input" }
+      "bowtie2_human_filtered1.fastq":     { transfer: false, reason: "human-stage reads (PII-adjacent)" }
+      "bowtie2_human_filtered2.fastq":     { transfer: false, reason: "human-stage reads (PII-adjacent)" }
+      "bowtie2_human.bam":                 { transfer: false, reason: "human-aligned BAM (PII-adjacent)" }
+      "human_hisat2_index_tar":            { transfer: false, reason: "reference index input" }
+      "hisat2_human_filtered1.fastq":      { transfer: false, reason: "human-stage reads (PII-adjacent)" }
+      "hisat2_human_filtered2.fastq":      { transfer: false, reason: "human-stage reads (PII-adjacent)" }
+      "dedup1.fastq":                      { transfer: true,  reason: "deduplicated non-host reads (transferred per partner request)" }
+      "dedup2.fastq":                      { transfer: true,  reason: "deduplicated non-host reads (transferred per partner request)" }
+      "clusters.csv":                      { transfer: true,  reason: "duplicate clusters mapping" }
+      "duplicate_cluster_sizes.tsv":       { transfer: true,  reason: "exemplar -> cluster size" }
+      "subsampled_1.fa":                   { transfer: true,  reason: "subsampled non-host reads" }
+      "subsampled_2.fa":                   { transfer: true,  reason: "subsampled non-host reads" }
+      "subsampled_merged.fa":              { transfer: true,  reason: "subsampled non-host reads (merged)" }
+      # alignment
+      "host_filter_out_gsnap_filter_merged_fa": { transfer: false, reason: "alignment input" }
+      "host_filter_out_gsnap_filter_1_fa": { transfer: false, reason: "alignment input" }
+      "minimap2_local_db_path":            { transfer: false, reason: "reference db input" }
+      "gsnap.m8":                          { transfer: true,  reason: "NT alignment (m8)" }
+      "minimap2_version.txt":              { transfer: true,  reason: "aligner version" }
+      "gsnap.deduped.m8":                  { transfer: true,  reason: "NT deduped m8" }
+      "gsnap.hitsummary.tab":              { transfer: true,  reason: "NT hit summary" }
+      "gsnap_counts_with_dcr.json":        { transfer: true,  reason: "NT taxon counts" }
+      "rapsearch2.m8":                     { transfer: true,  reason: "NR alignment (m8)" }
+      "diamond_version.txt":               { transfer: true,  reason: "aligner version" }
+      "rapsearch2.deduped.m8":             { transfer: true,  reason: "NR deduped m8" }
+      "rapsearch2.hitsummary.tab":         { transfer: true,  reason: "NR hit summary" }
+      "rapsearch2_counts_with_dcr.json":   { transfer: true,  reason: "NR taxon counts" }
+      "taxon_counts_with_dcr.json":        { transfer: true,  reason: "combined taxon counts" }
+      "annotated_merged.fa":               { transfer: true,  reason: "annotated non-host reads" }
+      "unidentified.fa":                   { transfer: true,  reason: "unidentified reads; transferred after the amendment" }
+      # postprocess (assembly)
+      "contigs.fasta":                     { transfer: true,  reason: "assembled contigs" }
+      "contigs_all.fasta":                 { transfer: true,  reason: "all contigs" }
+      "scaffolds.fasta":                   { transfer: true,  reason: "SPAdes scaffolds" }
+      "read-contig.sam":                   { transfer: true,  reason: "read-to-contig alignment" }
+      "contig_stats.json":                 { transfer: true,  reason: "contig statistics" }
+      "spades.log":                        { transfer: true,  reason: "SPAdes log" }
+      "assembly_version.txt":              { transfer: true,  reason: "assembler version" }
+      "spades_failure.json":               { transfer: false, reason: "failure log; only on failure" }
+      "lineage_db":                        { transfer: false, reason: "reference db input" }
+      "nr_loc_db":                         { transfer: false, reason: "reference db input" }
+      "nt_loc_db":                         { transfer: false, reason: "reference db input" }
+      "contig_coverage.json":              { transfer: true,  reason: "per-contig coverage" }
+      "contig_coverage_summary.csv":       { transfer: true,  reason: "coverage summary" }
+      "taxon_blacklist":                   { transfer: false, reason: "reference input" }
+      "deuterostome_db":                   { transfer: false, reason: "reference db input" }
+      "assembly_nt_refseq_fasta":          { transfer: false, reason: "downloaded NT refs; regenerable" }
+      "gsnap.blast.m8":                    { transfer: true,  reason: "contig BLAST vs NT" }
+      "gsnap.reassigned.m8":               { transfer: true,  reason: "NT reassigned m8" }
+      "gsnap.hitsummary2.tab":             { transfer: true,  reason: "refined NT hit summary" }
+      "refined_gsnap_counts_with_dcr.json": { transfer: true, reason: "refined NT taxon counts" }
+      "gsnap_contig_summary.json":         { transfer: true,  reason: "NT contig summary" }
+      "gsnap.blast.top.m8":                { transfer: true,  reason: "top NT BLAST hits" }
+      "assembly_nr_refseq_fasta":          { transfer: false, reason: "downloaded NR refs; regenerable" }
+      "rapsearch2.blast.m8":               { transfer: true,  reason: "contig BLAST vs NR" }
+      "rapsearch2.reassigned.m8":          { transfer: true,  reason: "NR reassigned m8" }
+      "rapsearch2.hitsummary2.tab":        { transfer: true,  reason: "refined NR hit summary" }
+      "refined_rapsearch2_counts_with_dcr.json": { transfer: true, reason: "refined NR taxon counts" }
+      "rapsearch2_contig_summary.json":    { transfer: true,  reason: "NR contig summary" }
+      "rapsearch2.blast.top.m8":           { transfer: true,  reason: "top NR BLAST hits" }
+      "refined_taxon_counts_with_dcr.json": { transfer: true, reason: "combined refined taxon counts" }
+      "combined_contig_summary.json":      { transfer: true,  reason: "combined contig summary" }
+      "refined_annotated_merged.fa":       { transfer: true,  reason: "refined annotated non-host reads" }
+      "refined_unidentified.fa":           { transfer: true,  reason: "unidentified reads; transferred after the amendment" }
+      "assembly_unique_refined_unidentified_fa": { transfer: false, reason: "unidentified reads; not transferred" }
+      "refined_taxid_annot_mapped_only.fasta": { transfer: true, reason: "taxid-annotated mapped reads" }
+      "refined_taxid_annot.fasta":         { transfer: true,  reason: "taxid-annotated non-host reads" }
+      "refined_taxid_locator_out.count":   { transfer: true,  reason: "count; transferred after the amendment" }
+      "refined_taxid_annot_sorted_nt.fasta": { transfer: true, reason: "taxid locator (nt)" }
+      "refined_taxid_locations_nt.json":   { transfer: true,  reason: "taxid locations (nt)" }
+      "refined_taxid_annot_sorted_nr.fasta": { transfer: true, reason: "taxid locator (nr)" }
+      "refined_taxid_locations_nr.json":   { transfer: true,  reason: "taxid locations (nr)" }
+      "refined_taxid_annot_sorted_genus_nt.fasta": { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_genus_nt.json":     { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_annot_sorted_genus_nr.fasta": { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_genus_nr.json":     { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_annot_sorted_family_nt.fasta": { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_family_nt.json":     { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_annot_sorted_family_nr.fasta": { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_family_nr.json":     { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_combined.json":      { transfer: true,  reason: "combined taxid locations; transferred after the amendment" }
+      # experimental
+      "taxid_annot.fasta":                 { transfer: true,  reason: "taxid-annotated FASTA (read-level)" }
+      "taxid_annot_sorted_nt.fasta":       { transfer: true,  reason: "taxid locator (nt)" }
+      "taxid_locations_nt.json":           { transfer: true,  reason: "taxid locations (nt)" }
+      "taxid_annot_sorted_nr.fasta":       { transfer: true,  reason: "taxid locator (nr)" }
+      "taxid_locations_nr.json":           { transfer: true,  reason: "taxid locations (nr)" }
+      "taxid_annot_sorted_genus_nt.fasta": { transfer: true,  reason: "taxid locator (genus nt)" }
+      "taxid_locations_genus_nt.json":     { transfer: true,  reason: "taxid locations (genus nt)" }
+      "taxid_annot_sorted_genus_nr.fasta": { transfer: true,  reason: "taxid locator (genus nr)" }
+      "taxid_locations_genus_nr.json":     { transfer: true,  reason: "taxid locations (genus nr)" }
+      "taxid_annot_sorted_family_nt.fasta": { transfer: true, reason: "taxid locator (family nt)" }
+      "taxid_locations_family_nt.json":    { transfer: true,  reason: "taxid locations (family nt)" }
+      "taxid_annot_sorted_family_nr.fasta": { transfer: true, reason: "taxid locator (family nr)" }
+      "taxid_locations_family_nr.json":    { transfer: true,  reason: "taxid locations (family nr)" }
+      "taxid_locations_combined.json":     { transfer: true,  reason: "combined taxid locations" }
+      "align_viz.summary":                 { transfer: false, reason: "alignment viz summary; not transferred" }
+      "out.log":                           { transfer: false, reason: "srst2 log; not transferred" }
+      "out__genes__ARGannot_r2__results.txt": { transfer: false, reason: "legacy srst2 AMR output; not transferred" }
+      "out__fullgenes__ARGannot_r2__results.txt": { transfer: false, reason: "legacy srst2 AMR output; not transferred" }
+      "amr_processed_results.csv":         { transfer: false, reason: "legacy AMR output; not transferred" }
+      "amr_summary_results.csv":           { transfer: false, reason: "legacy AMR output; not transferred" }
+      "output__.ARGannot_r2.sorted.bam":   { transfer: false, reason: "legacy srst2 BAM; not transferred" }
+      "coverage_viz_summary.json":         { transfer: true,  reason: "coverage viz summary" }
+      "nonhost_fastq_out.count":           { transfer: false, reason: "count; not transferred" }
+      "nonhost_R1.fastq":                  { transfer: true,  reason: "non-host reads (host-depleted)" }
+      "nonhost_R2.fastq":                  { transfer: true,  reason: "non-host reads (host-depleted)" }
+    patterns:
+      "*_coverage_viz.json":               { transfer: false, reason: "per-taxon coverage viz; only the summary transfers" }
+      "*.align_viz.json":                  { transfer: false, reason: "per-accession alignment viz; not transferred" }
+      "*.longest_5_reads.fasta":           { transfer: false, reason: "longest-reads viz; not transferred" }
+
+  # ---------------------------------------------------------------------------
+  long-read-mngs:
+    status: reviewed
+    files:
+      "config.json":                       { transfer: true,  reason: "ONT stage descriptions" }
+      "input_fastq":                       { transfer: false, reason: "raw input reads (PII-adjacent)" }
+      "sample_validated.fastq":            { transfer: true,  reason: "validated reads (per file-table list)" }
+      "original_reads.count":              { transfer: true,  reason: "raw read count" }
+      "original_bases.count":              { transfer: true,  reason: "raw base count" }
+      "validated_reads.count":             { transfer: true,  reason: "validated read count" }
+      "validated_bases.count":             { transfer: true,  reason: "validated base count" }
+      "sample_quality_filtered.fastq":     { transfer: false, reason: "pre-host-filter reads (PII-adjacent)" }
+      "quality_filtered_reads.count":      { transfer: true,  reason: "quality-filtered read count" }
+      "quality_filtered_bases.count":      { transfer: true,  reason: "quality-filtered base count" }
+      "fastp.html":                        { transfer: true,  reason: "fastp QC report" }
+      "minimap_host_db":                   { transfer: false, reason: "reference db input" }
+      "sample.hostfiltered.bam":           { transfer: false, reason: "host-aligned BAM (PII-adjacent)" }
+      "sample.hostfiltered.fastq":         { transfer: false, reason: "host-stage reads (PII-adjacent)" }
+      "host_filtered_reads.count":         { transfer: true,  reason: "host-filtered read count" }
+      "host_filtered_bases.count":         { transfer: true,  reason: "host-filtered base count" }
+      "minimap_human_db":                  { transfer: false, reason: "reference db input" }
+      "sample.humanfiltered.bam":          { transfer: false, reason: "human-aligned BAM (PII-adjacent)" }
+      "sample.humanfiltered.fastq":        { transfer: false, reason: "human-stage reads (PII-adjacent)" }
+      "human_filtered_reads.count":        { transfer: true,  reason: "human-filtered read count" }
+      "human_filtered_bases.count":        { transfer: true,  reason: "human-filtered base count" }
+      "read_length_metrics.json":          { transfer: true,  reason: "read length distribution" }
+      "sample.subsampled.fastq":           { transfer: true,  reason: "subsampled reads; transferred after the amendment" }
+      "subsampled_reads.count":            { transfer: true,  reason: "subsampled read count" }
+      "subsampled_bases.count":            { transfer: true,  reason: "subsampled base count" }
+      "pre_assembly.fa":                   { transfer: false, reason: "pre-assembly FASTA; not transferred" }
+      "contigs.fasta":                     { transfer: true,  reason: "assembled contigs; transferred after the amendment (long-read)" }
+      "temp_flye_out.zip":                 { transfer: false, reason: "full Flye output dir; not transferred" }
+      "sample.reads_to_contigs.sam":       { transfer: false, reason: "reads-to-contigs SAM; not transferred" }
+      "sample.reads_to_contigs.bam":       { transfer: false, reason: "reads-to-contigs BAM; not transferred" }
+      "sample.reads_to_contigs.bam.bai":   { transfer: false, reason: "BAM index; not transferred" }
+      "reads_to_contigs.tsv":              { transfer: true,  reason: "read->contig mapping" }
+      "sample.non_contigs.fastq":          { transfer: false, reason: "non-contig reads; not transferred" }
+      "sample.non_contigs.fasta":          { transfer: false, reason: "non-contig reads; not transferred" }
+      "mapped_contigs.fasta":              { transfer: false, reason: "mapped contigs; not transferred" }
+      "contig_stats.json":                 { transfer: true,  reason: "per-contig stats" }
+      "contig_base_counts.json":           { transfer: true,  reason: "per-contig base counts" }
+      "sample.all_sequences_to_align.fasta": { transfer: false, reason: "merged align input; not transferred" }
+      "minimap2_local_db_path":            { transfer: false, reason: "reference db input" }
+      "gsnap.paf":                         { transfer: true,  reason: "NT alignment (PAF)" }
+      "gsnap.m8":                          { transfer: true,  reason: "NT alignment (m8)" }
+      "diamond_local_db_path":             { transfer: false, reason: "reference db input" }
+      "diamond.m8":                        { transfer: true,  reason: "NR alignment (m8)" }
+      "gsnap.blast.top.m8":                { transfer: true,  reason: "top NT hits" }
+      "rapsearch2.blast.top.m8":           { transfer: true,  reason: "top NR hits" }
+      "m8_reassigned_nt.tab":              { transfer: true,  reason: "reassigned NT m8" }
+      "gsnap.hitsummary2.tab":             { transfer: true,  reason: "NT hit summary" }
+      "lineage_db":                        { transfer: false, reason: "reference db input" }
+      "accession2taxid_db":                { transfer: false, reason: "reference db input" }
+      "deuterostome_db":                   { transfer: false, reason: "reference db input" }
+      "taxon_whitelist":                   { transfer: false, reason: "reference input" }
+      "taxon_blacklist":                   { transfer: false, reason: "reference input" }
+      "m8_reassigned_nr.tab":              { transfer: true,  reason: "reassigned NR m8" }
+      "rapsearch2.hitsummary2.tab":        { transfer: true,  reason: "NR hit summary" }
+      "contig_coverage.json":              { transfer: true,  reason: "per-contig coverage" }
+      "contig_coverage_summary.csv":       { transfer: true,  reason: "coverage summary" }
+      "unmapped_reads.fastq":              { transfer: true,  reason: "unmapped (non-host) reads" }
+      "unmapped_reads.count":              { transfer: true,  reason: "unmapped read count" }
+      "unmapped_bases.count":              { transfer: true,  reason: "unmapped base count" }
+      "refined_gsnap_counts_with_dcr.json": { transfer: true, reason: "refined NT taxon counts" }
+      "gsnap_contig_summary.json":         { transfer: true,  reason: "NT contig summary" }
+      "refined_rapsearch2_counts_with_dcr.json": { transfer: true, reason: "refined NR taxon counts" }
+      "rapsearch2_contig_summary.json":    { transfer: true,  reason: "NR contig summary" }
+      "merged.m8":                         { transfer: true,  reason: "merged NT+NR m8" }
+      "merged.hitsummary2.tab":            { transfer: true,  reason: "merged hit summary" }
+      "merged_taxon_counts_with_dcr.json": { transfer: true,  reason: "merged taxon counts" }
+      "merged_contig_summary.json":        { transfer: true,  reason: "merged contig summary" }
+      "refined_taxon_counts_with_dcr.json": { transfer: true, reason: "combined refined taxon counts" }
+      "combined_contig_summary.json":      { transfer: true,  reason: "combined contig summary" }
+      "refined_annotated_merged.fa":       { transfer: true,  reason: "annotated non-host reads" }
+      "refined_unidentified.fa":           { transfer: true,  reason: "unidentified reads (per file-table list)" }
+      "refined_taxid_annot.fasta":         { transfer: true,  reason: "taxid-annotated reads" }
+      "refined_taxid_annot_sorted_nt.fasta": { transfer: true, reason: "taxid locator (nt)" }
+      "refined_taxid_locations_nt.json":   { transfer: true,  reason: "taxid locations (nt)" }
+      "refined_taxid_annot_sorted_nr.fasta": { transfer: true, reason: "taxid locator (nr)" }
+      "refined_taxid_locations_nr.json":   { transfer: true,  reason: "taxid locations (nr)" }
+      "refined_taxid_annot_sorted_genus_nt.fasta": { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_genus_nt.json":     { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_annot_sorted_genus_nr.fasta": { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_genus_nr.json":     { transfer: true,  reason: "genus-level taxid; transferred after the amendment" }
+      "refined_taxid_annot_sorted_family_nt.fasta": { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_family_nt.json":     { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_annot_sorted_family_nr.fasta": { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_family_nr.json":     { transfer: true,  reason: "family-level taxid; transferred after the amendment" }
+      "refined_taxid_locations_combined.json":      { transfer: true,  reason: "combined taxid locations; transferred after the amendment" }
+      "coverage_viz_out.count":            { transfer: false, reason: "count; not transferred" }
+      "coverage_viz_summary.json":         { transfer: true,  reason: "coverage viz summary" }
+    patterns:
+      "*_coverage_viz.json":               { transfer: false, reason: "per-taxon coverage viz; only the summary transfers" }
+
+  # ---------------------------------------------------------------------------
+  consensus-genome:
+    status: reviewed
+    files:
+      "aligned_reads.bam":                 { transfer: true,  reason: "reads aligned to viral reference (not host)" }
+      "consensus.fa":                      { transfer: true,  reason: "consensus genome FASTA" }
+      "depths.png":                        { transfer: true,  reason: "coverage depth plot" }
+      "ercc_stats.txt":                    { transfer: true,  reason: "ERCC control stats" }
+      "no_host_1.fq.gz":                   { transfer: true,  reason: "host-removed reads (per file-table list)" }
+      "no_host_2.fq.gz":                   { transfer: true,  reason: "host-removed reads (per file-table list)" }
+      "outputs.zip":                       { transfer: true,  reason: "packaged CG outputs" }
+      "primertrimmed.bam":                 { transfer: true,  reason: "primer-trimmed alignment BAM" }
+      "primertrimmed.bam.bai":             { transfer: true,  reason: "BAM index" }
+      "report.tsv":                        { transfer: true,  reason: "QUAST report (TSV)" }
+      "report.txt":                        { transfer: true,  reason: "QUAST report" }
+      "run_input.json":                    { transfer: false, reason: "orchestration input" }
+      "run_output.json":                   { transfer: false, reason: "orchestration output" }
+      "samtools_depth.txt":                { transfer: true,  reason: "per-position depth" }
+      "stats.json":                        { transfer: true,  reason: "aggregated stats" }
+      "trim_reads_val_1.fq.gz":            { transfer: true,  reason: "adapter-trimmed reads (per file-table list)" }
+      "trim_reads_val_2.fq.gz":            { transfer: true,  reason: "adapter-trimmed reads (per file-table list)" }
+      "variants.vcf.gz":                   { transfer: true,  reason: "called variants" }
+    patterns:
+      "*.muscle.out.fasta":                { transfer: true,  reason: "MUSCLE alignment (consensus + reference)" }
+
+  # ---------------------------------------------------------------------------
+  # amr: every output transfers, including outputs.zip (flipped to transfer after the amendment).
+  amr:
+    status: reviewed
+    files:
+      "comprehensive_AMR_metrics.tsv":     { transfer: true,  reason: "full merged AMR metrics" }
+      "contig_amr_report.json":            { transfer: true,  reason: "RGI contig AMR (JSON)" }
+      "contig_amr_report.sorted.bam":      { transfer: true,  reason: "contig-to-gene BAM" }
+      "contig_amr_report.sorted.bam.bai":  { transfer: true,  reason: "BAM index" }
+      "contig_amr_report.txt":             { transfer: true,  reason: "RGI contig AMR (text)" }
+      "contig_species_report_61mer_analysis.json": { transfer: true, reason: "contig species (JSON)" }
+      "contig_species_report_61mer_analysis_rgi_summary.txt": { transfer: true, reason: "contig species calls" }
+      "gene_coverage.tsv":                 { transfer: true,  reason: "per-gene coverage" }
+      "merge_a.tsv":                       { transfer: true,  reason: "merged contig AMR + species" }
+      "merge_b.tsv":                       { transfer: true,  reason: "merged KMA AMR + species" }
+      "non_host_reads.fasta":              { transfer: true,  reason: "non-host reads" }
+      "outputs.zip":                       { transfer: true,  reason: "zip bundle duplicating other outputs; transferred after the amendment" }
+      "primary_AMR_report.tsv":            { transfer: true,  reason: "synthesized primary AMR report" }
+      "redups_1.fa":                       { transfer: true,  reason: "reduplicated non-host reads" }
+      "redups_2.fa":                       { transfer: true,  reason: "reduplicated non-host reads" }
+      "run_input.json":                    { transfer: true,  reason: "run input (per file-table list)" }
+      "run_output.json":                   { transfer: true,  reason: "run output (per file-table list)" }
+      "sr_amr_report.allele_mapping_data.json": { transfer: true, reason: "KMA allele mapping (JSON)" }
+      "sr_amr_report.allele_mapping_data.txt":  { transfer: true, reason: "KMA allele results" }
+      "sr_amr_report.artifacts_mapping_stats.txt": { transfer: true, reason: "artifacts mapping stats" }
+      "sr_amr_report.gene_mapping_data.txt":    { transfer: true, reason: "gene mapping data" }
+      "sr_amr_report.overall_mapping_stats.txt": { transfer: true, reason: "overall mapping stats" }
+      "sr_amr_report.reference_mapping_stats.txt": { transfer: true, reason: "reference mapping stats" }
+      "sr_amr_report.sorted.length_100.bam":    { transfer: true, reason: "sorted BAM (len>=100)" }
+      "sr_amr_report.sorted.length_100.bam.bai": { transfer: true, reason: "BAM index" }
+      "sr_species_report_61mer_analysis.allele.txt": { transfer: true, reason: "read species (allele)" }
+      "sr_species_report_61mer_analysis.gene.txt":   { transfer: true, reason: "read species (gene)" }
+      "sr_species_report_61mer_analysis.json":       { transfer: true, reason: "read species (JSON)" }

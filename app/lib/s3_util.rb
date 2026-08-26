@@ -82,6 +82,13 @@ module S3Util
                               body: content)
   end
 
+  # Uploads a local file to S3 using the resource-level uploader, which switches
+  # to multipart automatically for large objects (e.g. a big contigs.ndjson.gz
+  # can exceed the 5 GB single-PUT limit for very large users).
+  def self.upload_file(bucket, key, path)
+    Aws::S3::Resource.new(client: AwsClient[:s3]).bucket(bucket).object(key).upload_file(path)
+  end
+
   def self.parse_s3_path(s3_path)
     uri_parts = s3_path.split("/", 4)
     bucket = uri_parts[2]

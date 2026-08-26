@@ -40,3 +40,9 @@ ResolveScreeningHolds:
   class: ResolveScreeningHolds
   queue: resolve_screening_holds
   description: "Polls Descartes IMTimeStampSearch for restricted-party adjudication verdicts and releases or keeps holds. Self-skips when Descartes screening is disabled."
+
+PollS3TransferJobs:
+  every: 5m
+  class: PollS3TransferJobs
+  queue: poll_s3_transfer_jobs
+  description: "This job polls AWS Batch for the status of in-progress S3 transfer jobs and updates their records."

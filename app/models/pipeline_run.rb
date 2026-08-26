@@ -59,6 +59,10 @@ class PipelineRun < ApplicationRecord
   }.freeze
   validates :technology, presence: true, inclusion: { in: TECHNOLOGY_INPUT.values }
 
+  # Minimum short-read (Illumina) pipeline version eligible for user-data migration.
+  # Long-read (ONT) uses a separate 0.x version scheme and is exempt (see #migratable?).
+  MIN_MIGRATION_PIPELINE_VERSION = "7.0.0".freeze
+
   # Mapping the technology input to the outputs produced by the pipeline.
   TARGET_OUTPUTS = {
     TECHNOLOGY_INPUT[:illumina] => %w[ercc_counts taxon_counts contig_counts taxon_byteranges insert_size_metrics accession_coverage_stats],
@@ -293,6 +297,16 @@ class PipelineRun < ApplicationRecord
     else
       WorkflowRun::WORKFLOW[:long_read_mngs]
     end
+  end
+
+  # Whether this run is eligible for user-data migration to a partner instance.
+  # Short-read (Illumina) runs must be >= MIN_MIGRATION_PIPELINE_VERSION; long-read
+  # (ONT) uses a separate 0.x version scheme and is exempt. A blank/older version
+  # is not migratable.
+  def migratable?
+    return true if technology == TECHNOLOGY_INPUT[:nanopore]
+
+    pipeline_version_at_least(pipeline_version, MIN_MIGRATION_PIPELINE_VERSION)
   end
 
   def parse_dag_vars
