@@ -127,27 +127,28 @@ jobs:
             || echo "a sync PR may already be open"
 
           # Self-complete the back-sync so these PRs CONVERGE instead of piling up behind the
-          # integration 1-review rule. The synced content is by definition ALREADY on main --
+          # integration review rule. The synced content is by definition ALREADY on main --
           # reviewed on the way in, or an approved direct-to-main hotfix -- so it does not need a
-          # fresh review on the way back down. Merge it with the app token (admin), exactly how
-          # gitops-advance-dev merges its own PRs. This is what makes "keeps integration from
-          # drifting" actually hold: without it the opened PR sat review-gated forever, which is
-          # the very drift this workflow exists to prevent. Falls back to auto-merge.
+          # fresh review on the way back down.
           #
-          # THIS STEP MUST FAIL THE JOB IF IT CANNOT MERGE. It previously ended in a bare
-          # `echo "::warning::"`, which leaves the job GREEN. That hid a total failure of the
-          # self-merge: the app token has no review bypass on `integration`, so every --admin
-          # attempt came back
-          #     GraphQL: At least 1 approving review is required by reviewers with write access.
-          # and every --auto attempt after it also failed. The job reported success each time while
-          # converging nothing, and four sync PRs stacked up unnoticed -- the exact pileup this
-          # self-merge was added to prevent. A back-sync that did not sync is a FAILURE and has to
-          # be red, because the damage (integration drifting behind main) is invisible otherwise.
+          # The durable review bypass is now IN PLACE: the CI app (seqtoid-ci-app) is a pull-request
+          # review bypass actor on integration and integration requires 0 reviews, so NO human
+          # approval is needed for this PR to merge. Two completion paths, tried in order:
+          #   1. --admin: an immediate merge. It only succeeds where the app can override branch
+          #      protection outright -- i.e. it is a repo admin or a full ruleset bypass actor on
+          #      integration. This app holds only contents:write + pull-requests:write (NOT
+          #      administration), so on a branch guarded by CLASSIC branch protection this call is
+          #      EXPECTED to fail; that is not an error, it just means path 2 is taken.
+          #   2. --auto: arm auto-merge. GitHub then merges the PR on its own the moment the required
+          #      security checks pass (~1-2 min), with no human, because the review requirement is
+          #      already satisfied by the bypass above.
           #
-          # The durable fix is to let this workflow's app bypass the review rule on the
-          # gitops/sync-integration-* branch pattern, so the merge succeeds outright. Until that
-          # ruleset change is in place this job will go red and a human approves the PR by hand --
-          # which is the correct, honest behaviour, not a regression.
+          # THIS STEP MUST FAIL THE JOB IF THE PR DOES NOT ACTUALLY MERGE. Arming auto-merge is NOT
+          # success: a bare `echo merged` right after --auto reports the job GREEN while the PR is
+          # still only QUEUED, so a back-sync that never lands (e.g. a required check fails) stays
+          # invisible and integration silently drifts behind main -- the exact pileup this self-merge
+          # exists to prevent. So after arming, WAIT for the PR to reach MERGED and only then report
+          # success; on a closed-unmerged PR or a timeout, go RED so the drift is loud.
           PRNUM="$(gh pr list --head "$BRANCH" --base integration --state open --json number --jq '.[0].number // empty' || true)"
           if [ -z "$PRNUM" ]; then
             # The PR was pushed and `gh pr create` ran, so one must exist. Finding none means the
@@ -163,21 +164,21 @@ jobs:
           fi
 
           MERGE_LOG="$(mktemp)"
-          if gh pr merge "$PRNUM" --merge --admin --delete-branch >"$MERGE_LOG" 2>&1 \
-            || gh pr merge "$PRNUM" --merge --auto --delete-branch >>"$MERGE_LOG" 2>&1; then
-            echo "sync PR #$PRNUM merged; integration is up to date with main."
+          if gh pr merge "$PRNUM" --merge --admin --delete-branch >"$MERGE_LOG" 2>&1; then
+            echo "sync PR #$PRNUM merged immediately (admin/full bypass)."
+          elif gh pr merge "$PRNUM" --merge --auto --delete-branch >>"$MERGE_LOG" 2>&1; then
+            echo "auto-merge armed on sync PR #$PRNUM; the app has no admin override here, so waiting for the required checks to pass and GitHub to merge it (no human needed)."
           else
-            # Surface the real reason instead of a generic message. The GraphQL error text is what
-            # tells you whether this is the review rule, a failing required check, or something new.
+            # Neither an immediate admin merge nor arming auto-merge worked. Surface the real reason;
+            # the gh output is what tells you whether this is the review rule, a failing required
+            # check, auto-merge being disabled on the repo, or something new.
             echo "----- gh pr merge output -----"
             cat "$MERGE_LOG"
             echo "------------------------------"
-            echo "::error::sync PR #$PRNUM could not be merged; integration is STILL behind main. See the merge output above for the reason."
+            echo "::error::sync PR #$PRNUM could neither be merged nor armed for auto-merge; integration is STILL behind main. See the merge output above for the reason."
             {
               echo "### Back-sync FAILED"
-              echo "Sync PR #$PRNUM was opened but could not be merged, so \`integration\` is **still behind \`main\`**."
-              echo ""
-              echo "Approve and merge that PR to converge, then re-run this workflow."
+              echo "Sync PR #$PRNUM was opened but could not be merged or armed for auto-merge, so \`integration\` is **still behind \`main\`**."
               echo ""
               echo '```'
               cat "$MERGE_LOG"
@@ -185,3 +186,32 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+          # Arming auto-merge is not the same as merging. Wait for the PR to actually reach MERGED
+          # before reporting success. Budget ~8 min (32 * 15s): the security suite (checkov is the
+          # slow one, ~1.5 min) must finish before auto-merge fires. Exit GREEN the instant it
+          # merges; go RED on a closed-unmerged PR or on timeout, so a stuck back-sync is loud.
+          for _ in $(seq 1 32); do
+            PR_STATE="$(gh pr view "$PRNUM" --json state --jq .state 2>>"$MERGE_LOG" || true)"
+            if [ "$PR_STATE" = "MERGED" ]; then
+              echo "sync PR #$PRNUM merged; integration is up to date with main."
+              exit 0
+            fi
+            if [ "$PR_STATE" = "CLOSED" ]; then
+              echo "::error::sync PR #$PRNUM was CLOSED without merging; integration is STILL behind main."
+              {
+                echo "### Back-sync FAILED"
+                echo "Sync PR #$PRNUM was closed without merging, so \`integration\` is **still behind \`main\`**."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "----- required checks on sync PR #$PRNUM -----"
+          gh pr checks "$PRNUM" || true
+          echo "::error::sync PR #$PRNUM did not merge within the wait budget; integration may still be behind main. A required check is likely failing or stuck -- see the checks above."
+          {
+            echo "### Back-sync did NOT converge in time"
+            echo "Auto-merge was armed on sync PR #$PRNUM but it had not merged within ~8 minutes, so \`integration\` may still be **behind \`main\`**. Check that PR's required checks."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
