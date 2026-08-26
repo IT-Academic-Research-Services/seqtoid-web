@@ -64,6 +64,9 @@ RSpec.describe SamplesHelper, type: :helper do
         },
       }
       expect(request[:params][:policy]).to eq(JSON.dump(policy))
+      # 12h token so slow/large multipart uploads do not expire mid-upload
+      # (SMP-1747). Requires CLI_UPLOAD_ROLE_ARN MaxSessionDuration >= 43200.
+      expect(request[:params][:duration_seconds]).to eq(43_200)
     end
   end
   describe "#upload_samples_with_metadata" do
