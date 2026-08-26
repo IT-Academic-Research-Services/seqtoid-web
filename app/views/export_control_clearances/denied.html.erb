@@ -1,10 +1,10 @@
 <%#
-  CZID-285 — Layer 3 clearance deny UX. Shown when a user's identity verification did not pass or their
-  screening did not come back clear (or is still pending).
+  CZID-285 -- Layer 3 clearance deny UX. Shown when a user's denied-party screening did not come back clear
+  (a hit, still pending, or a provider error).
 
-  ⚠️ TODO(counsel): the denial copy is a PLACEHOLDER with legal weight — counsel-owned before go-live. A
+  TODO(counsel): the denial copy is a PLACEHOLDER with legal weight -- counsel-owned before go-live. A
   screening HIT in particular may carry legal/reporting obligations and its user-facing handling is
-  counsel's, not engineering's (design doc §10).
+  counsel's, not engineering's (design doc S10).
 
   Non-bypassable by design: NO "continue anyway" link. The only affordances are to retry clearance or to
   sign out. Rendered with HTTP 403.
@@ -18,12 +18,12 @@
   <p style="line-height:1.6; color:#24292f; margin-bottom:28px;">
     <%# TODO(counsel): denial body copy — legal weight %>
     <strong>PLACEHOLDER — pending counsel-approved text.</strong><br />
-    Access to export-controlled functions requires a verified, screened identity. Because that clearance
+    Access to export-controlled functions requires a clear denied-party screening. Because that clearance
     could not be confirmed, access cannot be granted. [Counsel-owned denial language will replace this text.]
   </p>
 
   <div style="display:flex; gap:12px; justify-content:center;">
-    <%= link_to "Try identity verification again", new_export_control_clearance_path,
+    <%= link_to "Try again", new_export_control_clearance_path,
                 style: "background:#0969da; color:#fff; text-decoration:none; border-radius:6px; padding:10px 20px; font-size:15px;" %>
     <%= link_to "Sign out", auth0_logout_path,
                 style: "background:#fff; color:#24292f; border:1px solid #d0d7de; text-decoration:none; border-radius:6px; padding:10px 20px; font-size:15px;" %>

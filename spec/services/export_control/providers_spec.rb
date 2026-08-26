@@ -1,22 +1,11 @@
 require 'rails_helper'
 
 # CZID-285/286 — the provider-agnostic adapters + reference stubs. The load-bearing guarantee: the
-# committed reference stubs NEVER return a pass (no synthetic verified/clear), so the fail-closed gate
-# stays DENYING until a real, DPA-backed vendor is wired. No live network calls (standing rule).
+# committed reference stubs NEVER return a pass (no synthetic clear), so the fail-closed gate stays
+# DENYING until a real, DPA-backed vendor is wired. No live network calls (standing rule). The
+# document-IDV lane was retired (approval = attestation + Visual Compliance, no document-IDV).
 RSpec.describe "ExportControl providers (fail-closed by construction)", type: :model do
   let(:user) { create(:user) }
-
-  describe ExportControl::IdentityVerificationProvider do
-    it "resolves the reference stub by default (no vendor committed)" do
-      expect(described_class.provider_module).to eq(ExportControl::Providers::ReferenceStub)
-    end
-
-    it "returns PENDING (never verified) so the gate denies" do
-      res = described_class.verify(user)
-      expect(res.status).to eq(ExportControlClearance::VERIFICATION_PENDING)
-      expect(res.status).not_to eq(ExportControlClearance::VERIFICATION_VERIFIED)
-    end
-  end
 
   describe ExportControl::DeniedPartyScreeningProvider do
     it "resolves the reference stub by default" do

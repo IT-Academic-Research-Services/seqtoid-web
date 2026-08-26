@@ -5,7 +5,7 @@ class AppConfig < ApplicationRecord
   # DARK — enforcement go-live is gated on counsel sign-off (CZID-292/335), never flipped by engineering.
   ENABLE_EXPORT_CONTROL_ATTESTATION = 'enable_export_control_attestation'.freeze
   # CZID-285/286 — when this is "1", the Layer 3 export-control gate is ENFORCED: a logged-in user without
-  # a current, affirmatively-passed clearance (IDV verified AND denied-party screening clear) is redirected
+  # a current, affirmatively-passed clearance (denied-party screening clear) is redirected
   # to the clearance flow and cannot reach the app until cleared. Defaults OFF ("" / nil) so this ships
   # DARK — go-live is gated on counsel + vendor sign-off (CZID-292/278/335), never flipped by engineering.
   ENABLE_EXPORT_CONTROL_LAYER3 = 'enable_export_control_layer3'.freeze
@@ -51,14 +51,10 @@ class AppConfig < ApplicationRecord
   # an email domain ("ucsf.edu" / "@ucsf.edu"), case-insensitive. Blank/unset => NOBODY is whitelisted
   # (fail-closed default). Example: ["ucsf.edu", "User:1"].
   EXPORT_CONTROL_SCREENING_WHITELIST = 'export_control_screening_whitelist'.freeze
-  # JSON array of counsel-cleared identities that pass IDENTITY VERIFICATION with no vendor call (the IDV
-  # allow-table, IdentityVerificationProvider.whitelisted?). SEPARATE from the screening whitelist above:
-  # identity verification (are you who you say) and denied-party screening (are you sanctioned) are
-  # distinct controls, so they are cleared independently. Same entry format -- a subject_ref ("User:42")
-  # or an email domain ("ucsf.edu" / "@ucsf.edu"), case-insensitive. Blank/unset => NOBODY is verified
-  # (fail-closed default): until this OR a real IDV vendor is set, no user can clear the gate. Because
-  # passed? requires verified AND clear, a fully cleared user must appear on BOTH allow-tables.
-  EXPORT_CONTROL_IDV_WHITELIST = 'export_control_idv_whitelist'.freeze
+  # (Removed) EXPORT_CONTROL_IDV_WHITELIST -- the document-IDV lane was retired (approval = attestation +
+  # Visual Compliance denied-party screening, with NO document-IDV; legal-approved 2026-08-24). Nothing in
+  # the live flow reads an IDV allow-table any more. Any live env AppConfig row named
+  # 'export_control_idv_whitelist' is now inert and can be deleted operationally once this deploys.
   # Re-screen cadence in DAYS -- how long a passing screen stays valid before a re-screen is due. Blank,
   # zero, or non-positive => always re-screen (most conservative). Counsel sets the operational value.
   EXPORT_CONTROL_RESCREEN_CADENCE_DAYS = 'export_control_rescreen_cadence_days'.freeze
