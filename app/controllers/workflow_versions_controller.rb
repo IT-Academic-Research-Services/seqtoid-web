@@ -25,9 +25,30 @@ class WorkflowVersionsController < ApplicationController
                      :require_export_control_layer3,
                      :screen_export_control_onboarding,
                      :check_browser,
-                     only: [:create]
+                     only: [:create, :set_default]
 
   before_action :authenticate_publisher!, only: [:create]
+  before_action :authenticate_promoter!, only: [:set_default]
+
+  # PUT /workflow_versions/default   { workflow, version }   [header: X-Workflow-Promoter-Token]
+  #
+  # Machine-callable equivalent of home#set_workflow_version (which is admin/session-only): flips the
+  # environment DEFAULT a run dispatches. Lets the promote-to-staging pipeline flip the default with no
+  # session and no cluster/kubectl access. Authed by a SEPARATE promoter token (distinct from the
+  # publisher token: registering a version is additive; flipping the default changes what the env RUNS,
+  # so a leaked publisher token must not be able to promote). Verifies the WDL bundle exists before
+  # flipping (fail closed). Idempotent -- re-flipping the current version is a no-op.
+  def set_default
+    workflow = params[:workflow].to_s.strip
+    version  = params[:version].to_s.strip
+    return render(json: { status: "error", error: "invalid workflow" }, status: :unprocessable_entity) unless valid_workflow?(workflow)
+    return render(json: { status: "error", error: "invalid version" }, status: :unprocessable_entity) unless valid_version?(version)
+
+    result = SetDefaultWorkflowVersionService.call(workflow: workflow, version: version)
+    return render(json: { status: "error", error: result.error }, status: :unprocessable_entity) unless result.ok
+
+    render json: { status: "ok", workflow: workflow, previous_version: result.previous, version: version }
+  end
 
   # GET /workflow_versions?workflow=short-read-mngs
   #
@@ -244,5 +265,24 @@ class WorkflowVersionsController < ApplicationController
   # misconfigured environment cannot silently accept unauthenticated registrations.
   def publisher_token
     ENV["WORKFLOW_PUBLISHER_TOKEN"]
+  end
+
+  # FAIL-CLOSED shared-secret check for the default-flip, identical in shape to authenticate_publisher!
+  # but a SEPARATE token: flipping the env default is more privileged than registering a version, so a
+  # leaked publisher token must not be able to promote. No secret configured, a missing header, or a
+  # mismatch all deny; constant-time compare so the endpoint does not leak the token a byte at a time.
+  def authenticate_promoter!
+    secret = promoter_token
+    provided = request.headers["X-Workflow-Promoter-Token"].to_s
+
+    if secret.blank? || provided.blank? || !ActiveSupport::SecurityUtils.secure_compare(provided, secret)
+      Rails.logger.warn("rejected unauthenticated workflow-version default flip")
+      render json: { status: "unauthorized" }, status: :unauthorized
+    end
+  end
+
+  # Supplied via Chamber/SSM like the publisher token. Absent -> every call is denied (fail closed).
+  def promoter_token
+    ENV["WORKFLOW_PROMOTER_TOKEN"]
   end
 end

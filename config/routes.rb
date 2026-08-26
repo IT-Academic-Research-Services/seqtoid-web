@@ -164,6 +164,10 @@ Rails.application.routes.draw do
   # CZID-975 -- the catalog the upload flow's version dropdown reads. Session-authed like the rest of
   # the app (any signed-in user); selection is per-run for any user, not an admin feature.
   get 'workflow_versions', to: 'workflow_versions#index'
+  # Machine-callable DEFAULT flip (promoter token, no session) -- the promote-to-staging pipeline's
+  # hands-off equivalent of the admin `put workflow_version` above. Separate token; verifies the WDL
+  # bundle exists before flipping.
+  put 'workflow_versions/default', to: 'workflow_versions#set_default'
   put 'set_app_config', to: 'home#set_app_config'
   post 'feedback', to: 'home#feedback'
   post 'sign_up', to: 'home#sign_up'
