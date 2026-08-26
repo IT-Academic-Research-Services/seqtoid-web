@@ -7,7 +7,10 @@ RSpec.describe SamplesHelper, type: :helper do
     let(:fake_access_key_id) { "123456789012" }
     let(:current_user) { create(:user) }
 
-    it "returns an access key from assume_role and calls assume_role with the appropriate ARNs" do
+    let(:fake_token_file) { "/var/run/secrets/eks.amazonaws.com/serviceaccount/token" }
+    let(:fake_web_identity_token) { "fake-web-identity-token" }
+
+    it "vends credentials via AssumeRoleWithWebIdentity (federation, not chaining) with the right ARNs, policy, token and 12h duration" do
       @joe = create(:joe)
       @project = create(:project, users: [@joe])
       input_file = InputFile.new
@@ -21,22 +24,28 @@ RSpec.describe SamplesHelper, type: :helper do
 
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('CLI_UPLOAD_ROLE_ARN').and_return(fake_role_arn)
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+
+      # The pod's OIDC token is read off disk, not signed with pod credentials.
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(fake_token_file).and_return(fake_web_identity_token)
+
       mock_client = Aws::STS::Client.new(stub_responses: true)
       creds = mock_client.stub_data(
-        :assume_role,
+        :assume_role_with_web_identity,
         credentials: {
           access_key_id: fake_access_key_id,
-          # aws-sdk-core 3.248 validates the stubbed response shape: assume_role
-          # credentials require these fields too, else ArgumentError. (CZID-119)
+          # aws-sdk-core validates the stubbed response shape: credentials
+          # require these fields too, else ArgumentError. (CZID-119)
           secret_access_key: "fake-secret-access-key",
           session_token: "fake-session-token",
-          expiration: Time.zone.now + 3600,
+          expiration: Time.zone.now + 43_200,
         }
       )
-      mock_client.stub_responses(:assume_role, creds)
-      allow(AwsClient).to receive(:[]) { |_client|
-        mock_client
-      }
+      mock_client.stub_responses(:assume_role_with_web_identity, creds)
+      # The upload path must use its own unsigned STS client, NOT AwsClient[:sts]
+      # (which would sign with the pod's assumed role -> chaining -> 1h cap).
+      allow_any_instance_of(SamplesHelper).to receive(:upload_sts_client).and_return(mock_client)
 
       creds = get_upload_credentials([@sample_one])
       # Value equality, not object identity: the stubbed SDK returns a distinct
@@ -44,6 +53,7 @@ RSpec.describe SamplesHelper, type: :helper do
       expect(creds[:credentials][:access_key_id]).to eq fake_access_key_id
       expect(mock_client.api_requests.length).to be 1
       request = mock_client.api_requests.first
+      expect(request[:operation_name]).to eq(:assume_role_with_web_identity)
 
       action = [
         "s3:GetObject",
@@ -64,7 +74,11 @@ RSpec.describe SamplesHelper, type: :helper do
         },
       }
       expect(request[:params][:policy]).to eq(JSON.dump(policy))
-      expect(request[:params][:duration_seconds]).to eq(3_600)
+      expect(request[:params][:role_arn]).to eq(fake_role_arn)
+      expect(request[:params][:web_identity_token]).to eq(fake_web_identity_token)
+      # 12h token is possible here (federation honors MaxSessionDuration);
+      # it is not possible via role chaining, which caps at 3600s (SMP-1747).
+      expect(request[:params][:duration_seconds]).to eq(43_200)
     end
   end
   describe "#upload_samples_with_metadata" do

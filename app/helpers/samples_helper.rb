@@ -1237,14 +1237,52 @@ module SamplesHelper
     }
 
     session_name = "#{current_user.id}-CLI-session-#{Time.now.utc.to_i}"
-    AwsClient[:sts].assume_role({
-                                  policy: JSON.dump(policy),
-                                  role_arn: ENV['CLI_UPLOAD_ROLE_ARN'],
-                                  role_session_name: session_name,
-                                  # Token expires in 1h (default). This can be increased to 12h, but not
-                                  # with role chaining, where role A assumes role B to generate a token.
-                                  duration_seconds: 3_600,
-                                })
+
+    # 12h upload token via web-identity FEDERATION, not role chaining.
+    #
+    # The web pod already runs on an assumed (IRSA) role, so calling
+    # AwsClient[:sts].assume_role here would be role CHAINING, which AWS
+    # hard-caps at 1h (3600s) no matter the target role's MaxSessionDuration.
+    # Requesting 12h that way raises a ValidationError and the upload 500s.
+    #
+    # AssumeRoleWithWebIdentity instead exchanges the pod ServiceAccount's
+    # own OIDC token (mounted at AWS_WEB_IDENTITY_TOKEN_FILE) directly for
+    # the upload role. Federation honors the role's MaxSessionDuration, so a
+    # 12h (43200s) session is allowed. This serves both the CLI and UI upload
+    # paths, which share this helper.
+    #
+    # REQUIRES the CLI_UPLOAD_ROLE_ARN role's trust policy to federate the EKS
+    # cluster OIDC provider and this ServiceAccount, and MaxSessionDuration >=
+    # 43200 (see cypherid-web-infra). Without the trust change STS returns
+    # AccessDenied (403).
+    web_identity_token = File.read(ENV['AWS_WEB_IDENTITY_TOKEN_FILE'])
+    upload_sts_client.assume_role_with_web_identity({
+                                                      policy: JSON.dump(policy),
+                                                      role_arn: ENV['CLI_UPLOAD_ROLE_ARN'],
+                                                      role_session_name: session_name,
+                                                      web_identity_token: web_identity_token,
+                                                      # 12h token so slow connections and large FASTQ multipart
+                                                      # uploads do not outlive the credentials and fail with
+                                                      # ExpiredToken mid-upload. It stays tightly scoped to this
+                                                      # sample's S3 object paths by the inline session policy above.
+                                                      duration_seconds: 43_200,
+                                                    })
+  end
+
+  # Dedicated STS client for the AssumeRoleWithWebIdentity call above.
+  #
+  # We deliberately do NOT reuse AwsClient[:sts]: that shared client resolves
+  # the pod's already-assumed IRSA credentials, and assuming a role from an
+  # assumed role is chaining (1h cap). AssumeRoleWithWebIdentity is a noAuth
+  # STS operation authenticated by the web-identity token itself, not SigV4,
+  # so this client must not carry the pod's credentials. Passing empty static
+  # credentials pins that: it prevents the default credential chain (which
+  # would pick up the pod IRSA role) from being used.
+  def upload_sts_client
+    Aws::STS::Client.new(
+      stub_responses: ENV["OFFLINE"] == "1" || ENV["RAILS_ENV"] == "test",
+      credentials: Aws::Credentials.new("", ""),
+    )
   end
 
   def validate_user_is_collaborator_or_admin(sample_ids, current_user)
