@@ -136,12 +136,11 @@ Rails.application.routes.draw do
   post 'export_control_attestation',     to: 'export_control_attestations#create', as: :export_control_attestations
   get  'export_control_denied',          to: 'export_control_attestations#denied', as: :export_control_denied
 
-  # CZID-285 — Layer 3 identity-verification + export-screening clearance flow (ships DARK).
-  # new/create is the clearance hand-off; callback is the IDV vendor webhook (signature-verified);
-  # denied is the non-bypassable deny page.
+  # CZID-285 -- Layer 3 export-screening clearance flow (ships DARK). Approval is attestation + denied-party
+  # screening, with NO document-IDV step. new/create is the clearance hand-off (runs the screen); denied is
+  # the non-bypassable deny page.
   get  'export_control_clearance',          to: 'export_control_clearances#new',      as: :new_export_control_clearance
   post 'export_control_clearance',          to: 'export_control_clearances#create',   as: :export_control_clearances
-  post 'export_control_clearance/callback', to: 'export_control_clearances#callback',  as: :export_control_clearance_callback
   get  'export_control_clearance_denied',   to: 'export_control_clearances#denied',    as: :export_control_clearance_denied
 
   # CZID-286 — Layer 3 device/location attestation (SERVER-SIDE verify; client SDK HELD, ships DARK).
