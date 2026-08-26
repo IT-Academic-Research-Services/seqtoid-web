@@ -1,0 +1,12 @@
+<%# Google Fonts for the themed release-notes design (IBM Plex Mono/Sans + %>
+<%# Archivo). Each has a real fallback stack in release_notes_page.scss so the %>
+<%# page degrades gracefully if the stylesheet is blocked. %>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<div id="ReleaseNotesPage_page">
+  <%= javascript_tag do %>
+    react_component('ReleaseNotesPage', { dataUrl: '/releases_data', public: <%= @release_notes_public ? "true" : "false" %> }, 'ReleaseNotesPage_page', JSON.parse('<%= raw escape_json(help_center_context) %>'));
+  <% end %>
+</div>

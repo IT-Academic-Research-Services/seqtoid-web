@@ -195,6 +195,9 @@ Rails.application.routes.draw do
   get 'terms_changes', to: 'support#terms_changes'
   get 'terms', to: 'support#terms'
   get 'security_white_paper', to: 'support#security_white_paper'
+  # Release Notes: the page and the JSON ledger it fetches on mount.
+  get 'releases', to: 'support#releases'
+  get 'releases_data', to: 'support#releases_data'
 
   resources :projects do
     member do
