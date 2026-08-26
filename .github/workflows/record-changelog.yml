@@ -1,0 +1,78 @@
+name: record-changelog (append a release to the notes ledger)
+
+# Option A collector. Computes what changed since an environment's previous release -- grouped by
+# platform piece, each linked to its PR -- and appends it to the per-env S3 ledger the in-app
+# /releases page reads at runtime. Non-blocking by design: it never gates a deploy.
+#
+# Two entry points:
+#   - workflow_dispatch: run/backfill by hand for an env + sha.
+#   - workflow_call: promote-image can invoke this after a successful env advance (follow-up wiring).
+
+on:
+  workflow_dispatch:
+    inputs:
+      env_name:
+        description: Environment the release went to (dev | staging | prod).
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+      new_sha:
+        description: The promoted commit sha (7-8 hex chars, no "sha-" prefix).
+        required: true
+        type: string
+      reason:
+        description: Deployment reason (freeze, hotfix, issue id, ...).
+        required: false
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      env_name: { required: true, type: string }
+      new_sha:  { required: true, type: string }
+      reason:   { required: false, type: string, default: "" }
+
+permissions:
+  id-token: write     # assume the S3-write role via OIDC
+  contents: read      # checkout + read PRs
+
+jobs:
+  record:
+    name: Record ${{ inputs.env_name }} release
+    runs-on: ubuntu-latest
+    # The ledger bucket + writer role live per environment (repo/environment vars). If either is unset
+    # (feature not yet provisioned for this env) the job no-ops rather than failing.
+    environment: ${{ inputs.env_name }}
+    steps:
+      - name: Checkout (for the collector script)
+        uses: actions/checkout@v4
+
+      - name: Skip if not provisioned
+        id: gate
+        run: |
+          if [ -z "${{ vars.CHANGELOG_S3_URI }}" ] || [ -z "${{ vars.CHANGELOG_S3_ROLE }}" ]; then
+            echo "CHANGELOG_S3_URI / CHANGELOG_S3_ROLE not set for ${{ inputs.env_name }} -- skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS (ledger S3 write)
+        if: steps.gate.outputs.run == 'true'
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: ${{ vars.CHANGELOG_S3_ROLE }}
+          role-session-name: record-changelog
+          aws-region: us-west-2
+
+      - name: Append release to the ledger
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}   # read seqtoid-web PRs
+        run: |
+          python3 script/changelog/collect.py \
+            --env "${{ inputs.env_name }}" \
+            --new-sha "${{ inputs.new_sha }}" \
+            --s3-uri "${{ vars.CHANGELOG_S3_URI }}" \
+            --repo "${{ github.repository }}" \
+            --reason "${{ inputs.reason }}" \
+            --md
