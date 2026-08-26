@@ -736,26 +736,32 @@ RSpec.describe SamplesController, type: :controller do
       end
 
       it "can get credentials for a sample" do
+        fake_token_file = "/var/run/secrets/eks.amazonaws.com/serviceaccount/token"
         allow(ENV).to receive(:[]).and_call_original
         allow(ENV).to receive(:[]).with('CLI_UPLOAD_ROLE_ARN').and_return(fake_role_arn)
         allow(ENV).to receive(:[]).with('AWS_REGION').and_return(fake_region)
+        allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+
+        allow(File).to receive(:read).and_call_original
+        allow(File).to receive(:read).with(fake_token_file).and_return("fake-web-identity-token")
 
         mock_client = Aws::STS::Client.new(stub_responses: true)
         creds = mock_client.stub_data(
-          :assume_role,
+          :assume_role_with_web_identity,
           credentials: {
             access_key_id: fake_access_key_id,
-            # aws-sdk-core 3.248 validates the stubbed response shape: assume_role
-            # credentials require these fields too, else ArgumentError. (CZID-119)
+            # aws-sdk-core 3.248 validates the stubbed response shape: credentials
+            # require these fields too, else ArgumentError. (CZID-119)
             secret_access_key: "fake-secret-access-key",
             session_token: "fake-session-token",
-            expiration: Time.zone.now + 3600,
+            expiration: Time.zone.now + 43_200,
           }
         )
-        mock_client.stub_responses(:assume_role, creds)
-        allow(AwsClient).to receive(:[]) { |_client|
-          mock_client
-        }
+        mock_client.stub_responses(:assume_role_with_web_identity, creds)
+        # Upload credentials are vended via web-identity federation on a
+        # dedicated unsigned STS client, not AwsClient[:sts] (which would be
+        # role chaining, capped at 1h).
+        allow_any_instance_of(SamplesController).to receive(:upload_sts_client).and_return(mock_client)
 
         get :upload_credentials, format: :json, params: { id: @sample.id }
         expect(response).to have_http_status :success

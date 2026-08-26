@@ -7,7 +7,10 @@ RSpec.describe SamplesHelper, type: :helper do
     let(:fake_access_key_id) { "123456789012" }
     let(:current_user) { create(:user) }
 
-    it "returns an access key from assume_role and calls assume_role with the appropriate ARNs" do
+    let(:fake_token_file) { "/var/run/secrets/eks.amazonaws.com/serviceaccount/token" }
+    let(:fake_web_identity_token) { "fake-web-identity-token" }
+
+    before do
       @joe = create(:joe)
       @project = create(:project, users: [@joe])
       input_file = InputFile.new
@@ -21,30 +24,11 @@ RSpec.describe SamplesHelper, type: :helper do
 
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('CLI_UPLOAD_ROLE_ARN').and_return(fake_role_arn)
-      mock_client = Aws::STS::Client.new(stub_responses: true)
-      creds = mock_client.stub_data(
-        :assume_role,
-        credentials: {
-          access_key_id: fake_access_key_id,
-          # aws-sdk-core 3.248 validates the stubbed response shape: assume_role
-          # credentials require these fields too, else ArgumentError. (CZID-119)
-          secret_access_key: "fake-secret-access-key",
-          session_token: "fake-session-token",
-          expiration: Time.zone.now + 3600,
-        }
-      )
-      mock_client.stub_responses(:assume_role, creds)
-      allow(AwsClient).to receive(:[]) { |_client|
-        mock_client
-      }
+    end
 
-      creds = get_upload_credentials([@sample_one])
-      # Value equality, not object identity: the stubbed SDK returns a distinct
-      # String instance with the same value. (CZID-119)
-      expect(creds[:credentials][:access_key_id]).to eq fake_access_key_id
-      expect(mock_client.api_requests.length).to be 1
-      request = mock_client.api_requests.first
-
+    # The scoped session policy the app should build for @sample_one (identical
+    # on both the 12h federation path and the 1h chained fallback).
+    def expected_upload_policy
       action = [
         "s3:GetObject",
         "s3:PutObject",
@@ -54,7 +38,7 @@ RSpec.describe SamplesHelper, type: :helper do
         "s3:ListMultipartUploadParts",
       ]
       object_arns = ["arn:aws:s3:::#{ENV['SAMPLES_BUCKET_NAME']}/samples/#{@project.id}/#{@sample_one.id}/fastqs/test.fasta"]
-      policy = {
+      {
         Version: "2012-10-17",
         Statement: {
           Sid: "AllowSampleUploads",
@@ -63,10 +47,92 @@ RSpec.describe SamplesHelper, type: :helper do
           Resource: object_arns,
         },
       }
-      expect(request[:params][:policy]).to eq(JSON.dump(policy))
-      # 12h token so slow/large multipart uploads do not expire mid-upload
-      # (SMP-1747). Requires CLI_UPLOAD_ROLE_ARN MaxSessionDuration >= 43200.
+    end
+
+    # A stub_responses STS client whose given operation returns fake credentials.
+    def stub_sts_client_for(operation, expiration_offset)
+      client = Aws::STS::Client.new(stub_responses: true)
+      creds = client.stub_data(
+        operation,
+        credentials: {
+          access_key_id: fake_access_key_id,
+          # aws-sdk-core validates the stubbed response shape: credentials
+          # require these fields too, else ArgumentError. (CZID-119)
+          secret_access_key: "fake-secret-access-key",
+          session_token: "fake-session-token",
+          expiration: Time.zone.now + expiration_offset,
+        }
+      )
+      client.stub_responses(operation, creds)
+      client
+    end
+
+    it "vends 12h credentials via AssumeRoleWithWebIdentity (federation, not chaining) with the right ARNs, policy and token" do
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+      # The pod's OIDC token is read off disk, not signed with pod credentials.
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(fake_token_file).and_return(fake_web_identity_token)
+
+      mock_client = stub_sts_client_for(:assume_role_with_web_identity, 43_200)
+      # The upload path must use its own unsigned STS client, NOT AwsClient[:sts]
+      # (which would sign with the pod's assumed role -> chaining -> 1h cap).
+      allow_any_instance_of(SamplesHelper).to receive(:upload_sts_client).and_return(mock_client)
+
+      creds = get_upload_credentials([@sample_one])
+      # Value equality, not object identity: the stubbed SDK returns a distinct
+      # String instance with the same value. (CZID-119)
+      expect(creds[:credentials][:access_key_id]).to eq fake_access_key_id
+      expect(mock_client.api_requests.length).to be 1
+      request = mock_client.api_requests.first
+      expect(request[:operation_name]).to eq(:assume_role_with_web_identity)
+      expect(request[:params][:policy]).to eq(JSON.dump(expected_upload_policy))
+      expect(request[:params][:role_arn]).to eq(fake_role_arn)
+      expect(request[:params][:web_identity_token]).to eq(fake_web_identity_token)
+      # 12h token is possible here (federation honors MaxSessionDuration);
+      # it is not possible via role chaining, which caps at 3600s (SMP-1747).
       expect(request[:params][:duration_seconds]).to eq(43_200)
+    end
+
+    it "falls back to a 1h chained assume_role when federation is denied (env trust not wired yet)" do
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(fake_token_file).and_return(fake_web_identity_token)
+
+      # Federation is attempted but the upload role's trust does not federate
+      # this SA yet -> STS AccessDenied.
+      web_identity_client = Aws::STS::Client.new(stub_responses: true)
+      web_identity_client.stub_responses(:assume_role_with_web_identity, 'AccessDenied')
+      allow_any_instance_of(SamplesHelper).to receive(:upload_sts_client).and_return(web_identity_client)
+
+      # Fallback runs on the shared (pod-credentialed) client via chaining.
+      chained_client = stub_sts_client_for(:assume_role, 3_600)
+      allow(AwsClient).to receive(:[]).with(:sts).and_return(chained_client)
+
+      creds = get_upload_credentials([@sample_one])
+      expect(creds[:credentials][:access_key_id]).to eq fake_access_key_id
+      expect(chained_client.api_requests.length).to be 1
+      request = chained_client.api_requests.first
+      expect(request[:operation_name]).to eq(:assume_role)
+      expect(request[:params][:policy]).to eq(JSON.dump(expected_upload_policy))
+      expect(request[:params][:role_arn]).to eq(fake_role_arn)
+      # Chaining is hard-capped at 1h regardless of the role's MaxSessionDuration.
+      expect(request[:params][:duration_seconds]).to eq(3_600)
+    end
+
+    it "falls back to a 1h chained assume_role when no OIDC token file is mounted (e.g. ECS / var unset)" do
+      # No AWS_WEB_IDENTITY_TOKEN_FILE -> federation cannot be attempted.
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(nil)
+
+      chained_client = stub_sts_client_for(:assume_role, 3_600)
+      allow(AwsClient).to receive(:[]).with(:sts).and_return(chained_client)
+
+      creds = get_upload_credentials([@sample_one])
+      expect(creds[:credentials][:access_key_id]).to eq fake_access_key_id
+      expect(chained_client.api_requests.length).to be 1
+      request = chained_client.api_requests.first
+      expect(request[:operation_name]).to eq(:assume_role)
+      expect(request[:params][:policy]).to eq(JSON.dump(expected_upload_policy))
+      expect(request[:params][:duration_seconds]).to eq(3_600)
     end
   end
   describe "#upload_samples_with_metadata" do
