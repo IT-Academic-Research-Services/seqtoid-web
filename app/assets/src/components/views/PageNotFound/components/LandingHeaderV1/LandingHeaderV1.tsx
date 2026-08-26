@@ -57,7 +57,7 @@ export const LandingHeaderV1 = ({ browserInfo }: LandingHeaderV1Props) => {
           </ExternalLink>
           <ExternalLink
             className={cs.headerLink}
-            href="https://github.com/chanzuckerberg/czid-workflows"
+            href="https://github.com/IT-Academic-Research-Services/seqtoid-workflows"
             analyticsEventName="Landing_github-link_clicked"
             data-testid="github"
           >

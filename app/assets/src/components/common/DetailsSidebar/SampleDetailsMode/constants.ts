@@ -158,6 +158,3 @@ export const AMR_WORKFLOW_INFO_FIELDS = [
   MEAN_INSERT_SIZE,
   DATE_PROCESSED,
 ];
-
-export const HOST_FILTERING_WIKI =
-  "https://github.com/chanzuckerberg/czid-workflows/wiki/CZID-mNGS-Pipeline-Stage-%231:-Host-Filtering-and-QC";
