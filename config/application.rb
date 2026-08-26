@@ -66,7 +66,11 @@ module Czid
     config.hosts << '.us-west-2.elb.amazonaws.com'
     # Exclude the probe paths so LB/kubelet checks (which use the pod IP as Host) aren't 403'd:
     # /health_check (readiness) and the shallow /up liveness path (SMP-1473).
-    config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ } }
+    # Also exclude the /internal/ service-to-service endpoints (Internal::ScreeningResultsController
+    # and the screening decision callback): these are headless, HMAC-signature-authed, and are reached
+    # over the in-cluster Service hostname (not a public host in config.hosts), so host authorization
+    # would 403 them before the signature check runs. The signature is the real auth on these paths.
+    config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ || request.path.start_with?("/internal/") } }
     config.x.constants.default_background = 26
   end
 end
