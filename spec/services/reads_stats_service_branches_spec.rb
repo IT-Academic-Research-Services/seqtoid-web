@@ -57,7 +57,7 @@ RSpec.describe ReadsStatsService do
       # ERCC reads_after = low_complexity_reads - total_ercc_reads = 945_000
       ercc_reads = stats[sample.id][:steps].find { |s| s[:readsAfter] == 945_000 }
       expect(ercc_reads).to be_present
-      expect(step_names).to include(StringUtil.humanize_step_name("fastp_out"))
+      expect(step_names).to include(StringUtil.humanize_step_name("fastp_qc"))
     end
   end
 
@@ -80,7 +80,7 @@ RSpec.describe ReadsStatsService do
     it "keeps the FASTP step without inserting an ERCC step" do
       stats = ReadsStatsService.call(Sample.where(id: sample.id))
       step_names = stats[sample.id][:steps].pluck(:name)
-      expect(step_names).to include(StringUtil.humanize_step_name("fastp_out"))
+      expect(step_names).to include(StringUtil.humanize_step_name("fastp_qc"))
       expect(step_names).not_to include("ERCC")
     end
   end
