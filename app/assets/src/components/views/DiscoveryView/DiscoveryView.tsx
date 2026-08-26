@@ -1494,10 +1494,9 @@ export class DiscoveryView extends React.Component<
 
     let sampleId: string;
     let workflowRunId: string | undefined;
-    let tempSelectedOptions: TempSelectedOptionsShape;
 
     if (workflowEntity === WORKFLOW_ENTITIES.WORKFLOW_RUNS) {
-      sampleId = _get("sample.id", object);
+      sampleId = _get("sample.id", object) ?? _get("id", object);
       workflowRunId = object.id;
     } else {
       sampleId = _get("id", object);
@@ -1509,17 +1508,18 @@ export class DiscoveryView extends React.Component<
       taxonThresholdsSelected,
     ].some(filter => !isEmpty(filter));
 
-    if (persistedFiltersSelected) {
-      tempSelectedOptions = getTempSelectedOptions({
-        optionsToTemporarilyPersist: [
-          "annotationsSelected",
-          "taxonSelected",
-          "taxonThresholdsSelected",
-        ],
-        selectedOptions: filters,
-        source: DISCOVERY_VIEW_SOURCE_TEMP_PERSISTED_OPTIONS,
-      });
-    }
+    const tempSelectedOptions: TempSelectedOptionsShape | null =
+      persistedFiltersSelected
+        ? getTempSelectedOptions({
+            optionsToTemporarilyPersist: [
+              "annotationsSelected",
+              "taxonSelected",
+              "taxonThresholdsSelected",
+            ],
+            selectedOptions: filters,
+            source: DISCOVERY_VIEW_SOURCE_TEMP_PERSISTED_OPTIONS,
+          })
+        : null;
 
     const url = generateUrlToSampleView({
       workflow,
