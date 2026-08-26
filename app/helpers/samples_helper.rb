@@ -1241,15 +1241,9 @@ module SamplesHelper
                                   policy: JSON.dump(policy),
                                   role_arn: ENV['CLI_UPLOAD_ROLE_ARN'],
                                   role_session_name: session_name,
-                                  # 12h token so slow connections and large FASTQ multipart uploads do
-                                  # not outlive the credentials and fail with ExpiredToken mid-upload.
-                                  # Requires the CLI_UPLOAD_ROLE_ARN role's MaxSessionDuration to be >=
-                                  # 43200 (set in cypherid-web-infra); assume_role errors otherwise.
-                                  # Trade-off: a longer-lived token, but it stays tightly scoped by the
-                                  # inline session policy above to this sample's S3 object paths only.
-                                  # Note: 12h is not possible via role chaining (role A assumes role B
-                                  # to generate the token); that path caps at 1h.
-                                  duration_seconds: 43_200,
+                                  # Token expires in 1h (default). This can be increased to 12h, but not
+                                  # with role chaining, where role A assumes role B to generate a token.
+                                  duration_seconds: 3_600,
                                 })
   end
 
