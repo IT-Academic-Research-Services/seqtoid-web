@@ -1074,19 +1074,74 @@ RSpec.describe WorkflowRunsController, type: :controller do
       end
 
       context "when there is a custom reference tree" do
-        it "creates a properly formatted external link with presigned inputs" do
+        # The tree is uploaded straight to S3 by the browser (presigned PUT), so the controller only
+        # receives its key; it validates the key format + size and presigns a GET for input-tree.
+        it "validates the uploaded tree key and adds a presigned input-tree" do
+          tree_key = "clade_exports/trees/temp-abcde"
           expect(ConsensusGenomeConcatService).to receive(:call).and_return(@fasta)
-          expect(S3Util).to receive(:upload_to_s3).twice.and_call_original
-          expect(controller).to receive(:get_presigned_s3_url).twice.and_call_original
+          allow(S3Util).to receive(:upload_to_s3).and_call_original
+          allow(controller).to receive(:s3_object_size).and_return(1234)
+          allow(controller).to receive(:get_presigned_s3_url).and_return("https://s3.amazonaws.com/x?X-Amz-Credential=abc")
 
-          post :consensus_genome_clade_export, params: { workflowRunIds: [@workflow_run1.id, @workflow_run2.id], referenceTree: "fake-tree" }
+          post :consensus_genome_clade_export, params: { workflowRunIds: [@workflow_run1.id, @workflow_run2.id], referenceTreeS3Key: tree_key }
+          body = JSON.parse(response.body)
+
+          expect(response).to have_http_status(:success)
+          expect(body["external_url"]).to include("https://clades.nextstrain.org")
+          expect(body["external_url"]).to include("&input-tree=")
+          expect(body["external_url"]).to_not include("\\u0026input-tree=")
+        end
+
+        it "rejects a reference tree key outside the minted scratch-prefix format" do
+          expect(ConsensusGenomeConcatService).to receive(:call).and_return(@fasta)
+          allow(S3Util).to receive(:upload_to_s3).and_call_original
+          allow(controller).to receive(:get_presigned_s3_url).and_return("https://s3.amazonaws.com/x?X-Amz-Credential=abc")
+
+          post :consensus_genome_clade_export, params: { workflowRunIds: [@workflow_run1.id, @workflow_run2.id], referenceTreeS3Key: "some/other/object.json" }
+
+          expect(response).to have_http_status(:bad_request)
+        end
+
+        it "rejects a reference tree larger than the cap" do
+          expect(ConsensusGenomeConcatService).to receive(:call).and_return(@fasta)
+          allow(S3Util).to receive(:upload_to_s3).and_call_original
+          allow(controller).to receive(:s3_object_size).and_return(WorkflowRunsController::CLADE_REFERENCE_TREE_MAX_BYTES + 1)
+          allow(controller).to receive(:get_presigned_s3_url).and_return("https://s3.amazonaws.com/x?X-Amz-Credential=abc")
+
+          post :consensus_genome_clade_export, params: { workflowRunIds: [@workflow_run1.id, @workflow_run2.id], referenceTreeS3Key: "clade_exports/trees/temp-abcde" }
+
+          expect(response).to have_http_status(:bad_request)
+        end
+      end
+
+      describe "POST #consensus_genome_clade_export_tree_url" do
+        it "mints a presigned put url and a scratch-prefix key" do
+          allow(controller).to receive(:get_presigned_s3_put_url).and_return("https://s3.amazonaws.com/put?X-Amz-Credential=abc")
+
+          post :consensus_genome_clade_export_tree_url
+          body = JSON.parse(response.body)
+
+          expect(response).to have_http_status(:success)
+          expect(body["url"]).to include("X-Amz-Credential")
+          expect(body["key"]).to match(%r{\Aclade_exports/trees/temp-[A-Za-z0-9]{5}\z})
+        end
+      end
+
+      context "when the consensus genome uses the RefSeq SARS-CoV-2 accession (NC_045512.2)" do
+        it "treats it as SARS-CoV-2 and creates the external link" do
+          refseq_inputs_json = { "accession_id" => "NC_045512.2", "accession_name" => "Severe acute respiratory syndrome coronavirus 2, complete genome", "taxon_id" => 2_697_049, "taxon_name" => "Severe acute respiratory syndrome coronavirus 2", "technology" => "Illumina", "wetlab_protocol" => "artic" }.to_json
+          refseq_run = create(:workflow_run, sample: @sample1, workflow: WorkflowRun::WORKFLOW[:consensus_genome], status: WorkflowRun::STATUS[:succeeded], inputs_json: refseq_inputs_json)
+
+          expect(ConsensusGenomeConcatService).to receive(:call).and_return(@fasta)
+          expect(S3Util).to receive(:upload_to_s3).and_call_original
+          expect(controller).to receive(:get_presigned_s3_url).and_call_original
+
+          post :consensus_genome_clade_export, params: { workflowRunIds: [refseq_run.id] }
           body = JSON.parse(response.body)
 
           expect(response).to have_http_status(:success)
           expect(body).to include("external_url")
           expect(body["external_url"]).to include("https://clades.nextstrain.org")
-          expect(body["external_url"]).to include("?dataset-name=", "&input-fasta=", "X-Amz-Credential", "&input-tree=")
-          expect(body["external_url"]).to_not include("\\u0026input-tree=")
         end
       end
 

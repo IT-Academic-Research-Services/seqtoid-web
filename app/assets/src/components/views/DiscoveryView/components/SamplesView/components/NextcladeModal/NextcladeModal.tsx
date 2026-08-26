@@ -2,7 +2,11 @@ import { Icon } from "@czi-sds/components";
 import { cx } from "@emotion/css";
 import { difference } from "lodash/fp";
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import { createConsensusGenomeCladeExport, getWorkflowRunsInfo } from "~/api";
+import {
+  createConsensusGenomeCladeExport,
+  getConsensusGenomeCladeExportTreeUrl,
+  getWorkflowRunsInfo,
+} from "~/api";
 import { validateWorkflowRunIds } from "~/api/access_control";
 import { ANALYTICS_EVENT_NAMES, useTrackEvent } from "~/api/analytics";
 import { UserContext } from "~/components/common/UserContext";
@@ -34,6 +38,18 @@ enum SelectedTreeType {
   UPLOAD = "upload",
 }
 
+const REFERENCE_TREE_ERROR_MESSAGE =
+  "We couldn't read that reference tree. Files must be valid Auspice JSON. Please pick another file or use the Nextclade Default Tree.";
+
+// Nextclade expects an Auspice v2 document, whose top level is an object with a
+// "tree" member. This is a shape check, not schema validation: it only rejects
+// files that happen to parse as JSON but are plainly not a reference tree.
+const isPlausibleAuspiceTree = (parsed: unknown): boolean =>
+  typeof parsed === "object" &&
+  parsed !== null &&
+  !Array.isArray(parsed) &&
+  "tree" in parsed;
+
 export const NextcladeModal = ({
   onClose,
   isOpen,
@@ -63,6 +79,10 @@ export const NextcladeModal = ({
   const [referenceTreeContents, setReferenceTreeContents] = useState<
     string | null
   >(null);
+  const [referenceTreeError, setReferenceTreeError] = useState<string | null>(
+    null,
+  );
+  const [isParsingReferenceTree, setIsParsingReferenceTree] = useState(false);
 
   const fetchValidationInfo = useCallback(async () => {
     if (!selectedIds) {
@@ -120,19 +140,86 @@ export const NextcladeModal = ({
   }, [checkAdminSelections, validWorkflowInfo]);
 
   const openExportLink = async () => {
-    const link = await createConsensusGenomeCladeExport({
-      workflowRunIds: Array.from(validWorkflowRunIds),
-      referenceTree:
-        selectedTreeType === "upload" ? referenceTreeContents : null,
-    });
-    openUrlInNewTab(link.external_url);
+    // Open the destination tab SYNCHRONOUSLY here, inside the click's user activation, before any
+    // await. The Upload-a-Tree path below does async S3 work (presigned PUT of the tree) plus the
+    // export request before we have a URL; by the time those awaits resolve the browser has dropped
+    // the transient activation, so a deferred window.open is treated as an unsolicited popup and
+    // blocked -- the Nextclade tab then silently never opened (Karyna, 2026-08-15, large 6m tree).
+    // Pre-open a blank tab now and navigate it once we have the URL.
+    const nextcladeTab = window.open("about:blank", "_blank");
+    // Match openUrlInNewTab's noreferrer/noopener intent for the external Nextclade target.
+    if (nextcladeTab) {
+      nextcladeTab.opener = null;
+    }
+
+    try {
+      let referenceTreeS3Key = null;
+      // Upload the already-validated reference tree straight to S3 via a presigned PUT, then hand the
+      // backend only its key. This keeps multi-MB trees off the app request body and the edge WAF body
+      // limit (which was rejecting them and breaking the Upload-a-Tree link-out). (SMP-1660)
+      if (selectedTreeType === "upload" && referenceTreeContents) {
+        const { url, key } = await getConsensusGenomeCladeExportTreeUrl();
+        const putResponse = await fetch(url, {
+          method: "PUT",
+          body: new Blob([referenceTreeContents], { type: "application/json" }),
+        });
+        if (!putResponse.ok) {
+          throw new Error(
+            `Reference tree upload failed (${putResponse.status})`,
+          );
+        }
+        referenceTreeS3Key = key;
+      }
+
+      const link = await createConsensusGenomeCladeExport({
+        workflowRunIds: Array.from(validWorkflowRunIds),
+        referenceTreeS3Key,
+      });
+      if (nextcladeTab) {
+        nextcladeTab.location.href = link.external_url;
+      } else {
+        // Pre-open was blocked outright (hard popup blocker); best-effort fallback.
+        openUrlInNewTab(link.external_url);
+      }
+    } catch (error) {
+      // Don't leave an orphaned blank tab if the tree upload or export failed; the callers'
+      // catch still surfaces the error modal.
+      nextcladeTab?.close();
+      throw error;
+    }
   };
 
-  const handleFileUpload = async (file: File) => {
-    // Stringify, then parse to remove excess whitespace
-    const fileContents = JSON.stringify(JSON.parse(await file.text()));
-    setReferenceTree(file);
-    setReferenceTreeContents(fileContents);
+  // The picker hands back head(acceptedFiles), which is undefined for an empty
+  // drop, so this must tolerate no file at all.
+  const handleFileUpload = async (file?: File) => {
+    setReferenceTree(file ?? null);
+    // Any previously parsed tree is stale the moment a new file is picked.
+    setReferenceTreeContents(null);
+    setReferenceTreeError(null);
+
+    if (!file) {
+      return;
+    }
+
+    setIsParsingReferenceTree(true);
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!isPlausibleAuspiceTree(parsed)) {
+        throw new Error(
+          "Reference tree JSON has no top-level tree; it is not an Auspice document",
+        );
+      }
+      // Stringify the parsed value to remove excess whitespace
+      setReferenceTreeContents(JSON.stringify(parsed));
+    } catch (error) {
+      // Never swallow this: the export used to proceed tree-less and silently
+      // succeed, which is exactly the failure this guard exists to make loud.
+      setReferenceTreeContents(null);
+      setReferenceTreeError(REFERENCE_TREE_ERROR_MESSAGE);
+      console.error(error);
+    } finally {
+      setIsParsingReferenceTree(false);
+    }
   };
 
   const handleSelectTreeType = (treeType: SelectedTreeType) => {
@@ -197,6 +284,11 @@ export const NextcladeModal = ({
   const handleCloseErrorModal = () => {
     setIsErrorModalOpen(false);
   };
+
+  // "Upload a Tree" was chosen but no tree has been successfully parsed yet, so
+  // exporting now would send the samples to Nextclade with no tree at all.
+  const isUploadSelected = selectedTreeType === SelectedTreeType.UPLOAD;
+  const isMissingUploadedTree = isUploadSelected && !referenceTreeContents;
 
   const sentToNextcladeCount = selectedIds
     ? selectedIds.size - samplesNotSentToNextclade.length
@@ -303,6 +395,9 @@ export const NextcladeModal = ({
             samplesNotSentToNextclade={samplesNotSentToNextclade}
             validationError={validationError}
             hasValidIds={validWorkflowRunIds && validWorkflowRunIds.size > 0}
+            isParsingReferenceTree={isParsingReferenceTree}
+            isMissingUploadedTree={isMissingUploadedTree}
+            referenceTreeError={isUploadSelected ? referenceTreeError : null}
           />
         </div>
       </div>

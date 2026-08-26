@@ -747,7 +747,9 @@ describe("SampleView -- optimistic annotation update", () => {
       expect(childProps.report.reportData[0].annotation).toBe("inconclusive"),
     );
     // The nested species is left alone.
-    expect(childProps.report.reportData[0].species[0].annotation).toBeUndefined();
+    expect(
+      childProps.report.reportData[0].species[0].annotation,
+    ).toBeUndefined();
   });
 
   it("clears a taxon's annotation when 'None' is chosen (null type)", async () => {
@@ -769,12 +771,63 @@ describe("SampleView -- optimistic annotation update", () => {
 });
 
 describe("SampleView -- report fetch failures", () => {
-  it("reports an invalid background when the report request throws", async () => {
+  it("shows the invalid-background toast for a report error when the run has not failed", async () => {
+    // The report request errors before any metadata is set, so no failed
+    // pipelineRunStatus is known. With nothing pointing at a failed run, this is
+    // treated as an incompatible-background problem and surfaces the
+    // invalid-background toast. SMP-1791 only suppresses that toast when the run
+    // itself has failed (see the next test), so this fallback is unchanged.
     mockedGetSampleReportData.mockRejectedValue(new Error("boom"));
     await renderSampleView();
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     expect(console.error).toHaveBeenCalled();
     expect(childProps.report.reportData).toEqual([]);
+    // No failure status was ever recorded, which is why the toast is correct here.
+    expect(childProps.report.reportMetadata.pipelineRunStatus).toBeUndefined();
+  });
+
+  it("surfaces the failure state (no invalid-background toast) for a FAILED run", async () => {
+    // SMP-1791: a genuinely FAILED mNGS run has a pipeline_run record, so the
+    // report endpoint first returns a metadata-only body carrying
+    // pipelineRunStatus "FAILED" (populating reportMetadata). A later report
+    // fetch for the same failed run -- e.g. after the background changes -- then
+    // errors and returns a falsy result, which used to be routed straight to the
+    // invalid-background toast. The run status must win: no toast, the spinner
+    // clears, and the failed status is handed to the children so
+    // SampleViewMessage can render the failure.
+    mockedGetSampleReportData
+      .mockResolvedValueOnce({ metadata: { pipelineRunStatus: "FAILED" } })
+      .mockRejectedValue(new Error("report unavailable for failed run"));
+    await renderSampleView();
+
+    // First fetch settles: the run is now known to have FAILED.
+    await waitFor(() =>
+      expect(childProps.report.reportMetadata.pipelineRunStatus).toBe("FAILED"),
+    );
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    // Changing the (compatible) background re-runs the report fetch, which now
+    // errors -- driving the falsy result into the invalid-background branch.
+    // "background" is KEY_SELECTED_OPTIONS_BACKGROUND.
+    act(() =>
+      childProps.report.dispatchSelectedOptions({
+        type: "optionChanged",
+        payload: { key: "background", value: 5 },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(mockedGetSampleReportData).toHaveBeenCalledTimes(2),
+    );
+
+    // The misleading invalid-background toast must NOT fire for a failed run,
+    // even though the second report fetch errored.
+    await waitFor(() => expect(childProps.report.loadingReport).toBe(false));
+    expect(mockShowToast).not.toHaveBeenCalled();
+    // The spinner is cleared so the view can show the failure message instead of
+    // hanging on "Loading report data."
+    expect(childProps.report.reportData).toEqual([]);
+    expect(childProps.report.reportMetadata.pipelineRunStatus).toBe("FAILED");
   });
 });

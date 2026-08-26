@@ -313,6 +313,22 @@ class PipelineRun < ApplicationRecord
     where(results_finalized: IN_PROGRESS)
   end
 
+  # #967: grace period before the finalization reconcile fires, so the normal SFN-notification path wins
+  # first for a freshly-completed run. Only genuinely-stranded runs (older than this) are reconciled.
+  FINALIZATION_RECONCILE_GRACE = 30.minutes
+
+  # #967: runs whose RESULTS are fully loaded (the result monitor set results_finalized=FINALIZED_SUCCESS)
+  # but whose stage-based finalized flag was never set. On notification-mode envs (dev/staging/prod) the
+  # stage finalization (update_job_status via active_stage) is driven by SFN completion events; a MISSED
+  # event leaves the run finalized=0 forever even though every output loaded. Such a run is genuinely
+  # complete but is excluded from bulk downloads (eligibility = finalized:1 + CHECKED) and shows a blank
+  # runtime. Grace-gated on updated_at so the normal path gets first crack.
+  def self.stuck_finalization(grace: FINALIZATION_RECONCILE_GRACE)
+    where(results_finalized: FINALIZED_SUCCESS, finalized: 0)
+      .where.not(job_status: STATUS_FAILED)
+      .where("pipeline_runs.updated_at < ?", grace.ago)
+  end
+
   def self.top_completed_runs
     where("id in (select max(id) from pipeline_runs where job_status = 'CHECKED' and
                   sample_id in (select id from samples) group by sample_id)")
@@ -491,7 +507,7 @@ class PipelineRun < ApplicationRecord
   end
 
   def should_have_insert_size_metrics
-    host_filtering_step_statuses = host_filtering_stage.step_statuses
+    host_filtering_step_statuses = host_filtering_stage&.step_statuses || {}
 
     if pipeline_version_uses_new_host_filtering_stage(pipeline_version)
       # Only paired-end samples should have insert size metrics.
@@ -1381,6 +1397,25 @@ class PipelineRun < ApplicationRecord
         time_to_finalized: time_since_executed_at
       )
     end
+  end
+
+  # #967: finalize a run whose results are fully loaded but whose finalized flag was never set (a missed
+  # SFN completion signal on a notification-mode env). Mirrors the "all stages succeeded" branch of
+  # update_job_status. Idempotent + self-guarding, so it is safe to call from the monitor reconcile pass.
+  # time_to_finalized is computed from the results-finalization moment (updated_at) rather than Time.now,
+  # so a backlogged reconcile does not inflate the reported runtime.
+  def finalize_from_completed_results!
+    return false unless results_finalized == FINALIZED_SUCCESS && finalized != 1 && job_status != STATUS_FAILED
+
+    self.finalized = 1
+    self.time_to_finalized = executed_at ? (updated_at - executed_at).to_i : time_since_executed_at
+    self.job_status = STATUS_CHECKED
+    save!
+    Rails.logger.warn(
+      "[finalization-reconcile #967] pr=#{id} sample=#{sample_id} finalized from completed results " \
+      "(missed SFN completion signal); time_to_finalized=#{time_to_finalized}s"
+    )
+    true
   end
 
   def update_job_status

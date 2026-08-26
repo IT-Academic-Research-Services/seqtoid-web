@@ -75,8 +75,8 @@ import { OptionsType } from "./components/SamplesHeatmapFilters/SamplesHeatmapFi
 import { SamplesHeatmapHeader } from "./components/SamplesHeatmapHeader";
 import {
   APPLIED_FILTERS,
-  BackgroundMetricType,
   BACKGROUND_METRICS,
+  BackgroundMetricType,
   HEATMAP_FILTERS,
   METRIC_OPTIONS,
   NONE_BACKGROUND,
@@ -85,9 +85,9 @@ import {
   SORT_SAMPLES_OPTIONS,
   SORT_TAXA_OPTIONS,
   SPECIFICITY_OPTIONS,
-  TAXONS_PER_SAMPLE_RANGE,
   TAXON_LEVEL_OPTIONS,
   TAXON_LEVEL_SELECTED,
+  TAXONS_PER_SAMPLE_RANGE,
 } from "./constants";
 import cs from "./samples_heatmap_view.scss";
 import { metricIsZscore } from "./utils";
@@ -136,6 +136,10 @@ interface SamplesHeatmapViewState {
   downloadModalOpen: boolean;
   loading: boolean;
   loadingFailed: boolean;
+  // True while the heatmap ES index is still catching up for these runs (preparing state), so we
+  // show "Preparing your heatmap" and retry instead of a misleading "No data to render". (SMP-1795)
+  heatmapIndexing: boolean;
+  heatmapIndexingRetries: number;
   selectedMetadata: string[];
   sampleIds: $TSFixMe[];
   invalidSampleNames: $TSFixMe[];
@@ -239,6 +243,8 @@ class SamplesHeatmapViewCC extends React.Component<
       downloadModalOpen: false,
       loading: false,
       loadingFailed: false,
+      heatmapIndexing: false,
+      heatmapIndexingRetries: 0,
       selectedMetadata: this.urlParams.selectedMetadata || [
         "collection_location_v2",
       ],
@@ -305,8 +311,12 @@ class SamplesHeatmapViewCC extends React.Component<
       metric: "NT.rpm",
       categories: [],
       subcategories: {},
-      // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532
-      background: backgrounds[0].value,
+      // Null-safe (CZID-8698 / SMP-1789): a user with no accessible background -- e.g. an environment
+      // with no PUBLIC background, or a user who owns none -- gets an empty backgrounds list. Reading
+      // backgrounds[0].value then threw "undefined is not an object", crashing the whole heatmap view.
+      // A null background is a valid state: TopTaxonsElasticsearchService treats nil as "drop z-score /
+      // fall back to the default", so default to null instead of crashing.
+      background: backgrounds?.[0]?.value ?? null,
       species: 1,
       sampleSortType: "cluster",
       taxaSortType: "cluster",
@@ -832,6 +842,31 @@ class SamplesHeatmapViewCC extends React.Component<
       return; // Return early so that loadingFailed is not set to false later
     }
 
+    // The backend returns { status: "indexing" } (HTTP 202) when these runs are not yet searchable in
+    // the heatmap ES index -- e.g. right after new data is added, or after an ES domain rebuild. The
+    // data is being prepared, not absent, so show a "preparing" state and retry rather than an empty
+    // heatmap that reads as broken. (SMP-1795)
+    const MAX_HEATMAP_INDEXING_RETRIES = 6;
+    const HEATMAP_INDEXING_RETRY_MS = 5000;
+    if (heatmapData && (heatmapData as $TSFixMe).status === "indexing") {
+      const retries = this.state.heatmapIndexingRetries;
+      if (retries < MAX_HEATMAP_INDEXING_RETRIES) {
+        this.setState({
+          heatmapIndexing: true,
+          heatmapIndexingRetries: retries + 1,
+          loading: false,
+        });
+        setTimeout(() => this.fetchViewData(), HEATMAP_INDEXING_RETRY_MS);
+      } else {
+        // Stop auto-retrying but keep the honest "still preparing" message; a refresh will re-check.
+        this.setState({ heatmapIndexing: true, loading: false });
+      }
+      return;
+    }
+    if (this.state.heatmapIndexing || this.state.heatmapIndexingRetries > 0) {
+      this.setState({ heatmapIndexing: false, heatmapIndexingRetries: 0 });
+    }
+
     const pipelineVersions = compact(
       map(property("pipeline_version"), heatmapData),
     );
@@ -909,9 +944,9 @@ class SamplesHeatmapViewCC extends React.Component<
     const logSingleError = (e: $TSFixMe) => {
       const errorMessage = `SamplesHeatmapView: Error loading heatmap data from ElasticSearch`;
       logError({
+        exception: e,
         message: errorMessage,
         details: {
-          err: e,
           href: window.location.href,
           message: e?.message ?? errorMessage,
           sampleIds,
@@ -1803,15 +1838,28 @@ class SamplesHeatmapViewCC extends React.Component<
           type="error"
         />
       );
+    } else if (this.state.heatmapIndexing) {
+      return (
+        <div className={cs.noDataMsg}>
+          Preparing your heatmap&hellip; newly added data is still being
+          indexed. This can take a moment and will appear automatically.
+        </div>
+      );
+    } else if (this.state.loading) {
+      return <div className={cs.noDataMsg}>Loading&hellip;</div>;
     } else if (
-      this.state.loading ||
       !this.state.data ||
+      !this.state.metadataTypes ||
       // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2538
       !(this.state.data[this.state.selectedOptions.metric] || []).length ||
-      !this.state.metadataTypes ||
       !this.state.taxonIds.length
     ) {
-      return <div className={cs.noDataMsg}>No data to render</div>;
+      return (
+        <div className={cs.noDataMsg}>
+          No taxa match the current filters. Try broadening the categories or
+          thresholds, or unchecking &ldquo;Known Pathogens Only.&rdquo;
+        </div>
+      );
     }
     const scaleIndex = this.state.selectedOptions.dataScaleIdx;
     return (

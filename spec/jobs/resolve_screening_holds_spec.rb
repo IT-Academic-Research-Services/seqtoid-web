@@ -130,6 +130,23 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(hold.reload).not_to be_active
     end
 
+    it 'via the soptionalid fallback, releases only the most-recent held screen, not unrelated older ones (SMP-1694)' do
+      # One user (same table-keyed soptionalid) with TWO distinct screens, each with its own active hold.
+      old_sr = create(:screening_result, :red, subject_ref: 'user:multi', soptionalid: '7777',
+                                               sdistributedid: 'old-dist', screened_at: 3.days.ago)
+      old_hold = create(:hold, subject_ref: 'user:multi', screening_result: old_sr)
+
+      new_sr = create(:screening_result, :red, subject_ref: 'user:multi', soptionalid: '7777',
+                                               sdistributedid: 'new-dist', screened_at: 1.hour.ago)
+      new_hold = create(:hold, subject_ref: 'user:multi', screening_result: new_sr)
+
+      # A verdict whose result id matches no row -> forced down the soptionalid fallback path.
+      run_with([verdict(status: 'Cleared', shresult_id: 'no-such-dist', shoptid: '7777')])
+
+      expect(new_hold.reload).not_to be_active # the single most-recent held screen is released
+      expect(old_hold.reload).to be_active     # the unrelated older screen's hold is left in force
+    end
+
     it 'NEVER correlates on the ambiguous soptionalid "0"' do
       _sr, hold = held_subject(sdistributedid: 'zzz', soptionalid: '0')
       # verdict carries no matching result id and only the ambiguous "0" optid -> no correlation, no-op.
@@ -191,6 +208,26 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect { job.run }.to raise_error(StandardError)
       expect(hold.reload).to be_active
     end
+
+    # SMP-1693 (gap C-125): LogUtil.log_error uses the exception message as the Sentry event title AND
+    # the job re-raises so it also lands in the Resque failure record. Because the client now raises with
+    # the vendor MARKER only, neither observability signal carries a screened party's name.
+    it 'reports a marker-only error to Sentry/Resque without any party name' do
+      job = described_class.new
+      allow(job).to receive(:client).and_return(client)
+      allow(client).to receive(:poll)
+        .and_raise(ExportControl::Descartes::ResolutionClient::Error,
+                   'IMTimeStampSearch job error: ERROR: Access to RPS Denied.')
+      allow(LogUtil).to receive(:log_error).and_call_original
+
+      expect { job.run }.to raise_error(ExportControl::Descartes::ResolutionClient::Error) { |e|
+        # The re-raised message (-> Resque failure record) and its use as the Sentry title carry no PII.
+        expect(e.message).not_to match(/Wayne|SHname|SHcompany/)
+      }
+      expect(LogUtil).to have_received(:log_error)
+        .with(a_string_matching(/poll failed; holds left in force/),
+              hash_including(exception: kind_of(ExportControl::Descartes::ResolutionClient::Error)))
+    end
   end
 
   describe '#run -- OFF-by-default self-skip (full no-op)' do
@@ -219,6 +256,110 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       allow(job).to receive(:client).and_return(unconfigured)
       expect(unconfigured).not_to receive(:poll)
       expect { job.run }.not_to raise_error
+    end
+  end
+
+  # Piece 5b -- when a hold resolves, drive the account-provisioning callback to the web app from the
+  # PendingSignup held for that subject. (Option A standalone-service model.)
+  describe '#run -- driving the account-provisioning callback on resolution' do
+    before { enable! }
+
+    it 'posts an APPROVED callback (with the held account) and resolves the signup when a hold is released' do
+      held_subject(sdistributedid: '900001', subject_ref: 'User:900')
+      create(:pending_signup, subject_ref: 'User:900', screening_id: 'scr-900',
+                              callback_url: 'http://web/internal/v1/screening_result')
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'Cleared', shresult_id: '900001')])
+
+      expect(captured['decision']).to eq('approved')
+      expect(captured['path']).to eq('manual')
+      expect(captured['correlation_id']).to eq('User:900')
+      expect(captured['account']['email']).to eq('applicant@ucsf.edu')
+      expect(PendingSignup.pending_for('User:900')).to be_nil # resolved
+    end
+
+    it 'posts a DENIED callback (no account) on a True Hit' do
+      held_subject(sdistributedid: '900002', subject_ref: 'User:901')
+      create(:pending_signup, subject_ref: 'User:901', callback_url: 'http://web/internal/v1/screening_result')
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'True Hit', shresult_id: '900002')])
+
+      expect(captured['decision']).to eq('denied')
+      expect(captured).not_to have_key('account')
+    end
+
+    it 'does nothing when there is no held signup for the subject' do
+      held_subject(sdistributedid: '900003', subject_ref: 'User:902')
+      expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)
+      run_with([verdict(status: 'Cleared', shresult_id: '900003')])
+    end
+
+    it 'leaves the signup PENDING when the callback POST fails (retried next poll; never breaks resolution)' do
+      _sr, hold = held_subject(sdistributedid: '900004', subject_ref: 'User:903')
+      create(:pending_signup, subject_ref: 'User:903', callback_url: 'http://web/internal/v1/screening_result')
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed).and_raise(StandardError.new('boom'))
+
+      expect { run_with([verdict(status: 'Cleared', shresult_id: '900004')]) }.not_to raise_error
+
+      expect(PendingSignup.pending_for('User:903')).to be_present # still pending
+      expect(hold.reload).not_to be_active # the hold itself still released (resolution not broken)
+    end
+  end
+
+  # SAFETY NET (the second of the two resolution paths): when a compliance officer clears a previously
+  # HELD screen, the poller RELEASES the hold and posts an approved callback to the same
+  # /internal/v1/screening_result receiver that the sync auto-approve path uses. That receiver applies the
+  # decision to the user's export-control CLEARANCE (ExportControl::ClearanceCallback). This proves the
+  # end-to-end chain -- released hold -> approved callback body -> clearance satisfied -- so a clean result
+  # resolves the gate regardless of which path lands, and the shared idempotent write never double-creates.
+  describe '#run -- the released-hold callback satisfies the export-control clearance' do
+    before { enable! }
+
+    it 'a Cleared verdict drives an approved callback that flips the correlated user to verified + clear' do
+      user = create(:user)
+      ref = "User:#{user.id}"
+      # The user is mid-clearance: verified identity, screening still pending (blocked at the gate).
+      create(:export_control_clearance, :screening_pending, user: user, screening_provider: 'screening_service')
+      expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(false)
+
+      held_subject(sdistributedid: '910001', subject_ref: ref)
+      create(:pending_signup, subject_ref: ref, screening_id: 'scr-910',
+                              callback_url: 'http://web/internal/v1/screening_result')
+
+      # Capture the signed callback body the poller posts (instead of a live HTTP round-trip to the
+      # receiver) and apply it exactly as the receiver would.
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'Cleared', shresult_id: '910001')])
+
+      expect(captured['decision']).to eq('approved')
+      expect(captured['correlation_id']).to eq(ref)
+
+      ExportControl::ClearanceCallback.apply(captured)
+      expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(true)
+    end
+
+    it 'a True Hit drives a denied callback that leaves the user blocked (fail-closed)' do
+      user = create(:user)
+      ref = "User:#{user.id}"
+      create(:export_control_clearance, :screening_pending, user: user, screening_provider: 'screening_service')
+
+      held_subject(sdistributedid: '910002', subject_ref: ref)
+      create(:pending_signup, subject_ref: ref, callback_url: 'http://web/internal/v1/screening_result')
+
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'True Hit', shresult_id: '910002')])
+
+      expect(captured['decision']).to eq('denied')
+      ExportControl::ClearanceCallback.apply(captured)
+      expect(ExportControlClearance.current_clearance_satisfied?(user)).to be(false)
     end
   end
 end

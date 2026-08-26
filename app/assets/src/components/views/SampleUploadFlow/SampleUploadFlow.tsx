@@ -8,6 +8,7 @@ import {
   HOST_GENOME_SYNONYMS,
 } from "~/components/common/Metadata/constants";
 import NarrowContainer from "~/components/layout/NarrowContainer";
+import { logError } from "~/components/utils/logUtil";
 import {
   HostGenome,
   MetadataBasic,
@@ -46,6 +47,10 @@ interface SampleUploadFlowState {
   refSeqTaxon: TaxonOption | null;
   clearlabs: boolean;
   guppyBasecallerSetting: string | null;
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   medakaModel: string | null;
   metadata: MetadataBasic | null;
   metadataIssues: $TSFixMeUnknown;
@@ -77,6 +82,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
     // Metadata upload information
     clearlabs: false,
     guppyBasecallerSetting: null,
+    workflowVersions: {},
     medakaModel: null,
     metadata: null, //
     metadataIssues: null,
@@ -109,6 +115,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
     technology,
     project,
     guppyBasecallerSetting,
+    workflowVersions,
     medakaModel,
     refSeqAccession,
     refSeqFile,
@@ -125,6 +132,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
       technology,
       currentStep: UploadStepType.MetadataStep,
       guppyBasecallerSetting,
+      workflowVersions,
       medakaModel,
       project,
       refSeqAccession,
@@ -248,20 +256,35 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
 
   // *** Project-related functions ***
   // Get pipeline versions associated with a project
+  // TODO: projectId is expected to be both a string _and_ a number. Verify what upstream is actually passing!
   getPipelineVersionsForExistingProject = async projectId => {
     if (this.state.pipelineVersions[projectId]) {
       return { pipelineVersions: this.state.pipelineVersions[projectId] };
     }
 
-    const { projectPipelineVersions, latestMajorPipelineVersions } =
-      await getProjectPipelineVersions(projectId);
-    this.setState((prevState: SampleUploadFlowState) => ({
-      pipelineVersions: {
-        ...prevState.pipelineVersions,
-        [projectId]: projectPipelineVersions,
-      },
-      latestMajorPipelineVersions,
-    }));
+    // Guard the version fetch: a failure here (e.g. the pipeline-version endpoint 500ing because an
+    // environment's WorkflowVersion catalog is incomplete) must NOT break project creation or the
+    // auto-select that follows it. Selecting a freshly created project calls into here; if this threw,
+    // the create modal never resolved and the project -- already created server-side -- looked stuck
+    // (a retry then hit "name already exists"). Degrade to no version data instead: the version
+    // controls fall back to their read-only rendering and the upload flow keeps working.
+    try {
+      const { projectPipelineVersions, latestMajorPipelineVersions } =
+        await getProjectPipelineVersions(projectId);
+      this.setState((prevState: SampleUploadFlowState) => ({
+        pipelineVersions: {
+          ...prevState.pipelineVersions,
+          [projectId]: projectPipelineVersions,
+        },
+        latestMajorPipelineVersions,
+      }));
+    } catch (error) {
+      logError({
+        exception: error,
+        message: "Failed to fetch pipeline versions for project",
+        details: { projectId },
+      });
+    }
   };
 
   handleStepSelect = (step: UploadStepType) => {
@@ -311,6 +334,7 @@ class SampleUploadFlow extends React.Component<SampleUploadFlowProps> {
             bedFile={this.state.bedFile}
             clearlabs={this.state.clearlabs}
             guppyBasecallerSetting={this.state.guppyBasecallerSetting}
+            workflowVersions={this.state.workflowVersions}
             hostGenomes={this.state.hostGenomes}
             medakaModel={this.state.medakaModel}
             metadata={this.state.metadata}

@@ -1,6 +1,7 @@
 import { Link } from "@czi-sds/components";
 import { isEmpty } from "lodash/fp";
 import React from "react";
+import { useHelpCenterHref } from "~/components/ui/controls/useHelpCenterHref";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import cs from "./confirmation_message.scss";
 interface ConfirmationMessageProps {
@@ -13,6 +14,9 @@ const SUCCESS_MESSAGE =
 export const ConfirmationMessage = ({
   errorType,
 }: ConfirmationMessageProps) => {
+  // Resolve here (not through our Link) so the SDS sdsStyle="default" treatment
+  // is preserved; only the href changes.
+  const contactHref = useHelpCenterHref(CONTACT_US_LINK);
   const message = () => {
     if (isEmpty(errorType)) {
       return SUCCESS_MESSAGE;
@@ -36,7 +40,7 @@ export const ConfirmationMessage = ({
         <div>
           There has been an error in creating your account. Please try again or
           contact us at{" "}
-          <Link sdsStyle="default" href={CONTACT_US_LINK} target="_blank">
+          <Link sdsStyle="default" href={contactHref} target="_blank">
             our Help Center
           </Link>{" "}
           for assistance.

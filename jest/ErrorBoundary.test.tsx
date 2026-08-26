@@ -72,6 +72,29 @@ describe("ErrorBoundary", () => {
     expect((capturedError as Error).message).toBe("sentry-me");
   });
 
+  it("suppresses the Sentry report when shouldReportError returns false", () => {
+    render(
+      <ErrorBoundary view="report" shouldReportError={() => false}>
+        <Boom message="expected-not-found" />
+      </ErrorBoundary>,
+    );
+
+    // The fallback still renders -- only observability reporting is gated.
+    expect(screen.getByTestId("error-fallback")).toBeTruthy();
+    expect(captureSpy).not.toHaveBeenCalled();
+  });
+
+  it("still reports when shouldReportError returns true", () => {
+    render(
+      <ErrorBoundary view="report" shouldReportError={() => true}>
+        <Boom message="real-defect" />
+      </ErrorBoundary>,
+    );
+
+    expect(captureSpy).toHaveBeenCalledTimes(1);
+    expect((captureSpy.mock.calls[0][0] as Error).message).toBe("real-defect");
+  });
+
   it("offers both a retry and a contact-support action for retryable errors", () => {
     render(
       <ErrorBoundary view="downloads">

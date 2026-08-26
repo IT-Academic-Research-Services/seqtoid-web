@@ -5,6 +5,8 @@ class SfnLongReadMngsPipelineDispatchService
 
   include Callable
   include ParameterSanitization
+  # CZID-977: provides assert_index_compatible!
+  include PipelineRunsHelper
 
   WORKFLOW_NAME = WorkflowRun::WORKFLOW[:long_read_mngs]
 
@@ -31,8 +33,14 @@ class SfnLongReadMngsPipelineDispatchService
     @sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN)
     raise SfnArnMissingError if @sfn_arn.blank?
 
-    @wdl_version = pipeline_run.pipeline_branch || VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME)
+    # CZID-976: pipeline_branch stays the ADMIN escape hatch (used verbatim, unvalidated);
+    # sample.workflow_version is the user's selection and is validated by the service.
+    @wdl_version = pipeline_run.pipeline_branch ||
+                   VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.selected_workflow_version(WORKFLOW_NAME))
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?
+
+    # CZID-977: refuse a version/index pairing the catalog does not record as compatible.
+    assert_index_compatible!(WORKFLOW_NAME, @wdl_version, @pipeline_run.alignment_config&.name)
   end
 
   def call

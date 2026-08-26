@@ -208,6 +208,25 @@ module PipelineOutputsHelper
     end
   end
 
+  # Presigned PUT URL so a browser can upload a file DIRECTLY to S3, bypassing the app (and its request
+  # body-size limits / edge WAF) entirely. The caller MUST generate the key server-side (never accept a
+  # client-supplied key here) and constrain it to a scratch prefix, so a presigned PUT can only write
+  # the specific object we intend.
+  def get_presigned_s3_put_url(bucket_name:, key:, duration:)
+    s3 = Aws::S3::Resource.new(client: Client)
+    s3.bucket(bucket_name).object(key).presigned_url(:put, expires_in: duration)
+  rescue StandardError
+    nil
+  end
+
+  # Byte size of an S3 object, or nil if it does not exist / cannot be read. Used to bound a
+  # browser-uploaded object before we act on it.
+  def s3_object_size(bucket_name:, key:)
+    Aws::S3::Resource.new(client: Client).bucket(bucket_name).object(key).content_length
+  rescue StandardError
+    nil
+  end
+
   def status_display_helper(states_by_output_hash, results_finalized_var, technology)
     # TODO(julie): Revisit if checking these outputs for the status still makes sense.
     # Status display for the frontend.

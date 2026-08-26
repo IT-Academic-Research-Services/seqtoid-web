@@ -116,6 +116,16 @@ RSpec.describe "Samples controller branch coverage (wave 3)", type: :request do
       expect(Sample.find_by(name: sample_name)).to be_nil
     end
 
+    it "treats a malformed / unparseable client version as outdated instead of 500ing" do
+      # An un-injected dev CLI build sends client="unversioned"; Gem::Version.new used to raise
+      # ArgumentError here and 500 the request. It must fall through to :upgrade_required.
+      post "/samples/bulk_upload_with_metadata", params: { samples: [sample_params], metadata: metadata_params, client: "unversioned", format: :json }
+
+      expect(response).to have_http_status(:upgrade_required)
+      expect(JSON.parse(response.body)["message"]).to eq(SamplesController::CLI_DEPRECATION_MSG)
+      expect(Sample.find_by(name: sample_name)).to be_nil
+    end
+
     it "tags input files as cli uploads and returns the multipart response shape for an up-to-date CLI" do
       post "/samples/bulk_upload_with_metadata", params: { samples: [sample_params], metadata: metadata_params, client: "6.1.0", format: :json }
 

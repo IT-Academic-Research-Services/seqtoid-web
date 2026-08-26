@@ -2,9 +2,10 @@ name: idseq-web security-scan
 
 # App-appropriate security suite for seqtoid-web (CZID-102):
 #  - gitleaks: secret scan, gates NEW secrets introduced by a PR (hard-fail)
-#  - trivy (fs): dependency CVE scan, REPORT-ONLY for now (exit-code 0) because
-#    known CVEs (axios CZID-45, EOL base images CZID-44) would otherwise block
-#    every PR. Ratchet exit-code to '1' once those are cleared (CZID-65 ethos).
+#  - trivy (fs): dependency CVE scan, ADVISORY (SMP-1638). Surfaces a NEW fixable HIGH/CRITICAL
+#    CVE (ignore-unfixed + .trivyignore) as a warning annotation + job summary, but does NOT block
+#    the merge into integration or main. CVEs are forward-fixed by the weekly Dependabot PRs
+#    (.github/dependabot.yml), not by blocking developer PRs. The post-merge image scan is likewise advisory.
 #  - brakeman: Rails static security scan, HARD-FAIL gate (CZID-462 / re-enables the
 #    stale C14 TODO). Fails on ANY high-confidence (w3) warning and on any NEW
 #    medium-confidence (w2) warning: the 23 inherited w2 findings are pinned in
@@ -45,20 +46,44 @@ jobs:
           # honors .gitleaks.toml at repo root (dev/test fixture allowlist)
 
   trivy_fs:
-    name: Dependency CVE scan (trivy fs, report-only)
+    name: Dependency CVE scan (trivy fs, advisory -- notes new CVEs, does not block)
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
         uses: actions/checkout@v6
+      # ADVISORY (was a hard PR gate): a NEW fixable HIGH/CRITICAL not in .trivyignore is SURFACED
+      # (warning annotation + job summary) but does NOT fail the check, so it never blocks a merge
+      # into integration or main. Rationale: blocking developer PRs on transitive CVEs stalls
+      # unrelated work; instead the weekly Dependabot PRs (.github/dependabot.yml) forward-fix them,
+      # and security-only Dependabot updates are raised individually + promptly. Semantics still
+      # mirror the image gate (ignore-unfixed + .trivyignore) so the note reflects only new, fixable CVEs.
       - name: Trivy filesystem scan
+        id: trivy
+        continue-on-error: true # ADVISORY: detect (exit-code 1) but never fail the job
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: false
+          ignore-unfixed: true
+          trivyignores: .trivyignore
           format: table
-          exit-code: '0' # report-only; ratchet to '1' after CZID-44/45 land
+          output: trivy-fs.txt
+          exit-code: '1' # non-zero when a new fixable HIGH/CRITICAL is found; caught by continue-on-error
+      - name: Surface findings (advisory note -- never fails the job)
+        if: steps.trivy.outcome == 'failure'
+        run: |
+          {
+            echo "### Trivy: new fixable HIGH/CRITICAL CVE(s) found (advisory -- not blocking)"
+            echo ""
+            echo "These do NOT block the merge. They are forward-fixed by the weekly Dependabot PRs"
+            echo "(.github/dependabot.yml); or, if intentionally accepted, add them to .trivyignore with a note."
+            echo ""
+            echo '```'
+            cat trivy-fs.txt 2>/dev/null || echo "(no report file produced)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Trivy advisory::New fixable HIGH/CRITICAL CVE(s) found -- see the job summary. Not blocking; fixed via the weekly Dependabot PRs."
 
   brakeman:
     name: Rails security scan (brakeman, hard-fail on new)

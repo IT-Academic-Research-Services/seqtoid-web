@@ -4,7 +4,7 @@ require "rails_helper"
 
 # SMP-1486: /cli_user_instructions used to live-fetch the upstream chanzuckerberg/czid-cli README on
 # every request (URI.open) -- a CZ ID branding leak, a request-path external-fetch liability, and now
-# broken since the SeqToID CLI repo is private. It now renders the vendored, SeqToID-branded README
+# broken since the SeqtoID CLI repo is private. It now renders the vendored, SeqtoID-branded README
 # committed at app/views/samples/cli_user_instructions.md. These assertions pin the fix at the source
 # level (no full-layout render, so they run without built webpack assets).
 RSpec.describe "CLI user instructions (vendored README)" do
@@ -17,8 +17,8 @@ RSpec.describe "CLI user instructions (vendored README)" do
     expect(view).to include("cli_user_instructions.md")
   end
 
-  it "vendors a SeqToID-branded README" do
+  it "vendors a SeqtoID-branded README" do
     expect(readme_path).to exist
-    expect(readme_path.read).to include("# SeqToID CLI")
+    expect(readme_path.read).to include("# SeqtoID CLI")
   end
 end

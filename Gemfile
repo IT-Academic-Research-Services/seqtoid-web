@@ -27,6 +27,9 @@ ruby file: '.ruby-version'
 # -- AWS resources:
 # TODO: We want to replace 'aws-sdk' with only the service gems we use.
 gem 'aws-sdk'
+# Registers the :ses_v2 ActionMailer delivery method (see config/application.rb) so mail
+# sends via SES v2 using the default AWS credential chain (IRSA) instead of static SMTP creds.
+gem 'aws-actionmailer-ses', '~> 1'
 gem 'aws-sdk-ecs'
 gem 'aws-sdk-resources'
 gem "aws-sdk-sqs"
@@ -172,6 +175,7 @@ end
 group :test do
   gem 'rspec-json_expectations'
   gem 'webmock', '~> 3.6'
+  gem 'climate_control'
 end
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem

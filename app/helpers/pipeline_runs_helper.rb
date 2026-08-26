@@ -234,9 +234,44 @@ module PipelineRunsHelper
   PIPELINE_VERSION_2 = '2.0'.freeze
   ASSEMBLY_PIPELINE_VERSION = '3.1'.freeze
   COVERAGE_VIZ_PIPELINE_VERSION = '3.6'.freeze
-  NEW_HOST_FILTERING_PIPELINE_VERSION = '8'.freeze
+  # The new (bowtie2/hisat2/kallisto) host-filter stage. The WDL rewrite that replaced the legacy
+  # STAR+gsnap stage with this one actually landed at short-read-mngs v7.2.0, not v8 -- so for the
+  # v7.2.0..v8.0.0 band the app was sending legacy inputs (star_genome, ...) to a WDL that only has
+  # the new inputs, which miniwdl rejects with `unknown input: star_genome`. Aligning the threshold
+  # to the real WDL boundary (7.2) fixes those ported versions and is a no-op for everything else:
+  # v8+ was already >= this, and v7.0/v7.1 stay legacy. (ERCC-reads thresholds below are separate,
+  # matching their own later WDL boundaries.)
+  NEW_HOST_FILTERING_PIPELINE_VERSION = '7.2'.freeze
   BOWTIE2_ERCC_READS_PIPELINE_VERSION = "8.1".freeze
   BOWTIE2_ERCC_READS_BEFORE_QUALITY_FILTERING_PIPELINE_VERSION = "8.2".freeze
+
+  # CZID-977 -- refuse a pipeline version paired with an NCBI index vintage it is not recorded as
+  # compatible with.
+  #
+  # The real constraint on running an older pipeline is the reference data, not the WDL, and the
+  # failure is SILENT: a mismatched pair runs to completion and can simply be wrong. Version and
+  # index are pinned independently, so nothing else checks the combination -- and per-run version
+  # selection (CZID-975/976) made an arbitrary pairing reachable from the UI.
+  #
+  # Scoped to mNGS on purpose: this is where the NCBI index is the reference data being aligned
+  # against, and where pipeline_run.alignment_config is the authoritative record of the pairing.
+  # (consensus-genome takes an ncbi_index_version input too -- see the ticket for why that path is
+  # handled separately rather than assumed equivalent.)
+  #
+  # A version with no recorded bounds is UNCONSTRAINED, not incompatible: the boundaries are a
+  # scientific judgment this codebase does not record, so an unpopulated catalog behaves exactly as
+  # it does today.
+  def assert_index_compatible!(workflow, wdl_version, index_version)
+    return if wdl_version.blank? || index_version.blank?
+
+    entry = WorkflowVersion.find_by(workflow: workflow, version: wdl_version)
+    return if entry.nil? # uncatalogued versions are CZID-982's problem, not this check's
+    return if entry.compatible_with_index?(index_version)
+
+    raise ErrorHelper::VersionControlErrors.incompatible_index_version(
+      workflow, wdl_version, index_version, entry.index_compatibility_range
+    )
+  end
 
   def pipeline_version_at_least(pipeline_version, test_version)
     unless pipeline_version
@@ -401,10 +436,15 @@ module PipelineRunsHelper
 
     # Gets the first pipeline runs for multiple samples in an efficient way.
     pipeline_run_ids = PipelineRun.select("sample_id, MAX(id) as id").where(sample_id: samples.pluck(:id)).group(:sample_id)
+    # Explicit deterministic order: the outer query is otherwise unordered, so `find`-based
+    # callers (e.g. ReadsStatsService's representative selection) would depend on whatever
+    # order MySQL happens to return. Ascending id matches today's de-facto order, so this
+    # pins current behavior rather than changing it.
     valid_pipeline_runs = PipelineRun
                           .select(select_query)
                           .where("(sample_id, id) IN (?)", pipeline_run_ids)
                           .where(finalized: 1)
+                          .order(:id)
 
     if strict && valid_pipeline_runs.length != samples.length
       raise PIPELINE_RUN_STILL_RUNNING_ERROR

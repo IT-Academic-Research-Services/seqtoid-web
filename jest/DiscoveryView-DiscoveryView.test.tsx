@@ -20,7 +20,13 @@
 // ObjectCollectionView over paged network fetches and has its own suite), the
 // four discovery_api calls are jest.fn()s, and each heavy child view is a stub
 // that exposes the callbacks DiscoveryView hands it.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import { DiscoveryView } from "~/components/views/DiscoveryView/DiscoveryView";
 import {
@@ -779,6 +785,41 @@ describe("DiscoveryView", () => {
       );
       expect(getDiscoveryStats).toHaveBeenCalled();
       expect(asMock(getDiscoveryStats).mock.calls[0][0].projectId).toBe("42");
+    });
+  });
+
+  // SMP-1501 / SMP-1476: the popstate handler must reload on back/forward WHILE mounted,
+  // and must be removed on unmount. The old `window.onpopstate = ...` was never removed,
+  // so it kept firing (and re-issuing the discovery fan-out) from other views -- e.g. the
+  // sample page -- which is what clobbered the sample's Relay record.
+  describe("popstate handler lifecycle", () => {
+    it("reloads on back/forward while mounted", async () => {
+      const { props } = renderView();
+      await waitFor(() => expect(getDiscoveryStats).toHaveBeenCalled());
+
+      asMock(getDiscoveryStats).mockClear();
+      asMock(props.fetchNextGenWorkflowRuns).mockClear();
+      await act(async () => {
+        window.dispatchEvent(new Event("popstate"));
+      });
+
+      await waitFor(() => expect(getDiscoveryStats).toHaveBeenCalled());
+      expect(props.fetchNextGenWorkflowRuns).toHaveBeenCalled();
+    });
+
+    it("removes the handler on unmount so back/forward no longer reloads", async () => {
+      const { unmount, props } = renderView();
+      await waitFor(() => expect(getDiscoveryStats).toHaveBeenCalled());
+
+      unmount();
+      asMock(getDiscoveryStats).mockClear();
+      asMock(props.fetchNextGenWorkflowRuns).mockClear();
+      window.dispatchEvent(new Event("popstate"));
+      // Let any (erroneously surviving) async reload work run before asserting none did.
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(getDiscoveryStats).not.toHaveBeenCalled();
+      expect(props.fetchNextGenWorkflowRuns).not.toHaveBeenCalled();
     });
   });
 });

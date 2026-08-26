@@ -8,7 +8,11 @@ import { AmrWorkflowResult } from "~/components/views/SampleView/components/AmrV
 import { BenchmarkWorkflowRunResults } from "~/components/views/SampleView/components/BenchmarkView/BenchmarkView";
 import { getURLParamString } from "~/helpers/url";
 import Sample from "~/interface/sample";
-import { Background, PipelineVersionResponse } from "~/interface/shared";
+import {
+  Background,
+  CatalogedWorkflowVersionsResponse,
+  PipelineVersionResponse,
+} from "~/interface/shared";
 import {
   get,
   MAX_SAMPLES_FOR_GET_REQUEST,
@@ -133,7 +137,9 @@ const uploadFileToUrl = async (
       lastErr = err;
       if (attempt === MAX_ATTEMPTS || !isTransientNetworkError(err)) break;
       // exponential backoff before re-PUTting the same chunk: 0.5s, then 1s.
-      await new Promise(resolve => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+      await new Promise(resolve =>
+        setTimeout(resolve, 500 * 2 ** (attempt - 1)),
+      );
     }
   }
   return onError(lastErr);
@@ -343,6 +349,13 @@ const getProjectPipelineVersions = (
   projectId: number,
 ): Promise<PipelineVersionResponse> =>
   get(`/projects/${projectId}/pipeline_versions`);
+
+// CZID-975 -- the catalog of versions a user may select for a workflow at upload. Returns runnable
+// versions newest-first; deprecated ones are included but flagged so the UI can discourage them.
+const getWorkflowVersions = (
+  workflow: string,
+): Promise<CatalogedWorkflowVersionsResponse> =>
+  get("/workflow_versions", { params: { workflow } });
 
 const createProject = (params: $TSFixMe) =>
   postWithCSRF("/projects.json", {
@@ -737,12 +750,18 @@ const getMassNormalizedBackgroundAvailability = (sampleIds: $TSFixMe) =>
 
 const createConsensusGenomeCladeExport = ({
   workflowRunIds = [],
-  referenceTree,
+  referenceTreeS3Key = null,
 }: $TSFixMe) =>
   postWithCSRF("/workflow_runs/consensus_genome_clade_export", {
     workflowRunIds,
-    referenceTree,
+    referenceTreeS3Key,
   });
+
+// Mints a presigned S3 PUT URL for a Nextclade reference tree so the browser can upload it directly to
+// S3, bypassing the app request body and the edge WAF body-size limit. Returns { url, key }; the key is
+// handed to createConsensusGenomeCladeExport once the PUT succeeds.
+const getConsensusGenomeCladeExportTreeUrl = () =>
+  postWithCSRF("/workflow_runs/consensus_genome_clade_export_tree_url", {});
 
 const kickoffConsensusGenome = ({
   sampleId,
@@ -825,6 +844,7 @@ export {
   bulkKickoffWorkflowRuns,
   createBackground,
   createConsensusGenomeCladeExport,
+  getConsensusGenomeCladeExportTreeUrl,
   createPhyloTree,
   createProject,
   getAlignmentData,
@@ -832,13 +852,13 @@ export {
   getAllHostGenomesPublic,
   getAllSampleTypes,
   getAppConfigs,
-  getLaunchedFeatureList,
   getBackgrounds,
   getBenchmarkGroundTruthFiles,
   getContigsSequencesByByteranges,
   getCoverageVizData,
   getCoverageVizSummary,
   getHeatmapMetrics,
+  getLaunchedFeatureList,
   getMassNormalizedBackgroundAvailability,
   getNewPhyloTreePipelineRunIds,
   getNewPhyloTreePipelineRunInfo,
@@ -864,17 +884,19 @@ export {
   getTaxonDescriptions,
   getTaxonDistributionForBackground,
   getVisualizations,
+  getWorkflowRunResults,
   getWorkflowRuns,
   getWorkflowRunsInfo,
-  getWorkflowRunResults,
-  kickoffConsensusGenome,
+  getWorkflowVersions,
   kickoffAMR,
+  kickoffConsensusGenome,
   markSampleUploaded,
-  retryPipelineRun,
+  modifyFeatureFlagForUsers,
   rerunPipeline,
   rerunWorkflowRun,
-  modifyFeatureFlagForUsers,
   retryPhyloTree,
+  retryPipelineRun,
+  samplesUploadedByCurrentUser,
   saveProjectDescription,
   saveProjectName,
   saveSampleName,
@@ -883,7 +905,6 @@ export {
   setAppConfig,
   setWorkflowVersion,
   shortenUrl,
-  samplesUploadedByCurrentUser,
   uploadFileToUrl,
   userIsCollaboratorOnAllSamples,
   validatePhyloTreeName,

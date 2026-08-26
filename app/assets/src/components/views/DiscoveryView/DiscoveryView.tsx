@@ -349,7 +349,9 @@ export class DiscoveryView extends React.Component<
     // that does not return a promise (e.g. a mocked loadPage in tests) is tolerated.
     Promise.resolve(this.samples.loadPage(0)).catch(handleDiscoveryLoadError);
     if (domain !== DISCOVERY_DOMAIN_SNAPSHOT) {
-      Promise.resolve(this.projects.loadPage(0)).catch(handleDiscoveryLoadError);
+      Promise.resolve(this.projects.loadPage(0)).catch(
+        handleDiscoveryLoadError,
+      );
       Promise.resolve(this.visualizations.loadPage(0)).catch(
         handleDiscoveryLoadError,
       );
@@ -528,24 +530,43 @@ export class DiscoveryView extends React.Component<
 
     // this event is triggered when a user clicks "Back" in their browser
     // to make sure session sorting parameters are preserved, we need
-    // to set the correct order parameters in the state
-    window.onpopstate = () => {
-      this.setState(
-        {
-          ...history.state,
-          ...this.getOrderStateFieldsFor(
-            history.state.currentTab,
-            history.state.workflow,
-          ),
-        },
-        () => {
-          this.resetData({
-            callback: this.initialLoad,
-          });
-        },
-      );
-    };
+    // to set the correct order parameters in the state.
+    //
+    // SMP-1501 / SMP-1476: use addEventListener + removeEventListener (in
+    // componentWillUnmount) instead of assigning window.onpopstate. The bare assignment
+    // was never removed on unmount, so the handler leaked globally: once DiscoveryView
+    // had mounted, EVERY browser back/forward -- including from the sample view -- re-ran
+    // resetData + initialLoad, re-issuing the discovery fan-out. That fan-out includes
+    // fetchNextGenWorkflowRuns (a fedWorkflowRuns query -- federation-era name, now
+    // Rails), whose response shares a Relay dataID with the sample's SampleForReport
+    // record and flipped a SUCCEEDED run to the SAMPLE FAILED screen.
+    window.addEventListener("popstate", this.handlePopState);
   }
+
+  componentWillUnmount() {
+    // Remove the leaked-on-unmount popstate handler (SMP-1501 / SMP-1476). Without this,
+    // the handler kept firing from other views after DiscoveryView unmounted.
+    window.removeEventListener("popstate", this.handlePopState);
+  }
+
+  // Back/forward WITHIN DiscoveryView still resets sorting state and reloads; only the
+  // cross-view leak is removed. Body preserved verbatim from the former window.onpopstate.
+  handlePopState = () => {
+    this.setState(
+      {
+        ...history.state,
+        ...this.getOrderStateFieldsFor(
+          history.state.currentTab,
+          history.state.workflow,
+        ),
+      },
+      () => {
+        this.resetData({
+          callback: this.initialLoad,
+        });
+      },
+    );
+  };
 
   /** This grabs orderBy and orderDir from sessionStorage. */
   getConditionsWithSessionStorage = (
@@ -1207,13 +1228,18 @@ export class DiscoveryView extends React.Component<
         });
       })
       .catch(handleDiscoveryLoadError);
-    fetchTotalWorkflowCounts(projectId).then(
-      (workflowCounts: WorkflowCount) => {
+    // SMP-1497: fetchTotalWorkflowCounts calls fetchProjectIds (REST) and
+    // queryWorkflowRunsTotalCount (Relay, which itself hits /identify), so an expired
+    // session can reject here on the /my_data mount path. SMP-1620 wrapped the other
+    // loaders but missed this one; route it through the same handler so a 401
+    // re-authenticates instead of surfacing as an unhandled rejection.
+    fetchTotalWorkflowCounts(projectId)
+      .then((workflowCounts: WorkflowCount) => {
         this.setState({
           workflowCounts,
         });
-      },
-    );
+      })
+      .catch(handleDiscoveryLoadError);
   };
 
   computeTabs = () => {

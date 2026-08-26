@@ -18,7 +18,7 @@ class UserMailer < ApplicationMailer
   end
 
   def landing_sign_up_email(body)
-    account_email = "help@czid.org"
+    account_email = "seqtoid-support@ucsf.edu"
     mail(to: account_email, subject: "New sign up from landing page", body: body)
   end
 
@@ -26,7 +26,7 @@ class UserMailer < ApplicationMailer
   def account_request_reply(request_email)
     mail(
       to: request_email,
-      subject: "Thank you for contacting The CZ ID Team"
+      subject: "Thank you for contacting The SeqtoID Team"
     )
   end
 
@@ -49,6 +49,16 @@ class UserMailer < ApplicationMailer
     mail(
       to: new_user_email,
       subject: "You have been invited to CZ ID"
+    )
+  end
+
+  # Export-control: the applicant's account request could not be accepted (a denied-party or
+  # sanctioned-jurisdiction outcome). Deliberately generic -- no screening details to the applicant.
+  def account_creation_denied(email)
+    @email = email
+    mail(
+      to: email,
+      subject: "Your CZ ID account request"
     )
   end
 

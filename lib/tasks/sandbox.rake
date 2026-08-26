@@ -650,6 +650,24 @@ namespace :sandbox do
       puts "[sandbox:seed_once] app_configs already present (#{AppConfig.count}) -- skipping db:seed"
     end
 
+    # CZID-982 -- reconcile the workflow_version CATALOG by applying pending seed migrations.
+    #
+    # db:seed loads the generated db/seeds.rb snapshot and bootstraps SeedMigration only up to the
+    # snapshot's stamp; the snapshot is STALE against the catalog it ships. It sets amr-version=1.4.2
+    # (and short-read-mngs 8.3.15, etc.) in app_config while seeding the PREVIOUS catalog rows
+    # (amr 1.2.5 ...). The migrations that close that gap -- UpdatePipelineVersionAppConfig and
+    # ReconcileWorkflowVersionCatalog -- run via `seed:migrate`, which the migrate hook never invoked
+    # here (only bin/rebuild_system does). VersionRetrievalService (CZID-982) then fail-closes on the
+    # default: "WorkflowVersion for workflow=amr and version=1.4.2 is not in the catalog", 500ing
+    # project create / project_pipeline_versions in every fresh preview.
+    #
+    # Run the pending seed migrations, exactly as bin/rebuild_system does (db:migrate:with_data +
+    # seed:migrate). Idempotent: only unapplied migrations run and each is a no-op where its rows
+    # already exist, so re-syncs do nothing and sandboxes seeded before this fix self-heal on the
+    # next sync. Runs in the sandbox's own schema, so dev/staging/prod are untouched.
+    puts "[sandbox:seed_once] applying pending seed migrations (reconciles the workflow_version catalog)"
+    Rake::Task["seed:migrate"].invoke
+
     # A sandbox POLLS; it does not get notified. db:seed writes
     # enable_sfn_notifications=1, which is right for dev and wrong here, and the mismatch is
     # silent: the sample dispatches, the pipeline runs to completion in Step Functions, and the

@@ -185,7 +185,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: Validation failed: Input fastqs have identical read 1 source and read 2 source",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -219,7 +222,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: Validation failed: Input fastqs invalid number (3)",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -239,7 +245,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: #{ErrorHelper::SampleUploadErrors.error_fetching_basespace_files_for_dataset(fake_dataset_id, @sample.name, @sample.id)}",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -259,7 +268,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: #{ErrorHelper::SampleUploadErrors.no_files_in_basespace_dataset(fake_dataset_id, @sample.name, @sample.id)}",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -273,7 +285,10 @@ describe Sample, type: :model do
     context "cannot download basespace files" do
       it "fails gracefully and adds a failed pipeline run" do
         # Set up mocks.
-        expect(@sample).to receive(:files_for_basespace_dataset).exactly(1).times.and_return(fake_files_for_basespace_dataset_response)
+        # The presigned download URLs are re-minted on each retry (SMP-1732), so
+        # files_for_basespace_dataset is called once up front plus once per retry
+        # (two retries after the two backoff sleeps) for a total of three calls.
+        expect(@sample).to receive(:files_for_basespace_dataset).exactly(3).times.and_return(fake_files_for_basespace_dataset_response)
         expect(@sample).to receive(:upload_from_basespace_to_s3).exactly(3).times.and_return(false)
         expect(@sample).to receive(:kickoff_pipeline).exactly(0).times
         # Expect to sleep 60 after first failure, then sleep 300 on second failure.
@@ -282,7 +297,10 @@ describe Sample, type: :model do
         # Check that the proper error message is logged.
         expect(LogUtil).to receive(:log_error).with(
           "SampleUploadFailedEvent: #{ErrorHelper::SampleUploadErrors.upload_from_basespace_failed(@sample.name, @sample.id, file_one_name, fake_dataset_id, 3)}",
-          hash_including(basespace_access_token: "fake_access_token", basespace_dataset_id: "fake_dataset_id")
+          hash_including(
+            basespace_token_fingerprint: SecretRedaction.fingerprint("fake_access_token"),
+            basespace_dataset_id: "fake_dataset_id"
+          )
         ).exactly(1).times
 
         @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
@@ -290,6 +308,51 @@ describe Sample, type: :model do
         expect(@sample.status).to eq(Sample::STATUS_CHECKED)
         expect(@sample.upload_error).to eq(Sample::UPLOAD_ERROR_BASESPACE_UPLOAD_FAILED)
         expect(@sample.input_files.length).to be 0
+      end
+    end
+
+    context "re-mints presigned download URLs on retry (SMP-1732)" do
+      # The stale presigned URL that fails on the first attempt, and the fresh one
+      # that the re-mint returns for the retry. Distinct values let us assert the
+      # retry uploads with the freshly minted URL rather than reusing the stale one.
+      let(:stale_href_content) { "https://basespace.amazonaws.com/abc123/sample_one.fastq.gz?sig=stale" }
+      let(:fresh_href_content) { "https://basespace.amazonaws.com/abc123/sample_one.fastq.gz?sig=fresh" }
+
+      def single_file_response(download_path)
+        [
+          {
+            name: file_one_name,
+            download_path: download_path,
+            source_path: file_one_href,
+          },
+        ]
+      end
+
+      it "re-fetches files and uploads with the fresh URL after a failure" do
+        # First mint returns the stale URL; the retry re-mint returns a fresh one.
+        allow(@sample).to receive(:files_for_basespace_dataset)
+          .and_return(single_file_response(stale_href_content), single_file_response(fresh_href_content))
+        # Don't actually sleep through the backoff during the test.
+        allow(Kernel).to receive(:sleep)
+
+        # Fail the first attempt (stale URL), succeed the second (fresh URL).
+        # 4th arg = BaseSpace byte size for --expected-size (SMP-1730), nil for these fixtures;
+        # 5th arg = the S3 lifecycle tag set (SMP-1731). Both matched with `anything`.
+        expect(@sample).to receive(:upload_from_basespace_to_s3)
+          .with([stale_href_content], anything, file_one_name, anything, anything).ordered.and_return(false)
+        expect(@sample).to receive(:upload_from_basespace_to_s3)
+          .with([fresh_href_content], anything, file_one_name, anything, anything).ordered.and_return(true)
+        expect(@sample).to receive(:kickoff_pipeline).exactly(1).times
+
+        @sample.transfer_basespace_fastq_files(fake_dataset_id, fake_access_token)
+
+        # The URL helper was called twice: once up front, once to re-mint on retry.
+        expect(@sample).to have_received(:files_for_basespace_dataset).exactly(2).times
+        expect(@sample.status).to eq(Sample::STATUS_CHECKED)
+        expect(@sample.upload_error).to eq(nil)
+        expect(@sample.input_files.length).to be 1
+        # The stored source is the stable Href, unaffected by the URL refresh.
+        expect(@sample.input_files[0].source).to eq(file_one_href)
       end
     end
 

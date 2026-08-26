@@ -49,7 +49,7 @@ RSpec.describe UserMailer, type: :mailer do
     it "sends to the help address with the provided body" do
       mail = described_class.landing_sign_up_email("Please make me an account")
 
-      expect(mail.to).to eq(["help@czid.org"])
+      expect(mail.to).to eq(["seqtoid-support@ucsf.edu"])
       expect(mail.subject).to eq("New sign up from landing page")
       expect(mail.body.encoded).to include("Please make me an account")
     end
@@ -60,7 +60,7 @@ RSpec.describe UserMailer, type: :mailer do
       mail = described_class.account_request_reply("requester@example.com")
 
       expect(mail.to).to eq(["requester@example.com"])
-      expect(mail.subject).to eq("Thank you for contacting The CZ ID Team")
+      expect(mail.subject).to eq("Thank you for contacting The SeqtoID Team")
     end
   end
 

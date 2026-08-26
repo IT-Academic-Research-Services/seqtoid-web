@@ -18,6 +18,12 @@ class LogUtil
         exception,
         extra: details.merge(message: message)
       )
+    else
+      Sentry.capture_message(
+        message,
+        level: "error",
+        extra: details
+      )
     end
   end
 

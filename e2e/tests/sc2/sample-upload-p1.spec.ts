@@ -1,4 +1,8 @@
-import { SEQUENCING_PLATFORMS, WORKFLOWS } from "@e2e/constants/common";
+import {
+  HELP_CENTER_HOST,
+  SEQUENCING_PLATFORMS,
+  WORKFLOWS,
+} from "@e2e/constants/common";
 import { ProjectPage } from "@e2e/page-objects/project-page";
 import { UploadPage } from "@e2e/page-objects/upload-page";
 import { expect, test } from "@playwright/test";
@@ -42,9 +46,9 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
 
     // For Illumina option:
     // - Github ""here"" link opens Githbu new tab:
-    // https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/consensus-genome
+    // https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/consensus-genome
     expect(await linkedPage.url()).toEqual(
-      "https://github.com/chanzuckerberg/czid-workflows/tree/main/workflows/consensus-genome",
+      "https://github.com/IT-Academic-Research-Services/seqtoid-workflows/tree/main/workflows/consensus-genome",
     );
     await linkedPage.close();
     // #endregion 5. Cilck on Github ""here"" LINK
@@ -62,7 +66,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn More link opens Help Center new tab:
     // https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/
     expect(await linkedPage.url()).toEqual(
-      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
+      `${HELP_CENTER_HOST}/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/`,
     );
     await linkedPage.close();
     // #endregion 7. Click on Learn More LINK
@@ -96,7 +100,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn More link opens Help Center new tab:
     // https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/
     expect(await linkedPage.url()).toEqual(
-      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
+      `${HELP_CENTER_HOST}/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/`,
     );
     await linkedPage.close();
     // #endregion 11. Click on Learn More LINK
@@ -134,7 +138,7 @@ test.describe("Sample upload (web) - SC2  Illumina: Functional: P-1", () => {
     // - Learn more link opens ClearLabs new tab:
     linkedPage = await uploadPage.clickMedakaModelHereLink();
     expect(await linkedPage.url()).toEqual(
-      "https://helpcenter.seqtoid.org/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/",
+      `${HELP_CENTER_HOST}/articles/upload-data-and-assemble-sars-cov-2-genomes-using-the-web-app/`,
     );
     // #endregion 13. Hover over ""Medaka Model:"" information icon and click on Learn More LINK
   });

@@ -41,10 +41,14 @@ module ExportControlScreeningGate
   private
 
   # ---- onboarding gate point (wired as a before_action on ApplicationController) ----
+  # A held (screening-hit) user is sent to the "access under review" page, NOT the IDV clearance form:
+  # under the attestation + Visual Compliance approach there is no document-IDV step for the user to
+  # complete, so a hold is resolved by manual compliance review (auto-released by the resolution poller),
+  # not by the user re-verifying. Both gate points therefore land on export_control_clearance_denied.
   def screen_export_control_onboarding
     enforce_export_control_screen(
       point_enabled: onboarding_screen_gate_enabled?,
-      redirect_path: new_export_control_clearance_path
+      redirect_path: export_control_clearance_denied_path
     )
   end
 
@@ -97,7 +101,14 @@ module ExportControlScreeningGate
       subject_ref: "User:#{current_user.id}",
       subject_type: "User",
       name: current_user.name,
-      soptionalid: current_user.id.to_s
+      soptionalid: current_user.id.to_s,
+      # Generic (country-level) location so the vendor can populate risk_country for
+      # high-risk-jurisdiction detection. CloudFront-Viewer-Country is an ISO-3166 alpha-2
+      # derived from the request geo -- country granularity only, never a precise address.
+      country: request.headers["CloudFront-Viewer-Country"].presence,
+      # SMP-1684: email is used ONLY for the ScreeningPolicy whitelist domain match (e.g. "ucsf.edu");
+      # it is never sent to the vendor and never logged.
+      email: current_user.email
     )
   end
 

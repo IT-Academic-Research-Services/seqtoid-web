@@ -131,4 +131,99 @@ RSpec.describe SentryEventFilter do
       expect(described_class.interactive_cli_session?(console: false, cmdline: nil, stdin: tty)).to be(false)
     end
   end
+
+  # SMP-1729: credential material must not reach Sentry. Enforced at the sink so
+  # it holds for call sites that do not exist yet.
+  describe ".scrub_secrets" do
+    # Obvious fakes -- nothing here is or resembles a real credential.
+    let(:fake_token) { "fake-basespace-token-not-a-real-credential" }
+    let(:fake_signed_url) do
+      "https://basespace.example.invalid/files/s1.fastq.gz?X-Amz-Signature=fakesignaturevalue"
+    end
+
+    # A real Sentry::Event, built through a throwaway client with a dummy
+    # transport so nothing leaves the process.
+    def build_event
+      Sentry.init do |config|
+        config.dsn = "http://public@example.com/1"
+        config.enabled_environments = %w[test]
+        config.environment = "test"
+        config.transport.transport_class = Sentry::DummyTransport
+        config.traces_sample_rate = 0.0
+      end
+      Sentry.get_current_client.event_from_message("basespace transfer failed")
+    end
+
+    after do
+      Sentry.instance_variable_set(:@main_hub, nil) if Sentry.instance_variable_defined?(:@main_hub)
+    end
+
+    it "scrubs a token-shaped extra off a real Sentry event" do
+      event = build_event
+      event.extra = {
+        message: "Error transferring basespace files for sample 7",
+        sample_id: 7,
+        basespace_access_token: fake_token,
+      }
+
+      scrubbed = described_class.scrub_secrets(event)
+
+      expect(scrubbed.extra[:basespace_access_token]).to eq(SecretRedaction::REDACTED)
+      expect(scrubbed.extra.to_s).not_to include(fake_token)
+      # Same debuggability: message and correlating ids survive untouched.
+      expect(scrubbed.extra[:sample_id]).to eq(7)
+      expect(scrubbed.extra[:message]).to eq("Error transferring basespace files for sample 7")
+    end
+
+    it "strips the signature from a presigned URL in extras but keeps the object path" do
+      event = build_event
+      event.extra = { basespace_paths: [fake_signed_url] }
+
+      scrubbed = described_class.scrub_secrets(event)
+
+      expect(scrubbed.extra[:basespace_paths].first).not_to include("fakesignaturevalue")
+      expect(scrubbed.extra[:basespace_paths].first).to include("/files/s1.fastq.gz")
+    end
+
+    it "keeps a non-reversible fingerprint, which is not itself a credential" do
+      digest = SecretRedaction.fingerprint(fake_token)
+      event = build_event
+      event.extra = { basespace_token_fingerprint: digest }
+
+      expect(described_class.scrub_secrets(event).extra[:basespace_token_fingerprint]).to eq(digest)
+    end
+
+    it "scrubs breadcrumb data and messages" do
+      event = build_event
+      event.breadcrumbs = Sentry::BreadcrumbBuffer.new
+      event.breadcrumbs.record(
+        Sentry::Breadcrumb.new(
+          category: "basespace",
+          message: "GET #{fake_signed_url}",
+          data: { "access_token" => fake_token, "dataset_id" => "d1" }
+        )
+      )
+
+      crumb = described_class.scrub_secrets(event).breadcrumbs.to_a.first
+
+      expect(crumb.data["access_token"]).to eq(SecretRedaction::REDACTED)
+      expect(crumb.data["dataset_id"]).to eq("d1")
+      expect(crumb.message).not_to include("fakesignaturevalue")
+    end
+
+    it "returns nil unchanged (a dropped event stays dropped)" do
+      expect(described_class.scrub_secrets(nil)).to be_nil
+    end
+
+    it "drops the extras payload rather than shipping it unscrubbed if redaction fails" do
+      event = build_event
+      event.extra = { basespace_access_token: fake_token }
+      allow(SecretRedaction).to receive(:scrub).and_raise(StandardError.new("boom"))
+
+      scrubbed = described_class.scrub_secrets(event)
+
+      expect(scrubbed.extra).to eq(described_class::SCRUB_FAILED)
+      expect(scrubbed.extra.to_s).not_to include(fake_token)
+    end
+  end
 end

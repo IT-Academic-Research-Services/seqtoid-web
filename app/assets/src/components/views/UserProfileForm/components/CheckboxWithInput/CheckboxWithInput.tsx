@@ -9,6 +9,7 @@ type CheckboxWithInputProps = {
   isSelectionDisabled?: boolean;
   isCheckboxChecked: boolean;
   prefix: string;
+  groupId: string;
 };
 
 export function CheckboxWithInput({
@@ -17,6 +18,7 @@ export function CheckboxWithInput({
   isSelectionDisabled = false,
   isCheckboxChecked,
   prefix,
+  groupId,
 }: CheckboxWithInputProps) {
   const [inputValue, setInputValue] = useState<string>("");
 
@@ -55,8 +57,7 @@ export function CheckboxWithInput({
     const inputCheckbox = (
       <InputCheckbox
         stage={isCheckboxChecked ? "checked" : "unchecked"}
-        label="Checkbox with input"
-        id="checkbox-w-input"
+        id={`${groupId}-other-checkbox`}
         onClick={handleOtherCheckboxChange}
       />
     );
@@ -87,7 +88,7 @@ export function CheckboxWithInput({
         onChange={handleCheckboxChangeWithInput}
         label={"label"}
         hideLabel={true}
-        id={prefix}
+        id={`${groupId}-other-input`}
       />
     </div>
   );

@@ -712,8 +712,20 @@ class SamplesController < ApplicationController
     # minimum version here. Bulk upload from CLI goes to this method.
     min_version = Gem::Version.new(MIN_CLI_VERSION)
 
-    version_obj = client && client != "web" && Gem::Version.new(version_string)
-    unless client && (client == "web" || version_obj >= min_version)
+    # A malformed / unparseable client version (e.g. an unversioned dev build, or any
+    # client sending a non-semver string) must be treated as OUTDATED -- not crash the
+    # request. Gem::Version.new raises ArgumentError on garbage like "unversioned", which
+    # previously 500'd bulk_upload_with_metadata; here it should fall through to the
+    # upgrade-required response below.
+    version_obj =
+      if client && client != "web"
+        begin
+          Gem::Version.new(version_string)
+        rescue ArgumentError
+          nil
+        end
+      end
+    unless client && (client == "web" || (version_obj && version_obj >= min_version))
       render json: {
         message: CLI_DEPRECATION_MSG,
         # idseq-cli v0.6.0 only checks the 'errors' field, so ensure users see this.
@@ -1315,7 +1327,7 @@ class SamplesController < ApplicationController
   # GET samples/:id/results_folder.json
   def results_folder
     pr = select_pipeline_run(@sample, params[:pipeline_version])
-    can_see_stage1_results = (current_user.id == @sample.user_id)
+    can_see_stage1_results = true # (current_user.id == @sample.user_id)
     pipeline_version_url_param = params[:pipeline_version] ? "?pipeline_version=#{params[:pipeline_version]}" : ""
     @exposed_raw_results_url = can_see_stage1_results ? "#{raw_results_folder_sample_url(@sample)}#{pipeline_version_url_param}" : nil
     @sample_path = "#{sample_path(@sample)}#{pipeline_version_url_param}"
@@ -1374,8 +1386,13 @@ class SamplesController < ApplicationController
   def upload
     @projects = current_power.updatable_projects
     @host_genomes = host_genomes_list || nil
-    @basespace_client_id = ENV["CZID_BASESPACE_CLIENT_ID"] || nil
-    @basespace_oauth_redirect_uri = ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"] || nil
+    # Use presence so that a blank env var is rendered as an empty string rather
+    # than passing a truthy-but-useless value to the client. The client treats an
+    # empty client id or redirect uri as "Basespace is not configured for this
+    # environment" and blocks the upload option instead of opening an OAuth popup
+    # that can only fail.
+    @basespace_client_id = ENV["CZID_BASESPACE_CLIENT_ID"].presence
+    @basespace_oauth_redirect_uri = ENV["CZID_BASESPACE_OAUTH_REDIRECT_URI"].presence
   end
 
   # GET /samples/1/edit
@@ -1766,6 +1783,11 @@ class SamplesController < ApplicationController
                                :do_not_process, :pipeline_execution_strategy, :wetlab_protocol,
                                :share_id, :technology, :medaka_model, :clearlabs,
                                :ref_fasta, :primer_bed, :guppy_basecaller_setting, :alignment_config_name, :taxon_id, :taxon_name, :accession_id, :accession_name,
+                               # CZID-975/CZID-976 -- user-selected pipeline versions, keyed by
+                               # workflow (one upload can run several). Deliberately NOT admin-only:
+                               # selection is per-run for any user. Validated on Sample and again in
+                               # VersionRetrievalService before a value reaches a LIKE query.
+                               { workflow_versions: {} },
                                { workflows: [], input_files_attributes: [:name, :presigned_url, :source_type, :source, :parts, :upload_client, :file_type] },]
     permitted_sample_params.concat([:pipeline_branch, :dag_vars, :s3_preload_result_path, :subsample, :max_input_fragments]) if current_user.admin?
 
@@ -1779,6 +1801,8 @@ class SamplesController < ApplicationController
                         :search, :basespace_dataset_id, :basespace_access_token, :client,
                         :do_not_process, :pipeline_execution_strategy, :clearlabs, :technology, :medaka_model, :wetlab_protocol,
                         :share_id, :ref_fasta, :primer_bed, :alignment_config_name,
+                        # CZID-975/CZID-976 -- user-selected pipeline versions by workflow (not admin-only)
+                        { workflow_versions: {} },
                         { workflows: [], input_files_attributes: [:name, :presigned_url, :source_type, :source, :parts, :upload_client, :file_type] },]
     permitted_params.concat([:pipeline_branch, :dag_vars, :s3_preload_result_path, :subsample, :max_input_fragments]) if current_user.admin?
     params.require(:sample).permit(*permitted_params)

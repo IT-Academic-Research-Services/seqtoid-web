@@ -1,5 +1,19 @@
 module ErrorHelper
   module VersionControlErrors
+    # A dispatch was attempted at a version older than the workflow's supported floor. Raised as a
+    # distinct TYPE (not a bare string like the sibling helpers) so the upload path can rescue it
+    # specifically and surface a clean "locked" message instead of rolling the sample back into a
+    # stuck waiting state. The old version's existing results remain fully viewable regardless.
+    class WorkflowVersionLockedError < StandardError; end
+
+    # Message for a locked (below-floor) version: names the floor and points the user at re-running
+    # on a supported version, since the old one is view-only.
+    def self.workflow_version_locked(workflow, version, floor)
+      "WorkflowVersion #{workflow} #{version} is locked: it is older than the oldest supported " \
+        "version (#{floor}) and can no longer be run. Existing results for this version are still " \
+        "viewable; choose #{floor} or newer to run a new analysis."
+    end
+
     def self.workflow_version_not_found(workflow, version_prefix)
       "WorkflowVersion for workflow=#{workflow} and version_prefix=#{version_prefix} does not exist"
     end
@@ -8,12 +22,38 @@ module ErrorHelper
       "No WorkflowVersions for workflow=#{workflow} exist."
     end
 
+    # CZID-982 -- the configured default names a version that is not in the catalog. Distinct from
+    # workflow_version_not_found above, which is about resolving a version PREFIX; this one is an
+    # exact version and is a configuration error an operator has to fix (register the version, or
+    # point app_config at one that exists), so the message says so rather than talking about
+    # prefixes.
+    def self.workflow_version_not_catalogued(workflow, version)
+      "WorkflowVersion for workflow=#{workflow} and version=#{version} is not in the catalog. " \
+        "The configured default must be a registered workflow version."
+    end
+
     def self.workflow_version_deprecated(workflow, version)
       "WorkflowVersion for workflow=#{workflow} and version=#{version} is deprecated"
     end
 
     def self.workflow_version_not_runnable(workflow, version)
       "WorkflowVersion for workflow=#{workflow} and version=#{version} is not runnable"
+    end
+
+    # CZID-976 -- a user-selected version whose shape is not a version at all. Distinct from
+    # workflow_version_not_found (a well-formed selection that simply has no match), because this one
+    # is a malformed REQUEST and must surface as a 4xx rather than a not-found or a 500.
+    def self.invalid_user_specified_version(workflow, version)
+      "Invalid version #{version.inspect} requested for workflow=#{workflow}. " \
+        "Expected a major (8), major.minor (8.1) or full version (8.1.2)."
+    end
+
+    # CZID-977 -- the selected pipeline version is not recorded as compatible with the NCBI index
+    # vintage the run would use. Names both halves and the recorded range, because the fix is either
+    # to pick a different version or to repin the project's index -- the operator needs to know which.
+    def self.incompatible_index_version(workflow, version, index_version, allowed_range)
+      "WorkflowVersion #{workflow} #{version} is not compatible with NCBI index #{index_version}. " \
+        "Compatible index range: #{allowed_range || 'unrecorded'}."
     end
 
     def self.project_workflow_version_already_pinned(project_id, workflow, version)

@@ -33,9 +33,30 @@ class SfnPipelineDispatchService
     @sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_MNGS_ARN) || AppConfigHelper.get_app_config(AppConfig::SFN_ARN)
     raise SfnArnMissingError if @sfn_arn.blank?
 
-    @wdl_version = /\d+\.\d+\.\d+/ =~ pipeline_run.pipeline_branch ? pipeline_run.pipeline_branch : VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME)
+    # CZID-976: pipeline_branch stays the ADMIN escape hatch (a semver there is used verbatim,
+    # bypassing catalog validation); sample.workflow_version is the user's selection and IS
+    # validated by the service.
+    @wdl_version = if (branch_semver = pipeline_run.pipeline_branch.to_s[/\d+\.\d+\.\d+/])
+                     # ADMIN escape hatch: a semver in pipeline_branch is used verbatim, bypassing the
+                     # catalog gate. The supported-version LOCK still applies here, though -- a version
+                     # below the floor is view-only for everyone, so refuse it even on this path rather
+                     # than dispatch a run that the current infra cannot execute.
+                     floor = WorkflowVersion.supported_floor(WORKFLOW_NAME)
+                     if WorkflowVersion.below_floor?(branch_semver, floor)
+                       raise ErrorHelper::VersionControlErrors::WorkflowVersionLockedError,
+                             ErrorHelper::VersionControlErrors.workflow_version_locked(WORKFLOW_NAME, branch_semver, floor)
+                     end
+                     pipeline_run.pipeline_branch
+                   else
+                     VersionRetrievalService.call(@sample.project.id, WORKFLOW_NAME, @sample.selected_workflow_version(WORKFLOW_NAME))
+                   end
 
     raise SfnVersionMissingError, WORKFLOW_NAME if @wdl_version.blank?
+
+    # CZID-977: refuse a version/index pairing the catalog does not record as compatible. Checked
+    # HERE because this is where both halves are finally known -- the version resolved above and
+    # the index the run was created with.
+    assert_index_compatible!(WORKFLOW_NAME, @wdl_version, @pipeline_run.alignment_config&.name)
   end
 
   def call
@@ -133,10 +154,18 @@ class SfnPipelineDispatchService
                       diamond_db: @pipeline_run.alignment_config.diamond_db_path,
                     }, Postprocess: {
                       nt_db: @pipeline_run.alignment_config.s3_nt_db_path,
+                      accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
                       nt_loc_db: @pipeline_run.alignment_config.s3_nt_loc_db_path,
                       nr_db: @pipeline_run.alignment_config.s3_nr_db_path,
                       nr_loc_db: @pipeline_run.alignment_config.s3_nr_loc_db_path,
                       lineage_db: @pipeline_run.alignment_config.s3_lineage_path,
+                      # Postprocess (contig taxid assignment / coverage viz) needs accession2taxid too.
+                      # Without this override the czid_postprocess WDL falls back to its hardcoded
+                      # s3://czid-public-references default, which DownloadFails in the seqtoid account
+                      # and fails the postprocess outputs (taxon_counts, contig_counts,
+                      # accession_coverage_stats). Every other Postprocess DB is already overridden
+                      # here; accession2taxid_db was the lone omission.
+                      accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
                       taxon_blacklist: @pipeline_run.alignment_config.s3_taxon_blacklist_path,
                       use_deuterostome_filter: @sample.skip_deutero_filter_flag != 1,
                       deuterostome_db: @pipeline_run.alignment_config.s3_deuterostome_db_path,

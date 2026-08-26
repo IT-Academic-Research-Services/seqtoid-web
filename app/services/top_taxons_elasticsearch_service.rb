@@ -21,7 +21,19 @@ class TopTaxonsElasticsearchService
     @params = params
     @samples = samples_for_heatmap
     @should_remove_zscore = background_for_heatmap.nil?
-    @background_id = background_for_heatmap || Rails.configuration.x.constants.default_background
+    @background_id = background_for_heatmap || resolve_default_background
+  end
+
+  # The app-wide default_background (config/application.rb) is an id assumed to exist in every
+  # environment. A freshly-provisioned env may not have that id seeded (env-staging had no bg 26),
+  # which left the heatmap falling back to a phantom background -> empty results. Use the configured
+  # default only when it actually exists; otherwise fall back to the first public background so the
+  # heatmap still renders. (SMP-1789)
+  def resolve_default_background
+    configured = Rails.configuration.x.constants.default_background
+    return configured if Background.where(id: configured).exists?
+
+    Background.where(public_access: 1).order(:id).limit(1).pick(:id)
   end
 
   def call
@@ -36,9 +48,14 @@ class TopTaxonsElasticsearchService
 
     pr_id_to_sample_id = HeatmapHelper.get_latest_pipeline_runs_for_samples(@samples)
 
-    ElasticsearchQueryHelper.update_es_for_missing_data(
+    # Kick off any needed (re)indexing asynchronously (async: true) so first-load returns immediately
+    # instead of blocking on the taxon-indexing lambda (SMP-1788). indexed_run_ids still holds the runs
+    # we just enqueued indexing for, so the "indexing" preparing-state below fires the same way and the
+    # client keeps polling until the freshly-indexed docs are searchable (SMP-1795).
+    indexed_run_ids = ElasticsearchQueryHelper.update_es_for_missing_data(
       filter_param[:background_id],
-      pr_id_to_sample_id.keys
+      pr_id_to_sample_id.keys,
+      async: true
     )
 
     ElasticsearchQueryHelper.update_last_read_at(
@@ -56,7 +73,24 @@ class TopTaxonsElasticsearchService
       @samples,
       @should_remove_zscore
     )
+
+    # If we had to (re)index runs this request and the query still returned no taxa, the just-written
+    # docs are almost certainly not searchable yet (ES index refresh lag), not truly absent -- e.g.
+    # the first heatmap view after new data or an ES domain rebuild. Signal "indexing" so the client
+    # shows a preparing state and retries, instead of a misleading empty heatmap. (SMP-1795)
+    return { status: "indexing" } if indexed_run_ids.present? && heatmap_dict_empty?(dict)
+
     return dict
+  end
+
+  # The ES heatmap dict is an array of per-sample entries, each carrying a :taxons list; "empty" means
+  # no sample has any taxa to render.
+  def heatmap_dict_empty?(dict)
+    return true if dict.blank?
+
+    Array(dict).all? do |entry|
+      !entry.is_a?(Hash) || (entry[:taxons] || entry["taxons"] || []).empty?
+    end
   end
 
   def build_filter_param_hash
@@ -118,8 +152,19 @@ class TopTaxonsElasticsearchService
       filter_params[:categories] = params[:categories]
     end
     if params.include?("subcategories")
-      subcategories = JSON.parse(params[:subcategories])
-      filter_params[:include_phage] = subcategories && subcategories["Viruses"] && subcategories["Viruses"].include?("Phage")
+      # subcategories arrives in two shapes, same String-vs-Hash ambiguity handled above for
+      # thresholdFilters. A JSON.stringify'd value is a String to parse -> {"Viruses" => ["Phage"]}.
+      # But the Rails nested-object query encoding (subcategories[Viruses][0]=Phage) is parsed by
+      # Rails into a HashWithIndifferentAccess -> {"Viruses" => {"0" => "Phage"}}; JSON.parse-ing that
+      # raised "no implicit conversion of HashWithIndifferentAccess into String" and 500'd the heatmap
+      # whenever the "Phage" filter was selected (the only filter that sends subcategories). Also note
+      # {"0" => "Phage"}.include?("Phage") checks KEYS and is false, so normalize the Viruses value to
+      # its list of names either way.
+      raw_subcategories = params[:subcategories]
+      subcategories = raw_subcategories.is_a?(String) ? JSON.parse(raw_subcategories.presence || "{}") : (raw_subcategories || {})
+      viruses_subcategories = subcategories["Viruses"]
+      virus_subcategory_names = viruses_subcategories.is_a?(Hash) ? viruses_subcategories.values : Array(viruses_subcategories)
+      filter_params[:include_phage] = virus_subcategory_names.include?("Phage")
     end
     filter_params[:taxon_level] = params[:species].to_i == TaxonCount::TAX_LEVEL_SPECIES ? TaxonCount::TAX_LEVEL_SPECIES : TaxonCount::TAX_LEVEL_GENUS
     if params.include?("readSpecificity")

@@ -59,10 +59,30 @@ spec:
       {{- end }}
       containers:
         - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "seqtoid-web.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             {{- toYaml .Values.migrate.command | nindent 12 }}
+            {{- /*
+              SMP-1715 -- reconcile the workflow_version catalog on every sync.
+
+              db:seed loads a generated snapshot that is stale against the catalog it ships, and
+              stamps SeedMigration only up to that snapshot; the migrations that reconcile the
+              configured *-version app_configs with workflow_versions run under seed:migrate.
+              Without it a freshly bootstrapped env advertises a default version that has no
+              catalog row and VersionRetrievalService (CZID-982) fail-closes -> 500 on project
+              create. See values.yaml migrate.seedMigrate for the full rationale and the gate.
+
+              Appended LAST on purpose: seed migrations need the schema from db:migrate:with_data
+              and the SeedMigration bootstrap + app_config rows that db:seed writes.
+
+              The `has` guard keeps this from double-listing for envs that already spell
+              seed:migrate out in migrate.command (staging/sandbox/exp-sandbox). A second
+              invocation would be a no-op, but the rendered args should say what runs, once.
+            */}}
+            {{- if and .Values.migrate.seedMigrate (not (has "seed:migrate" .Values.migrate.command)) }}
+            - seed:migrate
+            {{- end }}
           env:
             {{- include "seqtoid-web.commonEnv" . | nindent 12 }}
             {{- if .Values.preview.redis.enabled }}

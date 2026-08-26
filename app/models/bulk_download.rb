@@ -169,13 +169,26 @@ class BulkDownload < ApplicationRecord
                                         expires_in: OUTPUT_DOWNLOAD_EXPIRATION,
                                         response_content_disposition: "attachment; filename=\"#{filename}\"").to_s
     rescue StandardError => e
-      LogUtil.log_error("BulkDownloadPresignError: #{e.inspect}", exception: e, access_token: access_token)
+      # SMP-1748: never log access_token. It is our own single-use callback bearer token
+      # (has_secure_token, embedded as a path segment in the success/error/progress routes),
+      # so writing it verbatim put a live credential into the Rails log -> CloudWatch/Loki.
+      # A fingerprint would add nothing here: there is exactly one token per bulk download and
+      # it is nulled on the first callback, so it is useless as a correlation key. The record
+      # id is the identifier an operator can actually act on, so log that instead.
+      LogUtil.log_error("BulkDownloadPresignError: #{e.inspect}", exception: e, bulk_download_id: id)
     end
     nil
   end
 
   def server_host
-    ENV["SERVER_DOMAIN"]
+    # SMP-1636 / #950: normalize to include a scheme. env-staging's SERVER_DOMAIN is bare
+    # (env-staging.seqtoid.org) while dev's carries https://; a schemeless callback url makes the
+    # s3-tar-writer's status ping go http -> 301 -> https (urllib3 FutureWarning) instead of straight
+    # to https. Default a schemeless value to https so every env builds a proper callback url.
+    domain = ENV["SERVER_DOMAIN"]
+    return domain if domain.blank?
+
+    domain.match?(%r{\Ahttps?://}) ? domain : "https://#{domain}"
   end
 
   def log_stream_name
@@ -476,7 +489,11 @@ class BulkDownload < ApplicationRecord
       kind: "Job",
       metadata: { name: "bulk-download-#{id}", labels: labels },
       spec: {
-        backoffLimit: 1,
+        # SMP-1636 / #950: 0 (was 1). A tar-writer failure is deterministic, so a retry re-does the
+        # whole tar for no benefit AND re-pings the single-use callback token, which attempt 1 already
+        # consumed -> a spurious 401 on the retry's status ping (the download is already correctly
+        # marked errored by attempt 1). One attempt = one ping, no token replay, no phantom 401.
+        backoffLimit: 0,
         ttlSecondsAfterFinished: 3600,   # auto-delete the finished Job after 1h
         activeDeadlineSeconds: 10_800,   # 3h cap
         template: {

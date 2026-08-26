@@ -33,6 +33,7 @@ import { showNotification } from "./notifications";
 import { getDefaultSelectedOptions, loadState } from "./setup";
 export * from "./constants";
 export * from "./filters";
+export * from "./isSampleNotFoundError";
 export * from "./notifications";
 export * from "./setup";
 

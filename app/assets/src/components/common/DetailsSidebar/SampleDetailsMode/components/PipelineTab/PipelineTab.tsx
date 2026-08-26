@@ -35,7 +35,6 @@ import Link from "~ui/controls/Link";
 import {
   AMR_WORKFLOW_INFO_FIELDS,
   CG_WORKFLOW_INFO_FIELDS,
-  HOST_FILTERING_WIKI,
   LONG_READ_MNGS_INFO_FIELDS,
   SHORT_READ_MNGS_INFO_FIELDS,
 } from "../../constants";
@@ -385,7 +384,6 @@ export const PipelineTab = ({
               }
               content={pipelineStepDict[stageDescriptionKey]}
               title="Host Filtering"
-              link={HOST_FILTERING_WIKI}
             />
           </div>
           <div className={cs.narrowMetadataValueContainer}>

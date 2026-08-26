@@ -3,6 +3,7 @@ require 'json'
 require 'tempfile'
 require 'aws-sdk'
 require 'elasticsearch/model'
+require './lib/secret_redaction'
 # TODO(mark): Move to an initializer. Make sure this works with Rails auto-reloading.
 
 class Sample < ApplicationRecord
@@ -54,6 +55,30 @@ class Sample < ApplicationRecord
   validates :pipeline_commit, presence: true, allow_blank: true
   validates :uploaded_from_basespace, presence: true, inclusion: { in: [0, 1] }
   validates :initial_workflow, inclusion: { in: WorkflowRun::WORKFLOW.values }
+  # CZID-975/CZID-976 -- the user-selected pipeline versions, keyed by workflow.
+  #
+  # Validated HERE, at the upload boundary, so a malformed selection is a 4xx on the request rather
+  # than a 500 later at dispatch (dispatch resolves the version well after the upload returns).
+  # VersionRetrievalService re-checks the same shape before a value reaches a LIKE query.
+  validate :workflow_versions_are_well_formed
+
+  # The version this sample should run for `workflow`, or nil to use the project pin / configured
+  # default. Per-workflow because one upload can run several: selecting an AMR version must not
+  # change which mNGS version runs.
+  #
+  # CZID-994 -- this is the REAL feature gate for per-run version selection, because it is the one
+  # point every dispatch service reads (mNGS, long-read mNGS, AMR and CG all call it). Returning nil
+  # while the flag is off means a selection is ignored no matter how it got persisted -- an older
+  # upload made while the flag was on, or a request crafted straight against the API -- and each run
+  # resolves exactly as it did before the feature existed. Gating only the UI would leave the API
+  # open, so the check lives here rather than at the upload boundary. Selections are kept rather than
+  # erased, so flipping the flag on is not a data migration.
+  def selected_workflow_version(workflow)
+    return nil unless AppConfigHelper.get_app_config(AppConfig::ENABLE_VERSIONED_PIPELINE_SELECTION) == '1'
+    return nil unless workflow_versions.is_a?(Hash)
+
+    workflow_versions[workflow.to_s].presence
+  end
 
   before_save :check_host_genome, :concatenate_input_parts, :check_status
   after_create :initiate_input_file_upload
@@ -463,36 +488,14 @@ class Sample < ApplicationRecord
     basespace_dataset_ids = basespace_dataset_id.split(",")
     should_concat_lanes = basespace_dataset_ids.size > 1
 
-    # Combine URLs for the lanes we want to concatenate
-    files_concat = []
-    basespace_dataset_ids.each_with_index do |dataset_id, dataset_index|
-      files = files_for_basespace_dataset(dataset_id, basespace_access_token)
-
-      # Raise error if fetching the files failed, or we fetched zero files (since we can't proceed with zero files)
-      raise SampleUploadErrors.error_fetching_basespace_files_for_dataset(dataset_id, name, id) if files.nil?
-      raise SampleUploadErrors.no_files_in_basespace_dataset(dataset_id, name, id) if files.empty?
-
-      # Concatenate each read pair separately (i.e. R1 lanes separately from R2 lanes)
-      files.each_with_index do |file, read_index|
-        # The first time, we need to initialize the object
-        if dataset_index == 0
-          # If we're concatenating multiple lanes, remove the lane number from the file name
-          file_name = should_concat_lanes ? file[:name].sub(/_L00[1-8]/, "") : file[:name]
-          files_concat[read_index] = {
-            name: file_name,
-            source_path: file[:source_path],
-            download_path: [file[:download_path]],
-          }
-        # Otherwise, just append
-        else
-          files_concat[read_index][:source_path] << "," << file[:source_path]
-          files_concat[read_index][:download_path].push(file[:download_path])
-        end
-      end
-    end
+    # Combine URLs for the lanes we want to concatenate. The download_path values
+    # are BaseSpace presigned URLs (bearer credentials that expire), so this is a
+    # point-in-time snapshot. The retry loop below re-mints fresh URLs on each
+    # retry rather than reusing this snapshot (SMP-1732).
+    files_concat = basespace_files_concat(basespace_dataset_ids, should_concat_lanes, basespace_access_token)
 
     # Retry uploading three times, in case of transient network failures.
-    files_concat.each do |file|
+    files_concat.each_with_index do |file, file_index|
       max_tries = 3
       try = 0
       # Use exponential backoff in case the issue is overload on Illumina servers.
@@ -500,7 +503,11 @@ class Sample < ApplicationRecord
 
       Rails.logger.info("Starting upload of sample '#{name}' (#{id}) file '#{file[:name]}' from Basespace")
       while try < max_tries
-        success = upload_from_basespace_to_s3(file[:download_path], sample_input_s3_path, file[:name])
+        # SMP-1731: tag the uploaded object with the same lifecycle tag set every
+        # other ingress path applies via S3Util.copy_with_tags (see
+        # initiate_fastq_files_s3_cp), so BaseSpace-sourced FASTQs are visible to
+        # tag-driven S3 retention/lifecycle rules.
+        success = upload_from_basespace_to_s3(file[:download_path], sample_input_s3_path, file[:name], file[:size], type: "sample", id: id.to_s)
 
         if success
           break
@@ -509,6 +516,16 @@ class Sample < ApplicationRecord
           try += 1
           if try < max_tries
             Kernel.sleep(time_between_tries[try - 1])
+            # The presigned download URLs were minted before this loop and are now
+            # up to several minutes old (60s + 300s of backoff), so they may have
+            # expired -- and an expired presigned URL can never recover on a later
+            # try, which would fail the transfer permanently even though a fresh
+            # URL would work. Re-mint fresh URLs from BaseSpace so the next attempt
+            # uses valid credentials (SMP-1732). We only re-mint on retry, never on
+            # the first attempt, so the happy path makes no extra BaseSpace calls.
+            # The per-lane ordering of download_path is preserved by re-minting the
+            # whole snapshot and reading this file's entry by index.
+            file[:download_path] = refresh_basespace_download_paths(file_index, basespace_dataset_ids, should_concat_lanes, basespace_access_token)
           else
             raise SampleUploadErrors.upload_from_basespace_failed(name, id, file[:name], basespace_dataset_id, max_tries)
           end
@@ -534,7 +551,10 @@ class Sample < ApplicationRecord
       "SampleUploadFailedEvent: #{e}",
       exception: e,
       basespace_dataset_id: basespace_dataset_id,
-      basespace_access_token: basespace_access_token
+      # The token itself is the user's Illumina credential and must not be logged
+      # or sent to Sentry; a non-reversible fingerprint still correlates the
+      # samples that shared one token (SMP-1729).
+      basespace_token_fingerprint: SecretRedaction.fingerprint(basespace_access_token)
     )
 
     self.status = STATUS_CHECKED
@@ -673,6 +693,15 @@ class Sample < ApplicationRecord
         pr.dispatch
       end
     end
+  rescue ErrorHelper::VersionControlErrors::WorkflowVersionLockedError => err
+    # A LOCKED (below-floor) version can't run. Surface it as an upload error instead of letting the
+    # raise roll the whole save back into the stuck "waiting" state called out at the top of this
+    # method. The sample's existing results stay viewable; the user picks a supported version to run
+    # anew. mNGS dispatches through kickoff_pipeline, which already rescues; this method-level rescue
+    # covers the CG/AMR/long-read paths, which raise straight out of the before_save.
+    LogUtil.log_error("Dispatch blocked, workflow version locked: #{err.message}", sample_id: id)
+    # HACK ALERT! Low-level update_columns to skip callbacks -- we are inside a save callback already.
+    update_columns(upload_error: Sample::UPLOAD_ERROR_PIPELINE_KICKOFF) # rubocop:disable Rails/SkipsModelValidations
   end
 
   def create_and_dispatch_workflow_run(workflow, user_id, rerun_from: nil, inputs_json: nil)
@@ -918,7 +947,7 @@ class Sample < ApplicationRecord
   end
 
   def get_existing_metadatum(key)
-    metadata.includes(:metadata_field).find { |metadatum| metadatum.metadata_field.name == key || metadatum.metadata_field.display_name == key }
+    metadata.includes(:metadata_field).find { |metadatum| metadata_field_matches_header?(metadatum.metadata_field, key) }
   end
 
   # Ensure that an appropriate metadata field exists for the given key.
@@ -1259,6 +1288,83 @@ class Sample < ApplicationRecord
   end
 
   private
+
+  # Fetch the files for each BaseSpace dataset (lane) and combine them into one
+  # entry per read pair. Each entry's download_path is the ordered list of the
+  # lanes' BaseSpace presigned download URLs, so lane order is preserved for the
+  # concatenating uploader. The download URLs are minted fresh by every call,
+  # which is what lets the retry loop re-mint them (SMP-1732).
+  def basespace_files_concat(basespace_dataset_ids, should_concat_lanes, basespace_access_token)
+    files_concat = []
+    basespace_dataset_ids.each_with_index do |dataset_id, dataset_index|
+      files = files_for_basespace_dataset(dataset_id, basespace_access_token)
+
+      # Raise error if fetching the files failed, or we fetched zero files (since we can't proceed with zero files)
+      raise SampleUploadErrors.error_fetching_basespace_files_for_dataset(dataset_id, name, id) if files.nil?
+      raise SampleUploadErrors.no_files_in_basespace_dataset(dataset_id, name, id) if files.empty?
+
+      # Concatenate each read pair separately (i.e. R1 lanes separately from R2 lanes)
+      files.each_with_index do |file, read_index|
+        # The first time, we need to initialize the object
+        if dataset_index == 0
+          # If we're concatenating multiple lanes, remove the lane number from the file name
+          file_name = should_concat_lanes ? file[:name].sub(/_L00[1-8]/, "") : file[:name]
+          files_concat[read_index] = {
+            name: file_name,
+            source_path: file[:source_path],
+            download_path: [file[:download_path]],
+            # Known byte size from BaseSpace, threaded through as --expected-size
+            # for the streaming upload (SMP-1730). When lanes are concatenated the
+            # sizes sum; if any lane's size is unknown the total is unknown (nil)
+            # and the upload omits --expected-size.
+            size: file[:size],
+          }
+        # Otherwise, just append
+        else
+          files_concat[read_index][:source_path] << "," << file[:source_path]
+          files_concat[read_index][:download_path].push(file[:download_path])
+          existing_size = files_concat[read_index][:size]
+          files_concat[read_index][:size] = existing_size && file[:size] ? existing_size + file[:size] : nil
+        end
+      end
+    end
+    files_concat
+  end
+
+  # Re-mint fresh BaseSpace presigned download URLs for a single read pair on
+  # retry (SMP-1732). We rebuild the whole snapshot so multi-lane ordering matches
+  # the original build, then return only this file's download_path list. Only the
+  # (expiring) download URLs are refreshed; the file name and source_path are
+  # stable identifiers and are left untouched.
+  def refresh_basespace_download_paths(file_index, basespace_dataset_ids, should_concat_lanes, basespace_access_token)
+    basespace_files_concat(basespace_dataset_ids, should_concat_lanes, basespace_access_token)[file_index][:download_path]
+  end
+
+  # CZID-975 -- the selection map must be {workflow => version}, with known workflow keys and
+  # version-shaped values. The values reach a `LIKE '<prefix>%'` query in VersionRetrievalService,
+  # so their shape is checked here at the upload boundary as well as there.
+  def workflow_versions_are_well_formed
+    return if workflow_versions.blank?
+
+    unless workflow_versions.is_a?(Hash)
+      errors.add(:workflow_versions, "must be a map of workflow to version")
+      return
+    end
+
+    workflow_versions.each do |workflow, version|
+      unless WorkflowRun::WORKFLOW.value?(workflow.to_s)
+        errors.add(:workflow_versions, "contains unknown workflow #{workflow}")
+        next
+      end
+
+      unless version.to_s.match?(WorkflowVersion::USER_VERSION_PREFIX_FORMAT)
+        errors.add(
+          :workflow_versions,
+          "version for #{workflow} must be a major (8), major.minor (8.1) or full version (8.1.2)"
+        )
+      end
+    end
+  end
 
   def mark_older_pipeline_runs_as_deprecated
     # If the sample has more than one pipeline run, set deprecated to true for all other pipeline runs except the first.

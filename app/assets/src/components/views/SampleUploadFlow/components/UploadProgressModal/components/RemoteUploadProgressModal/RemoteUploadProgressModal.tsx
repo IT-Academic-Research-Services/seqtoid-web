@@ -47,6 +47,10 @@ const BASESPACE_SAMPLE_FIELDS = [
 const NUM_FAILED_SAMPLES_TO_DISPLAY = 3;
 
 interface RemoteUploadProgressModalProps {
+  // CZID-975 -- user-selected pipeline versions keyed by workflow; a workflow absent from the map
+  // uses the project default. One upload can run several workflows, so a single value would
+  // apply e.g. an AMR choice to the mNGS run.
+  workflowVersions?: Record<string, string>;
   adminOptions: Record<string, string>;
   bedFile: File | null;
   clearlabs: boolean;
@@ -67,6 +71,7 @@ interface RemoteUploadProgressModalProps {
 }
 
 export const RemoteUploadProgressModal = ({
+  workflowVersions,
   adminOptions,
   bedFile,
   clearlabs,
@@ -108,11 +113,11 @@ export const RemoteUploadProgressModal = ({
           );
         } catch (e) {
           logError({
+            exception: e,
             message:
               "UploadProgressModal: Upload error to s3 occurred for additional input file of remote sample",
             details: {
               sample,
-              e,
             },
           });
         }
@@ -153,6 +158,7 @@ export const RemoteUploadProgressModal = ({
       technology,
       workflows,
       wetlabProtocol,
+      workflowVersions,
     });
 
     const includeAdditionalInputFiles = bedFile || refSeqFile;
@@ -191,8 +197,8 @@ export const RemoteUploadProgressModal = ({
       }
     } catch (error) {
       logError({
+        exception: error,
         message: `UploadProgressModal: ${bulkUploadFnName} error`,
-        details: { error },
       });
 
       setUploadComplete(true);
@@ -224,6 +230,9 @@ export const RemoteUploadProgressModal = ({
     useStepFunctionPipeline,
     wetlabProtocol,
     workflows,
+    // CZID-975: without this the callback closes over a stale selection and the upload would send
+    // the version the user had chosen at first render, not the one they actually submitted.
+    workflowVersions,
   ]);
 
   useEffect(() => {

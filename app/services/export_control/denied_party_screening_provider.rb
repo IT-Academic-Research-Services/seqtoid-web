@@ -20,22 +20,37 @@ module ExportControl
   module DeniedPartyScreeningProvider
     Result = Struct.new(:result, :provider, :evidence_ref, keyword_init: true)
 
-    # TODO(counsel/vendor): set to the procurement-chosen screening vendor once its DPA + list access +
-    # keys are in place. The committed placeholder is the reference stub (returns PENDING → deny).
-    PROVIDER = "reference_stub".freeze
+    # The fail-closed default. When the AppConfig key below is unset/blank the provider resolves here
+    # (reference stub -> returns PENDING -> deny), so behaviour is unchanged until an operator opts in.
+    DEFAULT_PROVIDER = "reference_stub".freeze
 
+    # TODO(counsel/vendor): once the procurement-chosen vendor's DPA + list access + keys are in place,
+    # flip go-live by setting the AppConfig::EXPORT_CONTROL_SCREENING_PROVIDER row to "descartes" (no
+    # code deploy; rollback is the same row). The committed default remains the reference stub
+    # (returns PENDING -> deny). No value opens a permissive path -- unknown/blank fails closed.
     module_function
 
     def screen(user, ctx = {})
       provider_module.screen(user, ctx)
     end
 
+    # The selected provider name, read from AppConfig at runtime so go-live (and rollback) is a config
+    # row, not a deploy. Blank/unset => DEFAULT_PROVIDER (fail-closed).
+    def provider_name
+      AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_SCREENING_PROVIDER, DEFAULT_PROVIDER)
+    end
+
     def provider_module
-      case PROVIDER
+      case provider_name
       when "descartes"    then Providers::Descartes
       when "world_check"  then Providers::WorldCheck
+      # Option A: the web-role pods delegate to the standalone screening service over HTTP (async +
+      # callback), so no Descartes call ever runs in a web request. The screening-role pods run the same
+      # image with provider="descartes" and do the real work.
+      when "screening_service" then Providers::ScreeningServiceHttp
       # when "sanctions_api" → add the module when that vendor is chosen (TODO(vendor)).
       else
+        # Any unknown/blank value (and the "reference_stub" default) FAILS CLOSED to the stub.
         Providers::ReferenceStub
       end
     end

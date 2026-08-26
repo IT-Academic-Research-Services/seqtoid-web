@@ -5,7 +5,7 @@ class AppConfig < ApplicationRecord
   # DARK — enforcement go-live is gated on counsel sign-off (CZID-292/335), never flipped by engineering.
   ENABLE_EXPORT_CONTROL_ATTESTATION = 'enable_export_control_attestation'.freeze
   # CZID-285/286 — when this is "1", the Layer 3 export-control gate is ENFORCED: a logged-in user without
-  # a current, affirmatively-passed clearance (IDV verified AND denied-party screening clear) is redirected
+  # a current, affirmatively-passed clearance (denied-party screening clear) is redirected
   # to the clearance flow and cannot reach the app until cleared. Defaults OFF ("" / nil) so this ships
   # DARK — go-live is gated on counsel + vendor sign-off (CZID-292/278/335), never flipped by engineering.
   ENABLE_EXPORT_CONTROL_LAYER3 = 'enable_export_control_layer3'.freeze
@@ -22,6 +22,19 @@ class AppConfig < ApplicationRecord
   # SEPARATE from ENABLE_EXPORT_CONTROL_LAYER3 (the gate flag): the screening core can be exercised in a
   # sandbox with this flag while the user-facing gate stays off.
   ENABLE_DESCARTES_SCREENING = 'enable_descartes_screening'.freeze
+  # CZID-994 -- when this is "1", users may pick a PIPELINE VERSION per run (CZID-975/976): the
+  # upload flow offers a version dropdown and dispatch honours the selection. Defaults OFF ("" / nil)
+  # so the versioned-pipeline catalog ships DARK -- the catalog, the publisher and the registration
+  # endpoint all keep working and accumulating versions, but no user-visible behavior changes and
+  # every run resolves exactly as it does today (project pin / configured default).
+  #
+  # Gated in TWO places, because the UI is only cosmetic:
+  #   - WorkflowVersionsController#index returns an empty version list, so the dropdown does not
+  #     render (it is already opt-in on availableVersions.length > 0); and
+  #   - Sample#selected_workflow_version returns nil, so a selection that was persisted earlier or
+  #     crafted directly against the API is IGNORED at dispatch.
+  # The second is the real gate; the first only keeps the UI honest.
+  ENABLE_VERSIONED_PIPELINE_SELECTION = 'enable_versioned_pipeline_selection'.freeze
   # CZID-600 -- export-control Layer 3 screening POLICY config. These carry counsel's operational choices
   # (list scope, whitelist, cadence, hit-handling) as runtime config so they are drop-in without a deploy.
   # They hold NO secret values (secrets are ENV/Chamber -- see ExportControl::ScreeningPolicy). Each is
@@ -38,6 +51,10 @@ class AppConfig < ApplicationRecord
   # an email domain ("ucsf.edu" / "@ucsf.edu"), case-insensitive. Blank/unset => NOBODY is whitelisted
   # (fail-closed default). Example: ["ucsf.edu", "User:1"].
   EXPORT_CONTROL_SCREENING_WHITELIST = 'export_control_screening_whitelist'.freeze
+  # (Removed) EXPORT_CONTROL_IDV_WHITELIST -- the document-IDV lane was retired (approval = attestation +
+  # Visual Compliance denied-party screening, with NO document-IDV; legal-approved 2026-08-24). Nothing in
+  # the live flow reads an IDV allow-table any more. Any live env AppConfig row named
+  # 'export_control_idv_whitelist' is now inert and can be deleted operationally once this deploys.
   # Re-screen cadence in DAYS -- how long a passing screen stays valid before a re-screen is due. Blank,
   # zero, or non-positive => always re-screen (most conservative). Counsel sets the operational value.
   EXPORT_CONTROL_RESCREEN_CADENCE_DAYS = 'export_control_rescreen_cadence_days'.freeze
@@ -55,12 +72,28 @@ class AppConfig < ApplicationRecord
   # this ships triple-dark. Go-live is counsel + vendor gated (CZID-335), never flipped by engineering.
   ENABLE_EXPORT_CONTROL_SCREEN_ONBOARDING = 'enable_export_control_screen_onboarding'.freeze
   ENABLE_EXPORT_CONTROL_SCREEN_RELEASE = 'enable_export_control_screen_release'.freeze
+  # SMP-1687 -- comma/space/semicolon-separated email recipient(s) notified when a screening HOLD is
+  # placed (ExportControl::ComplianceNotifier). Without it a hold is SILENT: the user is blocked
+  # fail-closed but nobody at UCSF is told there is something to adjudicate in the Descartes Incident
+  # Manager, so the user stays blocked indefinitely. Blank/unset => NO notification is sent (inert --
+  # matches the screening core's off-by-default posture; notification never blocks or breaks the
+  # screening path). Carries NO secret and NO screened-party PII. Example: "export-compliance@ucsf.edu".
+  EXPORT_CONTROL_COMPLIANCE_RECIPIENT = 'export_control_compliance_recipient'.freeze
   # CZID-598 -- watermark (ISO-8601 UTC string, no offset) for the Descartes Incident Manager resolution
   # poller (ResolveScreeningHolds). Records the "To" bound of the last fully-processed IMTimeStampSearch
   # window; the next poll starts its "From" here. Advanced ONLY after a reply is fully processed, so a
   # failed poll re-covers the same window (idempotent re-processing). Empty/unset => first poll uses the
   # API default 24h look-back. Inert until ENABLE_DESCARTES_SCREENING is on (the job self-skips when off).
   DESCARTES_RESOLUTION_POLL_CURSOR = 'descartes_resolution_poll_cursor'.freeze
+  # CZID-285/596 -- selects the denied/restricted-party SCREENING vendor that
+  # ExportControl::DeniedPartyScreeningProvider.provider_module resolves to (Path A: the
+  # ExportControlClearancesController screening call). Accepts the committed provider name: "descartes"
+  # routes to Providers::Descartes; "reference_stub" (or ANY unknown/blank value) FAILS CLOSED to
+  # Providers::ReferenceStub, which returns PENDING => deny. Defaults to "reference_stub" so behaviour is
+  # unchanged when unset, and there is NO value that opens a permissive path. Runtime-configurable so the
+  # go-live switch (and rollback) is a config row, not a code deploy. Go-live is counsel + vendor gated
+  # (CZID-335) and additionally requires ENABLE_DESCARTES_SCREENING for Descartes to place holds.
+  EXPORT_CONTROL_SCREENING_PROVIDER = 'export_control_screening_provider'.freeze
   # When this is "1", all requests other than the landing page will be re-directed to the maintenance page.
   DISABLE_SITE_FOR_MAINTENANCE = 'disable_site_for_maintenance'.freeze
   # When this is "1", the Video Tour banner on the landing page will be shown.

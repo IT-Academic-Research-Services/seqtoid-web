@@ -1,47 +1,46 @@
 <%#
-  CZID-285 — Layer 3 identity-verification + export-screening start page.
+  CZID-285 -- Layer 3 export-screening start page.
 
-  ⚠️ TODO(counsel): ALL user-facing copy here is a PLACEHOLDER with legal weight and MUST be drafted or
-  approved by counsel before go-live (design doc §10). Do not treat the text below as final.
+  Approval model (legal-approved 2026-08-24): clearance is attestation + denied-party screening, with NO
+  document identity-verification step. This page hands off to the screen.
 
-  Minimal, dependency-free skeleton (no React/webpack entry) so the gate is functional now. The real IDV
-  vendor hand-off (embedding the vendor's verification flow / redirect) is wired when the vendor is chosen
-  — TODO(vendor).
+  TODO(counsel): ALL user-facing copy here is a PLACEHOLDER with legal weight and MUST be drafted or
+  approved by counsel before go-live (design doc S10). Do not treat the text below as final.
+
+  Minimal, dependency-free skeleton (no React/webpack entry) so the gate is functional now.
 %>
 <div class="export-control-clearance" style="max-width: 720px; margin: 64px auto; padding: 0 24px; font-family: 'Open Sans', sans-serif;">
   <h1 style="font-size: 24px; margin-bottom: 16px;">
     <%# TODO(counsel): heading copy %>
-    Identity verification required
+    Export-control screening required
   </h1>
 
   <div style="background:#f6f8fa; border:1px solid #d0d7de; border-radius:6px; padding:20px; margin-bottom:24px; line-height:1.6;">
-    <p><strong>PLACEHOLDER — pending counsel-approved text (TODO(counsel)).</strong></p>
+    <p><strong>PLACEHOLDER -- pending counsel-approved text (TODO(counsel)).</strong></p>
     <p>
-      Access to export-controlled data and functions on this service requires a verified identity that has
-      been screened against U.S. denied- and restricted-party lists. To proceed, you will complete identity
-      verification with our verification provider; your identity will then be screened before access is granted.
+      Access to export-controlled data and functions on this service requires that you be screened against
+      U.S. denied- and restricted-party lists. To proceed, your account will be screened before access is
+      granted.
     </p>
     <p>
-      [The exact language, the verification method, the applicable screening lists, and the handling of a
-      screening result are counsel-owned and will replace this placeholder before enforcement is enabled.]
+      [The exact language, the applicable screening lists, and the handling of a screening result are
+      counsel-owned and will replace this placeholder before enforcement is enabled.]
     </p>
   </div>
 
   <%= form_with url: export_control_clearances_path, method: :post, local: true do %>
     <p style="color:#57606a; font-size:13px; margin-bottom:20px;">
-      Clearance version: <%= @clearance_version %> &nbsp;·&nbsp; Provider: <%= @idv_provider %>
+      Clearance version: <%= @clearance_version %>
     </p>
 
     <%#
-      TODO(vendor): replace this button with the chosen IDV vendor's hand-off (e.g. an embedded
-      verification widget or a redirect to the vendor's hosted flow). This synchronous submit exists so the
-      fail-closed gate is exercisable now — with the reference stub it records a PENDING clearance and the
-      gate keeps the user out (deny), which is the correct dark-mode behavior.
+      This synchronous submit runs the screen and records the outcome. With the reference stub it records a
+      PENDING clearance and the gate keeps the user out (deny), which is the correct dark-mode behavior.
     %>
     <button type="submit"
             style="background:#0969da; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:15px; cursor:pointer;">
       <%# TODO(counsel): button label %>
-      Begin identity verification
+      Continue
     </button>
   <% end %>
 </div>

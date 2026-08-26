@@ -1,5 +1,7 @@
 import cx from "classnames";
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
+import { HELP_CENTER_LINK } from "~/components/utils/documentationLinks";
 import {
   DISCOVERY_DOMAIN_ALL_DATA,
   DISCOVERY_DOMAIN_MY_DATA,
@@ -20,15 +22,15 @@ const MainMenu = ({ adminUser, userSignedIn }: MainMenuProps) => {
     return (
       <div className={cs.loggedOutMainMenu}>
         {/* Keep referrer links */}
-        {/* TODO: update to help.seqtoid.org once help center migration is complete */}
-        <a
+        <ExternalLink
+          unstyled
           className={cs.item}
-          href="#"
+          href={HELP_CENTER_LINK}
           aria-label="View the SeqtoID help page"
           data-testid="menu-item-help-center"
         >
           Help Center
-        </a>
+        </ExternalLink>
       </div>
     );
   }

@@ -108,9 +108,9 @@ RSpec.describe ExportControlScreeningGate, type: :controller do
           .to receive(:screen_if_enabled).and_return(held_outcome)
       end
 
-      it "blocks and redirects to the clearance flow" do
+      it "blocks and redirects to the access-under-review page" do
         get :index
-        expect(response).to redirect_to(new_export_control_clearance_path)
+        expect(response).to redirect_to(export_control_clearance_denied_path)
       end
     end
 
@@ -122,9 +122,9 @@ RSpec.describe ExportControlScreeningGate, type: :controller do
           .to receive(:screen_if_enabled).and_return(error_outcome)
       end
 
-      it "blocks and redirects to the clearance flow (never allow-on-uncertainty)" do
+      it "blocks and redirects to the access-under-review page (never allow-on-uncertainty)" do
         get :index
-        expect(response).to redirect_to(new_export_control_clearance_path)
+        expect(response).to redirect_to(export_control_clearance_denied_path)
       end
     end
   end

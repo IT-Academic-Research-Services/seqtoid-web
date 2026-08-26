@@ -132,15 +132,31 @@ RSpec.describe SfnSingleStagePipelineDataService do
       expect(svc.redefine_job_status("running")).to eq("inProgress")
     end
 
-    it "maps finished_running to inProgress even when the run itself failed (the failed ternary arm)" do
+    it "maps finished_running to pipelineErrored when the run itself failed (the failed ternary arm)" do
       allow(pipeline_run).to receive(:job_status).and_return(WorkflowRun::STATUS[:failed])
-      # NOTE: the ternary's value is discarded by the following literal, so the
-      # method still answers inProgress. Asserting that pins current behaviour.
-      expect(svc.redefine_job_status("finished_running")).to eq("inProgress")
+      # The ternary result is now returned (previously it was discarded by a trailing
+      # literal, so a killed run wrongly stayed inProgress -- alpha bug 29 dead-code fix).
+      expect(svc.redefine_job_status("finished_running")).to eq("pipelineErrored")
     end
 
-    it "returns nil for a status matching no case arm" do
-      expect(svc.redefine_job_status("something_new")).to be_nil
+    it "greens every step once the run succeeded, even for a non-uploaded literal" do
+      # alpha bug 29: a completed ONT run (PipelineRun job_status CHECKED) has no per-step
+      # stage arg and often no status file, so any step must still render green.
+      allow(pipeline_run).to receive(:job_status).and_return(PipelineRun::STATUS_CHECKED)
+      expect(svc.redefine_job_status(nil)).to eq("finished")
+      expect(svc.redefine_job_status("instantiated")).to eq("finished")
+      expect(svc.redefine_job_status("something_new")).to eq("finished")
+    end
+
+    it "does not green a step when the run failed" do
+      allow(pipeline_run).to receive(:job_status).and_return(WorkflowRun::STATUS[:failed])
+      expect(svc.redefine_job_status("something_new")).not_to eq("finished")
+      expect(svc.redefine_job_status("running")).to eq("pipelineErrored")
+    end
+
+    it "maps an unknown literal to inProgress rather than nil (no gray fall-through)" do
+      allow(pipeline_run).to receive(:job_status).and_return(PipelineRun::STATUS_READY)
+      expect(svc.redefine_job_status("something_new")).to eq("inProgress")
     end
   end
 

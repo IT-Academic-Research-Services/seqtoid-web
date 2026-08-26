@@ -3,12 +3,15 @@
 # nothing writes here until that service is enabled behind its OFF-by-default flag.
 #
 # Two signals from a Descartes SearchEntity screen:
-#   - transstatus (PRIMARY): "Passed" or "On Hold-RPS" -- Descartes' own transaction-level on-hold
-#     determination. The release/hold decision keys off THIS first. Fail-closed: anything that is not
-#     exactly "Passed" holds (blank / unknown / "On Hold-RPS" all hold).
-#   - alert_level (SEVERITY detail): nomatch/wl/al are clean-or-allow-listed; yellow/red/double_red/
-#     triple_red describe HOW BAD a match is, for the human compliance officer. Secondary to transstatus.
-class ScreeningResult < ApplicationRecord
+#   - alert_level (the SearchEntity verdict): nomatch/wl/al are clean-or-allow-listed; yellow/red/
+#     double_red/triple_red describe HOW BAD a name match is. On the SearchEntity/ScreenEntity call this
+#     app makes, THIS is the actual clean/hit verdict.
+#   - transstatus: "Passed" or "On Hold-RPS" -- a transaction-level on-hold field that Descartes populates
+#     on the IMTimeStampSearch RESOLUTION call, and typically leaves BLANK on a SearchEntity screen.
+# The release decision (passed?) honors transstatus when present but falls back to the alert_level verdict
+# when it is blank -- otherwise a clean no-match (alert="nomatch", transstatus=nil) would be held, which is
+# exactly what held every clean subject before this was fixed. Still fail-closed (see passed?).
+class ScreeningResult < ScreeningRecord
   # --- transstatus (primary signal) ---
   TRANSSTATUS_PASSED  = "Passed".freeze
   TRANSSTATUS_ON_HOLD = "On Hold-RPS".freeze
@@ -46,20 +49,44 @@ class ScreeningResult < ApplicationRecord
     for_subject(subject_ref).latest_first.first
   end
 
-  # PRIMARY release decision: only an exact "Passed" transstatus passes. Fail-closed -- blank / unknown /
-  # "On Hold-RPS" all return false.
+  # Release decision. transstatus is honored when present, but a Descartes SearchEntity/ScreenEntity
+  # screen (the one this app performs) returns its verdict in ALERT_LEVEL and typically leaves transstatus
+  # BLANK -- "Passed"/"On Hold-RPS" is a transaction-level field of a different call (the IMTimeStampSearch
+  # resolution poll). Keying release solely on transstatus therefore held EVERY subject, including clean
+  # ones (production returns alert_level="nomatch" with transstatus=nil for a no-match, and the old logic
+  # held them). So:
+  #   - transstatus == "On Hold-RPS" -> HOLD (explicit vendor on-hold wins, even over a clean alert)
+  #   - transstatus == "Passed"      -> PASS (explicit vendor pass)
+  #   - transstatus blank (the norm) -> the SEVERITY is the verdict: a clean/allow-listed level with no
+  #     adverse jurisdiction (effective_alert_level in ALLOWED_LEVELS = nomatch/wl/al) passes; a match
+  #     (yellow/red/double_red/triple_red), an unknown level, or a sanctioned-jurisdiction association
+  #     (effective_alert_level forced RED) all HOLD.
+  # Still fail-closed: a pass requires an affirmative clean signal (explicit "Passed" OR an explicit
+  # allow-listed no-match severity) -- never uncertainty.
   def passed?
-    transstatus == TRANSSTATUS_PASSED
+    return false if transstatus == TRANSSTATUS_ON_HOLD
+    return true if transstatus == TRANSSTATUS_PASSED
+
+    ALLOWED_LEVELS.include?(effective_alert_level)
   end
 
-  # PRIMARY hold decision, transstatus-first. Fail-closed: anything not exactly "Passed" requires a hold.
+  # Hold decision -- the inverse of the release decision above. Fail-closed: anything that is not an
+  # affirmative pass holds.
   def hold_required?
     !passed?
   end
 
-  # Severity-side helper: true only for the explicitly-allowed alert levels. Informational -- the actual
-  # release decision is passed?/hold_required? (transstatus-primary), not this.
+  # Severity-side helper: true for the explicitly allow-listed alert levels (raw, pre-jurisdiction). The
+  # authoritative release decision is passed?/hold_required? (which uses effective_alert_level so the
+  # sanctioned-jurisdiction backstop applies); this stays a plain severity view.
   def alert_allowed?
     ALLOWED_LEVELS.include?(alert_level)
+  end
+
+  # Effective severity for triage/display. A sanctioned-jurisdiction association (jurisdiction_risk,
+  # stamped at screen time from our embargo list or the vendor's risk_country) is RED regardless of the
+  # vendor's name-match severity -- the zero-tolerance geo rule. Otherwise the vendor alert_level.
+  def effective_alert_level
+    jurisdiction_risk? ? ALERT_RED : alert_level
   end
 end

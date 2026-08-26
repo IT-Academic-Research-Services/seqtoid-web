@@ -1,6 +1,7 @@
 import { upperFirst } from "lodash/fp";
 import React from "react";
 import BlankScreenMessage from "~/components/common/BlankScreenMessage";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import ImgMicrobeSecondary from "~ui/illustrations/ImgMicrobeSecondary";
 import cs from "./auth0_error.scss";
@@ -19,14 +20,9 @@ class Auth0Error extends React.Component<Auth0ErrorProps> {
           message={upperFirst(message)}
           textWidth={300}
           tagline={
-            <a
-              className={cs.helpLink}
-              href={CONTACT_US_LINK}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <ExternalLink className={cs.helpLink} href={CONTACT_US_LINK}>
               Contact us for help
-            </a>
+            </ExternalLink>
           }
           icon={<ImgMicrobeSecondary className={cs.imgMicrobe} />}
         />

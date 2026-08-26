@@ -12,4 +12,7 @@ export default interface UserContextType {
   userName?: string | null;
   userEmail?: string | null;
   profileCompleted: boolean;
+  // Environment-specific help center host (from user_context). The "helpcenter:"
+  // sentinel on help links is resolved against this in Link.tsx.
+  helpCenterHost: string;
 }

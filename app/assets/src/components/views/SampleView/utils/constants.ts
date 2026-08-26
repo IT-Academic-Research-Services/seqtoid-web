@@ -1,4 +1,4 @@
-import { WorkflowType, WORKFLOW_TABS } from "~/components/utils/workflows";
+import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import { FilterSelections } from "~/interface/sampleView";
 
 export const SPECIES_LEVEL_INDEX = 1;
@@ -229,50 +229,49 @@ export const CATEGORIES = [
   { name: "Uncategorized" },
 ];
 
-const DOC_BASE_LINK =
-  "https://help.czid.org/hc/en-us/articles/360034790574-Single-Sample-Report-Table";
+const DOC_BASE_LINK = "helpcenter:/articles/sample-report-table/";
 const ONT_HELP_LINK =
-  "https://helpcenter.seqtoid.org/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
+  "helpcenter:/articles/analyze-nanopore-data/#view-and-interpret-the-sample-report";
 
 export const REPORT_TABLE_COLUMNS = {
   NT_aggregatescore: {
     title: "Aggregate score",
     tooltip:
       "Experimental ranking score for prioritizing microbes based on abundance within the sample (rPM) as well as compared to control samples (Z-score).",
-    link: DOC_BASE_LINK + "#score",
+    link: DOC_BASE_LINK + "#aggregate-score-score",
   },
   zscore: {
     title: "Z-score",
     tooltip:
       "Statistic used for evaluating the prevalence of microbes in the sample as compared to background contaminants.",
-    link: DOC_BASE_LINK + "#z-score",
+    link: DOC_BASE_LINK + "#z-score-z",
   },
   rpm: {
     tooltip:
       "Number of reads aligning to the taxon in the NCBI NR/NT database, per million reads sequenced.",
-    link: DOC_BASE_LINK + "#rpm",
+    link: DOC_BASE_LINK + "#reads-per-million-rpm",
   },
   r: {
     tooltip:
       "Number of reads aligning to the taxon in the NCBI NT/NR database.",
-    link: DOC_BASE_LINK + "#reads",
+    link: DOC_BASE_LINK + "#reads-r",
   },
   contigs: {
     tooltip: "Number of assembled contigs aligning to the taxon.",
-    link: DOC_BASE_LINK + "#contig",
+    link: DOC_BASE_LINK + "#number-of-contigs-contig",
   },
   contigreads: {
     tooltip: "Total number of reads across all assembled contigs.",
-    link: DOC_BASE_LINK + "#contig-r",
+    link: DOC_BASE_LINK + "#contig-reads-contig-r",
   },
   percentidentity: {
     tooltip: "Average percent-identity of alignments to NCBI NT/NR.",
-    link: DOC_BASE_LINK + "#identity-match",
+    link: DOC_BASE_LINK + "#identity-id",
   },
   alignmentlength: {
     tooltip:
       "Average length of the local alignment for all contigs and reads assigned to this taxon.",
-    link: DOC_BASE_LINK + "#average-length",
+    link: DOC_BASE_LINK + "#alignment-length-l",
   },
   evalue: {
     tooltip: "Average expect value (e-value) of alignments to NCBI NT/NR.",
@@ -358,6 +357,70 @@ export const SARS_COV_2_ACCESSION_ID = "MN908947.3";
 export const CREATED_STATE = "CREATED";
 export const RUNNING_STATE = "RUNNING";
 export const SUCCEEDED_STATE = "SUCCEEDED";
+
+// SMP-1501 / SMP-1476: the render category a workflow run's `status` maps to.
+//
+// SampleReportContent reads workflowRun.status from the Relay store, where a dataID
+// collision (environment.ts has no getDataID) lets two Rails GraphQL responses for the
+// same workflow-run id overwrite each other: whichever resolves last wins. They disagree
+// because they are two Rails translations of the SAME raw WorkflowRun::STATUS column:
+//   - RAW vocabulary -- SampleForReport serializes the column verbatim:
+//     CREATED / RUNNING / SUCCEEDED / SUCCEEDED_WITH_ISSUE / FAILED / TIMED_OUT / ABORTED
+//   - SFN-MAPPED vocabulary -- fedWorkflowRuns runs it through
+//     WorkflowRun::SFN_STATUS_MAPPING in WorkflowRunsFetching#format_workflow_runs
+//     (SUCCEEDED -> COMPLETE, SUCCEEDED_WITH_ISSUE -> "COMPLETE - ISSUE"):
+//     CREATED / RUNNING / COMPLETE / "COMPLETE - ISSUE" / FAILED
+//     (TIMED_OUT / ABORTED are unmapped there and arrive as null)
+// So the status can arrive in EITHER vocabulary, and the old `status === "SUCCEEDED"`-
+// else-fail logic misclassified the SFN-mapped success values ("COMPLETE") as failures.
+// Every value of both is mapped explicitly here, plus the two PENDING / STARTED keys that
+// only appear in the federation-era NEXT_GEN_TO_LEGACY_STATUS leftover.
+export type WorkflowRunStatusCategory =
+  | "success"
+  | "inProgress"
+  | "waiting"
+  | "failed";
+
+export const WORKFLOW_RUN_STATUS_CATEGORY: Record<
+  string,
+  WorkflowRunStatusCategory
+> = {
+  // success -- render the report
+  SUCCEEDED: "success", // raw
+  SUCCEEDED_WITH_ISSUE: "success", // raw
+  COMPLETE: "success", // SFN-mapped -- the SMP-1501 regression
+  "COMPLETE - ISSUE": "success", // SFN-mapped
+  // in progress -- results are being generated
+  RUNNING: "inProgress",
+  STARTED: "inProgress",
+  // waiting -- queued, not yet started
+  CREATED: "waiting",
+  PENDING: "waiting",
+  // failed -- terminal failure
+  FAILED: "failed",
+  TIMED_OUT: "failed",
+  ABORTED: "failed",
+};
+
+// True only for a status that is an OWN key of the category map. Uses hasOwnProperty
+// (not the `in` operator or a truthy bracket lookup) so a value that collides with an
+// Object.prototype member -- e.g. a status literally named "toString" -- is treated as
+// unrecognised rather than resolving to a prototype function.
+export const isKnownWorkflowRunStatus = (status?: string | null): boolean =>
+  status != null &&
+  Object.prototype.hasOwnProperty.call(WORKFLOW_RUN_STATUS_CATEGORY, status);
+
+// Classify a workflow run status into a render category. An absent or UNRECOGNISED
+// status is deliberately treated as "inProgress", never "failed": defaulting an unknown
+// value to the failure screen is exactly the bug this fixes (a real success shown as
+// failed). "inProgress" is safe and self-correcting. Callers should log an unrecognised
+// (non-empty) value so a new status vocabulary does not silently degrade the UI.
+export const getWorkflowRunStatusCategory = (
+  status?: string | null,
+): WorkflowRunStatusCategory =>
+  isKnownWorkflowRunStatus(status)
+    ? WORKFLOW_RUN_STATUS_CATEGORY[status as string]
+    : "inProgress";
 
 // Taxonomy levels
 export const TAX_LEVEL_GENUS = "genus";

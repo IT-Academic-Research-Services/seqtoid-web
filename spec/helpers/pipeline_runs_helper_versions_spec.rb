@@ -51,9 +51,10 @@ RSpec.describe PipelineRunsHelper, type: :helper do
       expect(helper.pipeline_version_has_coverage_viz("3.5")).to be(false)
     end
 
-    it "pipeline_version_uses_new_host_filtering_stage (>= 8)" do
+    it "pipeline_version_uses_new_host_filtering_stage (>= 7.2, the real WDL boundary)" do
       expect(helper.pipeline_version_uses_new_host_filtering_stage("8.0")).to be(true)
-      expect(helper.pipeline_version_uses_new_host_filtering_stage("7.9")).to be(false)
+      expect(helper.pipeline_version_uses_new_host_filtering_stage("7.2")).to be(true)
+      expect(helper.pipeline_version_uses_new_host_filtering_stage("7.1")).to be(false)
     end
 
     it "pipeline_version_uses_bowtie2_to_calculate_ercc_reads (>= 8.1)" do

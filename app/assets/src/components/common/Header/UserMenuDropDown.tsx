@@ -1,4 +1,5 @@
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import {
   CONTACT_US_LINK,
   HELP_CENTER_LINK,
@@ -66,29 +67,27 @@ const UserMenuDropDown = ({
       <BareDropdown.Item
         key="help"
         text={
-          <a
+          <ExternalLink
+            unstyled
             className={cs.option}
             href={HELP_CENTER_LINK}
-            target="_blank"
-            rel="noreferrer"
             aria-label="View the SeqtoID help center (opens in new window)"
           >
             Help Center
-          </a>
+          </ExternalLink>
         }
       />,
       <BareDropdown.Item
         key="feedback"
         text={
-          <a
+          <ExternalLink
+            unstyled
             className={cs.option}
             href={CONTACT_US_LINK}
-            target="_blank"
-            rel="noreferrer"
             aria-label="Contact the SeqtoID team (opens in new window)"
           >
             Contact Us
-          </a>
+          </ExternalLink>
         }
       />,
     );
@@ -123,7 +122,11 @@ export const TermsDropdownItem = (
   <BareDropdown.Item
     key="terms_of_service"
     text={
-      <a className={cs.option} href="/terms" aria-label="View the SeqtoID terms of use">
+      <a
+        className={cs.option}
+        href="/terms"
+        aria-label="View the SeqtoID terms of use"
+      >
         Terms of Use
       </a>
     }
@@ -134,7 +137,11 @@ export const PrivacyDropdownItem = (
   <BareDropdown.Item
     key="privacy_notice"
     text={
-      <a className={cs.option} href="/privacy" aria-label="View the SeqtoID privacy notice">
+      <a
+        className={cs.option}
+        href="/privacy"
+        aria-label="View the SeqtoID privacy notice"
+      >
         Privacy Policy
       </a>
     }

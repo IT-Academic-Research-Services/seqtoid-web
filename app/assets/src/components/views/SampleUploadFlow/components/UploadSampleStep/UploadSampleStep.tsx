@@ -62,12 +62,13 @@ import {
   SELECT_ID_KEY,
   SEQUENCING_TECHNOLOGY_OPTIONS,
   UNKNOWN_TAXON_OPTION,
-  UploadWorkflows,
   UPLOAD_WORKFLOWS,
+  UploadWorkflows,
 } from "../../constants";
 import cs from "../../sample_upload_flow.scss";
 import {
   groupSamplesByLane,
+  isBasespaceOAuthConfigured,
   openBasespaceOAuthPopup,
   removeLaneFromName,
 } from "../../utils";
@@ -81,6 +82,7 @@ import {
   SampleUploadTable,
 } from "./components/SampleUploadTable";
 import {
+  BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP,
   MISMATCH_FORMAT_ERROR,
   NCBI_GENBANK_REF_SEQ_HEADER_REGEX,
   REF_SEQ_FILE_NAME_ERROR_MESSAGE,
@@ -135,6 +137,9 @@ class UploadSampleStepCC extends React.Component<
     removedLocalFiles: [], // Invalid local files that were removed.
     // TODO (mlila): move the following technology-specific state/callbacks as sub-state within selectedWorkflows
     selectedGuppyBasecallerSetting: null,
+    // CZID-975 -- versions the user picked, keyed by workflow. One upload can run several
+    // (mNGS + AMR is supported), so a single value would apply an AMR choice to the mNGS run.
+    selectedWorkflowVersions: {},
     selectedTaxon: null,
     // we can only select one technology at a time. If the user attempts to select a second technology
     // the first will automatically be deselected for them and we will use the tech most recently chosen
@@ -269,9 +274,28 @@ class UploadSampleStepCC extends React.Component<
     }
   };
 
+  isBasespaceConfigured = () => {
+    const { basespaceOauthRedirectUri, basespaceClientId } = this.props;
+    return isBasespaceOAuthConfigured(
+      basespaceClientId,
+      basespaceOauthRedirectUri,
+    );
+  };
+
   requestBasespaceReadProjectPermissions = () => {
     const basespaceSamples = this.getSelectedSamples(BASESPACE_UPLOAD);
     const { basespaceOauthRedirectUri, basespaceClientId } = this.props;
+
+    if (!this.isBasespaceConfigured()) {
+      // Should be unreachable: the Basespace tab is disabled when unconfigured.
+      // openBasespaceOAuthPopup also refuses, but stop here so we never even
+      // reach the point of asking for project read permissions we cannot get.
+      // eslint-disable-next-line no-console
+      console.error(
+        "Basespace OAuth is not configured for this environment. Cannot request Basespace project read permissions.",
+      );
+      return;
+    }
 
     // Request permissions to read (i.e. download files) from all source projects.
     const uniqueBasespaceProjectIds = uniq(
@@ -656,6 +680,18 @@ class UploadSampleStepCC extends React.Component<
   handleGuppyBasecallerSettingChange = (selected: string) => {
     this.props.onDirty();
     this.setState({ selectedGuppyBasecallerSetting: selected });
+  };
+
+  // CZID-975: the user picked a pipeline version for ONE workflow. Merged rather than replaced, so
+  // choosing an AMR version does not clear an mNGS choice made on the same upload.
+  handleWorkflowVersionChange = (workflow: string, selected: string) => {
+    this.props.onDirty();
+    this.setState(prevState => ({
+      selectedWorkflowVersions: {
+        ...prevState.selectedWorkflowVersions,
+        [workflow]: selected,
+      },
+    }));
   };
 
   handleMedakaModelChange = (selected: string) => {
@@ -1097,6 +1133,7 @@ class UploadSampleStepCC extends React.Component<
       selectedTechnology,
       selectedMedakaModel,
       selectedGuppyBasecallerSetting,
+      selectedWorkflowVersions,
       selectedProject,
       selectedWorkflows,
       selectedWetlabProtocol,
@@ -1135,6 +1172,9 @@ class UploadSampleStepCC extends React.Component<
         workflows: selectedWorkflows,
         // mNGS Nanopore only inputs
         guppyBasecallerSetting: selectedGuppyBasecallerSetting,
+        // CZID-975: carried to samples.workflow_versions; a workflow absent from the map uses
+        // the project default.
+        workflowVersions: selectedWorkflowVersions,
         // WGS only inputs
         bedFile,
         refSeqAccession,
@@ -1378,19 +1418,26 @@ class UploadSampleStepCC extends React.Component<
     const shouldDisableS3Tab =
       this.isWorkflowSelected(UPLOAD_WORKFLOWS.MNGS.value) &&
       selectedTechnology === SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE;
+    const basespaceUnavailable = !this.isBasespaceConfigured();
     const shouldDisableBasespaceTab =
-      (this.isWorkflowSelected(UPLOAD_WORKFLOWS.MNGS.value) ||
+      basespaceUnavailable ||
+      ((this.isWorkflowSelected(UPLOAD_WORKFLOWS.MNGS.value) ||
         this.isWorkflowSelected(
           UPLOAD_WORKFLOWS.COVID_CONSENSUS_GENOME.value,
         )) &&
-      selectedTechnology === SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE;
+        selectedTechnology === SEQUENCING_TECHNOLOGY_OPTIONS.NANOPORE);
 
     // We're currently disabling S3 tab for ONT v1, but it could be re-enabled in the future.
     // Basespace upload is disabled for Nanopore pipelines because it only stores Illumina files.
+    // It is also disabled outright when this environment has no Basespace OAuth
+    // credentials, because the OAuth handshake cannot succeed without them.
     const s3Tab = this.renderUploadTab(shouldDisableS3Tab, REMOTE_UPLOAD_LABEL);
     const basespaceTab = this.renderUploadTab(
       shouldDisableBasespaceTab,
       BASESPACE_UPLOAD_LABEL,
+      basespaceUnavailable
+        ? BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP
+        : UNSUPPORTED_UPLOAD_OPTION_TOOLTIP,
     );
 
     return (
@@ -1416,7 +1463,11 @@ class UploadSampleStepCC extends React.Component<
     );
   };
 
-  renderUploadTab = (disabled: $TSFixMe, label: $TSFixMe) => {
+  renderUploadTab = (
+    disabled: $TSFixMe,
+    label: $TSFixMe,
+    tooltip: string = UNSUPPORTED_UPLOAD_OPTION_TOOLTIP,
+  ) => {
     let tab = (
       <Tab
         disabled={disabled}
@@ -1426,12 +1477,7 @@ class UploadSampleStepCC extends React.Component<
     );
     if (disabled) {
       tab = (
-        <Tooltip
-          arrow
-          placement="top"
-          title={UNSUPPORTED_UPLOAD_OPTION_TOOLTIP}
-          leaveDelay={0}
-        >
+        <Tooltip arrow placement="top" title={tooltip} leaveDelay={0}>
           <span>{tab}</span>
         </Tooltip>
       );
@@ -1556,6 +1602,8 @@ class UploadSampleStepCC extends React.Component<
             onClearLabsChange={this.handleClearLabsChange}
             onMedakaModelChange={this.handleMedakaModelChange}
             onRefSeqFileChanged={this.handleRefSeqFileChanged}
+            onWorkflowVersionChange={this.handleWorkflowVersionChange}
+            selectedWorkflowVersions={this.state.selectedWorkflowVersions}
             onGuppyBasecallerSettingChange={
               this.handleGuppyBasecallerSettingChange
             }
@@ -1668,9 +1716,8 @@ class UploadSampleStepCC extends React.Component<
             your upload to a max of 200 samples per month so we can share the
             compute equally. If you need to upload more samples than the limit,
             please reach out to us at{" "}
-            {/* TODO(REBRAND-19): replace help@czid.org with UCSF-provided support email */}
-            <ExternalLink href="mailto:help@czid.org">
-              help@czid.org
+            <ExternalLink href="mailto:seqtoid-support@ucsf.edu">
+              seqtoid-support@ucsf.edu
             </ExternalLink>
             . Thank you for your cooperation!
           </Callout>

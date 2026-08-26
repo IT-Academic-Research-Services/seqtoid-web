@@ -85,6 +85,8 @@ RSpec.describe SfnLongReadMngsPipelineDispatchService, type: :service do
       context "when workflow version is valid" do
         before do
           create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: test_workflow_name), value: fake_wdl_version)
+          # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+          create(:workflow_version, workflow: test_workflow_name, version: fake_wdl_version)
         end
 
         it "returns sfn input containing wdl workflow" do
@@ -189,6 +191,8 @@ RSpec.describe SfnLongReadMngsPipelineDispatchService, type: :service do
           @pipeline_run = create(:pipeline_run, sample: @sample)
 
           create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: test_workflow_name), value: fake_wdl_version)
+          # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+          create(:workflow_version, workflow: test_workflow_name, version: fake_wdl_version)
         end
 
         subject do

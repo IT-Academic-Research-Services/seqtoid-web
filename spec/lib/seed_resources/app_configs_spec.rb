@@ -108,4 +108,73 @@ RSpec.describe SeedResource::AppConfigs do
       end
     end
   end
+
+  # SMP-1686: the Descartes / export-control Layer 3 gate + tuning rows must be seeded EXPLICITLY (their
+  # state was previously implicit -- no row existed), but seeding must NEVER flip a gate on and a re-seed
+  # must NEVER overwrite a value someone deliberately set out-of-band.
+  describe "#export_control_flags" do
+    subject(:export_control_flags) { described_class.new.send(:export_control_flags) }
+
+    # Every gate flag must seed OFF ("0"). ENABLE_EXPORT_CONTROL_LAYER3 is the master gate.
+    let(:gate_flags) do
+      [
+        AppConfig::ENABLE_EXPORT_CONTROL_LAYER3,
+        AppConfig::ENABLE_EXPORT_CONTROL_SCREEN_ONBOARDING,
+        AppConfig::ENABLE_EXPORT_CONTROL_SCREEN_RELEASE,
+        AppConfig::ENABLE_DESCARTES_SCREENING,
+        AppConfig::ENABLE_EXPORT_CONTROL_ATTESTATION,
+        AppConfig::ENABLE_EXPORT_CONTROL_DEVICE_ATTESTATION,
+      ]
+    end
+
+    it "seeds every gate flag OFF (\"0\") -- it never flips anything on" do
+      export_control_flags
+
+      gate_flags.each do |key|
+        expect(AppConfigHelper.get_app_config(key)).to eq("0")
+      end
+    end
+
+    it "seeds the tuning rows to their conservative / fail-closed defaults" do
+      export_control_flags
+
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_RPS_GROUPS)).to eq("")
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST)).to eq("")
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_RESCREEN_CADENCE_DAYS)).to eq("0")
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_HIT_HANDLING)).to eq("hold")
+    end
+
+    it "does NOT seed the Descartes resolution poll cursor (the poller manages it)" do
+      export_control_flags
+
+      expect(AppConfig.where(key: AppConfig::DESCARTES_RESOLUTION_POLL_CURSOR)).not_to exist
+    end
+
+    it "is idempotent -- a re-seed creates no duplicate rows" do
+      export_control_flags
+      count_after_first = AppConfig.count
+
+      expect { export_control_flags }.not_to change(AppConfig, :count)
+      expect(AppConfig.count).to eq(count_after_first)
+    end
+
+    it "NEVER overwrites a gate someone deliberately turned on" do
+      # Simulate an operator enabling the master gate out-of-band before a redeploy re-runs the seed.
+      AppConfig.create!(key: AppConfig::ENABLE_EXPORT_CONTROL_LAYER3, value: "1")
+
+      export_control_flags
+
+      expect(AppConfigHelper.get_app_config(AppConfig::ENABLE_EXPORT_CONTROL_LAYER3)).to eq("1")
+    end
+
+    it "NEVER overwrites a tuning row that was already customized" do
+      AppConfig.create!(key: AppConfig::EXPORT_CONTROL_HIT_HANDLING, value: "block")
+      AppConfig.create!(key: AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST, value: '["ucsf.edu"]')
+
+      export_control_flags
+
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_HIT_HANDLING)).to eq("block")
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST)).to eq('["ucsf.edu"]')
+    end
+  end
 end

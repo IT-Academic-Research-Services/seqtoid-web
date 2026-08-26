@@ -113,7 +113,20 @@ class ResolveScreeningHolds
     optid = verdict.shoptid
     return [] if optid.blank? || optid == '0'
 
-    ScreeningResult.where(soptionalid: optid).to_a
+    # SMP-1694 (gap C-128): soptionalid is table-keyed to users.id, so `where(soptionalid: optid)` alone
+    # matches EVERY screen ever performed for that user -- and apply() would then release the active hold
+    # on each one, letting a single verdict clear holds from wholly unrelated screens. This fallback is
+    # reached only when the exact sdistributedid match failed (blank id on a clean screen, or a
+    # Compliance-Manager-originated verdict), so we cannot pin the verdict to one screen precisely. Narrow
+    # to the SINGLE most-recent screen for the user that is still actively held -- the one awaiting
+    # adjudication. Fail-closed: a verdict can now release at most that one hold; if it was actually for an
+    # older screen, that screen just stays held until its own verdict arrives. Releasing FEWER holds is
+    # always safe; releasing too many is the bug this closes.
+    screen = ScreeningResult.where(soptionalid: optid)
+                            .where(id: Hold.active.select(:screening_result_id))
+                            .latest_first
+                            .first
+    screen ? [screen] : []
   end
 
   def apply(screening_result, verdict, disposition)
@@ -128,6 +141,8 @@ class ResolveScreeningHolds
         "[ResolveScreeningHolds] RELEASE subject=#{screening_result.subject_ref} " \
         "status=#{verdict.shstatus} incident=#{verdict.shresult_id}"
       )
+      # Piece 5b: a cleared hold approves the held signup -- drive the account-provisioning callback.
+      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_APPROVED)
     when :deny
       # Terminal deny -- keep the hold in force and record the adjudication durably on
       # the hold (reviewed-and-denied), not just in the log. No release, ever.
@@ -136,6 +151,8 @@ class ResolveScreeningHolds
         "[ResolveScreeningHolds] TRUE HIT kept-held subject=#{screening_result.subject_ref} " \
         "incident=#{verdict.shresult_id}"
       )
+      # Piece 5b: a True Hit denies the held signup -- drive the denied callback (no account is created).
+      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_DENIED)
     else
       # Non-terminal (DS New / Actioned / Escalated / Closed / unknown) -- leave held, no-op.
       Rails.logger.info(
@@ -143,6 +160,39 @@ class ResolveScreeningHolds
         "status=#{verdict.shstatus} incident=#{verdict.shresult_id}"
       )
     end
+  end
+
+  # Piece 5b -- the poller->callback hook. When a hold resolves (release=approved / deny=denied), find the
+  # applicant signup held for this subject and POST the signed decision callback to the web app, which
+  # provisions (approved) or emails a rejection (denied). Idempotent + fail-open on the RESOLUTION path:
+  #   - No held signup (a non-signup screen, or already resolved) -> nothing to do.
+  #   - The callback is posted BEFORE resolve!, so a transport failure leaves the signup PENDING and it is
+  #     retried on the next poll; the web provisioning is itself idempotent (User.exists?), so a replay is
+  #     safe. A callback failure NEVER breaks the hold resolution (its own rescue).
+  def drive_signup_callback(subject_ref, decision:)
+    signup = PendingSignup.pending_for(subject_ref)
+    return if signup.nil?
+
+    url = signup.callback_url.presence
+    return if url.blank?
+
+    account = decision == PendingSignup::DECISION_APPROVED ? signup.account_payload : nil
+    body = JSON.dump(
+      {
+        screening_id: signup.screening_id,
+        correlation_id: subject_ref,
+        decision: decision,
+        path: 'manual',
+        account: account,
+      }.compact
+    )
+    ExportControl::ScreeningServiceClient.post_signed(url, body)
+    signup.resolve!(decision: decision)
+    Rails.logger.info("[ResolveScreeningHolds] signup callback posted subject=#{subject_ref} decision=#{decision}")
+  rescue StandardError => e
+    # Leave the signup pending (retried next poll); never break the hold resolution.
+    LogUtil.log_error('[ResolveScreeningHolds] signup callback failed; left pending for retry',
+                      exception: e)
   end
 
   # Stamp the IM audit-record id on the screen (evidence). Idempotent: written only when absent so a

@@ -9,6 +9,7 @@
 // PrimaryButton are stubbed so the container's own wiring is what is asserted.
 import { fireEvent } from "@testing-library/dom";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import React from "react";
 import {
   getBasespaceProjects,
   getSamplesForBasespaceProject,
@@ -24,6 +25,9 @@ jest.mock("~/api/basespace", () => ({
 
 jest.mock("~/components/views/SampleUploadFlow/utils", () => ({
   openBasespaceOAuthPopup: jest.fn(),
+  // Mirrors the real predicate: both OAuth values must be non-empty.
+  isBasespaceOAuthConfigured: (clientId?: string, redirectUri?: string) =>
+    Boolean(clientId) && Boolean(redirectUri),
 }));
 
 jest.mock("~ui/controls/dropdowns/Dropdown", () => ({
@@ -106,6 +110,52 @@ describe("BasespaceSampleImport", () => {
       client_id: "client-id",
       redirect_uri: "https://example.test/redirect",
       scope: "browse+global",
+    });
+  });
+
+  // SMP-1458: an environment with no Basespace OAuth credentials must say so
+  // instead of offering a connect button that opens a popup with an empty
+  // client id and fails with no explanation.
+  describe("when Basespace OAuth is not configured for this environment", () => {
+    it.each([
+      ["client id", { basespaceClientId: "" }],
+      ["redirect uri", { basespaceOauthRedirectUri: "" }],
+      ["both values", { basespaceClientId: "", basespaceOauthRedirectUri: "" }],
+    ])(
+      "shows an explanation and no connect button (empty %s)",
+      (_, override) => {
+        renderImport({ ...baseProps(), ...override });
+
+        expect(
+          screen.getByText(
+            /Basespace upload is not available in this environment/,
+          ),
+        ).toBeTruthy();
+        expect(screen.queryByText("Connect to Basespace")).toBeNull();
+      },
+    );
+
+    it("never opens the OAuth popup even if the handler is invoked directly", () => {
+      const consoleError = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      const ref = React.createRef<$TSFixMe>();
+
+      render(
+        <BasespaceSampleImport
+          {...baseProps()}
+          basespaceClientId=""
+          ref={ref}
+        />,
+      );
+
+      ref.current.requestBasespaceBrowseGlobalPermissions();
+
+      expect(mockedOpenPopup).not.toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Basespace OAuth is not configured"),
+      );
+      consoleError.mockRestore();
     });
   });
 

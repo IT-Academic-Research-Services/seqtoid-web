@@ -2,11 +2,14 @@
 # Descartes screen HITS (or the screen fails-closed on error/timeout). Released only after a human
 # compliance officer adjudicates. Written by the ScreeningService (CZID-596); inert until that service is
 # enabled behind its OFF-by-default flag.
-class Hold < ApplicationRecord
+class Hold < ScreeningRecord
   # Why a hold was placed. Kept explicit so the record is self-describing.
   REASON_SCREENING_HIT = "screening_hit".freeze # a real alert-level match
   REASON_SCREENING_ERROR = "screening_error".freeze # fail-closed: vendor error/timeout/misconfig
-  REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR].freeze
+  # Zero-tolerance geo rule: the screened party is associated with a sanctioned jurisdiction (our
+  # in-house embargo list or the vendor's risk_country flag). A hard HOLD regardless of name-match.
+  REASON_SANCTIONED_JURISDICTION = "sanctioned_jurisdiction".freeze
+  REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR, REASON_SANCTIONED_JURISDICTION].freeze
 
   # Terminal IM adjudication outcomes recorded on the hold (SMP-1253 audit trail).
   DISPOSITION_RELEASED = "released".freeze
@@ -18,6 +21,13 @@ class Hold < ApplicationRecord
 
   validates :subject_ref, presence: true
   validates :reason, inclusion: { in: REASONS }
+
+  # SMP-1687: the moment a hold is durably committed, notify the compliance administrator -- a hit is an
+  # adjudication task, a fail-closed error is an operational incident. Without this a hold is SILENT and
+  # the blocked user waits indefinitely. after_create_commit so a rolled-back hold never notifies; the
+  # notifier is INERT when no recipient is configured and INERT-SAFE (never raises back into the
+  # screening path), matching the screening core's off-by-default, fail-closed posture.
+  after_create_commit { ExportControl::ComplianceNotifier.notify_hold(self) }
 
   # Still-in-force holds (not yet released), and the per-subject filter.
   scope :active, -> { where(released_at: nil) }

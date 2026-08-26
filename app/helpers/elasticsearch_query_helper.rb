@@ -47,17 +47,38 @@ module ElasticsearchQueryHelper
 
   # Check is the data exists in ES for background_id and pipeline_run_ids if not then invoke taxon-indexing lambda job
   # to calculate and save scores in the ES index
-  def self.update_es_for_missing_data(background_id, pipeline_run_ids)
+  # Returns the pipeline_run_ids that were missing from ES and thus (re)indexed this call. Callers use
+  # a non-empty return to detect a cold index -- the just-written docs may not be searchable until the
+  # index refreshes, so an immediately-empty query is "still preparing", not "no data". (SMP-1795)
+  #
+  # async: false (default) invokes the indexing lambda inline and blocks until it returns -- used by the
+  # heatmap:reindex backfill rake, which relies on the synchronous call raising on failure. async: true
+  # instead enqueues the existing IndexTaxons Resque job (retry + dead-letter) per missing run and returns
+  # immediately, so the interactive heatmap first-load does not block on the ~synchronous lambda (SMP-1788).
+  # Either way the returned missing-run list is identical, so callers' "indexing" preparing-state signal
+  # (SMP-1795) fires the same and the client keeps polling until the docs are searchable.
+  def self.update_es_for_missing_data(background_id, pipeline_run_ids, async: false)
     missing_pipeline_run_ids = find_pipeline_runs_missing_from_es(
       background_id,
       pipeline_run_ids
     )
     if missing_pipeline_run_ids.present?
-      call_taxon_indexing_lambda(
-        background_id,
-        missing_pipeline_run_ids
-      )
+      if async
+        # Fire-and-forget: hand the (re)indexing to Resque instead of invoking the lambda inline, so the
+        # request returns immediately. Enqueue one IndexTaxons job per run, mirroring the eager per-run
+        # enqueue done when a run finalizes (pipeline_run.rb) and reusing its retry + dead-letter so a
+        # failed index is retried and visible rather than silently dropped.
+        missing_pipeline_run_ids.each do |pipeline_run_id|
+          Resque.enqueue(IndexTaxons, background_id, pipeline_run_id)
+        end
+      else
+        call_taxon_indexing_lambda(
+          background_id,
+          missing_pipeline_run_ids
+        )
+      end
     end
+    missing_pipeline_run_ids
   end
 
   # updates the last_read_at timestamp in the pipeline_runs index
@@ -778,7 +799,7 @@ module ElasticsearchQueryHelper
     if ENV['INDEXING_LAMBDA_MODE'] == 'local'
       local_lambda_host = {
         "taxon-indexing-concurrency-manager-#{LAMBDA_ENV}" => ENV['LOCAL_TAXON_INDEXING_URL'],
-        "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict_selected_taxons" => ENV['LOCAL_EVICTION_URL'],
+        "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict" => ENV['LOCAL_EVICTION_URL'],
       }[function_name]
       begin
         response = HTTP.post("http://#{local_lambda_host}/2015-03-31/functions/function/invocations", json: payload)
@@ -888,7 +909,7 @@ module ElasticsearchQueryHelper
     #   ],
     #   "selected_pipeline_run_ids"=>[29202] # the list of pipeline_run_ids that were passed in
     # }
-    function_name = "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict_selected_taxons"
+    function_name = "taxon-indexing-eviction-lambda-#{LAMBDA_ENV}-evict"
     payload = {
       pipeline_run_ids: pipeline_run_ids,
       # Same isolation as indexing: evict from this pod's own heatmap domain, so a preview

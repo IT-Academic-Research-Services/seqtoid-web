@@ -53,6 +53,35 @@ describe("getValidIdentity", () => {
     expect(localStorage.getItem(KEY)).toBe(stillValid);
   });
 
+  // Regression for the units bug (SMP-1497 / SMP-1501): the threshold is
+  // twoMinutesInMs = 2 * 60 * 1000, compared against a millisecond delta from
+  // Date.parse() - Date.now(). A token that expires 1 minute out is INSIDE the
+  // 2-minute buffer and must be treated as invalid so it refetches proactively.
+  // Under the old `2 * 60` (120 ms) threshold this same token read as valid and
+  // never refetched -- proving the fix.
+  it("refetches when the stored identity expires within the 2-minute buffer", async () => {
+    localStorage.setItem(KEY, new Date(Date.now() + 60 * 1000).toISOString());
+    const fresh = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    mockGet.mockResolvedValue({ expires_at: fresh });
+
+    await getValidIdentity();
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(KEY)).toBe(fresh);
+  });
+
+  // The other side of the 2-minute boundary: comfortably beyond the buffer is valid
+  // and must NOT refetch (guards against over-correcting the threshold).
+  it("does not refetch when the identity expires well beyond the 2-minute buffer", async () => {
+    const beyondBuffer = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    localStorage.setItem(KEY, beyondBuffer);
+
+    await getValidIdentity();
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(localStorage.getItem(KEY)).toBe(beyondBuffer);
+  });
+
   it("refetches once the stored identity has already expired", async () => {
     localStorage.setItem(KEY, new Date(Date.now() - 1000).toISOString());
     const fresh = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();

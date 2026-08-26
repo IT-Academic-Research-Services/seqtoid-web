@@ -249,6 +249,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP } from "~/components/views/SampleUploadFlow/components/UploadSampleStep/constants";
 import { UploadSampleStep } from "~/components/views/SampleUploadFlow/components/UploadSampleStep/UploadSampleStep";
 import {
   SEQUENCING_TECHNOLOGY_OPTIONS,
@@ -432,6 +433,85 @@ describe("UploadSampleStep upload tabs", () => {
     expect(screen.getByTestId("tab-basespace").dataset.disabled).toBe("true");
     // Disabled tabs are wrapped in an explanatory tooltip.
     expect(screen.getAllByTestId("tab-tooltip").length).toBe(2);
+  });
+
+  // SMP-1458: when the environment supplies no Basespace OAuth credentials the
+  // tab used to render as fully functional and open an OAuth popup with an
+  // empty client_id, failing with no error anywhere. It must now be blocked
+  // with a visible explanation.
+  describe("when Basespace OAuth is not configured for this environment", () => {
+    it("leaves the Basespace tab enabled when both OAuth values are present", async () => {
+      await renderStep();
+
+      expect(screen.getByTestId("tab-basespace").dataset.disabled).toBe(
+        "false",
+      );
+      expect(screen.queryByTestId("tab-tooltip")).toBeNull();
+    });
+
+    it.each([
+      ["client id", { basespaceClientId: "" }],
+      ["redirect uri", { basespaceOauthRedirectUri: "" }],
+      ["both values", { basespaceClientId: "", basespaceOauthRedirectUri: "" }],
+    ])(
+      "disables the Basespace tab and explains why (empty %s)",
+      async (_, override) => {
+        await renderStep(override);
+
+        expect(screen.getByTestId("tab-basespace").dataset.disabled).toBe(
+          "true",
+        );
+        const tooltip = screen.getByTestId("tab-tooltip");
+        expect(tooltip.dataset.title).toBe(
+          BASESPACE_UPLOAD_UNAVAILABLE_TOOLTIP,
+        );
+        // The tab stays visible so the option is explained, not silently gone.
+        expect(screen.getByTestId("tab-basespace")).toBeTruthy();
+      },
+    );
+
+    // Same flow as "switches to the basespace importer and authorizes from
+    // there", but with no client id. Continue must refuse instead of opening a
+    // popup that can only fail.
+    it("never opens the OAuth popup with an empty client id", async () => {
+      const consoleError = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+
+      await renderStep({ basespaceClientId: "" });
+
+      await act(async () => {
+        tabsProps.onChange(null, 1);
+      });
+
+      await selectProject();
+      await chooseWorkflow(UPLOAD_WORKFLOWS.MNGS.value);
+      await chooseTechnology(
+        UPLOAD_WORKFLOWS.MNGS.value,
+        SEQUENCING_TECHNOLOGY_OPTIONS.ILLUMINA,
+      );
+      await act(async () => {
+        await basespaceProps.onChange([
+          {
+            name: "bs-sample",
+            file_type: "fastq",
+            file_size: 10,
+            basespace_project_id: 3,
+            basespace_dataset_id: 11,
+          },
+        ]);
+      });
+
+      await act(async () => {
+        fireEvent.click(continueButton());
+      });
+
+      expect(mockOpenBasespacePopup).not.toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Basespace OAuth is not configured"),
+      );
+      consoleError.mockRestore();
+    });
   });
 
   it("switches to the basespace importer and authorizes from there", async () => {

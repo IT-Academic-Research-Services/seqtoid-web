@@ -33,11 +33,11 @@ const SELECTED_SAMPLES =
   "//*[contains(@class, 'sampleUploadTable')]//*[@data-testid='check-box']/ancestor::*[@role='gridcell']/following-sibling::*[1]";
 const PIPELINE_VERSION = "[class*='technologyContent'] [class*='version']";
 const ILLUMINA_LEARN_MORE_LINK = "//*[text()='Learn More' and @href]";
-const GITHUB_HERE_LINK = "[href*='github.com/chanzuckerberg']";
+const GITHUB_HERE_LINK = "[href*='seqtoid-workflows']";
 const CLEAR_HERE_LINK = "[href*='clearlabs']";
 const ARTIC_NETWORK_LINK = "[href*='artic.network']";
 const NANOPORE_LEARN_MORE_LINK =
-  "//*[contains(@href, 'chanzuckerberg.zendesk') and text()='Learn More']";
+  "//*[contains(@href, 'helpcenter') and text()='Learn More']";
 const SELECT_BASESPACE_PROJECT_DROPDOWN =
   "[class*='basespaceSampleImport'] [class*='dropdownTrigger']";
 const SELECT_BASESPACE_PROJECT_OPTIONS =

@@ -37,7 +37,12 @@ module ExportControl
           city: ctx[:city],
           state: ctx[:state],
           zip: ctx[:zip],
-          country: ctx[:country],
+          # Generic (country-level) location so the vendor can populate risk_country for
+          # high-risk-jurisdiction detection. request_evidence_ctx carries viewer_country
+          # (the CloudFront-Viewer-Country header -- an ISO-3166 alpha-2 from the request
+          # geo); fall back to it when no explicit country is supplied. Never a precise
+          # or home address -- country granularity only.
+          country: ctx[:country].presence || ctx[:viewer_country],
           soptionalid: user&.id&.to_s
         )
       end

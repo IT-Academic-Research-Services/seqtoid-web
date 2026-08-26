@@ -43,9 +43,14 @@ import CoverageVizBottomSidebar from "~/components/common/CoverageVizBottomSideb
 import { CoverageVizParamsRaw } from "~/components/common/CoverageVizBottomSidebar/types";
 import { getCoverageVizParams } from "~/components/common/CoverageVizBottomSidebar/utils";
 import ErrorBoundary from "~/components/common/ErrorBoundary";
+import ErrorFallback from "~/components/common/ErrorBoundary/ErrorFallback";
 import csSampleMessage from "~/components/common/SampleMessage/sample_message.scss";
+import {
+  clearRunFailure,
+  recordRunFailure,
+} from "~/components/common/SupportPortal/collectDiagnostics";
 import NarrowContainer from "~/components/layout/NarrowContainer";
-import { IconLoading } from "~/components/ui/icons";
+import { IconAlert, IconLoading } from "~/components/ui/icons";
 import {
   computeMngsReportTableValuesForCSV,
   createCSVObjectURL,
@@ -59,13 +64,9 @@ import { isNotNullish } from "~/components/utils/typeUtils";
 import {
   getWorkflowTypeFromLabel,
   isMngsWorkflow,
-  WorkflowType,
   WORKFLOW_TABS,
+  WorkflowType,
 } from "~/components/utils/workflows";
-import {
-  clearRunFailure,
-  recordRunFailure,
-} from "~/components/common/SupportPortal/collectDiagnostics";
 import {
   ActionType,
   createAction,
@@ -97,6 +98,7 @@ import {
   Taxon,
 } from "~/interface/shared";
 import { SampleMessage } from "../../common/SampleMessage";
+import { SampleViewSampleQuery } from "./__generated__/SampleViewSampleQuery.graphql";
 import { initialAmrContext } from "./components/AmrView/amrContext/initialState";
 import {
   AmrContext,
@@ -121,6 +123,7 @@ import {
   getWorkflowCount,
   hasAppliedFilters,
   initializeSelectedOptions,
+  isSampleNotFoundError,
   KEY_SAMPLE_VIEW_OPTIONS,
   KEY_SELECTED_OPTIONS_BACKGROUND,
   loadState,
@@ -134,10 +137,9 @@ import {
   SPECIES_LEVEL_INDEX,
   TAX_LEVEL_GENUS,
   TAX_LEVEL_SPECIES,
-  urlParser,
   URL_FIELDS,
+  urlParser,
 } from "./utils";
-import { SampleViewSampleQuery } from "./__generated__/SampleViewSampleQuery.graphql";
 
 //  Notes from Suzette on converting SampleView to hooks - Aug 2023
 //  1.  First we need to get any persisted options from local storage and the URL
@@ -532,7 +534,12 @@ const SampleViewComponent = ({
       setAmrDeprecatedData(amrDeprecatedData);
     };
     if (!amrDeprecatedData) {
-      fetchAmrDeprecatedData();
+      // SMP-1497: catch the fire-and-forget load so an expired-session 401 (now a real
+      // Error from api/core, which also redirects to the login flow) does not surface as
+      // an unhandled rejection.
+      fetchAmrDeprecatedData().catch(error => {
+        console.error(error);
+      });
     }
   }, [sampleId, amrDeprecatedData]);
 
@@ -837,10 +844,10 @@ const SampleViewComponent = ({
             }
             // Genuinely unexpected failure: keep reporting it.
             logError({
+              exception: error as unknown as Error,
               message:
                 "SampleView: Failed to persist background model selection",
               details: {
-                error,
                 projectId: project?.id,
                 backgroundId: newBackgroundId,
                 hasExistingPersistedBackground: hasPersistedBackground,
@@ -909,6 +916,16 @@ const SampleViewComponent = ({
                 newBackgroundId: selectedOptions?.background,
               });
             }
+          } else if (/fail/i.test(reportMetadata?.pipelineRunStatus ?? "")) {
+            // SMP-1791: A genuinely failed pipeline run also lands here with a
+            // falsy report result (its report request errors or returns no
+            // report), but a failed run is NOT an incompatible background.
+            // Suppress the misleading "invalid background" toast and clear the
+            // spinner so SampleViewMessage falls through to the run's failure
+            // state/message instead of hanging on "Loading report data." The
+            // run status comes from reportMetadata.pipelineRunStatus, the same
+            // signal recordRunFailure uses to detect mNGS failures.
+            setLoadingReport(false);
           } else {
             handleInvalidBackgroundSelection({
               invalidBackgroundId: selectedOptions?.background,
@@ -929,6 +946,7 @@ const SampleViewComponent = ({
     previousBackground,
     prevPipelineVersion,
     pipelineVersion,
+    reportMetadata?.pipelineRunStatus,
   ]);
 
   const globalContext = useContext(GlobalContext);
@@ -1539,7 +1557,37 @@ export const SampleView = ({
     // fallback (retry + contact support) instead of a blank page, while still
     // reporting to Sentry. Resets automatically when the user opens a different
     // sample so an error on sample A doesn't stick to sample B.
-    <ErrorBoundary view="report" resetKeys={[sampleId, snapshotShareId]}>
+    //
+    // SMP-1633: a sample that does not exist or that the user cannot access
+    // makes the Relay query throw. That is expected, not a product defect, so
+    // show a plain not-found message (no retry / contact-support) and do NOT
+    // report it to Sentry. Any other error keeps the generic fallback + report.
+    <ErrorBoundary
+      view="report"
+      resetKeys={[sampleId, snapshotShareId]}
+      shouldReportError={error => !isSampleNotFoundError(error)}
+      fallback={({ error, resetError }) =>
+        isSampleNotFoundError(error) ? (
+          <SampleMessage
+            icon={
+              <IconAlert className={csSampleMessage.icon} type={"warning"} />
+            }
+            message={
+              "This sample doesn't exist, or you don't have access to it."
+            }
+            status={"Sample not found"}
+            type={"warning"}
+          />
+        ) : (
+          <ErrorFallback
+            error={error}
+            onRetry={resetError}
+            view={"report"}
+            inline={false}
+          />
+        )
+      }
+    >
       <Suspense
         fallback={
           <SampleMessage

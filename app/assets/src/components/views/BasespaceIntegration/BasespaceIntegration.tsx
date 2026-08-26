@@ -1,4 +1,5 @@
 import React from "react";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import PrimaryButton from "~/components/ui/controls/buttons/PrimaryButton";
 import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import cs from "./basespace_integration.scss";
@@ -42,14 +43,9 @@ export class BasespaceIntegration extends React.Component<BasespaceIntegrationPr
           ) : (
             <div className={cs.error}>
               Something went wrong when trying to connect to Basespace. Please
-              <a
-                className={cs.helpLink}
-                href={CONTACT_US_LINK}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ExternalLink className={cs.helpLink} href={CONTACT_US_LINK}>
                 &nbsp;contact us
-              </a>{" "}
+              </ExternalLink>{" "}
               for help.
             </div>
           )}

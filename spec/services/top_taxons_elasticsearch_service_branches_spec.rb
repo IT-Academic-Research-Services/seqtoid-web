@@ -174,4 +174,55 @@ RSpec.describe TopTaxonsElasticsearchService do
       expect(service.call).to eq({})
     end
   end
+
+  # SMP-1788: on-demand (re)indexing must be kicked off asynchronously so the heatmap
+  # first-load returns immediately instead of blocking on the synchronous indexing lambda,
+  # while still emitting the SMP-1795 "indexing" preparing-state so the client keeps polling.
+  describe "#generate on-demand indexing is async" do
+    let(:sample) { instance_double("Sample") }
+    let(:service) do
+      TopTaxonsElasticsearchService.new(
+        params: ActionController::Parameters.new({}),
+        samples_for_heatmap: [sample],
+        background_for_heatmap: 26
+      )
+    end
+
+    before do
+      allow(HeatmapHelper).to receive(:get_latest_pipeline_runs_for_samples).and_return(101 => 201)
+      allow(ElasticsearchQueryHelper).to receive(:update_last_read_at)
+      allow(service).to receive(:fetch_top_taxons).and_return({})
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return([])
+    end
+
+    it "requests indexing with async: true and never makes the blocking lambda invoke on the request" do
+      expect(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data)
+        .with(anything, [101], async: true)
+        .and_return([101])
+      expect(ElasticsearchQueryHelper).not_to receive(:call_taxon_indexing_lambda)
+
+      service.generate
+    end
+
+    it "still updates last_read_at for the requested runs" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([])
+      expect(ElasticsearchQueryHelper).to receive(:update_last_read_at).with(anything, [101])
+
+      service.generate
+    end
+
+    it "returns the indexing preparing-state when indexing was kicked off and the query is still empty" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([101])
+
+      expect(service.generate).to eq(status: "indexing")
+    end
+
+    it "returns the heatmap dict once the freshly-indexed docs are searchable" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([101])
+      dict = [{ sample_id: 1, taxons: [{ "tax_id" => 5 }] }]
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+
+      expect(service.generate).to eq(dict)
+    end
+  end
 end

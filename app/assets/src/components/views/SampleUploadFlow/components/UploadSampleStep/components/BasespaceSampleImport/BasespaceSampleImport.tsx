@@ -10,7 +10,10 @@ import { Project } from "~/interface/shared";
 import Dropdown from "~ui/controls/dropdowns/Dropdown";
 import Notification from "~ui/notifications/Notification";
 import { NO_TARGET_PROJECT_ERROR } from "../../../../constants";
-import { openBasespaceOAuthPopup } from "../../../../utils";
+import {
+  isBasespaceOAuthConfigured,
+  openBasespaceOAuthPopup,
+} from "../../../../utils";
 import cs from "./basespace_sample_import.scss";
 
 interface BasespaceSampleImportProps {
@@ -86,8 +89,27 @@ export class BasespaceSampleImport extends React.Component<BasespaceSampleImport
     });
   };
 
+  isConfigured = () => {
+    const { basespaceClientId, basespaceOauthRedirectUri } = this.props;
+    return isBasespaceOAuthConfigured(
+      basespaceClientId,
+      basespaceOauthRedirectUri,
+    );
+  };
+
   requestBasespaceBrowseGlobalPermissions = () => {
     const { basespaceClientId, basespaceOauthRedirectUri } = this.props;
+
+    if (!this.isConfigured()) {
+      // Should be unreachable: renderConnectButton renders an explanation
+      // instead of a button when Basespace is unconfigured. Guard anyway so no
+      // code path can open an OAuth popup with an empty client id.
+      // eslint-disable-next-line no-console
+      console.error(
+        "Basespace OAuth is not configured for this environment. Refusing to start the Basespace authorization flow.",
+      );
+      return;
+    }
 
     this._window = openBasespaceOAuthPopup({
       client_id: basespaceClientId,
@@ -179,7 +201,24 @@ export class BasespaceSampleImport extends React.Component<BasespaceSampleImport
     onChange(samples);
   };
 
+  renderUnavailable = () => {
+    return (
+      <Notification
+        type="error"
+        displayStyle="flat"
+        className={cs.notification}
+      >
+        Basespace upload is not available in this environment. Please contact us
+        for help.
+      </Notification>
+    );
+  };
+
   renderConnectButton = () => {
+    if (!this.isConfigured()) {
+      return this.renderUnavailable();
+    }
+
     return (
       <React.Fragment>
         <div className={cs.helpText}>

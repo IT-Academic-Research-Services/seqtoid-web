@@ -123,7 +123,7 @@ spec:
       # root and no chmod of the mount point itself is needed.
       initContainers:
         - name: init-scratch
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "seqtoid-web.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - sh
@@ -144,7 +144,7 @@ spec:
       {{- end }}
       containers:
         - name: rails
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "seqtoid-web.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # No command/args override: the image ENTRYPOINT (bin/entrypoint.sh) runs
           # `chamber exec idseq-<env>-web -- bundle exec rails server -b 0.0.0.0 -p 3000`.

@@ -30,8 +30,11 @@ jest.mock("~/components/layout/Accordion", () => ({
 const defaultProps = {
   hasValidIds: true,
   invalidSampleNames: [] as string[],
+  isMissingUploadedTree: false,
+  isParsingReferenceTree: false,
   loading: false,
   onClick: jest.fn(),
+  referenceTreeError: null as string | null,
   samplesNotSentToNextclade: [] as string[],
   validationError: null as string | null,
 };
@@ -225,6 +228,63 @@ describe("NextcladeModalFooter branches", () => {
       expect(button.disabled).toBe(true);
       fireEvent.click(button);
       expect(props.onClick).not.toHaveBeenCalled();
+    });
+  });
+
+  // SMP-1660: "Upload a Tree" with no parsed tree used to leave the button live,
+  // so the export went out with no tree and silently succeeded.
+  describe("the uploaded reference tree", () => {
+    it("blocks the export and warns while an uploaded tree is still missing", () => {
+      const { button, props, text } = renderFooter({
+        isMissingUploadedTree: true,
+      });
+
+      expect(text).toContain(
+        "Upload a reference tree in Auspice JSON format, or choose the Nextclade Default Tree, before continuing.",
+      );
+      expect(button.disabled).toBe(true);
+      fireEvent.click(button);
+      expect(props.onClick).not.toHaveBeenCalled();
+    });
+
+    it("blocks the export while the chosen tree is being read", () => {
+      const { button, text } = renderFooter({
+        isMissingUploadedTree: true,
+        isParsingReferenceTree: true,
+      });
+
+      expect(text).toContain("Reading reference tree...");
+      // The "pick a tree" nudge is suppressed while parsing is still running.
+      expect(text).not.toContain("before continuing.");
+      expect(button.disabled).toBe(true);
+    });
+
+    it("surfaces a parse failure as an error and keeps the export blocked", () => {
+      const { button, props, text } = renderFooter({
+        isMissingUploadedTree: true,
+        referenceTreeError: "We couldn't read that reference tree.",
+      });
+
+      expect(text).toContain("We couldn't read that reference tree.");
+      // The error replaces the generic nudge rather than stacking with it.
+      expect(text).not.toContain("before continuing.");
+      expect(button.disabled).toBe(true);
+      fireEvent.click(button);
+      expect(props.onClick).not.toHaveBeenCalled();
+    });
+
+    it("enables the export once a tree has parsed, with no tree notification", () => {
+      const { button, props, text } = renderFooter({
+        isMissingUploadedTree: false,
+        isParsingReferenceTree: false,
+        referenceTreeError: null,
+      });
+
+      expect(text).not.toContain("Reading reference tree...");
+      expect(text).not.toContain("before continuing.");
+      expect(button.disabled).toBe(false);
+      fireEvent.click(button);
+      expect(props.onClick).toHaveBeenCalledTimes(1);
     });
   });
 });

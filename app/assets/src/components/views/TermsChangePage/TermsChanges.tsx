@@ -49,7 +49,7 @@ export const TermsChanges = () => {
           </p>
           <p>
             For questions about these documents, contact{" "}
-            <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>.
+            <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a>.
           </p>
         </div>
       </NarrowContainer>

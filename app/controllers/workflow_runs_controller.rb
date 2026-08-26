@@ -14,6 +14,14 @@ class WorkflowRunsController < ApplicationController
   CLADE_FASTA_S3_KEY = "clade_exports/fastas/temp-%{path}".freeze
   CLADE_REFERENCE_TREE_S3_KEY = "clade_exports/trees/temp-%{path}".freeze
   CLADE_EXTERNAL_SITE = "clades.nextstrain.org".freeze
+  # A client-supplied reference-tree key must match EXACTLY what consensus_genome_clade_export_tree_url
+  # mints (5 alphanumerics under the scratch prefix). Validating against this before presigning a GET
+  # stops a client from obtaining a signed URL for any other object in the bucket.
+  CLADE_REFERENCE_TREE_KEY_FORMAT = %r{\Aclade_exports/trees/temp-[A-Za-z0-9]{5}\z}
+  # A parsed SARS-CoV-2 Auspice reference tree is a few MB at most. Cap the upload we hand to Nextclade
+  # so the direct-to-S3 path (which skips the app and its edge WAF body limit) cannot be abused.
+  CLADE_REFERENCE_TREE_MAX_BYTES = 100 * 1024 * 1024
+  CLADE_REFERENCE_TREE_UPLOAD_URL_DURATION = 300
 
   def index
     permitted_params = index_params
@@ -219,14 +227,16 @@ class WorkflowRunsController < ApplicationController
   # TODO: If more Consensus Genome specific controller methods are needed in the future,
   # export to a new ConsensusGenomeWorkflowRunsController.
   def consensus_genome_clade_export
-    permitted_params = params.permit(:referenceTree, workflowRunIds: [])
+    permitted_params = params.permit(:referenceTreeS3Key, workflowRunIds: [])
     workflow_run_ids = permitted_params[:workflowRunIds]
     # order(:id): Postgres does not guarantee row order without ORDER BY (MySQL
     # implicitly returned PK order); keep workflow_run_ids deterministic.
     workflow_runs = current_power.workflow_runs.where(id: workflow_run_ids).consensus_genomes.active.order(:id)
 
-    # Remove the line below if generalizing beyond SARS-CoV-2
-    workflow_runs = workflow_runs.select { |wr| wr.get_input("accession_id") == ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_ID }
+    # Remove the line below if generalizing beyond SARS-CoV-2. Accept either SARS-CoV-2
+    # reference accession (GenBank MN908947.3 or RefSeq NC_045512.2) -- both are the same
+    # Wuhan-Hu-1 genome and align to Nextclade's sars-cov-2 dataset.
+    workflow_runs = workflow_runs.select { |wr| ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_IDS.include?(wr.get_input("accession_id")) }
     workflow_run_ids = workflow_runs.pluck(:id)
 
     if workflow_run_ids.empty?
@@ -244,13 +254,20 @@ class WorkflowRunsController < ApplicationController
 
     # Generate the external URL.
     options = { "input-fasta": fasta_url, "dataset-name": "sars-cov-2" }
-    # If a reference tree file was provided, upload to s3 and generate a presigned link.
-    if permitted_params[:referenceTree].present?
-      tree_key = format(CLADE_REFERENCE_TREE_S3_KEY, path: SecureRandom.alphanumeric(5))
-      tree_contents = permitted_params[:referenceTree]
-      S3Util.upload_to_s3(SAMPLES_BUCKET_NAME, tree_key, tree_contents)
+    # A reference tree, if any, was uploaded straight to S3 by the browser via a presigned PUT from
+    # consensus_genome_clade_export_tree_url, so we receive only its key -- multi-MB trees never pass
+    # through the app or its edge WAF body limit. Validate the key against the exact minted format and
+    # cap its size before presigning a GET, so a client can neither obtain a signed URL for an arbitrary
+    # object nor hand Nextclade an oversized one.
+    tree_key = permitted_params[:referenceTreeS3Key].presence
+    if tree_key
+      tree_size = tree_key.match?(CLADE_REFERENCE_TREE_KEY_FORMAT) ? s3_object_size(bucket_name: SAMPLES_BUCKET_NAME, key: tree_key) : nil
+      if tree_size.nil? || tree_size > CLADE_REFERENCE_TREE_MAX_BYTES
+        render(json: { status: "Invalid reference tree" }, status: :bad_request) and return
+      end
+
       tree_url = get_presigned_s3_url(bucket_name: SAMPLES_BUCKET_NAME, key: tree_key, duration: 300)
-      options["input-tree"] = tree_url
+      options["input-tree"] = tree_url if tree_url
     end
     external_url = URI::HTTPS.build(host: CLADE_EXTERNAL_SITE, query: options.to_query)
 
@@ -272,6 +289,25 @@ class WorkflowRunsController < ApplicationController
       json: { status: message },
       status: :internal_server_error
     )
+  end
+
+  # POST /workflow_runs/consensus_genome_clade_export_tree_url
+  # Mints a short-lived presigned S3 PUT URL so the browser can upload a Nextclade reference tree
+  # DIRECTLY to S3, bypassing the app request body and the edge WAF body-size limit. The key is
+  # generated here (never accepted from the client) and lives under the same scratch prefix that
+  # consensus_genome_clade_export validates against.
+  def consensus_genome_clade_export_tree_url
+    key = format(CLADE_REFERENCE_TREE_S3_KEY, path: SecureRandom.alphanumeric(5))
+    url = get_presigned_s3_put_url(
+      bucket_name: SAMPLES_BUCKET_NAME,
+      key: key,
+      duration: CLADE_REFERENCE_TREE_UPLOAD_URL_DURATION
+    )
+    if url.nil?
+      render(json: { status: "Could not generate upload url" }, status: :internal_server_error) and return
+    end
+
+    render(json: { url: url, key: key }, status: :ok)
   end
 
   # AMR pipeline outputs that are available for download directly from the AMR sample report

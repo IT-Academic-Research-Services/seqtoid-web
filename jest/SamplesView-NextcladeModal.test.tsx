@@ -10,12 +10,22 @@
 const mockValidateWorkflowRunIds = jest.fn();
 const mockGetWorkflowRunsInfo = jest.fn();
 const mockCreateConsensusGenomeCladeExport = jest.fn();
+const mockGetConsensusGenomeCladeExportTreeUrl = jest.fn();
 const mockOpenUrlInNewTab = jest.fn();
 const mockTrackEvent = jest.fn();
+// Fake handle for the pre-opened Nextclade tab: the fix calls window.open synchronously inside the
+// click gesture, then navigates it once the export url is ready (avoids the popup blocker).
+let mockNextcladeTab: {
+  location: { href: string };
+  opener: unknown;
+  close: jest.Mock;
+};
 
 jest.mock("~/api", () => ({
   createConsensusGenomeCladeExport: (...args: unknown[]) =>
     mockCreateConsensusGenomeCladeExport(...args),
+  getConsensusGenomeCladeExportTreeUrl: (...args: unknown[]) =>
+    mockGetConsensusGenomeCladeExportTreeUrl(...args),
   getWorkflowRunsInfo: (...args: unknown[]) => mockGetWorkflowRunsInfo(...args),
 }));
 
@@ -63,6 +73,28 @@ jest.mock(
               text: async () => '{  "tree":  1 }',
             })
           }
+        />
+        <button
+          data-testid="upload-unparseable-tree"
+          onClick={() =>
+            props.onChange({
+              name: "not-json.json",
+              text: async () => ">seq1\nACGT",
+            })
+          }
+        />
+        <button
+          data-testid="upload-non-tree-json"
+          onClick={() =>
+            props.onChange({
+              name: "array.json",
+              text: async () => '[{"tree": 1}]',
+            })
+          }
+        />
+        <button
+          data-testid="upload-nothing"
+          onClick={() => props.onChange(undefined)}
         />
       </div>
     ),
@@ -117,6 +149,18 @@ beforeEach(() => {
   mockCreateConsensusGenomeCladeExport.mockResolvedValue({
     external_url: "https://clades.nextstrain.org/export/abc",
   });
+  mockGetConsensusGenomeCladeExportTreeUrl.mockResolvedValue({
+    url: "https://s3.example/put-tree",
+    key: "clade_exports/trees/temp-abcde",
+  });
+  // The reference tree is PUT straight to S3 via the presigned url; stub fetch to succeed.
+  global.fetch = jest
+    .fn()
+    .mockResolvedValue({ ok: true, status: 200 }) as $TSFixMe;
+  // The export opens the Nextclade tab synchronously (window.open) and navigates it after the async
+  // work; give window.open a fake handle so the pre-open path is exercised.
+  mockNextcladeTab = { location: { href: "" }, opener: {}, close: jest.fn() };
+  window.open = jest.fn(() => mockNextcladeTab) as $TSFixMe;
 });
 
 describe("NextcladeModal validation on mount", () => {
@@ -294,10 +338,10 @@ describe("NextcladeModal export flow", () => {
     await waitFor(() =>
       expect(mockCreateConsensusGenomeCladeExport).toHaveBeenCalledWith({
         workflowRunIds: ["1", "2"],
-        referenceTree: null,
+        referenceTreeS3Key: null,
       }),
     );
-    expect(mockOpenUrlInNewTab).toHaveBeenCalledWith(
+    expect(mockNextcladeTab.location.href).toBe(
       "https://clades.nextstrain.org/export/abc",
     );
     expect(mockTrackEvent).toHaveBeenCalledTimes(2);
@@ -319,8 +363,19 @@ describe("NextcladeModal export flow", () => {
     await waitFor(() =>
       expect(mockCreateConsensusGenomeCladeExport).toHaveBeenCalledWith({
         workflowRunIds: ["1", "2"],
-        referenceTree: '{"tree":1}',
+        referenceTreeS3Key: "clade_exports/trees/temp-abcde",
       }),
+    );
+    // The validated tree was PUT directly to S3 via the presigned url, not sent through the app.
+    expect(mockGetConsensusGenomeCladeExportTreeUrl).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://s3.example/put-tree",
+      expect.objectContaining({ method: "PUT" }),
+    );
+    // The key regression check: after the async tree PUT + export, the pre-opened tab is navigated
+    // to Nextclade (a deferred window.open here would be popup-blocked and never open).
+    expect(mockNextcladeTab.location.href).toBe(
+      "https://clades.nextstrain.org/export/abc",
     );
   });
 
@@ -346,9 +401,141 @@ describe("NextcladeModal export flow", () => {
     const retry = await screen.findByText("Try Again");
     fireEvent.click(retry.closest("button") as HTMLElement);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(mockOpenUrlInNewTab).toHaveBeenCalledWith(
+    expect(mockNextcladeTab.location.href).toBe(
       "https://clades.nextstrain.org/export/abc",
     );
+    errorSpy.mockRestore();
+  });
+});
+
+// SMP-1660: a tree that never parsed used to leave referenceTreeContents null
+// while the export button stayed live, so the samples went to Nextclade with no
+// tree at all and the request returned 200. Every path below must end with the
+// export blocked and the reason on screen.
+describe("NextcladeModal uploaded reference tree guard", () => {
+  const nextcladeButton = () =>
+    screen
+      .getByText("View QC in Nextclade")
+      .closest("button") as HTMLButtonElement;
+
+  const chooseUploadAfterValidation = async () => {
+    renderModal();
+    await waitFor(() => expect(nextcladeButton().disabled).toBe(false));
+    fireEvent.click(screen.getByTestId("choose-upload"));
+  };
+
+  it("blocks the export as soon as Upload a Tree is chosen with no file", async () => {
+    await chooseUploadAfterValidation();
+
+    expect(nextcladeButton().disabled).toBe(true);
+    expect(
+      screen.getByText(
+        "Upload a reference tree in Auspice JSON format, or choose the Nextclade Default Tree, before continuing.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("surfaces a parse failure and keeps the export blocked", async () => {
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    await chooseUploadAfterValidation();
+
+    fireEvent.click(screen.getByTestId("upload-unparseable-tree"));
+
+    expect(
+      await screen.findByText(/We couldn't read that reference tree/),
+    ).toBeTruthy();
+    expect(nextcladeButton().disabled).toBe(true);
+    // The underlying SyntaxError is logged, not swallowed.
+    expect(errorSpy).toHaveBeenCalled();
+    expect(mockCreateConsensusGenomeCladeExport).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("rejects JSON that is not an Auspice tree document", async () => {
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    await chooseUploadAfterValidation();
+
+    fireEvent.click(screen.getByTestId("upload-non-tree-json"));
+
+    expect(
+      await screen.findByText(/We couldn't read that reference tree/),
+    ).toBeTruthy();
+    expect(nextcladeButton().disabled).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  it("keeps the export blocked when the picker hands back no file", async () => {
+    await chooseUploadAfterValidation();
+
+    fireEvent.click(screen.getByTestId("upload-nothing"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reference-tree-name").textContent).toBe(
+        "none",
+      ),
+    );
+    expect(nextcladeButton().disabled).toBe(true);
+  });
+
+  it("enables the export once a tree parses, and clears the error", async () => {
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    await chooseUploadAfterValidation();
+
+    fireEvent.click(screen.getByTestId("upload-unparseable-tree"));
+    expect(
+      await screen.findByText(/We couldn't read that reference tree/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("upload-tree"));
+
+    await waitFor(() => expect(nextcladeButton().disabled).toBe(false));
+    expect(
+      screen.queryByText(/We couldn't read that reference tree/),
+    ).toBeNull();
+    errorSpy.mockRestore();
+  });
+
+  it("re-blocks the export when a good tree is replaced by a bad one", async () => {
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    await chooseUploadAfterValidation();
+
+    fireEvent.click(screen.getByTestId("upload-tree"));
+    await waitFor(() => expect(nextcladeButton().disabled).toBe(false));
+
+    fireEvent.click(screen.getByTestId("upload-unparseable-tree"));
+
+    await waitFor(() => expect(nextcladeButton().disabled).toBe(true));
+    expect(
+      screen.getByText(/We couldn't read that reference tree/),
+    ).toBeTruthy();
+    errorSpy.mockRestore();
+  });
+
+  it("drops the upload error when the user falls back to the default tree", async () => {
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    await chooseUploadAfterValidation();
+
+    fireEvent.click(screen.getByTestId("upload-unparseable-tree"));
+    expect(
+      await screen.findByText(/We couldn't read that reference tree/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("choose-global"));
+
+    await waitFor(() => expect(nextcladeButton().disabled).toBe(false));
+    expect(
+      screen.queryByText(/We couldn't read that reference tree/),
+    ).toBeNull();
     errorSpy.mockRestore();
   });
 });

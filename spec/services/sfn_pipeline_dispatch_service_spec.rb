@@ -16,7 +16,10 @@ FAKE_REGION = "fake-region".freeze
 FAKE_SFN_ARN = "fake:sfn:arn".freeze
 TEST_WORKFLOW_NAME = WorkflowRun::WORKFLOW[:short_read_mngs]
 PIPELINE_RUN_STAGE_NAMES = PipelineRunStage::STAGE_INFO.values.pluck(:dag_name)
-FAKE_WDL_VERSION = "4.9.0".freeze
+# >= the 7.0.0 short-read-mngs supported floor (a sub-7 version would be locked / non-dispatchable)
+# but < 7.2 (the new-host-filter WDL boundary), so the legacy host-filtering code paths this spec
+# exercises stay on their intended arm.
+FAKE_WDL_VERSION = "7.1.0".freeze
 FAKE_STATES_CLIENT = Aws::States::Client.new(
   stub_responses: {
     start_execution: {
@@ -108,6 +111,8 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
         }
 
         create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: TEST_WORKFLOW_NAME), value: FAKE_WDL_VERSION)
+        # CZID-982: the configured default must also be catalogued -- dispatch validates it now.
+        create(:workflow_version, workflow: TEST_WORKFLOW_NAME, version: FAKE_WDL_VERSION)
       end
 
       it "returns correct json" do
@@ -165,6 +170,9 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
                 nr_db: %r{s3://.+},
                 nr_loc_db: %r{s3://.+},
                 lineage_db: %r{s3://.+},
+                # Postprocess must override accession2taxid_db so the WDL does not fall back to its
+                # hardcoded czid-public-references default and DownloadFail (SMP-1784).
+                accession2taxid_db: %r{s3://.+},
                 taxon_blacklist: %r{s3://.+},
               }, Experimental: {
                 nt_db: %r{s3://.+},

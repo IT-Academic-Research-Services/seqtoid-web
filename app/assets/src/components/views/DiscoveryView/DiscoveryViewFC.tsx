@@ -317,7 +317,7 @@ async function fetchProjectIds(
   domain: string,
   conditions: Partial<Conditions>,
 ): Promise<number[]> {
-  return getProjects({
+  const response = await getProjects({
     domain,
     filters: {
       visibility: conditions.filters?.visibility,
@@ -325,7 +325,8 @@ async function fetchProjectIds(
     limit: 0,
     offset: 0,
     listAllIds: true,
-  }).then(response => response.all_projects_ids);
+  });
+  return response.all_projects_ids;
 }
 
 async function queryWorkflowRuns(
@@ -345,7 +346,7 @@ async function queryWorkflowRuns(
   let collectionIdInput: IntListInFilter | undefined;
   if (projectId != null && projectIds !== undefined) {
     collectionIdInput = {
-      _in: projectIds.includes(parseInt(projectId))
+      _in: projectIds.map(String).includes(projectId)
         ? [parseInt(projectId)]
         : [],
     };
@@ -1305,6 +1306,7 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
       ? fetchProjectIds(props.domain, conditions)
       : Promise.resolve(undefined);
     // TODO: Fetch only sortOnlyWorkflow if given.
+    // TODO: This is a fire-and-forget promise, which can cause race conditions or unexpected behavior.
     fetchCgFilteredWorkflowRuns(conditions, projectIdsPromise);
   };
 
@@ -1334,7 +1336,7 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
         return;
       }
       setCgWorkflowRunIds(workflowRuns.map(run => run.id));
-      fetchCgPage(/* offset */ 0);
+      await fetchCgPage(/* offset */ 0);
     } catch (error) {
       if (isTransientNetworkError(error)) {
         // A client connectivity blip on the underlying REST fetch (axios
@@ -1344,8 +1346,9 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
         return;
       }
       logError({
+        exception: error,
         message: "[DiscoveryViewError] fetchCgFilteredWorkflowRuns() failed",
-        details: { error },
+        details: { conditions },
       });
     }
   };
@@ -1433,17 +1436,18 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
   };
 
   const fetchWorkflowCounts = async (
-    selectedProjectId?: string,
+    selectedProjectId?: string | number, // TODO: selectedProjectId should be a string, so the upstream caller needs to be fixed
   ): Promise<WorkflowCount | undefined> => {
-    const projectIds = selectedProjectId
-      ? [parseInt(selectedProjectId)]
+    const selectedProjectIdStr = selectedProjectId?.toString();
+    const projectIds = selectedProjectIdStr
+      ? [parseInt(selectedProjectIdStr)]
       : await fetchProjectIds(props.domain, {});
     return queryWorkflowRunsTotalCount(
       props,
       [WorkflowType.CONSENSUS_GENOME], // all workflows in nextgen
       environment,
       projectIds,
-      selectedProjectId,
+      selectedProjectIdStr,
     );
   };
 

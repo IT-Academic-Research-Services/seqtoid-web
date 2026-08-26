@@ -39,6 +39,31 @@ RSpec.describe TopTaxonsElasticsearchService do
     end
   end
 
+  describe "#build_filter_param_hash subcategories shape handling (heatmap Phage 500)" do
+    # The Phage chip is the only heatmap filter that sends subcategories. A JSON.stringify'd value is
+    # a String; the Rails nested-object query encoding (subcategories[Viruses][0]=Phage) is parsed by
+    # Rails into a Hash -> {"Viruses" => {"0" => "Phage"}}. JSON.parse-ing that Hash raised "no
+    # implicit conversion of HashWithIndifferentAccess into String" and 500'd the heatmap whenever
+    # Phage was selected (STAGING-RAILS-PROJECT-37 / SMP-1802). Also, {"0" => "Phage"}.include?("Phage")
+    # checks KEYS and is false, so the Viruses value must be normalized to its list of names.
+    it "parses a JSON string (the frontend's stringify'd encoding)" do
+      expect(filter_for({ subcategories: '{"Viruses":["Phage"]}' })[:include_phage]).to be_truthy
+    end
+
+    it "handles a Rails-parsed Hash without raising, and still detects Phage" do
+      expect(filter_for({ subcategories: { "Viruses" => { "0" => "Phage" } } })[:include_phage]).to be_truthy
+    end
+
+    it "handles the nested-Hash shape via ActionController::Parameters" do
+      params = ActionController::Parameters.new(subcategories: { "Viruses" => { "0" => "Phage" } })
+      expect(filter_for(params)[:include_phage]).to be_truthy
+    end
+
+    it "is falsey when Viruses subcategories are present without Phage" do
+      expect(filter_for({ subcategories: { "Viruses" => { "0" => "Other" } } })[:include_phage]).to be_falsey
+    end
+  end
+
   describe "#build_filter_param_hash removedTaxonIds vs string taxonIds (HTTP shape)" do
     it "removes a string-typed taxonId supplied via ActionController::Parameters" do
       # As a browser sends them: taxonIds + removedTaxonIds are strings. Without the Integer

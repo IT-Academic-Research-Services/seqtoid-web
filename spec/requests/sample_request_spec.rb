@@ -1129,6 +1129,8 @@ RSpec.describe "Sample request", type: :request do
         @sample3 = create(:sample, project: @project, name: "Test Sample Three", pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }], host_genome: host_genome1)
         create(:app_config, key: AppConfig::SFN_SINGLE_WDL_ARN, value: fake_sfn_arn)
         create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: test_workflow_name), value: fake_wdl_version)
+        # CZID-982: the configured default must also be catalogued.
+        create(:workflow_version, workflow: test_workflow_name, version: fake_wdl_version)
         create(:app_config, key: AppConfig::CARD_FOLDER, value: fake_card_folder)
       end
 

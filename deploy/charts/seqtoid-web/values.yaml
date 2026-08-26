@@ -21,6 +21,12 @@ image:
   repository: seqtoid-web
   # CI advances this to the immutable sha-<commit> tag on deploy (GitOps, #444).
   tag: latest
+  # Immutable image digest (sha256:...). When set it WINS over `tag` and the pod renders
+  # repository@digest -- see the `seqtoid-web.image` helper. The promotion pipeline
+  # (CZID-464) writes this alongside the sha-tag so a promoted tier runs the exact artifact
+  # that passed the test gate; a tag can be repointed after the test, a digest cannot.
+  # Empty by default, so environments not yet onboarded to digest promotion are unaffected.
+  digest: ""
   pullPolicy: IfNotPresent
 
 # Node scheduling. The image is single-arch (linux/amd64), but this cluster's
@@ -201,6 +207,10 @@ ingress:
   # can restart nothing -- liveness = "is the process wedged?", readiness = "should it get traffic?"
   # (SMP-1473). Overridable per env.
   livenessPath: /up
+  # Minimum TLS policy for the ALB HTTPS listener. Chart-wide default so no environment can inherit the
+  # AWS Load Balancer Controller default (ELBSecurityPolicy-2016-08), which still negotiates TLS 1.0/1.1.
+  # TLS13-1-2-2021-06 permits only TLSv1.2 and TLSv1.3. Set to "" to fall back to the LBC default.
+  sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
 
 # Ephemeral scratch volume for the WEB pod's temp directory.
 #
@@ -288,15 +298,56 @@ workerLivenessProbe:
 migrate:
   enabled: true
   command: ["rails", "db:migrate:with_data"]
+  # SMP-1715 -- append `seed:migrate` (pending SeedMigration data migrations) to the hook.
+  #
+  # WHY. `db/seeds.rb` is a generated snapshot that is STALE against the catalog it ships: it
+  # writes the `*-version` app_configs (amr 1.4.2, short-read-mngs 8.3.15, ...) but seeds the
+  # PREVIOUS `workflow_versions` rows, then stamps SeedMigration up to 20240802164435 only.
+  # The migrations that close that gap -- UpdatePipelineVersionAppConfig and
+  # ReconcileWorkflowVersionCatalog -- run under `seed:migrate`, which only bin/rebuild_system
+  # invoked. VersionRetrievalService (CZID-982) fail-closes on an uncatalogued default, so an
+  # env that never runs seed:migrate 500s on project create / project_pipeline_versions
+  # ("WorkflowVersion for workflow=amr and version=1.4.2 is not in the catalog"). Same defect
+  # the preview path fixed in sandbox:seed_once (seqtoid-web PR 358).
+  #
+  # ORDERING. Appended LAST, after db:migrate:with_data and after any db:seed:
+  #   * after db:migrate:with_data -- the data migrations read columns (workflow_versions
+  #     .min_index_version, .runnable) and the seed_migrations table that schema migrations create.
+  #   * after db:seed -- db:seed calls SeedMigration::Migrator.bootstrap(20240802164435), which is
+  #     what marks the pre-snapshot migrations applied. Run before it on a fresh DB and
+  #     seed_migrations is empty, so the migrator treats ALL migrations as new and replays the
+  #     from-scratch path against an unseeded database.
+  #
+  # IDEMPOTENT. SeedMigration::Migrator.run_new_migrations applies only versions absent from the
+  # seed_migrations table and records each one, so a steady-state deploy runs nothing. Every
+  # currently-pending migration is itself written to be re-appliable (find_or_create_by / "skip if
+  # already set"); UpdatePipelineVersionAppConfig was hardened for exactly this in PR 359.
+  #
+  # NOT SUPPRESSED. A failure here fails the PreSync hook and blocks the sync, deliberately: a
+  # database whose configured default is not catalogued serves 500s on the project path, so
+  # deploying it is worse than not deploying. Never wrap this in `|| true`.
+  #
+  # GATE. On by default (dev is the base env and needs it). Turn it OFF for any environment whose
+  # data predates this fork before its first sync, and review `rake seed:migrate:status` there
+  # first: the pending set is applied wholesale and is not all additive -- RenameDatabaseBucket
+  # rewrites every AlignmentConfig/HostGenome reference path from czid-public-references to
+  # seqtoid-public-references, and SeedObservedIndexCompatibilityFloors derives per-version index
+  # floors from that env's own run history (a floor makes older index pairings refuse to dispatch).
+  # Both are no-ops on a fresh seqtoid env and neither is safe to apply blind to a legacy one.
+  #
+  # An env that already lists seed:migrate in `command` (staging/sandbox/exp-sandbox, via
+  # cypherid-web-infra) owns it there; the template will not append a second copy, and this flag
+  # does not remove it.
+  seedMigrate: true
   # SA the migrate hook runs as. Empty -> the app SA. A preview sandbox sets this to the
   # provisioner SA (a PreSync hook that exists before migrate on a brand-new namespace,
   # avoiding a deadlock where migrate waits on the Sync-phase app SA).
   serviceAccountName: ""
-  # A single deterministic, idempotent db:migrate invocation. `rails db:migrate`
-  # only applies pending migrations and records schema_migrations per step, so an
-  # interrupted run safely resumes on retry — do NOT add destructive steps here.
-  # Retries are handled by K8s (backoffLimit) so an overlapping Argo sync can't
-  # interrupt an in-flight migration (#481).
+  # A deterministic, idempotent invocation. `rails db:migrate` only applies pending
+  # migrations and records schema_migrations per step, and `seed:migrate` does the same
+  # against seed_migrations, so an interrupted run safely resumes on retry -- do NOT add
+  # destructive steps here. Retries are handled by K8s (backoffLimit) so an overlapping
+  # Argo sync can't interrupt an in-flight migration (#481).
   backoffLimit: 3
   # Bound the Job so a stuck/hung migration fails cleanly (30m headroom) instead
   # of wedging the PreSync phase indefinitely.
@@ -339,7 +390,38 @@ extraEnv: []
 # absent). A preview sandbox sets `workers.shoryuken.enabled: false` so it does not become
 # a competing consumer on dev's shared SQS queue — it uses POLLING (result-monitor +
 # pipeline-monitor against its own DB) instead.
+# Option A: the standalone export-control screening SERVICE -- same image, its own deployment + chamber
+# + DB, so Descartes never runs in a web request. The API Deployment/Service is templates/screening.yaml;
+# the async worker + poller are workers.screening below. Dark by default (enabled: false).
+screening:
+  enabled: false
+  chamberService: ""   # e.g. seqtoid-env-prod-screening -- DESCARTES_RPS_* + the dedicated screening DB live here
+  api:
+    replicaCount: 1
+    port: 3000
+    resources: {}
+  # Piece 5b: an initContainer migrates the ISOLATED screening store (db/screening_migrate) against the
+  # screening cluster before the API serves. Runs with PRIMARY_DB_TASKS=false / SCREENING_DB_TASKS=true so
+  # it only touches the screening connection, never the shared app DB.
+  migrate:
+    enabled: true
+    command: ["rails", "db:migrate"]
+
 workers:
+  # Option A screening worker: the async screen (process_screening) + the resolution poller
+  # (resolve_screening_holds). Uses the SCREENING chamber, not the web chamber. Dark by default.
+  # Named screening-worker so it does not collide with the screening API Deployment (-screening).
+  screening-worker:
+    enabled: false
+    args: ["rake", "resque:workers"]
+    replicaCount: 1
+    queue: "process_screening,resolve_screening_holds"
+    chamberService: ""
+    samplesBucket: false
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
   resque:
     args: ["rake", "resque:workers"]
     replicaCount: 1

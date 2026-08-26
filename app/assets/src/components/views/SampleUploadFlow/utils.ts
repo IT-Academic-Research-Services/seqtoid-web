@@ -1,5 +1,5 @@
 import { Tag } from "@aws-sdk/client-s3";
-import { groupBy, maxBy, sortBy, sum } from "lodash/fp";
+import { groupBy, isEmpty, maxBy, sortBy, sum } from "lodash/fp";
 import { openUrlInPopupWindow } from "~/components/utils/links";
 import { INPUT_FILE_S3_TAGS } from "~/components/views/SampleUploadFlow/constants";
 import { getURLParamString } from "~/helpers/url";
@@ -10,7 +10,25 @@ const BASESPACE_OAUTH_WINDOW_NAME = "BASESPACE_OAUTH_WINDOW";
 const BASESPACE_OAUTH_WINDOW_WIDTH = 1000;
 const BASESPACE_OAUTH_WINDOW_HEIGHT = 600;
 
+// True only when the environment supplied both OAuth values needed to build a
+// valid Basespace authorize URL.
+export const isBasespaceOAuthConfigured = (
+  clientId?: string | null,
+  redirectUri?: string | null,
+) => !isEmpty(clientId) && !isEmpty(redirectUri);
+
 export const openBasespaceOAuthPopup = (params: $TSFixMe) => {
+  // Never open the popup with an empty client_id or redirect_uri. Illumina
+  // rejects such a request and the user is left staring at an opaque failure,
+  // so refuse loudly here instead of handing off a request that cannot succeed.
+  if (!isBasespaceOAuthConfigured(params?.client_id, params?.redirect_uri)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "Basespace OAuth is not configured for this environment (missing client_id or redirect_uri). Refusing to open the Basespace authorization popup.",
+    );
+    return null;
+  }
+
   const urlParams = getURLParamString({
     ...params,
     response_type: "code",

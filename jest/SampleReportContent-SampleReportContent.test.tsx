@@ -43,6 +43,13 @@ jest.mock("~/components/ui/icons", () => ({
   IconLoading: () => <span data-testid="icon-loading" />,
 }));
 
+const mockLogError = jest.fn();
+jest.mock("~/components/utils/logUtil", () => ({
+  logError: (...args: unknown[]) => mockLogError(...args),
+}));
+
+beforeEach(() => mockLogError.mockClear());
+
 const LOADING_INFO = {
   message: "Your AMR results are being generated!",
   linkText: "Learn more",
@@ -176,5 +183,56 @@ describe("SampleReportContent", () => {
     expect(
       screen.getByTestId("failed-message").getAttribute("data-event"),
     ).toBe("undefined");
+  });
+
+  // SMP-1501 / SMP-1476: a Relay store dataID collision can overwrite the raw Rails
+  // status ("SUCCEEDED") with the SFN-mapped Rails value ("COMPLETE") on the same record
+  // after a browser back/forward, so the success values of BOTH vocabularies must render
+  // the report.
+  it.each([
+    "SUCCEEDED",
+    "SUCCEEDED_WITH_ISSUE",
+    "COMPLETE",
+    "COMPLETE - ISSUE",
+  ])("renders the report for the success status %s", status => {
+    renderContent({ workflowRun: { status } });
+
+    expect(screen.getByTestId("report-body")).not.toBeNull();
+    expect(screen.queryByTestId("failed-message")).toBeNull();
+    expect(mockLogError).not.toHaveBeenCalled();
+  });
+
+  it.each(["FAILED", "TIMED_OUT", "ABORTED"])(
+    "shows the failure message for the terminal status %s",
+    status => {
+      renderContent({ workflowRun: { status } });
+
+      expect(screen.getByTestId("failed-message")).not.toBeNull();
+      expect(screen.queryByTestId("report-body")).toBeNull();
+      expect(mockLogError).not.toHaveBeenCalled();
+    },
+  );
+
+  it("defaults an unrecognised status to in progress (not failure) and logs it once", () => {
+    renderContent({ workflowRun: { id: 7, status: "SOME_NEW_STATUS" } });
+
+    expect(message().getAttribute("data-status")).toBe("IN PROGRESS");
+    expect(screen.queryByTestId("failed-message")).toBeNull();
+    expect(mockLogError).toHaveBeenCalledTimes(1);
+    const [arg] = mockLogError.mock.calls[0];
+    expect(arg.message).toContain("Unrecognized workflow run status");
+    expect(arg.details).toMatchObject({
+      status: "SOME_NEW_STATUS",
+      sampleId: 12,
+      workflowRunId: 7,
+    });
+  });
+
+  it("does not log for a known status or an absent status", () => {
+    renderContent({ workflowRun: { status: "COMPLETE" } });
+    renderContent({ workflowRun: { status: undefined } });
+    renderContent({ workflowRun: null });
+
+    expect(mockLogError).not.toHaveBeenCalled();
   });
 });

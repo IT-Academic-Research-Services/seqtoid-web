@@ -108,6 +108,7 @@ jobs:
     needs: provision
     permissions:
       contents: read
+      pull-requests: read
       security-events: write
       id-token: write
     uses: ./.github/workflows/security-scan.yml

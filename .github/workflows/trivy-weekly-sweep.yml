@@ -1,0 +1,89 @@
+name: trivy weekly sweep
+
+# SMP-1638: proactive, deliberate CVE discovery that replaces the old "silent drift wedge".
+# The main image scan is advisory (never freezes dev) and the PR fs scan hard-fails only on what a
+# PR introduces -- so a HIGH/CRITICAL surfaced by a background Trivy vuln-DB refresh on the CURRENT
+# shipped image would otherwise only show up as a build-time tracking issue. This weekly job scans
+# the same GHCR `:latest` image the CD gate scans (against the LATEST DB), and if it finds new,
+# fixable HIGH/CRITICAL CVEs not already in .trivyignore, it opens a DRAFT PR that baselines them --
+# a reviewable starting point where a human decides baseline-vs-forward-fix (Dependabot handles the
+# actual dep bumps). Draft => never auto-merges.
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          ref: integration
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy image scan (latest DB, JSON)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        env:
+          GHCR_OWNER: ${{ github.repository_owner }}
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/seqtoid-web:latest
+          format: json
+          output: trivy-sweep.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+      - name: Open draft baseline PR for any new CVEs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          # Any ID left in the JSON is a fixable HIGH/CRITICAL NOT already accepted in .trivyignore
+          # (trivyignores strips the accepted ones). Collect the unique VulnerabilityIDs.
+          IDS="$(jq -r '[.Results[]?.Vulnerabilities[]?.VulnerabilityID] | unique | .[]' trivy-sweep.json 2>/dev/null | sort -u)"
+          if [ -z "${IDS}" ]; then
+            echo "No new HIGH/CRITICAL CVEs beyond .trivyignore. Nothing to do."
+            exit 0
+          fi
+          echo "New CVEs found:"; echo "${IDS}"
+          DATE="$(date -u +%F)"
+          BRANCH="chore/trivy-weekly-baseline-${DATE}-${GITHUB_RUN_ID}"
+          {
+            printf '\n# %s: trivy weekly sweep found new HIGH/CRITICAL CVE(s) on the shipped image.\n' "${DATE}"
+            printf '# DRAFT baseline for review -- decide per entry: forward-fix the dep (preferred; see\n'
+            printf '# Dependabot) or keep the baseline with a justification. Each ID below is fixable and\n'
+            printf '# was NOT already accepted. Remove any you intend to forward-fix instead of baselining.\n'
+            for id in ${IDS}; do printf '%s\n' "${id}"; done
+          } >> .trivyignore
+          git config user.name  "thorvath-slower"
+          git config user.email "thomash@slower.ai"
+          git checkout -b "${BRANCH}"
+          git add .trivyignore
+          git commit -m "trivy: draft baseline for weekly-sweep CVEs (${DATE})"
+          git push origin "${BRANCH}"
+          COUNT="$(printf '%s\n' "${IDS}" | wc -l | tr -d ' ')"
+          {
+            echo "The weekly Trivy sweep found ${COUNT} new fixable HIGH/CRITICAL CVE(s) on \`ghcr.io/${GITHUB_REPOSITORY_OWNER}/seqtoid-web:latest\` that are NOT in \`.trivyignore\`. This DRAFT baselines them so review can decide baseline-vs-forward-fix per entry (Dependabot raises the actual bumps)."
+            echo
+            echo '```'
+            echo "${IDS}"
+            echo '```'
+            echo
+            echo "Draft => will not auto-merge. Prefer forward-fixing (remove the ID here and bump the dep) where a clean bump exists."
+          } > pr-body.md
+          gh pr create --repo "$GITHUB_REPOSITORY" --base integration --head "${BRANCH}" \
+            --title "trivy: weekly CVE baseline (${DATE}) [draft]" --draft --body-file pr-body.md

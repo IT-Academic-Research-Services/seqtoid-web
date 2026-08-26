@@ -489,6 +489,8 @@ RSpec.describe PhyloTreeNgsController, type: :controller do
 
       create(:app_config, key: AppConfig::SFN_SINGLE_WDL_ARN, value: "fake:sfn:arn")
       create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: "phylotree-ng"), value: "1.0.0")
+      # CZID-982: the configured default must also be catalogued.
+      create(:workflow_version, workflow: "phylotree-ng", version: "1.0.0")
 
       allow(S3Util).to receive(:get_s3_file)
         .and_return(
@@ -890,6 +892,8 @@ RSpec.describe PhyloTreeNgsController, type: :controller do
       it "calls rerun on the phylo tree" do
         create(:app_config, key: AppConfig::SFN_SINGLE_WDL_ARN, value: "fake-arn")
         create(:app_config, key: format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: "phylotree-ng"), value: "0.0.1")
+        # CZID-982: the configured default must also be catalogued.
+        create(:workflow_version, workflow: "phylotree-ng", version: "0.0.1")
 
         put :rerun, params: { id: phylo_tree.id }
 

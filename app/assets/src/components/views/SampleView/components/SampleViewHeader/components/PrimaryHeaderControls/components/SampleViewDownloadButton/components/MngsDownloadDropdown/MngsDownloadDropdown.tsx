@@ -90,7 +90,7 @@ export const MngsDownloadDropdown = ({
           logError({
             message:
               "SampleViewControls/DownloadDropdown: Invalid option passed to handleDownload",
-            details: { option },
+            details: { option, pipelineRun, sample },
           });
         }
         break;

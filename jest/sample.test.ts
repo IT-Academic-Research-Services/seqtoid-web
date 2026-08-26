@@ -12,7 +12,8 @@ import {
 } from "../app/assets/src/components/utils/sample";
 import { SampleStatus } from "../app/assets/src/interface/sample";
 
-const CONTACT_US_LINK = "https://helpcenter.seqtoid.org/contact";
+// SW-2: sampleErrorInfo returns the "helpcenter:" sentinel; Link.tsx resolves the host.
+const CONTACT_US_LINK = "helpcenter:/contact";
 
 describe("sample.cleanFilePath", () => {
   it("trims whitespace", () => {
@@ -141,10 +142,14 @@ describe("sample.sampleErrorInfo", () => {
     expect(info.message).toMatch(/too long to upload/);
   });
 
-  it("LOCAL_UPLOAD_STALLED -> warning, incomplete issue", () => {
+  it("LOCAL_UPLOAD_STALLED -> uploading (in progress), not an error", () => {
+    // A slow local upload that has not truly failed yet must read as still uploading, not as a
+    // failure -- the sample has not been sent to the pipeline. (LOCAL_UPLOAD_FAILED is the error.)
     const info = sampleErrorInfo({ sampleUploadError: "LOCAL_UPLOAD_STALLED" });
-    expect(info.status).toBe(SampleStatus.INCOMPLETE_ISSUE);
-    expect(info.type).toBe("warning");
+    expect(info.status).toBe(SampleStatus.UPLOADING);
+    expect(info.pillStatus).toBe("uploading");
+    expect(info.type).toBe("info");
+    expect(info.message).toMatch(/still uploading/i);
   });
 
   it("DO_NOT_PROCESS -> processing skipped, info, no link", () => {

@@ -159,7 +159,7 @@ test.describe("Heatmap top links", () => {
     });
     await expect(mailtoLink).toHaveAttribute(
       "href",
-      "mailto:help@czid.org?Subject=Report%20Feedback",
+      "mailto:seqtoid-support@ucsf.edu?Subject=Report%20Feedback",
     );
     // #endregion Verify email support link
   });

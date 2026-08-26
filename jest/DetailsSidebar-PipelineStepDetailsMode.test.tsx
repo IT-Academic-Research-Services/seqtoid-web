@@ -7,25 +7,32 @@
 // the fromStepName fallback.
 import { render, screen } from "@testing-library/react";
 
-// linkify-react and react-markdown ship ESM-only builds that jest cannot resolve
-// here; stub them with passthrough renderers so the component's own branching is
-// what gets exercised.
-jest.mock(
-  "linkify-react",
-  () => ({
-    __esModule: true,
-    default: ({ children }: $TSFixMe) => children,
-  }),
-  { virtual: true },
-);
-jest.mock(
-  "react-markdown",
-  () => ({
-    __esModule: true,
-    default: ({ children }: $TSFixMe) => children,
-  }),
-  { virtual: true },
-);
+// linkify-react is NOT mocked: it ships a CommonJS build that jest resolves
+// directly, and its tree-walking behaviour is exactly what regressed here, so
+// the real implementation has to run.
+//
+// react-markdown@10 is ESM-only all the way down its unified/micromark
+// dependency chain and jest's resolver cannot load it, so it is stubbed. The
+// stub enforces the one contract that matters for SMP-1658: react-markdown
+// requires `children` to be a single string. linkify-react rewrites the string
+// children of any element it walks into an ARRAY, which trips an internal
+// invariant that is a no-op in production builds -- so the real component
+// silently rendered an empty div. Throwing here turns that silent blank panel
+// into a loud test failure. The stub also honours the `components` override so
+// the Linkify-inside-markdown composition is exercised.
+jest.mock("react-markdown", () => ({
+  __esModule: true,
+  default: ({ children, components }: $TSFixMe) => {
+    if (typeof children !== "string") {
+      throw new Error(
+        "Unexpected value for `children` prop, expected `string` but got " +
+          Object.prototype.toString.call(children),
+      );
+    }
+    const Paragraph = (components && components.p) || "p";
+    return require("react").createElement(Paragraph, null, children);
+  },
+}));
 
 import PipelineStepDetailsMode from "~/components/common/DetailsSidebar/PipelineStepDetailsMode/PipelineStepDetailsMode";
 
@@ -83,6 +90,13 @@ describe("PipelineStepDetailsMode step info", () => {
     renderStep({ description: "This step aligns reads." });
     expect(screen.getByText("Step Info")).toBeTruthy();
     expect(screen.getByText("This step aligns reads.")).toBeTruthy();
+  });
+
+  it("linkifies a bare url inside the description", () => {
+    renderStep({ description: "See https://czid.org/help for details." });
+    const link = screen.getByText("https://czid.org/help");
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("https://czid.org/help");
   });
 
   it("omits Step Info when the description is empty", () => {

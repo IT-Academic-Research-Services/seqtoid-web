@@ -3,9 +3,9 @@ module Queries
     extend ActiveSupport::Concern
     include SamplesHelper
 
-    included do
-      MAX_SAMPLES_LIMIT = 100
+    MAX_SAMPLES_LIMIT = 100
 
+    included do
       field :samples_list, Types::SampleListType, null: false do
         argument :projectId, Integer, required: false
         argument :domain, String, required: false
