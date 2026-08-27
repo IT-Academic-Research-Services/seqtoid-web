@@ -1,0 +1,514 @@
+// Release Notes page. Deliberately NOT the app's blue/navy SDS theme: this page
+// carries its own warm-paper / forest-green look, ported from the standalone
+// prototype. All CSS variables are scoped to .releaseNotesPage (not :root) so the
+// themed palette never leaks into the rest of the app. Fonts (IBM Plex Mono/Sans,
+// Archivo) are loaded via a Google Fonts <link> in support/releases.html.erb; the
+// fallback stacks below keep the page readable if that stylesheet is blocked.
+
+.releaseNotesPage {
+  --paper: #f5f4ef;
+  --card: #fbfaf6;
+  --ink: #1a1d1a;
+  --green: #245c43;
+  --green-ink: #1c4a36;
+  --sage: #e4ede5;
+  --muted: #7c807a;
+  --rule: #dcd9cf;
+  --amber: #c07321;
+  --amber-soft: #f3e7d6;
+  --red: #9b2d2d;
+  --teal: #2e6e5e;
+  --tag-added: #245c43;
+  --tag-fixed: #2e6e5e;
+  --tag-changed: #9a6a1e;
+  --tag-security: #9b2d2d;
+  --tag-removed: #7c807a;
+  // text color painted on top of a solid green / amber fill
+  --on-green: #fff;
+  --on-amber: #fff;
+
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --disp: "Archivo", system-ui, sans-serif;
+
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.55;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  min-height: 60vh;
+
+  * {
+    box-sizing: border-box;
+  }
+
+  a {
+    color: var(--green-ink);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+// Dark palette: system preference (unless an explicit light theme is set) and an
+// explicit [data-theme="dark"] on the document root both flip the tokens.
+@mixin release-notes-dark {
+  --paper: #141714;
+  --card: #1a1e1a;
+  --ink: #ecebe1;
+  --green: #7fbf9c;
+  --green-ink: #a7d8bd;
+  --sage: #1e271f;
+  --muted: #9ba096;
+  --rule: #2a2f28;
+  --amber: #e0a15a;
+  --amber-soft: #2e2618;
+  --red: #e58b86;
+  --teal: #77bfa9;
+  --tag-added: #7fbf9c;
+  --tag-fixed: #77bfa9;
+  --tag-changed: #e0a15a;
+  --tag-security: #e58b86;
+  --tag-removed: #9ba096;
+  --on-green: #0e130f;
+  --on-amber: #1b1408;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .releaseNotesPage {
+    @include release-notes-dark;
+  }
+}
+
+:global(:root[data-theme="dark"]) .releaseNotesPage {
+  @include release-notes-dark;
+}
+
+.wrap {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.mono {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.eyebrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 0 14px;
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+}
+
+.hero {
+  padding: 44px 0 30px;
+  border-bottom: 1px solid var(--rule);
+
+  h1 {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(38px, 7vw, 60px);
+    line-height: 0.98;
+    margin: 14px 0 0;
+    letter-spacing: -0.02em;
+  }
+}
+
+.sub {
+  font-family: var(--disp);
+  font-weight: 500;
+  font-size: clamp(20px, 3.4vw, 26px);
+  color: var(--muted);
+  margin: 6px 0 0;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  max-width: 64ch;
+  color: var(--ink);
+  margin: 20px 0 0;
+  font-size: 15px;
+}
+
+.newbar {
+  display: none;
+  margin: 22px 0 0;
+  padding: 12px 16px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-soft);
+  border-radius: 0 6px 6px 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+
+  &.show {
+    display: flex;
+  }
+
+  .txt {
+    font-size: 14px;
+  }
+
+  b {
+    font-family: var(--disp);
+    font-weight: 700;
+  }
+}
+
+.act {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--green-ink);
+  border: 1px solid var(--green);
+  border-radius: 5px;
+  padding: 7px 12px;
+
+  &:hover {
+    background: var(--sage);
+  }
+}
+
+.controls {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+
+  button {
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 11px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    padding: 8px 13px;
+    border-right: 1px solid var(--rule);
+
+    &:last-child {
+      border-right: 0;
+    }
+
+    &[aria-pressed="true"] {
+      background: var(--green);
+      color: var(--on-green);
+    }
+  }
+}
+
+.chip {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  border-radius: 20px;
+  padding: 7px 13px;
+
+  &[aria-pressed="true"] {
+    border-color: var(--green);
+    color: var(--green-ink);
+    background: var(--sage);
+  }
+}
+
+.grow {
+  flex: 1;
+}
+
+.envnote {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 12px 0 0;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+.day {
+  border-bottom: 1px solid var(--rule);
+
+  &.collapsed .daysum {
+    padding: 18px 0;
+  }
+
+  &.collapsed .daybody {
+    display: none;
+  }
+
+  &:not(.collapsed) .caret {
+    transform: rotate(90deg);
+  }
+}
+
+.daysum {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  width: 100%;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 22px 0;
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.caret {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 13px;
+  width: 14px;
+  flex: none;
+  transition: transform 0.15s;
+}
+
+.dayinfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dday {
+  font-family: var(--disp);
+  font-weight: 800;
+  font-size: clamp(22px, 4vw, 30px);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.dmeta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.newtag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--on-amber);
+  background: var(--amber);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.daybody {
+  padding: 0 0 22px;
+}
+
+// one deployment entry = one repo
+.rel {
+  padding: 6px 0 10px;
+  position: relative;
+  margin-top: 14px;
+
+  &.isnew {
+    padding-left: 18px;
+
+    &::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 10px;
+      bottom: 12px;
+      width: 3px;
+      background: var(--amber);
+      border-radius: 2px;
+    }
+  }
+}
+
+.relhead {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+
+.comp {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 4px;
+  background: var(--green);
+  color: var(--on-green);
+  white-space: nowrap;
+}
+
+.ver {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.reltime {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.reason {
+  font-family: var(--sans);
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: 3px 0 0;
+  max-width: 76ch;
+
+  .k {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: 6px;
+  }
+}
+
+.changes {
+  margin-top: 12px;
+  border-top: 1px solid var(--rule);
+  padding-top: 4px;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: 82px 1fr auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 9px 2px;
+
+  & + & {
+    border-top: 1px dotted var(--rule);
+  }
+}
+
+.etag {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  justify-self: start;
+}
+
+.tAdded {
+  color: var(--tag-added);
+}
+.tFixed {
+  color: var(--tag-fixed);
+}
+.tChanged {
+  color: var(--tag-changed);
+}
+.tSecurity {
+  color: var(--tag-security);
+}
+.tRemoved {
+  color: var(--tag-removed);
+}
+
+.etitle {
+  font-size: 14px;
+}
+
+.epr {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+
+  a {
+    color: var(--green-ink);
+  }
+}
+
+.pagefooter {
+  padding: 26px 0 44px;
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--rule);
+}
+
+@media (max-width: 560px) {
+  .entry {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .epr {
+    justify-self: start;
+  }
+}
