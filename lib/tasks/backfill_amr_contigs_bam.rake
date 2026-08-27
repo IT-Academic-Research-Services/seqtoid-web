@@ -65,7 +65,7 @@ task :backfill_amr_contigs_bam, [:docker_image_id, :wdl_uri, :min_version, :max_
     end
 
   ## Create sfn input json for each workflow and dispatch job
-  sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN) || AppConfigHelper.get_app_config(AppConfig::SFN_AMR_ARN)
+  sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN)
   raise SfnArnMissingError if sfn_arn.blank?
 
   backfill_data = backfill_workflows.to_json

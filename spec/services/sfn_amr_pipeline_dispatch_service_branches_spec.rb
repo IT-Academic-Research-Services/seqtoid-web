@@ -107,26 +107,11 @@ RSpec.describe SfnAmrPipelineDispatchService, type: :service do
   end
 
   describe "initialize guards" do
-    # NOTE: AppConfig::SFN_AMR_ARN is referenced by the service but is NOT defined
-    # on AppConfig today, so the `||` fallback raises NameError before the blank
-    # check can run. stub_const supplies the missing key name (spec-side only) so
-    # the fail-closed guard itself is reachable and pinned.
-    before { stub_const("AppConfig::SFN_AMR_ARN", "sfn_amr_arn") }
-
-    it "raises SfnArnMissingError when neither SFN ARN app config is set" do
+    it "raises SfnArnMissingError when SFN_SINGLE_WDL_ARN app config is not set" do
       set_amr_version("1.3.1")
       wr = amr_run(create(:sample, project: @project, host_genome_name: "Human"))
 
       expect { described_class.call(wr) }.to raise_error(SfnAmrPipelineDispatchService::SfnArnMissingError)
-    end
-
-    it "falls back to the AMR-specific ARN when SFN_SINGLE_WDL_ARN is absent" do
-      create(:app_config, key: AppConfig::SFN_AMR_ARN, value: fake_sfn_arn)
-      set_amr_version("1.3.1")
-      wr = amr_run(create(:sample, project: @project, host_genome_name: "Human"))
-
-      expect { described_class.call(wr) }.not_to raise_error
-      expect(wr.reload.sfn_execution_arn).to eq(fake_sfn_execution_arn)
     end
 
     it "raises SfnVersionMissingError when no AMR WDL version resolves" do

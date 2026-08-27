@@ -8,7 +8,7 @@ class SfnAmrPipelineDispatchService
 
   class SfnArnMissingError < StandardError
     def initialize
-      super("SFN_SINGLE_WDL_ARN and SFN_AMR_ARN not set on App Config.")
+      super("SFN_SINGLE_WDL_ARN not set on App Config.")
     end
   end
 
@@ -23,7 +23,7 @@ class SfnAmrPipelineDispatchService
     @sample = workflow_run.sample
     @current_user = User.find(@sample.user_id)
 
-    @sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN) || AppConfigHelper.get_app_config(AppConfig::SFN_AMR_ARN)
+    @sfn_arn = AppConfigHelper.get_app_config(AppConfig::SFN_SINGLE_WDL_ARN)
     raise SfnArnMissingError if @sfn_arn.blank?
 
     # AMR uses the host filtering stage of the mNGS pipeline

@@ -14,7 +14,7 @@ class SfnBenchmarkPipelineDispatchService
 
   class SfnArnMissingError < StandardError
     def initialize
-      super("SFN_SINGLE_WDL_ARN and SFN_AMR_ARN not set on App Config.")
+      super("SFN_SINGLE_WDL_ARN not set on App Config.")
     end
   end
 
