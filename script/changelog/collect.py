@@ -177,6 +177,10 @@ def main():
     ap.add_argument("--md", action="store_true")
     a = ap.parse_args()
 
+    # Accept either a bare commit sha or a "sha-<commit>" tag (promote-to-env passes sha_tag).
+    a.new_sha = re.sub(r"^sha-", "", a.new_sha)
+    a.prev_sha = re.sub(r"^sha-", "", a.prev_sha)
+
     base = a.s3_uri.rstrip("/")
     ledger_uri = "{}/{}.json".format(base, a.env)
     ledger = s3_read_json(ledger_uri)
