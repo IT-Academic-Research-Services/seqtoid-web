@@ -65,6 +65,9 @@ interface ReleaseNotesPageProps {
   // view defaults to the public feed. The server has already filtered/stripped
   // the ledger, so this is presentation-only.
   public: boolean;
+  // The actual deployment environment (dev | staging | env-prod | ...), shown in
+  // the header/footer context label so it always reflects where you are.
+  environment?: string;
 }
 
 // ledger key: one entry per DEPLOY (one repo). day (YYYYMMDD) + zero-padded n, so
@@ -95,6 +98,7 @@ const tagClass = (type: string): string => {
 const ReleaseNotesPage = ({
   dataUrl,
   public: isPublic,
+  environment,
 }: ReleaseNotesPageProps) => {
   const [releases, setReleases] = useState<Release[]>([]);
   const [aud, setAud] = useState<"internal" | "public">(
@@ -194,7 +198,11 @@ const ReleaseNotesPage = ({
     aud === "public"
       ? "Public preview -- production, end-user view: the infra repos drop out entirely (Platform infra, Pipeline infra). Only product repos remain."
       : "Internal view -- every repo incl. infrastructure. Only signed-in testers & team see this (dev/staging).";
-  const ctxLabel = aud === "public" ? "Production -- public" : "Env-Staging";
+  // Always reflect the REAL environment (dev / env-staging / env-prod), not the audience
+  // toggle. The public production feed adds a "-- public" qualifier; the internal preview of
+  // the public feed keeps showing the real env (the audience note explains the preview).
+  const envLabel = (environment || "").toUpperCase() || (isPublic ? "PRODUCTION" : "INTERNAL");
+  const ctxLabel = isPublic ? `${envLabel} -- public` : envLabel;
 
   const renderRelease = (rel: Release) => {
     const meta = COMPONENTS[rel.component] || {
