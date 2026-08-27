@@ -872,7 +872,13 @@ class PipelineReportService
   end
 
   def flag_pathogens(species_counts:)
-    known_pathogens = PathogenList.find_by(is_global: true).fetch_list_version().fetch_pathogens_info().pluck(:tax_id)
+    # Defense-in-depth: a fresh/under-seeded env can have the global PathogenList but no
+    # PathogenListVersion, in which case fetch_list_version is nil. Degrade to "no pathogen flags"
+    # rather than 500ing the whole report (env-prod incident 2026-08-27). The real fix is seeding the
+    # list version; this keeps reports rendering if it is ever missing again.
+    list_version = PathogenList.find_by(is_global: true)&.fetch_list_version
+    known_pathogens = list_version ? list_version.fetch_pathogens_info.pluck(:tax_id) : []
+    return if known_pathogens.empty?
 
     species_counts.each do |tax_id, tax_info|
       if tax_id.in?(known_pathogens)
