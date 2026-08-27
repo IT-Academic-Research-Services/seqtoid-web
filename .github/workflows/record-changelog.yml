@@ -12,8 +12,8 @@ name: record-changelog (append a deploy to the notes ledger)
 # WHERE IT RUNS: the S3 write assumes the gha-deploy role, and an org SCP allowlists GitHub->AWS
 # federation to a fixed set of CI subs -- so this MUST be invoked from an allowlisted caller,
 # cypherid-web-infra main (see .github/workflows in that repo). A seqtoid-web-origin call cannot
-# federate. To read PR titles for a private source_repo from that cross-repo context, pass a
-# contents:read token as the `source_read_token` secret; without it, entries degrade to commit-level.
+# federate. To diff PRs for a private source_repo from that cross-repo context, pass GH App creds
+# (app_id / app_private_key secrets, minted inside this job); without them, entries record no changes.
 #
 # Entry points:
 #   - workflow_call: cypherid-web-infra's record-changelog caller invokes it after a ship / for backfill.
@@ -30,11 +30,14 @@ on:
       default_piece:  { required: false, type: string, default: "" }
       reason:         { required: false, type: string, default: "" }
     secrets:
-      # Optional PAT/app token with contents:read on source_repo, so the collector can read PR titles
-      # when this runs OUTSIDE source_repo (the SCP forces the write to run in the gha-deploy context,
-      # i.e. from cypherid-web-infra, whose github.token cannot read a private seqtoid-web). Absent ->
-      # the collector falls back to github.token and records commit-level detail only.
-      source_read_token: { required: false }
+      # Optional GH App creds (GH_ACTIONS_HELPER) with contents:read on source_repo. Minted INSIDE this
+      # job (a step output) -- a mint job in the caller can't hand the token over, GitHub strips a job
+      # output it detects as a secret ("Skip output 'token' since it may contain secret"), leaving it
+      # empty. When the SCP forces the write to run outside source_repo (the gha-deploy / cypherid-web-
+      # infra context), github.token cannot read a private seqtoid-web, so the collector needs this to
+      # diff PRs. Absent -> falls back to github.token (only works when the caller IS source_repo).
+      app_id: { required: false }
+      app_private_key: { required: false }
 
 permissions:
   id-token: write     # assume the S3-write role via OIDC
@@ -83,13 +86,25 @@ jobs:
           role-session-name: record-changelog
           aws-region: us-west-2
 
+      # Mint the source-repo read token HERE (step output) so it isn't stripped as a job output.
+      - name: Mint source-repo read token
+        id: read_token
+        # continue-on-error: when app creds are absent (forks) the action fails and token stays unset,
+        # so the collector falls back to github.token. (secrets can't be tested in a step `if`.)
+        if: steps.gate.outputs.run == 'true'
+        continue-on-error: true
+        uses: chanzuckerberg/github-app-token@365b1f2db827eb8f17288ec335b1a7e3c03ff683 # v1.1.4
+        with:
+          app_id: ${{ secrets.app_id }}
+          private_key: ${{ secrets.app_private_key }}
+
       - name: Append deploy to the ledger
         if: steps.gate.outputs.run == 'true'
         continue-on-error: true
         env:
-          # Prefer an explicit source-repo read token (set when running cross-repo under gha-deploy);
-          # fall back to the caller's github.token (only reads PRs when the caller IS source_repo).
-          GH_TOKEN: ${{ secrets.source_read_token || github.token }}
+          # The app token (contents:read on source_repo) when running cross-repo under gha-deploy;
+          # else github.token (only reads PRs when the caller IS source_repo).
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
         run: |
           base64 -d > "$RUNNER_TEMP/collect.py" <<'B64EOF'
           IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJSZWxlYXNlLW5vdGVzIGNvbGxlY3RvciAoT3B0aW9uIEEpIC0tIHBlci1kZXBsb3ks
