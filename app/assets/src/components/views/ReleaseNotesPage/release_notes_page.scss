@@ -53,8 +53,10 @@
   }
 }
 
-// Dark palette: system preference (unless an explicit light theme is set) and an
-// explicit [data-theme="dark"] on the document root both flip the tokens.
+// Dark palette: this page defaults to its warm-paper LIGHT look and does NOT follow
+// the OS `prefers-color-scheme` (the rest of the app is light, and the standalone
+// prototype this was ported from reads as a light document). Dark applies ONLY when
+// the document root explicitly opts in via [data-theme="dark"].
 @mixin release-notes-dark {
   --paper: #141714;
   --card: #1a1e1a;
@@ -77,12 +79,9 @@
   --on-amber: #1b1408;
 }
 
-@media (prefers-color-scheme: dark) {
-  :global(:root:not([data-theme="light"])) .releaseNotesPage {
-    @include release-notes-dark;
-  }
-}
-
+// Light by default -- intentionally NO `@media (prefers-color-scheme: dark)` flip,
+// so the warm-paper look is what every visitor sees regardless of OS setting. Dark
+// is opt-in only, via an explicit [data-theme="dark"] on the document root.
 :global(:root[data-theme="dark"]) .releaseNotesPage {
   @include release-notes-dark;
 }
