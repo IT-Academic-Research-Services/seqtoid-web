@@ -55,11 +55,15 @@ jobs:
         id: gate
         continue-on-error: true
         run: |
-          # Enabled env -> AWS account id. Add an env here once its release-notes bucket + writer role are
-          # applied (ssot state-foundation): bucket seqtoid-<env>-release-notes, role
-          # writer = the gha-deploy role (SCP-allowlisted; granted this bucket in ssot foundation main.tf).
+          # Enabled env -> (account, writer role). The writer is whichever role in that env already
+          # federates the cypherid-web-infra main caller and holds write on seqtoid-<env>-release-notes:
+          #   staging: seqtoid-staging-gha-deploy (ssot foundation grants the bucket; SCP-allowlisted).
+          #   dev:     czid-dev-gh-actions-executor (legacy czid-dev; bucket + grant in cypherid-web-infra
+          #            dev TF release-notes-bucket.tf). Dev has no SCP, so the executor sub is admitted.
+          # Add an env here once its bucket + writer grant exist.
           case "${{ inputs.env_name }}" in
-            staging) ACCT=030998640247 ;;
+            staging) ACCT=030998640247; ROLE=seqtoid-staging-gha-deploy ;;
+            dev)     ACCT=491013321714; ROLE=czid-dev-gh-actions-executor ;;
             *)
               echo "release-notes not enabled for ${{ inputs.env_name }} -- skipping."
               echo "run=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
@@ -67,7 +71,7 @@ jobs:
           {
             echo "run=true"
             echo "s3_uri=s3://seqtoid-${{ inputs.env_name }}-release-notes/release-notes"
-            echo "role_arn=arn:aws:iam::${ACCT}:role/seqtoid-${{ inputs.env_name }}-gha-deploy"
+            echo "role_arn=arn:aws:iam::${ACCT}:role/${ROLE}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS (ledger S3 write)
