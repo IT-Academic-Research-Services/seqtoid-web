@@ -87,24 +87,30 @@ def classify(title, default_piece):
 def prs_between(repo, prev_sha, new_sha, default_piece):
     if not prev_sha:
         return []
+    # The compare API returns each commit's message; squash-merged PRs have the subject
+    # "PR title (#NNN)". Parse title + number straight from the subject line, so this needs only
+    # contents:read (which the record token has) -- NOT pull_requests:read. `gh pr view` used to be
+    # required for titles and silently produced 0 changes wherever that scope was missing.
     raw = sh(["gh", "api", "repos/{}/compare/{}...{}".format(repo, prev_sha, new_sha),
-              "--jq", ".commits[].commit.message"])
-    nums = sorted({int(n) for n in re.findall(r"\(#(\d+)\)", raw)})
+              "--jq", ".commits[].commit.message | split(\"\\n\")[0]"])
     out = []
-    for n in nums:
-        j = sh(["gh", "pr", "view", str(n), "--repo", repo,
-                "--json", "number,title,url,mergedAt",
-                "--jq", "{n:.number,t:.title,u:.url,m:.mergedAt}"])
-        if not j:
+    seen = set()
+    for subject in raw.splitlines():
+        m = re.search(r"^(.*?)\s*\(#(\d+)\)\s*$", subject.strip())
+        if not m:
+            continue  # merge/rollup commits and non-PR commits carry no "(#NNN)" suffix
+        title, num = m.group(1).strip(), int(m.group(2))
+        if not title or num in seen:
             continue
-        d = json.loads(j)
+        seen.add(num)
         out.append({
-            "piece": classify(d["t"], default_piece),
-            "type": change_type(d["t"]),
-            "title": d["t"], "pr": d["n"], "url": d["u"],
-            "merged_at": (d["m"] or "")[:10],
+            "piece": classify(title, default_piece),
+            "type": change_type(title),
+            "title": title, "pr": num,
+            "url": "https://github.com/{}/pull/{}".format(repo, num),
+            "merged_at": "",
         })
-    return out
+    return sorted(out, key=lambda c: c["pr"])
 
 
 def s3_read_json(uri):
