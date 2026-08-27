@@ -11,9 +11,11 @@ class VersionRetrievalService
   def initialize(project_id, workflow, user_specified_prefix = nil)
     @project_id = project_id
     @workflow = workflow
-    @existing_version_prefix = ProjectWorkflowVersion.find_by(project_id: project_id, workflow: workflow)&.version_prefix
+    # strip: a stray leading/trailing space in a pinned prefix (e.g. "2024-02-06 ") survives MySQL's
+    # padded `=` comparison but breaks the LIKE '<prefix>%' lookup, 500ing every report in that project.
+    @existing_version_prefix = ProjectWorkflowVersion.find_by(project_id: project_id, workflow: workflow)&.version_prefix&.strip
     # user_specified_prefix can be any MAJOR number (8), MAJOR.PATCH number (8.1), or MAJOR.PATCH.MINOR number (8.1.2)
-    @user_specified_prefix = user_specified_prefix
+    @user_specified_prefix = user_specified_prefix&.strip
   end
 
   def call
