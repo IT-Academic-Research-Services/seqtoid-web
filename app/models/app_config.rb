@@ -168,6 +168,16 @@ class AppConfig < ApplicationRecord
   # email is accepted -- so this ships DARK and is opt-in per deployment (UCSF go-live sets the list).
   # An ENV var ALLOWED_EMAIL_DOMAINS (comma-separated) is used as a fallback when this key is unset.
   ALLOWED_EMAIL_DOMAINS = "allowed_email_domains".freeze
+  # CZID-520 -- when this is "1", the EnforceDataRetention job actually deletes expired sample data
+  # (routing through the vetted soft-delete -> HardDeleteObjects path). When unset/"0" the job runs in
+  # DRY-RUN mode: it logs what it WOULD delete but deletes nothing. Ships OFF so retention enforcement
+  # is opt-in per deployment and never fires by accident.
+  ENABLE_DATA_RETENTION_ENFORCEMENT = "enable_data_retention_enforcement".freeze
+  # CZID-520 -- the retention window in days. Sample runs/outputs older than this are considered expired.
+  # Stored as a plain integer string, e.g. "90". When unset the job uses EnforceDataRetention::DEFAULT_
+  # RETENTION_DAYS. A configured value below EnforceDataRetention::MIN_RETENTION_DAYS is rejected (the job
+  # aborts without deleting) so a fat-fingered small window cannot wipe recent data.
+  DATA_RETENTION_DAYS = "data_retention_days".freeze
 
   after_save :clear_cached_record
 

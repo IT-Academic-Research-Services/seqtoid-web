@@ -27,6 +27,10 @@ export const Footer = () => {
               Terms
             </a>
             <span>|</span>
+            <a href="/releases" aria-label="View the SeqtoID release notes">
+              Release Notes
+            </a>
+            <span>|</span>
             <ExternalLink
               unstyled
               href={CONTACT_US_LINK}

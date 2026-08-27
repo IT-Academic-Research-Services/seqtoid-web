@@ -65,6 +65,14 @@ const UserMenuDropDown = ({
 
     userDropdownItems.push(
       <BareDropdown.Item
+        key="whats_new"
+        text={
+          <a className={cs.option} href="/releases">
+            What&apos;s New
+          </a>
+        }
+      />,
+      <BareDropdown.Item
         key="help"
         text={
           <ExternalLink
