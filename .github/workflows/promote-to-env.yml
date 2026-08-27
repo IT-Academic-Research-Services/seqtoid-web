@@ -233,21 +233,8 @@ jobs:
           gh pr merge --auto --squash "$BRANCH" \
             || echo "::warning::could not enable auto-merge for $BRANCH; merge it manually to advance ${ENV_NAME}"
 
-  # Best-effort release-notes recording. Fires after a successful advance and records THIS web deploy
-  # into the env's changelog ledger (the /releases page reads it). Fully non-blocking: the collector
-  # self-gates to a no-op until the ledger vars (CHANGELOG_S3_URI / CHANGELOG_S3_ROLE) are provisioned,
-  # and every step there is continue-on-error, so it can never fail or delay a promotion.
-  record-changelog:
-    name: Record web release notes (${{ inputs.env_name }})
-    needs: advance
-    if: ${{ always() && needs.advance.result == 'success' }}
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/record-changelog.yml
-    with:
-      env_name: ${{ inputs.env_name }}
-      component: web
-      source_repo: ${{ github.repository }}
-      new_sha: ${{ inputs.sha_tag }}
-      reason: ${{ inputs.deployment_reason }}
+  # NOTE: release-notes recording is NOT done here. An org SCP allowlists GitHub->AWS federation to a
+  # fixed set of CI subs and seqtoid-web is not one, so a seqtoid-web-origin job cannot assume the ledger
+  # writer role. The web deploy's changelog entry is recorded from cypherid-web-infra (an allowlisted
+  # caller, gha-deploy sub) when this promotion's pin PR merges to its main -- see the record-changelog
+  # workflow in cypherid-web-infra, which calls seqtoid-web's reusable record-changelog.yml@main.
