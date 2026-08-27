@@ -4,47 +4,23 @@ name: record-changelog (append a deploy to the notes ledger)
 # release entry (what changed in THAT repo since its previous deploy, grouped by day) into the per-env
 # S3 ledger the in-app /releases page reads at runtime. Non-blocking by design: it never gates a deploy.
 #
-# The collector script is EMBEDDED below (base64) rather than checked out, so a cross-repo caller needs
-# no seqtoid-web read token -- only that seqtoid-web's Actions "Access" allows org repos to call this
-# reusable workflow. Keep the embedded blob in sync with script/changelog/collect.py (the canonical,
-# lint-tested source): regenerate with `base64 script/changelog/collect.py`.
+# The collector script is EMBEDDED below (base64) rather than checked out, so a caller needs no
+# seqtoid-web read token to RUN it -- only that seqtoid-web's Actions "Access" allows org repos to call
+# this reusable workflow. Keep the embedded blob in sync with script/changelog/collect.py (the
+# canonical, lint-tested source): regenerate with `base64 script/changelog/collect.py`.
+#
+# WHERE IT RUNS: the S3 write assumes the gha-deploy role, and an org SCP allowlists GitHub->AWS
+# federation to a fixed set of CI subs -- so this MUST be invoked from an allowlisted caller,
+# cypherid-web-infra main (see .github/workflows in that repo). A seqtoid-web-origin call cannot
+# federate. To read PR titles for a private source_repo from that cross-repo context, pass a
+# contents:read token as the `source_read_token` secret; without it, entries degrade to commit-level.
 #
 # Entry points:
-#   - workflow_dispatch: run/backfill by hand.
-#   - workflow_call: any repo's deploy pipeline invokes it after a successful ship, passing its own
-#     component + repo (uses: IT-Academic-Research-Services/seqtoid-web/.github/workflows/record-changelog.yml@main).
+#   - workflow_call: cypherid-web-infra's record-changelog caller invokes it after a ship / for backfill.
 
 on:
-  workflow_dispatch:
-    inputs:
-      env_name:
-        description: Environment shipped to (dev | staging | prod).
-        required: true
-        type: choice
-        options: [dev, staging, prod]
-      component:
-        description: Deploy source (web | swipe | pipelines | reference | cli | ssot | workflow-infra).
-        required: true
-        type: string
-      source_repo:
-        description: OWNER/REPO to diff for PRs (defaults to seqtoid-web).
-        required: false
-        type: string
-        default: IT-Academic-Research-Services/seqtoid-web
-      new_sha:
-        description: The shipped commit sha (7-8 hex, or a "sha-<commit>" tag).
-        required: true
-        type: string
-      default_piece:
-        description: Force all this deploy's changes to one piece (single-purpose repos).
-        required: false
-        type: string
-        default: ""
-      reason:
-        description: Deployment reason (freeze, hotfix, issue id, ...).
-        required: false
-        type: string
-        default: ""
+  # workflow_call ONLY. Dispatch/backfill lives in cypherid-web-infra (an SCP-allowlisted caller);
+  # a seqtoid-web-origin dispatch cannot federate to write S3, so it is not offered here.
   workflow_call:
     inputs:
       env_name:       { required: true,  type: string }
@@ -53,6 +29,12 @@ on:
       new_sha:        { required: true,  type: string }
       default_piece:  { required: false, type: string, default: "" }
       reason:         { required: false, type: string, default: "" }
+    secrets:
+      # Optional PAT/app token with contents:read on source_repo, so the collector can read PR titles
+      # when this runs OUTSIDE source_repo (the SCP forces the write to run in the gha-deploy context,
+      # i.e. from cypherid-web-infra, whose github.token cannot read a private seqtoid-web). Absent ->
+      # the collector falls back to github.token and records commit-level detail only.
+      source_read_token: { required: false }
 
 permissions:
   id-token: write     # assume the S3-write role via OIDC
@@ -64,16 +46,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Every step is continue-on-error: recording release notes is best-effort and must NEVER fail a
-      # deploy that already succeeded. There is NO GitHub environment or per-repo variable -- the ledger
-      # bucket + writer role are DERIVED from env_name below, so a cross-repo caller needs zero setup and
-      # the OIDC role is trusted by job_workflow_ref (ssot changelog_writer_role.tf), not by env/sub.
+      # deploy that already succeeded. The ledger bucket + writer role are DERIVED from env_name below.
+      # The writer role is gha-deploy (ssot foundation main.tf grants it this bucket): an org SCP
+      # allowlists GitHub->AWS federation to a fixed set of CI subs, so this MUST be invoked from an
+      # allowlisted caller -- cypherid-web-infra main (gha-deploy's sub). A seqtoid-web-origin call
+      # cannot federate and will no-op the S3 write.
       - name: Resolve ledger target (enabled envs only)
         id: gate
         continue-on-error: true
         run: |
           # Enabled env -> AWS account id. Add an env here once its release-notes bucket + writer role are
           # applied (ssot state-foundation): bucket seqtoid-<env>-release-notes, role
-          # seqtoid-<env>-changelog-writer. Any unlisted env no-ops.
+          # writer = the gha-deploy role (SCP-allowlisted; granted this bucket in ssot foundation main.tf).
           case "${{ inputs.env_name }}" in
             staging) ACCT=030998640247 ;;
             *)
@@ -83,7 +67,7 @@ jobs:
           {
             echo "run=true"
             echo "s3_uri=s3://seqtoid-${{ inputs.env_name }}-release-notes/release-notes"
-            echo "role_arn=arn:aws:iam::${ACCT}:role/seqtoid-${{ inputs.env_name }}-changelog-writer"
+            echo "role_arn=arn:aws:iam::${ACCT}:role/seqtoid-${{ inputs.env_name }}-gha-deploy"
           } >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS (ledger S3 write)
@@ -99,7 +83,9 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}   # read PRs from the source repo
+          # Prefer an explicit source-repo read token (set when running cross-repo under gha-deploy);
+          # fall back to the caller's github.token (only reads PRs when the caller IS source_repo).
+          GH_TOKEN: ${{ secrets.source_read_token || github.token }}
         run: |
           base64 -d > "$RUNNER_TEMP/collect.py" <<'B64EOF'
           IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJSZWxlYXNlLW5vdGVzIGNvbGxlY3RvciAoT3B0aW9uIEEpIC0tIHBlci1kZXBsb3ks
