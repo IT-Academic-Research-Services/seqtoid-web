@@ -80,9 +80,11 @@ jobs:
               echo "release-notes not enabled for ${{ inputs.env_name }} -- skipping."
               echo "run=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
           esac
-          echo "run=true" >> "$GITHUB_OUTPUT"
-          echo "s3_uri=s3://seqtoid-${{ inputs.env_name }}-release-notes/release-notes" >> "$GITHUB_OUTPUT"
-          echo "role_arn=arn:aws:iam::${ACCT}:role/seqtoid-${{ inputs.env_name }}-changelog-writer" >> "$GITHUB_OUTPUT"
+          {
+            echo "run=true"
+            echo "s3_uri=s3://seqtoid-${{ inputs.env_name }}-release-notes/release-notes"
+            echo "role_arn=arn:aws:iam::${ACCT}:role/seqtoid-${{ inputs.env_name }}-changelog-writer"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS (ledger S3 write)
         if: steps.gate.outputs.run == 'true'
