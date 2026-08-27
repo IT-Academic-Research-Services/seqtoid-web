@@ -119,10 +119,16 @@ class SupportController < ApplicationController
   # env vars or object are missing or the payload is malformed, so the page renders
   # an empty state rather than 500ing.
   def fetch_release_notes_records
-    base = ENV["CHANGELOG_S3_URI"].presence
+    stage = ENV["ENVIRONMENT"].presence || Rails.env.to_s
+    # CHANGELOG_S3_URI is an optional OVERRIDE. By default the ledger location is
+    # derived from the env name by convention (bucket seqtoid-<env>-release-notes,
+    # written by the record-changelog collector), so the page needs no per-env
+    # config to work. A missing bucket/object just yields [] (empty state), never
+    # an error -- see S3Util.get_s3_file below.
+    base = ENV["CHANGELOG_S3_URI"].presence ||
+           (stage.present? ? "s3://seqtoid-#{stage}-release-notes/release-notes" : nil)
     return [] if base.blank?
 
-    stage = ENV["ENVIRONMENT"].presence || Rails.env.to_s
     s3_path = "#{base.chomp('/')}/#{stage}.json"
 
     body = Rails.cache.fetch("release_notes_ledger/#{stage}", expires_in: 60.seconds, skip_nil: true) do
