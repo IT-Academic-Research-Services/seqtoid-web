@@ -8,7 +8,7 @@ import {
   getTaxaWithContigsSuggestions,
   getTaxaWithReadsSuggestions,
 } from "~/api";
-import { logError } from "~/components/utils/logUtil";
+import { isTransientNetworkError, logError } from "~/components/utils/logUtil";
 import Dropdown from "~ui/controls/dropdowns/Dropdown";
 import cs from "./taxon_hit_select.scss";
 
@@ -88,12 +88,16 @@ export class TaxonHitSelect extends React.Component<TaxonHitSelectProps> {
 
       // The suggestions endpoint can be slow and occasionally fails (e.g. a 502
       // when the request times out). Clear the loading state so the spinner does
-      // not spin forever, and log the error instead of leaving it unhandled.
-      logError({
-        message: "TaxonHitSelect: failed to load taxon suggestions",
-        exception: error instanceof Error ? error : null,
-        details: { query, hitType },
-      });
+      // not spin forever, and log the error instead of leaving it unhandled --
+      // unless it is a client connectivity blip (axios ERR_NETWORK or a canceled
+      // request), which is not an application error and must not reach Sentry (SMP-1494).
+      if (!isTransientNetworkError(error)) {
+        logError({
+          message: "TaxonHitSelect: failed to load taxon suggestions",
+          exception: error instanceof Error ? error : null,
+          details: { query, hitType },
+        });
+      }
 
       this.setState({
         isLoadingOptions: false,
