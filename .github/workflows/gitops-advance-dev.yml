@@ -178,15 +178,77 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="gitops/advance-dev-${TAG}"
-          # DEV-ONLY continuous delivery. The image already passed build + Trivy + Cosign
-          # before this workflow fired (it is chained off that success), so the tag-advance
-          # only moves the dev Git pointer. Wait for the PR's own infra checks (validate /
-          # tflint / trivy / checkov) to go green, then squash-merge. If ANY check fails,
-          # --fail-fast exits non-zero and the PR is left OPEN for a human — never force-merged.
+          REPO="$INFRA_REPO"
+          # DEV-ONLY continuous delivery. The image already passed build + Trivy + Cosign before this
+          # workflow fired (it is chained off that success), so the tag-advance only moves the dev Git
+          # pointer. Wait for the tag-advance PR's own infra checks (validate / tflint / trivy /
+          # checkov) to go green, then squash-merge.
+          #
+          # Poll the PR head commit's check-runs + combined status via the REST API, which needs ONLY
+          # checks:read + statuses:read -- both held by the CI app. The previous `gh pr checks --watch`
+          # issued a GraphQL statusCheckRollup that traverses checkSuite.workflowRun and ALSO requires
+          # actions:read, a scope the app lacks, so every auto-merge died with "Resource not accessible
+          # by integration" and left the PR for a human.
+          #
+          # Rock-solid by construction:
+          #   * any REAL check FAILURE -> leave the PR OPEN, never force-merge (fail-safe);
+          #   * skipped/neutral checks are not failures and never block;
+          #   * a combined-status "pending" with zero classic statuses (GitHub's default) does NOT hang;
+          #   * transient GitHub API blips are retried, never failing the rollout on a hiccup;
+          #   * the PR lookup and the final merge are retried;
+          #   * a hard 20m cap prevents a genuinely stuck check from hanging the job.
           # Staging/prod are NOT auto-advanced (that stays a separate, gated path).
-          sleep 30  # give the PR's checks time to register before watching
-          gh pr checks "$BRANCH" --repo "$INFRA_REPO" --watch --fail-fast --interval 20
-          gh pr merge "$BRANCH" --repo "$INFRA_REPO" --squash --delete-branch
+          FAIL='.conclusion=="failure" or .conclusion=="timed_out" or .conclusion=="cancelled" or .conclusion=="action_required" or .conclusion=="startup_failure" or .conclusion=="stale"'
+          DEADLINE=$(( $(date +%s) + 1200 ))
+          past_deadline() { [ "$(date +%s)" -ge "${DEADLINE}" ]; }
+
+          # Resolve the PR head sha (retry: the PR was opened moments ago in the previous step).
+          PR_NUM=""; HEAD_SHA=""
+          for _ in $(seq 1 8); do
+            if read -r PR_NUM HEAD_SHA < <(gh pr view "$BRANCH" --repo "$REPO" \
+                 --json number,headRefOid --jq '"\(.number) \(.headRefOid)"' 2>/dev/null) \
+               && [ -n "${HEAD_SHA:-}" ]; then break; fi
+            sleep 5
+          done
+          [ -n "${HEAD_SHA:-}" ] || { echo "::error::could not resolve tag-advance PR for ${BRANCH}."; exit 1; }
+          echo "Waiting on checks for tag-advance PR #${PR_NUM} (${HEAD_SHA:0:8}) on ${REPO}..."
+
+          while :; do
+            CR="$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" 2>/dev/null || true)"
+            ST="$(gh api "repos/${REPO}/commits/${HEAD_SHA}/status" 2>/dev/null || true)"
+            # Transient API failure (empty / non-JSON) -> retry, do NOT fail the deploy.
+            if ! jq -e '.check_runs' >/dev/null 2>&1 <<<"$CR" || ! jq -e '.state' >/dev/null 2>&1 <<<"$ST"; then
+              past_deadline && { echo "::error::Timed out; checks API kept failing. Leaving PR #${PR_NUM} OPEN."; exit 1; }
+              echo "checks API blip; retrying in 20s..."; sleep 20; continue
+            fi
+            CR_TOTAL="$(jq '.check_runs | length' <<<"$CR")"
+            CR_INCOMPLETE="$(jq '[.check_runs[] | select(.status != "completed")] | length' <<<"$CR")"
+            CR_FAILED="$(jq "[.check_runs[] | select(${FAIL})] | length" <<<"$CR")"
+            ST_STATE="$(jq -r '.state' <<<"$ST")"
+            ST_COUNT="$(jq '.total_count' <<<"$ST")"
+            if [ "${CR_FAILED}" -gt 0 ] || { [ "${ST_COUNT}" -gt 0 ] && [ "${ST_STATE}" = "failure" ]; }; then
+              NAMES="$(jq -r "[.check_runs[] | select(${FAIL}) | .name] | join(\", \")" <<<"$CR")"
+              echo "::error::tag-advance PR #${PR_NUM} has failing checks: ${NAMES:-<commit status: failure>}. Leaving it OPEN; not merging."
+              exit 1
+            fi
+            if [ "${CR_TOTAL}" -gt 0 ] && [ "${CR_INCOMPLETE}" -eq 0 ] \
+               && { [ "${ST_COUNT}" -eq 0 ] || [ "${ST_STATE}" = "success" ]; }; then
+              echo "All ${CR_TOTAL} checks complete, none failing. Merging."
+              break
+            fi
+            past_deadline && { echo "::error::Timed out (20m) waiting for PR #${PR_NUM} checks. Leaving it OPEN; not merging."; exit 1; }
+            echo "checks pending (check-runs total=${CR_TOTAL} incomplete=${CR_INCOMPLETE}; status=${ST_STATE}/${ST_COUNT}); retrying in 20s..."
+            sleep 20
+          done
+
+          # Merge with a short retry (tolerate a transient mergeability/API blip). A persistent failure
+          # -- e.g. the app lacking PR-write -- exits non-zero and leaves the PR OPEN, never force-merged.
+          merged=""
+          for _ in $(seq 1 5); do
+            if gh pr merge "${PR_NUM}" --repo "$REPO" --squash --delete-branch; then merged=1; break; fi
+            echo "merge attempt failed; retrying in 15s..."; sleep 15
+          done
+          [ -n "$merged" ] || { echo "::error::could not merge PR #${PR_NUM} after retries (checks were green). Leaving it OPEN."; exit 1; }
           echo "Dev advanced to ${TAG} and merged; Argo CD will sync."
 
   # Sentry release + dev deploy tracking (CZID-552) + frontend source-map upload (SMP-1826).
