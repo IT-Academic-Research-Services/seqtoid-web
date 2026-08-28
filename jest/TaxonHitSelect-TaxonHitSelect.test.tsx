@@ -24,8 +24,10 @@ jest.mock("~/api", () => ({
 }));
 
 const mockLogError = jest.fn();
+const mockIsTransient = jest.fn(() => false);
 jest.mock("~/components/utils/logUtil", () => ({
   logError: (...args: $TSFixMe[]) => mockLogError(...args),
+  isTransientNetworkError: (...args: $TSFixMe[]) => mockIsTransient(...args),
 }));
 
 // Capture the props handed to the Dropdown so we can inspect the option list and
@@ -56,6 +58,8 @@ beforeEach(() => {
   mockGetReads.mockReset();
   mockGetContigs.mockReset();
   mockLogError.mockReset();
+  mockIsTransient.mockReset();
+  mockIsTransient.mockReturnValue(false);
 });
 
 // lodash's debounce captured the real setTimeout at import time, so fake timers
@@ -191,5 +195,21 @@ describe("TaxonHitSelect query loading", () => {
     expect(mockLogError.mock.calls[0][0].message).toContain(
       "failed to load taxon suggestions",
     );
+  });
+
+  it("does not report a transient connectivity blip to Sentry", async () => {
+    // A client-side network blip (axios ERR_NETWORK or a canceled request) is
+    // not an application error. The spinner must still clear, but the error must
+    // NOT reach logError/Sentry, matching the SMP-1494 convention.
+    mockIsTransient.mockReturnValue(true);
+    mockGetReads.mockRejectedValue(new Error("Network Error"));
+    render(<TaxonHitSelect sampleIds={new Set([1])} hitType="read" />);
+    await runFilter("blip");
+
+    expect(screen.getByTestId("dropdown").getAttribute("data-loading")).toBe(
+      "false",
+    );
+    expect(mockIsTransient).toHaveBeenCalled();
+    expect(mockLogError).not.toHaveBeenCalled();
   });
 });
