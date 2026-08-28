@@ -1044,8 +1044,11 @@ module SamplesHelper
     # select only samples with no running workflows of this type
     current_power = Power.new(current_user)
 
-    # get samples the user has access to and reject those with in-progress workflows of this type
-    updatable_sample_ids = current_power.updatable_samples.where(id: sample_ids).pluck(:id)
+    # get samples the user has access to and reject those with in-progress workflows of this type.
+    # SMP-1768: also skip soft-deleted samples (e.g. purged by data retention) -- forking an AMR
+    # run off a deleted sample would only create a dangling run that can never succeed, so they
+    # are silently dropped from the eligible set here.
+    updatable_sample_ids = current_power.updatable_samples.non_deleted.where(id: sample_ids).pluck(:id)
     sample_ids_with_in_prog_wr = WorkflowRun.where(
       sample_id: updatable_sample_ids,
       workflow: workflow,
