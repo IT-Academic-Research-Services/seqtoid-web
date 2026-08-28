@@ -88,9 +88,17 @@ export class RemoteSampleFileUpload extends React.Component<RemoteSampleFileUplo
 
       this.props.onChange(newSamples);
     } catch (e) {
-      if (e.data && e.data.status) {
-        // Use error message provided by the backend if it exists
-        this.setState({ error: e.data.status });
+      // The API layer (toApiError in api/core.ts) leaves the parsed Rails body on
+      // e.response.data, so the actionable message bulk_import returns -- `{ status: ... }`
+      // for a bad path, a missing bucket, or an access-denied that means our upload account
+      // lacks read permission on that bucket -- lives at e.response.data.status. The old check
+      // read e.data.status, which is always undefined here, so this branch never fired and
+      // EVERY failure fell through to the generic "unexpected error with status code" below
+      // (this is what showed a bare "status code: 422" for a cross-account permission gap).
+      // Read both paths so the specific backend message reaches the user.
+      const backendMessage = e?.response?.data?.status ?? e?.data?.status;
+      if (backendMessage) {
+        this.setState({ error: backendMessage });
       } else if (e.status) {
         this.setState({
           error: `Encountered an unexpected error with status code: ${e.status}`,
