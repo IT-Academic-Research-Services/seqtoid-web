@@ -35,10 +35,17 @@ export const PipelineVersionSelect = ({
   // if the pipeline never finished processing, return null
   if (!lastProcessedAt || !currentPipelineVersion) return null;
 
-  const allPipelineVersions: string[] =
+  // Some runs (e.g. a Consensus Genome run that never finished, or one run for
+  // a different taxon that lacks a version) can have a null/blank version. Drop
+  // those so they do not surface as a bogus "Pipeline vnull" dropdown option.
+  const allPipelineVersions: string[] = (
     allRuns && allRuns.length > 0 && typeof allRuns[0] === "string"
       ? (allRuns as string[])
-      : ([...new Set(allRuns?.map(run => run[versionKey]))] as string[]);
+      : ([...new Set(allRuns?.map(run => run[versionKey]))] as string[])
+  ).filter(
+    (version): version is string =>
+      typeof version === "string" && version.trim() !== "",
+  );
 
   const otherPipelineVersions = allPipelineVersions.filter(
     (otherPipelineVersion: string) =>
