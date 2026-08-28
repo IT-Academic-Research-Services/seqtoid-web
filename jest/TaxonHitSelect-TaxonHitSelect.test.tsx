@@ -23,6 +23,11 @@ jest.mock("~/api", () => ({
     mockGetContigs(...args),
 }));
 
+const mockLogError = jest.fn();
+jest.mock("~/components/utils/logUtil", () => ({
+  logError: (...args: $TSFixMe[]) => mockLogError(...args),
+}));
+
 // Capture the props handed to the Dropdown so we can inspect the option list and
 // drive onFilterChange without depending on the real (heavy) dropdown widget.
 let lastDropdownProps: $TSFixMe = null;
@@ -50,6 +55,7 @@ beforeEach(() => {
   lastDropdownProps = null;
   mockGetReads.mockReset();
   mockGetContigs.mockReset();
+  mockLogError.mockReset();
 });
 
 // lodash's debounce captured the real setTimeout at import time, so fake timers
@@ -168,5 +174,22 @@ describe("TaxonHitSelect query loading", () => {
       .map((o: $TSFixMe) => o.value);
     expect(values).toEqual([42]);
     expect(values).not.toContain(99);
+  });
+
+  it("clears the loading flag and logs when the request fails", async () => {
+    // The suggestions endpoint can 502 on a slow request. The rejection must be
+    // caught so the loading spinner is cleared instead of spinning forever, and
+    // the error is reported rather than left as an unhandled rejection.
+    mockGetReads.mockRejectedValue(new Error("502 Bad Gateway"));
+    render(<TaxonHitSelect sampleIds={new Set([1])} hitType="read" />);
+    await runFilter("slow");
+
+    expect(screen.getByTestId("dropdown").getAttribute("data-loading")).toBe(
+      "false",
+    );
+    expect(mockLogError).toHaveBeenCalledTimes(1);
+    expect(mockLogError.mock.calls[0][0].message).toContain(
+      "failed to load taxon suggestions",
+    );
   });
 });
