@@ -80,8 +80,32 @@ export const isRowHuman = (row: Row) =>
   (row["Host Organism"] && row["Host Organism"].toLowerCase() === "human") ||
   (row["Host Genome"] && row["Host Genome"].toLowerCase() === "human");
 
+// The metadata CSV export emits the header "collection_location" for the field
+// actually named "collection_location_v2" (get_csv_headers_for_metadata_fields strips the
+// "_v2" suffix on export). Every downstream location step on the client -- the batched
+// geosearch, the "Confirm Your Collection Locations" menu, and "Apply to All" -- keys off the
+// required location field's name, which is "collection_location_v2". Without aliasing the
+// snake_case header back on input, a re-uploaded or hand-written CSV that uses
+// "collection_location" would never feed those steps, so its locations stay unresolved and the
+// required Collection Location field ends up blank. Mirror the server-side alias in
+// MetadataHelper#metadata_field_matches_header? here so both sides agree.
+export const LEGACY_COLLECTION_LOCATION_HEADER = "collection_location";
+export const COLLECTION_LOCATION_HEADER = "collection_location_v2";
+
+const normalizeMetadataHeaders = (headers: string[]): string[] => {
+  // Leave the header untouched if the canonical column is already present, to avoid
+  // collapsing two distinct columns into one.
+  if (headers.includes(COLLECTION_LOCATION_HEADER)) return headers;
+  return headers.map(header =>
+    header === LEGACY_COLLECTION_LOCATION_HEADER
+      ? COLLECTION_LOCATION_HEADER
+      : header,
+  );
+};
+
 export const processCSVMetadata = (csv: CSV): MetadataPreLocationSearch => {
-  const { headers, rows } = csv;
+  const { rows } = csv;
+  const headers = normalizeMetadataHeaders(csv.headers);
   return {
     headers,
     // Remove empty values, and convert rows from array of strings to object.
