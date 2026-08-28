@@ -569,6 +569,27 @@ ActiveRecord::Base.transaction do
 
   WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"8.3.11", "workflow"=>"short-read-mngs"})
 
+  # SMP-1718 -- catalog rows for the CURRENTLY CONFIGURED defaults set as `*-version` app_configs
+  # above. This snapshot advertised amr-version=1.4.2 (and the newer consensus-genome / short-read /
+  # long-read / phylotree defaults) while the WorkflowVersion rows above were the PREVIOUS line, so a
+  # DB brought up by `db:seed` alone had a default with no catalog row. VersionRetrievalService
+  # (CZID-982) then fail-closed -- "WorkflowVersion for workflow=amr and version=1.4.2 is not in the
+  # catalog" -- 500ing project_pipeline_versions for real users (Sentry, first seen 2026-08-08).
+  # Only `seed:migrate` (ReconcileWorkflowVersionCatalog) closed this before; these rows are the same
+  # ones that reconciliation registers, so db:seed alone is now consistent. NOTE for seed
+  # regeneration: regenerate from a fully migrated DB (db:migrate:with_data + seed:migrate) so these
+  # rows are captured, or re-apply this block. The consistency assertion at the end of the seed keeps
+  # a future snapshot from silently disagreeing again.
+  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"3.5.5", "workflow"=>"consensus-genome"})
+
+  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"8.3.15", "workflow"=>"short-read-mngs"})
+
+  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"1.4.2", "workflow"=>"amr"})
+
+  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"0.7.12", "workflow"=>"long-read-mngs"})
+
+  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"6.11.0", "workflow"=>"phylotree-ng"})
+
   PathogenList.create({"creator_id"=>nil, "is_global"=>true})
 
   PathogenListVersion.create({"pathogen_list_id"=>1, "version"=>"1.0.0"})
@@ -864,6 +885,27 @@ ActiveRecord::Base.transaction do
   safe_habtm_append(Pathogen.find(5).pathogen_list_versions, PathogenListVersion.where(id: [1] - Pathogen.find(5).pathogen_list_versions.pluck(:id)))
 
   safe_habtm_append(Pathogen.find(6).pathogen_list_versions, PathogenListVersion.where(id: [1] - Pathogen.find(6).pathogen_list_versions.pluck(:id)))
+
+  # SMP-1718 -- fail-closed consistency check: every workflow default this snapshot advertises must
+  # have a matching catalog row, so a `db:seed`-only bootstrap can never again ship a default that
+  # VersionRetrievalService (CZID-982) will reject at runtime for a user. This is deliberately an
+  # ASSERTION, not a silent auto-create -- silent creation is what let the drift accumulate unseen
+  # (see ReconcileWorkflowVersionCatalog). A default is selected from a `<workflow>-version`
+  # app_config; the NCBI index default is the exception, resolved via DEFAULT_ALIGNMENT_CONFIG_NAME.
+  configured_defaults = AppConfig
+    .where(AppConfig.arel_table[:key].matches("%-version"))
+    .map { |config| [config.key.delete_suffix("-version"), config.value.to_s.strip] }
+  ncbi_default = AppConfig.find_by(key: AppConfig::DEFAULT_ALIGNMENT_CONFIG_NAME)&.value.to_s.strip
+  configured_defaults << [AlignmentConfig::NCBI_INDEX, ncbi_default] if ncbi_default.present?
+
+  uncatalogued = configured_defaults.reject do |workflow, version|
+    version.blank? || WorkflowVersion.exists?(workflow: workflow, version: version)
+  end
+  unless uncatalogued.empty?
+    raise "db/seeds.rb: workflow-version catalog is inconsistent with app_config -- no catalog row for " \
+          "#{uncatalogued.map { |workflow, version| "#{workflow}=#{version}" }.join(', ')}. " \
+          "Add the WorkflowVersion row(s) to this seed (see SMP-1718)."
+  end
 
 end
 
