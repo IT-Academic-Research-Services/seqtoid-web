@@ -42,7 +42,20 @@ Sentry.init({
   dsn: window.SENTRY_DSN_FRONTEND,
   environment: window.ENVIRONMENT,
   release: window.GIT_RELEASE_SHA,
-  beforeSend: event => (isGenerateFetchFnInfoNoise(event) ? null : event),
+  beforeSend: event => {
+    if (isGenerateFetchFnInfoNoise(event)) return null;
+    if (
+      event.level &&
+      (event.level === "log" ||
+        event.level === "info" ||
+        event.level === "debug")
+    )
+      return null;
+    return event;
+  },
+  integrations: [
+    Sentry.consoleLoggingIntegration({ levels: ["warn", "error", "assert"] }),
+  ],
 });
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function

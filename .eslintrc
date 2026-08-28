@@ -1,14 +1,16 @@
 {
   "root": true,
   "env": {
+    "jest": true,
     "browser": true,
     "node": true,
-    "es6": true,
+    "es2021": true,
     "mocha": true
   },
   "parser": "babel-eslint",
   "extends": [
     "eslint:recommended",
+    "plugin:jest/recommended",
     "plugin:react/recommended",
     "standard",
     "plugin:sonarjs/recommended",
@@ -17,7 +19,7 @@
     "prettier",
     "prettier/standard"
   ],
-  "plugins": ["react", "react-hooks", "sonarjs", "standard", "no-only-tests"],
+  "plugins": ["jest", "react", "react-hooks", "sonarjs", "standard", "no-only-tests"],
   "rules": {
     "camelcase": "warn",
     "no-console": ["error", { "allow": ["warn", "error"] }],
@@ -39,7 +41,7 @@
     "sonarjs/prefer-single-boolean-return": "off",
     "no-extra-semi": "error",
     "standard/computed-property-even-spacing": "off",
-    "react-hooks/exhaustive-deps": "warn" // For checking hook dependencies 
+    "react-hooks/exhaustive-deps": "warn" // For checking hook dependencies
   },
   "ignorePatterns": ["e2e/playwright-report", "e2e/html-reports"],
   "overrides": [
