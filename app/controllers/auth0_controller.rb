@@ -84,10 +84,10 @@ class Auth0Controller < ApplicationController
 
     user = dev_login_user
     if user.nil?
-      render(
+      return render(
         plain: "dev_login: no seeded user found. Seed a user (e.g. #{DEV_LOGIN_EMAIL}) first.",
         status: :not_found
-      ) and return
+      )
     end
 
     # Traceability (no untraceable logins): a direct dev sign-in bypasses Auth0
@@ -123,7 +123,8 @@ class Auth0Controller < ApplicationController
       LogUtil.log_error(
         "omniauth_failure called with missing error or error_description.",
         error_type: error_type,
-        error_description: error_code
+        error_description: error_code,
+        params: params.inspect
       )
     end
 
