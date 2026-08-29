@@ -94,7 +94,7 @@ export class TaxonHitSelect extends React.Component<TaxonHitSelectProps> {
       if (!isTransientNetworkError(error)) {
         logError({
           message: "TaxonHitSelect: failed to load taxon suggestions",
-          exception: error instanceof Error ? error : null,
+          exception: error,
           details: { query, hitType },
         });
       }
