@@ -1,7 +1,7 @@
 require "rails_helper"
 
 # Branch coverage for GraphqlController: the development-only error handler (both arms of the
-# `raise e unless Rails.env.development?` guard) and the un-exercised arms of prepare_variables.
+# `raise e unless Rails.env.development?` guard), GraphQL response error logging, and prepare_variables.
 RSpec.describe GraphqlController, type: :request do
   create_users
 
@@ -10,25 +10,77 @@ RSpec.describe GraphqlController, type: :request do
   end
 
   describe "error handling in #execute" do
-    before do
-      allow(IdseqSchema).to receive(:execute).and_raise(StandardError, "schema exploded")
+    context "when IdseqSchema.execute raises an exception" do
+      before do
+        allow(IdseqSchema).to receive(:execute).and_raise(StandardError, "schema exploded")
+      end
+
+      it "logs the exception to LogUtil and re-raises outside development" do
+        expect(LogUtil).to receive(:log_error).with(
+          "GraphQL execution error: schema exploded",
+          exception: an_instance_of(StandardError),
+          query: "{ __typename }",
+          variables: {},
+          operation_name: nil
+        )
+
+        expect { post "/graphql", params: { query: "{ __typename }" } }
+          .to raise_error(StandardError, "schema exploded")
+      end
+
+      it "logs the exception to LogUtil and renders JSON in development" do
+        allow(Rails.env).to receive(:development?).and_return(true)
+
+        expect(LogUtil).to receive(:log_error).with(
+          "GraphQL execution error: schema exploded",
+          exception: an_instance_of(StandardError),
+          query: "{ __typename }",
+          variables: {},
+          operation_name: nil
+        )
+
+        post "/graphql", params: { query: "{ __typename }" }
+
+        expect(response).to have_http_status(:internal_server_error)
+        json = JSON.parse(response.body)
+        expect(json["errors"].first["message"]).to eq("schema exploded")
+        expect(json["errors"].first["backtrace"]).to be_an(Array)
+        expect(json["data"]).to eq({})
+      end
     end
 
-    it "re-raises outside development so the error reaches the normal error handling" do
-      expect { post "/graphql", params: { query: "{ __typename }" } }
-        .to raise_error(StandardError, "schema exploded")
-    end
+    context "when IdseqSchema.execute returns response errors" do
+      it "logs each GraphQL error to LogUtil" do
+        result = { "data" => nil, "errors" => [{ "message" => "Sample not found", "locations" => [{ "line" => 1, "column" => 2 }] }] }
+        allow(IdseqSchema).to receive(:execute).and_return(result)
 
-    it "renders the message and backtrace as JSON in development" do
-      allow(Rails.env).to receive(:development?).and_return(true)
+        expect(LogUtil).to receive(:log_error).with(
+          "GraphQL error: Sample not found",
+          query: "query SampleQuery { sample(id: 123) { id } }",
+          variables: { "id" => "123" },
+          operation_name: "SampleQuery",
+          error: result["errors"].first
+        )
 
-      post "/graphql", params: { query: "{ __typename }" }
+        post "/graphql", params: {
+          query: "query SampleQuery { sample(id: 123) { id } }",
+          variables: { id: "123" },
+          operationName: "SampleQuery",
+        }
 
-      expect(response).to have_http_status(:internal_server_error)
-      json = JSON.parse(response.body)
-      expect(json["errors"].first["message"]).to eq("schema exploded")
-      expect(json["errors"].first["backtrace"]).to be_an(Array)
-      expect(json["data"]).to eq({})
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "does not log when there are no errors" do
+        result = { "data" => { "appConfig" => { "key" => "k" } } }
+        allow(IdseqSchema).to receive(:execute).and_return(result)
+
+        expect(LogUtil).not_to receive(:log_error)
+
+        post "/graphql", params: { query: "{ appConfig(id: 1) { key } }" }
+
+        expect(response).to have_http_status(:ok)
+      end
     end
   end
 

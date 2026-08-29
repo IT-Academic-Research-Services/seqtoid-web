@@ -154,7 +154,6 @@ class SfnPipelineDispatchService
                       diamond_db: @pipeline_run.alignment_config.diamond_db_path,
                     }, Postprocess: {
                       nt_db: @pipeline_run.alignment_config.s3_nt_db_path,
-                      accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
                       nt_loc_db: @pipeline_run.alignment_config.s3_nt_loc_db_path,
                       nr_db: @pipeline_run.alignment_config.s3_nr_db_path,
                       nr_loc_db: @pipeline_run.alignment_config.s3_nr_loc_db_path,

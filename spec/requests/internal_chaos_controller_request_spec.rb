@@ -56,7 +56,7 @@ RSpec.describe "Internal::Chaos integrity", type: :request do
       allow(TaxonomyRollbackSupport).to receive(:compute_fingerprint)
         .and_return(fp_ok.merge("checksum" => "999"))
       get "/internal/chaos/integrity", headers: auth
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       body = JSON.parse(response.body)
       expect(body["integrity_ok"]).to be(false)
       expect(body["mismatches"].first).to include("table" => "taxon_lineages")

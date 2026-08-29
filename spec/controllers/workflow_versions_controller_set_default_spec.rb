@@ -68,20 +68,20 @@ RSpec.describe WorkflowVersionsController, type: :controller do
 
         put :set_default, params: { workflow: "short-read-mngs", version: "8.3.16" }
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(JSON.parse(response.body)["error"]).to match(/not found/)
       end
 
       it "rejects an invalid version without calling the service" do
         expect(SetDefaultWorkflowVersionService).not_to receive(:call)
         put :set_default, params: { workflow: "short-read-mngs", version: "not-a-version" }
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
 
       it "rejects an invalid workflow name without calling the service" do
         expect(SetDefaultWorkflowVersionService).not_to receive(:call)
         put :set_default, params: { workflow: "Bad Name!", version: "8.3.16" }
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
   end
