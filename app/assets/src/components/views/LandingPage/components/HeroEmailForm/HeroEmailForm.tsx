@@ -1,9 +1,12 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 import { useHistory } from "react-router-dom";
 import { ANALYTICS_EVENT_NAMES, useTrackEvent } from "~/api/analytics";
 import { EMAIL_TAKEN_ERROR } from "~/api/user";
+import { UserContext } from "~/components/common/UserContext";
+import ExternalLink from "~/components/ui/controls/ExternalLink";
 import ArrowSubmit from "~/components/ui/icons/IconSubmitArrow";
+import { CONTACT_US_LINK } from "~/components/utils/documentationLinks";
 import cs from "./HeroEmailForm.scss";
 
 const HeroEmailFormMutation = graphql`
@@ -16,6 +19,10 @@ const HeroEmailFormMutation = graphql`
 
 export const HeroEmailForm = () => {
   const trackEvent = useTrackEvent();
+  const { appConfig } = useContext(UserContext);
+  // SMP-1709 -- self-service signup is disabled in the closed invite-only beta/staging/prod.
+  // Absent/undefined => disabled (fail-closed), matching the server-side default.
+  const selfServiceSignupEnabled = Boolean(appConfig?.selfServiceSignupEnabled);
   const [enteredEmail, setEnteredEmail] = useState("");
   const [commitMutation, isMutationInFlight] = useMutation(
     HeroEmailFormMutation,
@@ -58,6 +65,25 @@ export const HeroEmailForm = () => {
     } else {
       alert("Please enter a valid email address.");
     }
+  }
+
+  // SMP-1709 -- when self-service signup is disabled, do not offer the "Register Now" account-
+  // creation form. Redirect the visitor to request access (contact / manual review + Visual
+  // Compliance), matching the server-side gate on Mutations::CreateUser and /users/register.
+  if (!selfServiceSignupEnabled) {
+    return (
+      <div className={cs.heroEmailForm}>
+        <ExternalLink
+          href={CONTACT_US_LINK}
+          aria-label="Request access to a SeqtoID account"
+        >
+          Request Access
+          <span>
+            <ArrowSubmit />
+          </span>
+        </ExternalLink>
+      </div>
+    );
   }
 
   return (

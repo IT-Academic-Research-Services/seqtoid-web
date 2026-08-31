@@ -109,6 +109,66 @@ RSpec.describe SeedResource::AppConfigs do
     end
   end
 
+  # SMP-1709: self-service signup is seeded EXPLICITLY per deployment stage -- enabled ("1") only in
+  # the dev stage, disabled ("0") in every gated env (beta/staging/prod). Stage comes from
+  # ENV["ENVIRONMENT"] (default "dev"). find_or_create must never overwrite an out-of-band value.
+  describe "#self_service_signup_flag" do
+    subject(:self_service_signup_flag) { described_class.new.send(:self_service_signup_flag) }
+
+    around do |example|
+      original_environment = ENV["ENVIRONMENT"]
+      example.run
+      ENV["ENVIRONMENT"] = original_environment
+    end
+
+    context "in the dev stage" do
+      before { ENV["ENVIRONMENT"] = "dev" }
+
+      it "enables self-service signup" do
+        self_service_signup_flag
+        expect(AppConfigHelper.get_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED)).to eq("1")
+      end
+    end
+
+    context "when ENVIRONMENT is unset (local/dev parity)" do
+      before { ENV["ENVIRONMENT"] = nil }
+
+      it "defaults to the dev stage and enables signup" do
+        self_service_signup_flag
+        expect(AppConfigHelper.get_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED)).to eq("1")
+      end
+    end
+
+    %w[staging prod beta].each do |gated_stage|
+      context "in the gated #{gated_stage} stage" do
+        before { ENV["ENVIRONMENT"] = gated_stage }
+
+        it "disables self-service signup (fail-closed)" do
+          self_service_signup_flag
+          expect(AppConfigHelper.get_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED)).to eq("0")
+        end
+      end
+    end
+
+    it "NEVER overwrites a value an operator set out-of-band" do
+      ENV["ENVIRONMENT"] = "staging"
+      AppConfig.create!(key: AppConfig::SELF_SERVICE_SIGNUP_ENABLED, value: "1")
+
+      self_service_signup_flag
+
+      expect(AppConfigHelper.get_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED)).to eq("1")
+    end
+
+    it "is idempotent -- a re-seed creates no duplicate rows" do
+      ENV["ENVIRONMENT"] = "dev"
+      self_service_signup_flag
+      count_after_first = AppConfig.count
+
+      expect { self_service_signup_flag }.not_to change(AppConfig, :count)
+      expect(AppConfig.count).to eq(count_after_first)
+    end
+  end
+
   # SMP-1686: the Descartes / export-control Layer 3 gate + tuning rows must be seeded EXPLICITLY (their
   # state was previously implicit -- no row existed), but seeding must NEVER flip a gate on and a re-seed
   # must NEVER overwrite a value someone deliberately set out-of-band.

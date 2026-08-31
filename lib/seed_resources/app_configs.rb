@@ -5,15 +5,34 @@ module SeedResource
   class AppConfigs < Base
     CURRENT_ALIGNMENT_CONFIG_NAME = "2024-02-06".freeze
 
+    # SMP-1709 -- deployment stages where self-service signup is left ENABLED. Everything else
+    # (beta/staging/prod, and any unrecognised stage) is seeded OFF, so signup is fail-closed by
+    # default and only the dev stage can self-register.
+    SELF_SERVICE_SIGNUP_STAGES = %w[dev].freeze
+
     def seed
       launched_features
       workflow_versions
       sfn_configs
       alignment_config
       export_control_flags
+      self_service_signup_flag
     end
 
     private
+
+    # SMP-1709 -- seed the self-service-signup gate EXPLICITLY per deployment stage so its state is
+    # never implicit: "1" (enabled) in the dev stage, "0" (disabled) in every gated env
+    # (beta/staging/prod). Stage is derived from ENV["ENVIRONMENT"] (the same var sfn_configs uses),
+    # defaulting to "dev" so local/dev seeding keeps signup on. find_or_create matches on `key` and
+    # never overwrites, so a value an operator set out-of-band (e.g. temporarily enabling signup in
+    # a gated env) survives a re-seed. The app default is ALSO fail-closed (absent => disabled), so
+    # even an unseeded env has signup off.
+    def self_service_signup_flag
+      stage = ENV["ENVIRONMENT"].presence || "dev"
+      enabled = SELF_SERVICE_SIGNUP_STAGES.include?(stage)
+      find_or_create(:app_config, key: AppConfig::SELF_SERVICE_SIGNUP_ENABLED, value: enabled ? "1" : "0")
+    end
 
     # SMP-1686 -- seed the Descartes / export-control Layer 3 gate + tuning rows so their operational
     # state is EXPLICIT in every environment (previously no app_configs row existed for any of them; the

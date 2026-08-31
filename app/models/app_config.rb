@@ -155,6 +155,16 @@ class AppConfig < ApplicationRecord
   PIPELINE_REPORT_SERVICE_USE_DECIMAL_TYPE_COLUMNS = "pipeline_report_service_use_decimal_type_columns".freeze
   # When this is "1", automatic account creation will be enabled.
   AUTO_ACCOUNT_CREATION_V1 = "auto_account_creation_v1".freeze
+  # SMP-1709 -- when this is "1", self-service signup (a logged-out visitor creating their own
+  # account from the landing page's "Register Now" form -> Mutations::CreateUser, and the
+  # /users/register confirmation page) is ENABLED. When "0"/unset it is DISABLED: the closed,
+  # invite-only beta provisions users (admin-created / project-shared / VC-screened), so nobody
+  # can self-register. Defaults OFF (fail-closed) so any environment WITHOUT an explicit row --
+  # beta/staging/prod -- disables signup; the seed (SeedResource::AppConfigs) only sets it "1" in
+  # the dev stage. This is INDEPENDENT of AUTO_ACCOUNT_CREATION_V1 (which also governs the profile
+  # form and self-service profile updates); this flag gates ONLY the self-service signup entry
+  # points and NEVER the admin / invite / provisioned-user paths.
+  SELF_SERVICE_SIGNUP_ENABLED = "self_service_signup_enabled".freeze
   # When this is "0", old unclaimed accounts will be logged in Sentry, but not deleted. (Monitor mode.)
   # When this is "1", old unclaimed accounts will be deleted. (Deletion mode.)
   ENABLE_DELETE_UNCLAIMED_USER_ACCOUNTS = "auto_delete_unclaimed_accounts".freeze
