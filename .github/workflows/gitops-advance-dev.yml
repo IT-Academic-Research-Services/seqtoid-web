@@ -258,11 +258,12 @@ jobs:
   # records a dev deploy, and uploads the frontend source maps EXTRACTED FROM THE BUILT IMAGE
   # so Sentry can symbolicate minified frames (e.g. vendors.bundle.min.js:205) back to source.
   #
-  # DEV-ONLY: this workflow only fires for main builds and hard-codes -e dev + the DEV frontend
-  # project. PR previews are pull_request builds and never reach this job (the main-only `if`),
-  # so they are excluded by construction -- no per-preview guard needed. When staging/prod are
-  # un-held, mirror this with their own gated deploy env + their own SENTRY_PROJECT -- do NOT
-  # broaden this job to those envs here.
+  # DEV-ONLY: this workflow only fires for main builds and hard-codes -e dev. It reads the DEV
+  # frontend project from the dev-scoped vars.SENTRY_PROJECT (the job's `environment: dev` above).
+  # PR previews are pull_request builds and never reach this job (the main-only `if`), so they are
+  # excluded by construction -- no per-preview guard needed. staging/prod uploads are mirrored in
+  # promote-to-env.yml (their own gated tiers + their own env-scoped SENTRY_PROJECT), SMP-1855 -- do
+  # NOT broaden this job to those envs here.
   #
   # Isolated from `advance`: separate job, no needs/dependency, so a Sentry API hiccup or an
   # unprovisioned secret can NEVER block the dev rollout. The source-map upload additionally
@@ -273,6 +274,12 @@ jobs:
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
+    # SMP-1855: bind this job to the dev GitHub Environment so vars.SENTRY_PROJECT resolves to the
+    # environment-scoped value (the dev frontend project) rather than the repo-level default. Staging
+    # and prod uploads run from promote-to-env.yml, which is already environment-scoped per tier, and
+    # each reads its OWN vars.SENTRY_PROJECT -- so all three tiers upload to the correct project with
+    # no per-env workflow branching. dev has no protection rules, so this bind is a no-op on gating.
+    environment: dev
     permissions:
       contents: read
       id-token: write # OIDC assume-role to pull the built image from ECR (SMP-1826)
@@ -282,9 +289,10 @@ jobs:
       #   SENTRY_AUTH_TOKEN (secret) -- MUST carry `project:releases` AND `org:read`. The
       #     sourcemap upload needs both; a release-creation-only token creates the release
       #     fine and then 403s on `sourcemaps upload`. (release creation alone = project:releases)
-      #   SENTRY_ORG     (var) = ucsf-rm
-      #   SENTRY_PROJECT (var) = dev-reactjs-project  -- the DEV FRONTEND project (maps are a
-      #     frontend artifact; NOT the rails/backend project).
+      #   SENTRY_ORG     (var) = ucsf-rm  -- one org; stays repo-level.
+      #   SENTRY_PROJECT (var) -- the DEV FRONTEND project (maps are a frontend artifact; NOT the
+      #     rails/backend project). SMP-1855 made this ENVIRONMENT-scoped: set it on the `dev` GitHub
+      #     Environment (dev-reactjs-project). The `environment: dev` on this job resolves it here.
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ vars.SENTRY_ORG }}
       SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
