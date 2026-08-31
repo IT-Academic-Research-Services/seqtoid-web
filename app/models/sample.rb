@@ -34,6 +34,18 @@ class Sample < ApplicationRecord
   has_and_belongs_to_many :visualizations
   has_many :workflow_runs, dependent: :destroy
 
+  # SMP-1768 -- raised when a caller tries to start (fork/re-run) a workflow run for a
+  # sample that has already been soft-deleted. A forked run (e.g. AMR or a consensus
+  # genome kicked off from an existing mNGS run) depends on this sample's inputs and
+  # prior results; once the sample has been deleted -- for instance by data-retention
+  # enforcement -- those are gone and the run could never succeed. Refusing here keeps
+  # us from creating dangling workflow_run rows that are permanently stuck.
+  class SampleDeletedError < StandardError
+    def initialize(sample_id)
+      super("Cannot start a new workflow run for sample #{sample_id} because it has been deleted.")
+    end
+  end
+
   STATUS_CREATED = 'created'.freeze
   STATUS_UPLOADED = 'uploaded'.freeze
   STATUS_RERUN    = 'need_rerun'.freeze
@@ -713,6 +725,12 @@ class Sample < ApplicationRecord
   end
 
   def create_and_dispatch_workflow_run(workflow, user_id, rerun_from: nil, inputs_json: nil)
+    # SMP-1768 -- guard the fork/re-run entrypoint. All forked workflow runs (bulk AMR,
+    # single AMR, consensus genome) and re-runs funnel through here, so refusing a deleted
+    # sample in one place prevents dangling forked rows regardless of the caller (REST
+    # controller or the KickoffWGSWorkflow GraphQL mutation) or a stale client.
+    raise SampleDeletedError, id if deleted_at.present?
+
     workflow_run = WorkflowRun.create(sample: self, workflow: workflow, user_id: user_id, rerun_from: rerun_from, inputs_json: inputs_json)
     workflow_run.dispatch
     workflow_run
