@@ -219,7 +219,79 @@ RSpec.describe TopTaxonsElasticsearchService do
 
     it "returns the heatmap dict once the freshly-indexed docs are searchable" do
       allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([101])
-      dict = [{ sample_id: 1, taxons: [{ "tax_id" => 5 }] }]
+      # Run 101 maps to sample 201 (see get_latest_pipeline_runs_for_samples stub); the enqueued run's
+      # sample now carries taxa, so the abundance is searchable and the dict is served.
+      dict = [{ sample_id: 201, taxons: [{ "tax_id" => 5 }] }]
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+
+      expect(service.generate).to eq(dict)
+    end
+  end
+
+  # SMP-1887: after a re-login, opening a heatmap for freshly CLI-uploaded data showed missing abundance
+  # for most samples on the first render (a manual reload fixed it). The cause was server-side: when only
+  # SOME requested runs were cold, the query returned a PARTIAL dict -- taxa for the already-indexed
+  # samples, nothing for the freshly-enqueued ones -- and the old all-empty guard served it as final
+  # instead of signalling "indexing". The service must keep polling until every enqueued run is searchable.
+  describe "#generate partial-indexing preparing-state (SMP-1887)" do
+    let(:sample_a) { instance_double("Sample") }
+    let(:sample_b) { instance_double("Sample") }
+    let(:service) do
+      TopTaxonsElasticsearchService.new(
+        params: ActionController::Parameters.new({}),
+        samples_for_heatmap: [sample_a, sample_b],
+        background_for_heatmap: 26
+      )
+    end
+
+    before do
+      # Two runs -> two samples; run 101 is already indexed, run 102 was cold and just enqueued.
+      allow(HeatmapHelper).to receive(:get_latest_pipeline_runs_for_samples)
+        .and_return(101 => 201, 102 => 202)
+      allow(ElasticsearchQueryHelper).to receive(:update_last_read_at)
+      allow(service).to receive(:fetch_top_taxons).and_return({})
+    end
+
+    it "returns the indexing preparing-state when an enqueued run is missing abundance (absent entry)" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
+      # Only the already-indexed sample (201) came back with taxa; the freshly-enqueued run 102's sample
+      # (202) is absent from the partial result.
+      dict = [{ sample_id: 201, taxons: [{ "tax_id" => 5 }] }]
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+
+      expect(service.generate).to eq(status: "indexing")
+    end
+
+    it "returns the indexing preparing-state when an enqueued run's entry has an empty taxons list" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
+      # Sample 202 present but with no taxa yet (metadata-only entry); still not searchable.
+      dict = [
+        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
+        { sample_id: 202, taxons: [] },
+      ]
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+
+      expect(service.generate).to eq(status: "indexing")
+    end
+
+    it "serves the full dict once every enqueued run has searchable abundance" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
+      dict = [
+        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
+        { sample_id: 202, taxons: [{ "tax_id" => 9 }] },
+      ]
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+
+      expect(service.generate).to eq(dict)
+    end
+
+    it "serves the partial dict when nothing needed indexing (no cold runs to wait on)" do
+      # A sample legitimately having no taxa must NOT be mistaken for indexing when no run was enqueued.
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([])
+      dict = [
+        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
+        { sample_id: 202, taxons: [] },
+      ]
       allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
 
       expect(service.generate).to eq(dict)

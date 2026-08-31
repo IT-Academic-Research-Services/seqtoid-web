@@ -74,23 +74,38 @@ class TopTaxonsElasticsearchService
       @should_remove_zscore
     )
 
-    # If we had to (re)index runs this request and the query still returned no taxa, the just-written
-    # docs are almost certainly not searchable yet (ES index refresh lag), not truly absent -- e.g.
-    # the first heatmap view after new data or an ES domain rebuild. Signal "indexing" so the client
-    # shows a preparing state and retries, instead of a misleading empty heatmap. (SMP-1795)
-    return { status: "indexing" } if indexed_run_ids.present? && heatmap_dict_empty?(dict)
+    # If we had to (re)index runs this request, the just-written docs for those specific runs are almost
+    # certainly not searchable yet (ES index refresh lag), not truly absent -- e.g. the first heatmap view
+    # after new data (CLI upload) or an ES domain rebuild. When only SOME of the requested runs are cold,
+    # the query returns a PARTIAL dict: abundance for the already-indexed samples, but the freshly-enqueued
+    # ones come back with no taxa. Serving that partial dict paints a heatmap missing most samples until a
+    # manual reload (SMP-1887). So signal "indexing" whenever any freshly-enqueued run is still missing its
+    # abundance in the result -- not only when the WHOLE dict is empty -- and let the client keep polling
+    # until every enqueued run is searchable. (SMP-1795; SMP-1887)
+    if indexed_run_ids.present? && missing_abundance_for_runs?(dict, indexed_run_ids, pr_id_to_sample_id)
+      return { status: "indexing" }
+    end
 
     return dict
   end
 
-  # The ES heatmap dict is an array of per-sample entries, each carrying a :taxons list; "empty" means
-  # no sample has any taxa to render.
-  def heatmap_dict_empty?(dict)
-    return true if dict.blank?
+  # True when the result dict is missing abundance (an entry with a non-empty :taxons list) for any of the
+  # given pipeline runs -- i.e. those runs' docs are not searchable yet. The dict is an array of per-sample
+  # entries; a sample with no matching taxa comes back with metadata but no :taxons key (see
+  # ElasticsearchQueryHelper.samples_taxons_details), and a not-yet-indexed sample may be absent entirely.
+  def missing_abundance_for_runs?(dict, run_ids, pr_id_to_sample_id)
+    pending_sample_ids = run_ids.map { |run_id| pr_id_to_sample_id[run_id] }.compact.uniq
+    return false if pending_sample_ids.empty?
 
-    Array(dict).all? do |entry|
-      !entry.is_a?(Hash) || (entry[:taxons] || entry["taxons"] || []).empty?
+    taxons_by_sample_id = {}
+    Array(dict).each do |entry|
+      next unless entry.is_a?(Hash)
+
+      sample_id = entry[:sample_id] || entry["sample_id"]
+      taxons_by_sample_id[sample_id] = entry[:taxons] || entry["taxons"] || []
     end
+
+    pending_sample_ids.any? { |sample_id| taxons_by_sample_id.fetch(sample_id, []).empty? }
   end
 
   def build_filter_param_hash
