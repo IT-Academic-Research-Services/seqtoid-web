@@ -269,9 +269,23 @@ Rails.application.routes.draw do
     end
   end
 
-  post 'bulk_downloads/:id/success/:access_token', to: 'bulk_downloads#success_with_token', as: :bulk_downloads_success
-  post 'bulk_downloads/:id/error/:access_token', to: 'bulk_downloads#error_with_token', as: :bulk_downloads_error
-  post 'bulk_downloads/:id/progress/:access_token', to: 'bulk_downloads#progress_with_token', as: :bulk_downloads_progress
+  # SMP-1868: the single-use BulkDownload#access_token now travels in the X-Access-Token
+  # request header (set by the s3-tar-writer caller) instead of the URL path, so it no longer
+  # leaks via proxy/access logs, the Referer header, or browser history. These tokenless
+  # routes own the named helpers so BulkDownload#{success,error,progress}_url generate the
+  # header-based form once the rollout flag is on.
+  post 'bulk_downloads/:id/success', to: 'bulk_downloads#success_with_token', as: :bulk_downloads_success
+  post 'bulk_downloads/:id/error', to: 'bulk_downloads#error_with_token', as: :bulk_downloads_error
+  post 'bulk_downloads/:id/progress', to: 'bulk_downloads#progress_with_token', as: :bulk_downloads_progress
+
+  # Legacy token-in-path routes. Kept during the transition so callbacks from in-flight
+  # s3-tar-writer jobs -- launched with a path-token URL baked into their command before the
+  # header-based caller image rolled out -- keep working. Safe to remove once no such jobs can
+  # still be running (see SMP-1868). The controller reads the token from the header first and
+  # falls back to this :access_token path segment. The SMP-1751 log-mask still covers these.
+  post 'bulk_downloads/:id/success/:access_token', to: 'bulk_downloads#success_with_token', as: :bulk_downloads_success_with_token
+  post 'bulk_downloads/:id/error/:access_token', to: 'bulk_downloads#error_with_token', as: :bulk_downloads_error_with_token
+  post 'bulk_downloads/:id/progress/:access_token', to: 'bulk_downloads#progress_with_token', as: :bulk_downloads_progress_with_token
 
   get 'sample_types.json', to: 'sample_types#index'
 
