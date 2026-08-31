@@ -184,3 +184,33 @@ describe("RemoteSampleFileUpload error branches", () => {
     await waitFor(() => expect(mockBulkImport).toHaveBeenCalledTimes(2));
   });
 });
+
+describe("RemoteSampleFileUpload path trimming (SMP-1818)", () => {
+  // S3 bucket names cannot start or end with a space, so a stray leading/trailing
+  // space (very common from copy-paste) produces an invalid bucket and the import
+  // fails. The path must be trimmed before it is sent.
+  it("trims leading/trailing whitespace before sending the path to bulk_import", async () => {
+    mockBulkImport.mockResolvedValue({ samples: [] });
+    renderUpload({ project: { id: 7 } });
+    typePath("  s3://bucket/data  ");
+    fireEvent.click(screen.getByText("Connect to Bucket"));
+
+    await waitFor(() => expect(mockBulkImport).toHaveBeenCalledTimes(1));
+    expect(mockBulkImport).toHaveBeenCalledWith({
+      projectId: 7,
+      hostGenomeId: "",
+      bulkPath: "s3://bucket/data",
+    });
+  });
+
+  it("normalizes the displayed path to the trimmed value", async () => {
+    mockBulkImport.mockResolvedValue({ samples: [] });
+    renderUpload({ project: { id: 7 } });
+    typePath("\ts3://bucket/data\n");
+    fireEvent.click(screen.getByText("Connect to Bucket"));
+
+    await waitFor(() => expect(mockBulkImport).toHaveBeenCalled());
+    const input = document.querySelector("input") as HTMLInputElement;
+    expect(input.value).toBe("s3://bucket/data");
+  });
+});
