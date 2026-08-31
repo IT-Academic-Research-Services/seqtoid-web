@@ -451,6 +451,59 @@ describe("BaseTable column selector", () => {
   });
 });
 
+describe("BaseTable horizontal scrolling (SMP-1794)", () => {
+  // AutoSizer is mocked to report a 1000px-wide container.
+  const WIDE_COLUMNS = [
+    { dataKey: "a", width: 400 },
+    { dataKey: "b", width: 400 },
+    { dataKey: "c", width: 400 },
+  ];
+
+  it("keeps the table bound to the container width by default (no scroll)", () => {
+    renderTable({
+      columns: WIDE_COLUMNS,
+      initialActiveColumns: ["a", "b", "c"],
+    });
+    // Columns total 1200 + 20 placeholder > 1000, but without the opt-in the
+    // table stays at the container width and columns are squeezed -- the
+    // pre-existing behaviour.
+    expect(mockCapture.table.width).toBe(1000);
+    // No horizontal scroller is inserted around the table.
+    expect(
+      screen.getByTestId("virtualized-table").parentElement?.style.width,
+    ).toBe("");
+  });
+
+  it("sizes the table to the sum of column widths when horizontallyScrollable and they overflow", () => {
+    renderTable({
+      columns: WIDE_COLUMNS,
+      initialActiveColumns: ["a", "b", "c"],
+      selectableKey: "id",
+      horizontallyScrollable: true,
+    });
+    // 30 (select) + 400*3 + 20 (placeholder) = 1250.
+    expect(mockCapture.table.width).toBe(1250);
+    // The table is wrapped in a scroller constrained to the container size.
+    expect(
+      screen.getByTestId("virtualized-table").parentElement?.style.width,
+    ).toBe("1000px");
+  });
+
+  it("stays at the container width when horizontallyScrollable but columns fit", () => {
+    renderTable({
+      columns: [
+        { dataKey: "a", width: 100 },
+        { dataKey: "b", width: 100 },
+      ],
+      initialActiveColumns: ["a", "b"],
+      horizontallyScrollable: true,
+    });
+    // 100 + 100 + 20 = 220 < 1000, so max() keeps the container width and no
+    // empty-space regression is introduced.
+    expect(mockCapture.table.width).toBe(1000);
+  });
+});
+
 describe("BaseTable table props", () => {
   it("forwards onRowClick only when the caller supplies one", () => {
     const onRowClick = jest.fn();
