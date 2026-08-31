@@ -1833,6 +1833,28 @@ export class DiscoveryView extends React.Component<
     });
   };
 
+  // The map/globe preview sidebar always lists short-read mNGS samples: it is
+  // fed by this.mapPreviewSamples (a view over this.dataLayer.samples) and its
+  // checkbox state is driven by selectedSampleIdsByWorkflow[SHORT_READ_MNGS]
+  // (selectedMngsSampleIds in renderRightPane). The workflow tabs are hidden in
+  // the map display, so this.state.workflow can still be whatever tab was last
+  // active in table display (AMR, CG, etc.). Routing the sidebar's selection
+  // through handleSelectedSamplesUpdate therefore wrote the new selection into
+  // the WRONG per-workflow bucket, so the sidebar -- which only ever reads the
+  // mNGS bucket -- never reflected it back: select-all and per-row checkboxes
+  // appeared to do nothing whenever the active workflow was not mNGS
+  // (SMP-1859, SMP-1713). Pin the map sidebar's selection to the mNGS bucket it
+  // actually displays.
+  handleMapPreviewSelectionUpdate = (selectedSampleIds: Set<string>) => {
+    const { selectedSampleIdsByWorkflow } = this.state;
+    this.setState({
+      selectedSampleIdsByWorkflow: {
+        ...selectedSampleIdsByWorkflow,
+        [WorkflowType.SHORT_READ_MNGS]: selectedSampleIds,
+      },
+    });
+  };
+
   handleSortColumn = ({
     sortBy,
     sortDirection,
@@ -2555,7 +2577,7 @@ export class DiscoveryView extends React.Component<
               onFilterClick={this.handleMetadataFilterClick}
               onProjectSelected={this.handleProjectSelected}
               onSampleClicked={this.handleObjectSelected}
-              onSelectionUpdate={this.handleSelectedSamplesUpdate}
+              onSelectionUpdate={this.handleMapPreviewSelectionUpdate}
               onTabChange={this.handleMapSidebarTabChange}
               projectDimensions={
                 !mapPreviewedLocationId
