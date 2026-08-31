@@ -188,11 +188,20 @@ export function BulkDownloadModalFooter({
   const numNonHumanHostSamples =
     size(validObjectIds) - size(samplesWithHumanHost);
 
-  const trimmedInvalidSampleNames =
+  // Total number of samples that won't be included (failed or still
+  // processing). This drives the warning header count.
+  const numInvalidSamples = invalidSampleNames?.length ?? 0;
+  // Only the samples we could resolve a name for get listed individually.
+  const namedInvalidSampleNames =
     invalidSampleNames?.filter(name => name !== "") ?? [];
-  const nUnlistedInvalidSampleNames =
-    invalidSampleNames?.length ?? 0 - trimmedInvalidSampleNames?.length;
-  trimmedInvalidSampleNames.push(`...and ${nUnlistedInvalidSampleNames} more`);
+  // The remainder have no resolvable name; collapse them into a single
+  // "...and N more" summary row instead of rendering blank lines.
+  const numUnnamedInvalidSamples =
+    numInvalidSamples - namedInvalidSampleNames.length;
+  const invalidSampleNamesToDisplay =
+    numUnnamedInvalidSamples > 0
+      ? [...namedInvalidSampleNames, `...and ${numUnnamedInvalidSamples} more`]
+      : namedInvalidSampleNames;
 
   return (
     <div className={cs.footer}>
@@ -200,7 +209,8 @@ export function BulkDownloadModalFooter({
         {invalidSampleNames && invalidSampleNames.length > 0 && (
           <BulkDownloadWarning
             message=" because they either failed or are still processing:"
-            sampleNames={trimmedInvalidSampleNames}
+            sampleNames={invalidSampleNamesToDisplay}
+            count={numInvalidSamples}
           />
         )}
         {numNonHumanHostSamples > 0 &&
