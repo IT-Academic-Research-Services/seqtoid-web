@@ -34,6 +34,13 @@ export interface BaseTableProps {
   gridClassName?: string;
   headerClassName?: string;
   headerHeight?: number;
+  // When true, the table is sized to the sum of its column widths rather than
+  // to the container width, and wrapped in a horizontal scroller. This lets the
+  // columns keep their full width (instead of being squeezed together) once
+  // their combined width exceeds the available space. Opt-in so tables that
+  // rely on row dropdowns escaping the table bounds (via the overflow: visible
+  // rule in base_table.scss) are unaffected.
+  horizontallyScrollable?: boolean;
   headerLabelClassName?: string;
   headerRowClassName?: string;
   // Set of dataKeys of columns to be shown by default
@@ -321,6 +328,7 @@ class BaseTableCC extends React.Component<
       forwardRef,
       gridClassName,
       headerClassName,
+      horizontallyScrollable,
       initialActiveColumns,
       onRowClick,
       onRowsRendered,
@@ -341,13 +349,31 @@ class BaseTableCC extends React.Component<
 
     const columnOrder = activeColumns || map("dataKey", columns);
 
+    // Sum of the widths of every rendered column, used to size the table when
+    // horizontal scrolling is enabled. Mirrors exactly the columns rendered
+    // below: the selection column, each active column, and the "+" placeholder.
+    const totalColumnsWidth =
+      (selectableKey ? defaultSelectColumnWidth : 0) +
+      columnOrder.reduce((sum, dataKey) => {
+        const columnProps = find({ dataKey }, columns);
+        return columnProps ? sum + (columnProps.width || 0) : sum;
+      }, 0) +
+      (initialActiveColumns ? 20 : 0);
+
     return (
       <div
         className={cs.tableContainer}
         style={{ flexBasis: defaultHeaderHeight }}
       >
         <AutoSizer>
-          {({ width, height }) => (
+          {({ width, height }) => {
+            // When horizontal scrolling is on, size the table to the wider of
+            // the container and the total column width so columns keep their
+            // full width and overflow into the scroller instead of shrinking.
+            const tableWidth = horizontallyScrollable
+              ? Math.max(width, totalColumnsWidth)
+              : width;
+            const table = (
             // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2769
             <VirtualizedTable
               gridClassName={cx(cs.grid, gridClassName)}
@@ -368,7 +394,7 @@ class BaseTableCC extends React.Component<
               sort={sortable ? onSort : null}
               sortBy={sortable ? sortBy : ""}
               sortDirection={sortable ? sortDirection : "DESC"}
-              width={width}
+              width={tableWidth}
               onRowClick={onRowClick}
               {...extraTableProps}
             >
@@ -434,7 +460,22 @@ class BaseTableCC extends React.Component<
                 <Column dataKey={"plusPlaceholder"} width={20} />
               )}
             </VirtualizedTable>
-          )}
+            );
+
+            // The scroller is constrained to the container width; the table
+            // inside it renders at tableWidth and overflows horizontally,
+            // keeping the sideways scroll inside the table (not the page body).
+            return horizontallyScrollable ? (
+              <div
+                className={cs.horizontalScrollContainer}
+                style={{ width, height }}
+              >
+                {table}
+              </div>
+            ) : (
+              table
+            );
+          }}
         </AutoSizer>
         {/*
           We cannot add these as columns because it gets rerendered every time we add
