@@ -9,7 +9,7 @@ import Input from "~ui/controls/Input";
 import Notification from "~ui/notifications/Notification";
 import {
   NO_TARGET_PROJECT_ERROR,
-  NO_VALID_SAMPLES_FOUND_ERROR,
+  TRANSIENT_UPLOAD_SERVICE_ERROR,
 } from "../../../../constants";
 import cs from "../../../../sample_upload_flow.scss";
 
@@ -104,8 +104,21 @@ export class RemoteSampleFileUpload extends React.Component<RemoteSampleFileUplo
           error: `Encountered an unexpected error with status code: ${e.status}`,
         });
       } else {
-        // Otherwise fallback to a generic error message
-        this.setState({ error: NO_VALID_SAMPLES_FOUND_ERROR });
+        // No backend message and no HTTP status means the request never got a response
+        // (transient network drop, mid-deploy restart, request aborted in flight). The
+        // backend now returns an actionable `{ status }` body for EVERY genuine failure --
+        // including a real empty/misnamed path ("found no valid FASTQ files") -- so this
+        // branch is NEVER a data problem. Report the transient/connectivity failure
+        // honestly instead of the misleading "No valid samples were found." (SMP-1725).
+        //
+        // Also clear lastPathChecked so the "Connect to Bucket" button re-enables for the
+        // same path: this is a retry affordance for the transient case, since the button is
+        // otherwise disabled while remoteS3Path === lastPathChecked and the user would have
+        // had to edit an already-correct path just to try again.
+        this.setState({
+          error: TRANSIENT_UPLOAD_SERVICE_ERROR,
+          lastPathChecked: "",
+        });
       }
     }
   };
