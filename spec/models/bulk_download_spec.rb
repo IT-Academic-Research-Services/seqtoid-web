@@ -48,6 +48,21 @@ describe BulkDownload, type: :model do
     it "returns nil if nothing set" do
       expect(@bulk_download.success_url).to eq(nil)
     end
+
+    # SMP-1868: with the rollout flag on, the token is dropped from the URL path (it now travels in
+    # the X-Access-Token header set by the tar job) so it can no longer leak via logs/Referer/history.
+    it "omits the access_token from the path when callback_token_in_header is enabled" do
+      AppConfigHelper.set_app_config(AppConfig::BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER, "1")
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => "https://czid.org"))
+      expect(@bulk_download.success_url).to eq("https://czid.org/bulk_downloads/#{@bulk_download.id}/success")
+    end
+
+    it "still returns nil in header mode when the token is blank (nulled after terminal state)" do
+      AppConfigHelper.set_app_config(AppConfig::BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER, "1")
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => "https://czid.org"))
+      @bulk_download.update(access_token: nil)
+      expect(@bulk_download.success_url).to eq(nil)
+    end
   end
 
   context "#error_url" do
@@ -71,6 +86,12 @@ describe BulkDownload, type: :model do
 
       expect(@bulk_download.error_url).to eq(nil)
     end
+
+    it "omits the access_token from the path when callback_token_in_header is enabled" do
+      AppConfigHelper.set_app_config(AppConfig::BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER, "1")
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => "https://czid.org"))
+      expect(@bulk_download.error_url).to eq("https://czid.org/bulk_downloads/#{@bulk_download.id}/error")
+    end
   end
 
   context "#progress_url" do
@@ -93,6 +114,12 @@ describe BulkDownload, type: :model do
       allow(Rails).to receive(:env).and_return("development")
 
       expect(@bulk_download.progress_url).to eq(nil)
+    end
+
+    it "omits the access_token from the path when callback_token_in_header is enabled" do
+      AppConfigHelper.set_app_config(AppConfig::BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER, "1")
+      stub_const('ENV', ENV.to_hash.merge("SERVER_DOMAIN" => "https://czid.org"))
+      expect(@bulk_download.progress_url).to eq("https://czid.org/bulk_downloads/#{@bulk_download.id}/progress")
     end
   end
 
@@ -168,6 +195,26 @@ describe BulkDownload, type: :model do
       ]
 
       expect(@bulk_download.bulk_download_ecs_task_command).to eq(task_command)
+    end
+
+    # SMP-1868: header mode -- callback URLs carry no token in the path, and the single-use token is
+    # handed to the tar job via --auth-token (forwarded as the X-Access-Token header on each callback).
+    it "emits tokenless callback urls and --auth-token when callback_token_in_header is enabled" do
+      AppConfigHelper.set_app_config(AppConfig::BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER, "1")
+      @bulk_download = create(:bulk_download, user: @joe, download_type: BulkDownloadTypesHelper::UNMAPPED_READS_BULK_DOWNLOAD_TYPE, pipeline_run_ids: [
+                                @sample_one.first_pipeline_run.id,
+                                @sample_two.first_pipeline_run.id,
+                              ])
+
+      command = @bulk_download.bulk_download_ecs_task_command
+
+      expect(command).to include("--success-url", "https://czid.org/bulk_downloads/#{@bulk_download.id}/success")
+      expect(command).to include("--error-url", "https://czid.org/bulk_downloads/#{@bulk_download.id}/error")
+      expect(command).to include("--progress-url", "https://czid.org/bulk_downloads/#{@bulk_download.id}/progress")
+      expect(command).to include("--auth-token", @bulk_download.access_token)
+      # The token must never appear inside any URL argument.
+      url_args = command.each_cons(2).select { |flag, _| flag.to_s.end_with?("-url") }.map(&:last)
+      expect(url_args).to all(satisfy { |u| !u.include?(@bulk_download.access_token) })
     end
 
     it "returns the correct task command for reads_non_host download type with fasta file format" do

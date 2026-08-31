@@ -993,6 +993,44 @@ RSpec.describe BulkDownloadsController, type: :controller do
       end
     end
 
+    # SMP-1868: the access_token now arrives in the X-Access-Token header (out of the URL path).
+    # The controller reads the header first and falls back to the legacy :access_token path param,
+    # so both the new header-based callers and any in-flight path-token callers keep working.
+    describe "X-Access-Token header (SMP-1868)" do
+      before do
+        @sample_one = create(:sample, project: @project, name: "Joes Sample",
+                                      pipeline_runs_data: [{ finalized: 1, job_status: PipelineRun::STATUS_CHECKED }])
+
+        @bulk_download_joe = create(:bulk_download, user: @joe, status: BulkDownload::STATUS_RUNNING, pipeline_run_ids: [@sample_one.first_pipeline_run.id], download_type: "unmapped_reads")
+      end
+
+      it "authenticates a callback carrying the token in the header and no path token" do
+        request.headers["X-Access-Token"] = @bulk_download_joe.access_token
+        get :error_with_token, params: { format: "json", id: @bulk_download_joe.id, error_message: "Header Error" }
+
+        expect(response).to have_http_status(200)
+        expect(BulkDownload.find(@bulk_download_joe.id).status).to eq(BulkDownload::STATUS_ERROR)
+        expect(BulkDownload.find(@bulk_download_joe.id).error_message).to eq("Header Error")
+        expect(BulkDownload.find(@bulk_download_joe.id).access_token).to eq(nil)
+      end
+
+      it "returns 401 when the header token is wrong even if it is absent from the path" do
+        request.headers["X-Access-Token"] = "FOOBAR"
+        get :error_with_token, params: { format: "json", id: @bulk_download_joe.id, error_message: "nope" }
+
+        expect(response).to have_http_status(401)
+        expect(BulkDownload.find(@bulk_download_joe.id).status).to eq(BulkDownload::STATUS_RUNNING)
+      end
+
+      it "prefers the header token over a (stale) path token" do
+        request.headers["X-Access-Token"] = @bulk_download_joe.access_token
+        get :error_with_token, params: { format: "json", id: @bulk_download_joe.id, access_token: "STALE-PATH-TOKEN", error_message: "Header wins" }
+
+        expect(response).to have_http_status(200)
+        expect(BulkDownload.find(@bulk_download_joe.id).status).to eq(BulkDownload::STATUS_ERROR)
+      end
+    end
+
     # Test that all endpoints that use tokens pass these tests.
     describe "Common token action tests" do
       before do
