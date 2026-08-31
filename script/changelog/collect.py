@@ -84,33 +84,79 @@ def classify(title, default_piece):
     return "Web application"
 
 
-def prs_between(repo, prev_sha, new_sha, default_piece):
-    if not prev_sha:
-        return []
-    # The compare API returns each commit's message; squash-merged PRs have the subject
-    # "PR title (#NNN)". Parse title + number straight from the subject line, so this needs only
-    # contents:read (which the record token has) -- NOT pull_requests:read. `gh pr view` used to be
-    # required for titles and silently produced 0 changes wherever that scope was missing.
+def _noise_pr(title):
+    # PRs that are plumbing, not user-facing changes: gitops sync / promote / rollup merges.
+    t = title.lower()
+    return bool(re.search(
+        r"^(merge|promote|sync|roll)\b|integration ->|bring integration up to main|"
+        r"^gitops|promote\(|^sync:", t))
+
+
+def _change(repo, num, title, default_piece):
+    return {
+        "piece": classify(title, default_piece),
+        "type": change_type(title),
+        "title": title, "pr": num,
+        "url": "https://github.com/{}/pull/{}".format(repo, num),
+        "merged_at": "",
+    }
+
+
+def _prs_from_subjects(repo, prev_sha, new_sha, default_piece):
+    # Fallback: parse "title (#NNN)" out of squash-merge subjects. Needs only contents:read, so it
+    # never regresses below the prior behavior, but it MISSES a PR that reached main via a non-squash
+    # promote (feature commits arrive without a "(#NNN)" subject) -- the exact case the association
+    # path below fixes. Used only when the association API is unavailable.
     raw = sh(["gh", "api", "repos/{}/compare/{}...{}".format(repo, prev_sha, new_sha),
               "--jq", ".commits[].commit.message | split(\"\\n\")[0]"])
-    out = []
-    seen = set()
+    out, seen = [], set()
     for subject in raw.splitlines():
         m = re.search(r"^(.*?)\s*\(#(\d+)\)\s*$", subject.strip())
         if not m:
-            continue  # merge/rollup commits and non-PR commits carry no "(#NNN)" suffix
+            continue
         title, num = m.group(1).strip(), int(m.group(2))
-        if not title or num in seen:
+        if not title or num in seen or _noise_pr(title):
             continue
         seen.add(num)
-        out.append({
-            "piece": classify(title, default_piece),
-            "type": change_type(title),
-            "title": title, "pr": num,
-            "url": "https://github.com/{}/pull/{}".format(repo, num),
-            "merged_at": "",
-        })
+        out.append(_change(repo, num, title, default_piece))
     return sorted(out, key=lambda c: c["pr"])
+
+
+def prs_between(repo, prev_sha, new_sha, default_piece):
+    if not prev_sha:
+        return []
+    # Resolve each commit in the range to its PR via the commit->PR association API
+    # (/commits/{sha}/pulls). Robust to ANY merge style -- squash, merge-commit, and the
+    # integration->main promote, which brings feature commits in WITHOUT a "(#NNN)" subject and
+    # otherwise silently records "0 changes". Needs pull_requests:read on the token; if that scope
+    # is absent every call returns empty and we fall back to the subject parse (never worse).
+    shas = sh(["gh", "api", "repos/{}/compare/{}...{}".format(repo, prev_sha, new_sha),
+               "--jq", ".commits[].sha"]).splitlines()
+    out, seen, resolved_any = [], set(), False
+    for sha in shas:
+        sha = sha.strip()
+        if not sha:
+            continue
+        assoc = sh(["gh", "api", "repos/{}/commits/{}/pulls".format(repo, sha),
+                    "--jq", r'.[] | "\(.number)\t\(.title)"'])
+        if not assoc:
+            continue
+        resolved_any = True
+        for line in assoc.splitlines():
+            num_s, _, title = line.partition("\t")
+            try:
+                num = int(num_s)
+            except ValueError:
+                continue
+            title = title.strip()
+            if not title or num in seen or _noise_pr(title):
+                continue
+            seen.add(num)
+            out.append(_change(repo, num, title, default_piece))
+    if resolved_any:
+        return sorted(out, key=lambda c: c["pr"])
+    # Nothing resolved (empty range, or no pull_requests:read) -> subject-parse fallback.
+    return _prs_from_subjects(repo, prev_sha, new_sha, default_piece)
 
 
 def s3_read_json(uri):
