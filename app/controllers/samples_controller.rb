@@ -1525,6 +1525,11 @@ class SamplesController < ApplicationController
     inputs_json = collection_params[:inputs_json].to_json
     @sample.create_and_dispatch_workflow_run(workflow, current_user.id, inputs_json: inputs_json)
     render json: @sample.workflow_runs_info
+  rescue Sample::SampleDeletedError => e
+    # SMP-1768 -- the sample was deleted (e.g. by data retention) after the client loaded
+    # it, so a forked run can no longer be started. Fail gracefully instead of creating a
+    # dangling workflow run; the client surfaces this message to the user.
+    render json: { error: e.message }, status: :unprocessable_content
   end
 
   # POST /samples/bulk_kickoff_workflow_runs
