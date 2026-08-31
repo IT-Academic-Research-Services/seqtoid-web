@@ -1,5 +1,4 @@
 import { isUndefined, mapValues } from "lodash/fp";
-import moment from "moment";
 import { AMR_PIPELINE_HELP_LINK } from "~/components/utils/documentationLinks";
 import { WORKFLOWS, WORKFLOW_TABS } from "~/components/utils/workflows";
 import {
@@ -8,11 +7,12 @@ import {
   SEQUENCING_TECHNOLOGY_DISPLAY_NAMES,
   SEQUENCING_TECHNOLOGY_OPTIONS,
 } from "~/components/views/SampleUploadFlow/constants";
+import { formatServerDate } from "~/helpers/dates";
 import { numberWithCommas, numberWithPlusOrMinus } from "~/helpers/strings";
 import { WorkflowRun } from "~/interface/sample";
 import { AdditionalInfo } from "../../types";
-import { AmrPipelineTabInfo, MngsPipelineInfo } from "./types";
 import { PipelineTabFragment$data } from "./__generated__/PipelineTabFragment.graphql";
+import { AmrPipelineTabInfo, MngsPipelineInfo } from "./types";
 
 const BLANK_TEXT = "unknown";
 const YYYY_MM_DD = "YYYY-MM-DD";
@@ -111,7 +111,11 @@ export const processPipelineInfo = (
       pipelineInfo.qcPercent = { text: qcPercent };
       pipelineInfo.compressionRatio = { text: compressionRatio };
       pipelineInfo.lastProcessedAt = {
-        text: moment(summaryStats.last_processed_at).format(YYYY_MM_DD),
+        text: formatServerDate(
+          summaryStats.last_processed_at,
+          YYYY_MM_DD,
+          BLANK_TEXT,
+        ),
       };
 
       const meanInsertSize = numberWithPlusOrMinus(
@@ -138,7 +142,11 @@ export const processCGWorkflowRunInfo = workflowRun => {
     erccMappedReads: isUndefined(erccMappedReads)
       ? ""
       : numberWithCommas(erccMappedReads),
-    lastProcessedAt: moment(workflowRun?.executed_at).format(YYYY_MM_DD),
+    lastProcessedAt: formatServerDate(
+      workflowRun?.executed_at,
+      YYYY_MM_DD,
+      BLANK_TEXT,
+    ),
     hostSubtracted: "Human",
     mappedReads: isUndefined(mappedReads) ? "" : numberWithCommas(mappedReads),
     medakaModel: workflowRun?.inputs?.medaka_model,
@@ -169,7 +177,7 @@ export const processAMRWorkflowRun = (
   const qualityMetrics = parsed_cached_results?.quality_metrics;
 
   const workflowLabel = WORKFLOWS[workflow]?.label;
-  const lastProcessedAt = moment(executedAt).format(YYYY_MM_DD);
+  const lastProcessedAt = formatServerDate(executedAt, YYYY_MM_DD, BLANK_TEXT);
   const cardDbVersion = inputs?.card_version;
   const wildcardVersion = inputs?.wildcard_version;
 
