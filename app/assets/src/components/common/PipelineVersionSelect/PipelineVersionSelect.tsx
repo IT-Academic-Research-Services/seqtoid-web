@@ -1,6 +1,6 @@
-import moment from "moment";
 import React from "react";
 import { WorkflowType } from "~/components/utils/workflows";
+import { parseServerDate } from "~/helpers/dates";
 import { WorkflowRun } from "~/interface/sample";
 import { PipelineRun } from "~/interface/shared";
 import { MultipleVersionsDropdownHeader } from "./components/MultipleVersionsDropdownHeader";
@@ -54,9 +54,15 @@ export const PipelineVersionSelect = ({
 
   // grab strings for last processed date and workflow version
   const getLastProcessedString = () => {
-    const lastProcessedFormattedDate = moment(lastProcessedAt)
-      .startOf("second")
-      .fromNow();
+    // Parse against the known server datetime formats so moment does not emit
+    // its "not in a recognized ISO/RFC2822 format" deprecation warning
+    // (SMP-1816). Skip the "processed ... ago" clause if the date is missing or
+    // unparseable rather than surfacing "Invalid date".
+    const parsed = parseServerDate(lastProcessedAt);
+    if (!parsed) {
+      return "";
+    }
+    const lastProcessedFormattedDate = parsed.startOf("second").fromNow();
 
     return ` processed ${lastProcessedFormattedDate} |`;
   };
