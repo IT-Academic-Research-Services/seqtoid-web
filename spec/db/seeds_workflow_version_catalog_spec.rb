@@ -15,11 +15,14 @@ require "rails_helper"
 # This is a STATIC check of the checked-in snapshot -- it does not run the seed -- so it fails fast in
 # CI the moment a default and the catalog disagree, which is the invariant SMP-1718 asks for.
 RSpec.describe "db/seeds.rb workflow-version catalog consistency" do
+  # These parse the checked-in snapshot regardless of hash-literal spacing: db/seeds.rb is mostly the
+  # compact {"k"=>v} SeedMigration dump, but hand-maintained rows may be rubocop-clean ({ "k" => v }),
+  # so `=>`, the opening `{`, and the closing `}` all tolerate optional surrounding whitespace.
   # `*-version` app_configs whose value is a workflow version. Mirrors AppConfig::WORKFLOW_VERSION_TEMPLATE.
-  VERSION_APP_CONFIG = /AppConfig\.create\(\{"key"=>"([a-z0-9-]+)-version",\s*"value"=>"([^"]+)"\}/.freeze
+  VERSION_APP_CONFIG = /AppConfig\.create\(\{\s*"key"\s*=>\s*"([a-z0-9-]+)-version",\s*"value"\s*=>\s*"([^"]+)"\s*\}/.freeze
   # The NCBI index default is selected via DEFAULT_ALIGNMENT_CONFIG_NAME, not a `*-version` key.
-  NCBI_APP_CONFIG = /AppConfig\.create\(\{"key"=>"default_alignment_config_name",\s*"value"=>"([^"]+)"\}/.freeze
-  WORKFLOW_VERSION_ROW = /WorkflowVersion\.create\(\{[^}]*"version"=>"([^"]+)",\s*"workflow"=>"([^"]+)"\}/.freeze
+  NCBI_APP_CONFIG = /AppConfig\.create\(\{\s*"key"\s*=>\s*"default_alignment_config_name",\s*"value"\s*=>\s*"([^"]+)"\s*\}/.freeze
+  WORKFLOW_VERSION_ROW = /WorkflowVersion\.create\(\{[^}]*"version"\s*=>\s*"([^"]+)",\s*"workflow"\s*=>\s*"([^"]+)"\s*\}/.freeze
 
   let(:seed) { File.read(Rails.root.join("db/seeds.rb"), encoding: "UTF-8") }
 
