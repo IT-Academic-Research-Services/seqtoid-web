@@ -353,7 +353,7 @@ class BaseTableCC extends React.Component<
     // horizontal scrolling is enabled. Mirrors exactly the columns rendered
     // below: the selection column, each active column, and the "+" placeholder.
     const totalColumnsWidth =
-      (selectableKey ? defaultSelectColumnWidth : 0) +
+      (selectableKey ? defaultSelectColumnWidth ?? 0 : 0) +
       columnOrder.reduce((sum, dataKey) => {
         const columnProps = find({ dataKey }, columns);
         return columnProps ? sum + (columnProps.width || 0) : sum;
