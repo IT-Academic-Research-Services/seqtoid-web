@@ -5,7 +5,10 @@
 // typed path into state, gate the Connect button (empty / already-checked), and
 // on connect either (a) reject when there is no target project, or (b) call the
 // bulk-import API, strip nil paired files, and hand the samples up. The three
-// error branches (backend status / http status / generic) are all exercised.
+// error branches (backend status / http status / no-response transient) are all
+// exercised. SMP-1725: the no-response branch must report a transient/connectivity
+// failure -- NOT "No valid samples were found." -- and re-enable Connect so the
+// same path can be retried.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { RemoteSampleFileUpload } from "~/components/views/SampleUploadFlow/components/UploadSampleStep/components/RemoteSampleFileUpload/RemoteSampleFileUpload";
 
@@ -17,6 +20,10 @@ jest.mock("~/api", () => ({
 const NO_TARGET_PROJECT_ERROR =
   "Please select a SeqtoID project to upload your samples to.";
 const NO_VALID_SAMPLES_FOUND_ERROR = "No valid samples were found.";
+// SMP-1725: the no-body fallback now reports a transient/connectivity failure
+// instead of the misleading "No valid samples were found."
+const TRANSIENT_UPLOAD_SERVICE_ERROR =
+  "We couldn't reach the upload service (it may be updating). Please wait a moment and try again.";
 
 const renderUpload = (props: $TSFixMe = {}) => {
   const onChange = props.onChange || jest.fn();
@@ -142,13 +149,38 @@ describe("RemoteSampleFileUpload error branches", () => {
     );
   });
 
-  it("falls back to the generic no-valid-samples message", async () => {
-    mockBulkImport.mockRejectedValue({});
+  it("reports a transient failure -- not 'No valid samples' -- when the request got no response (SMP-1725)", async () => {
+    // A network drop / mid-deploy restart rejects with neither a `{ status }`
+    // body nor an HTTP `.status`, so both prior branches are skipped. This used
+    // to fall through to NO_VALID_SAMPLES_FOUND_ERROR, blaming the user's data
+    // for an infrastructure blip.
+    mockBulkImport.mockRejectedValue(new Error("Network Error"));
     renderUpload({ project: { id: 7 } });
     typePath("s3://bucket/data");
     fireEvent.click(screen.getByText("Connect to Bucket"));
     await waitFor(() =>
-      expect(screen.getByText(NO_VALID_SAMPLES_FOUND_ERROR)).toBeTruthy(),
+      expect(screen.getByText(TRANSIENT_UPLOAD_SERVICE_ERROR)).toBeTruthy(),
     );
+    expect(screen.queryByText(NO_VALID_SAMPLES_FOUND_ERROR)).toBeNull();
+  });
+
+  it("re-enables Connect after a transient failure so the same path can be retried (SMP-1725)", async () => {
+    mockBulkImport.mockRejectedValue(new Error("Network Error"));
+    renderUpload({ project: { id: 7 } });
+    typePath("s3://bucket/data");
+    const button = screen.getByText("Connect to Bucket").closest("button");
+    fireEvent.click(button as HTMLElement);
+    await waitFor(() =>
+      expect(screen.getByText(TRANSIENT_UPLOAD_SERVICE_ERROR)).toBeTruthy(),
+    );
+    // lastPathChecked was cleared on the transient error, so the button is live
+    // again for the SAME path -- the user should not have to edit a correct path
+    // just to retry. (The successful-connect suite covers the normal case where
+    // the button stays disabled after a checked path.)
+    expect(button?.hasAttribute("disabled")).toBe(false);
+
+    mockBulkImport.mockResolvedValueOnce({ samples: [] });
+    fireEvent.click(button as HTMLElement);
+    await waitFor(() => expect(mockBulkImport).toHaveBeenCalledTimes(2));
   });
 });
