@@ -67,16 +67,23 @@ export class RemoteSampleFileUpload extends React.Component<RemoteSampleFileUplo
       return;
     }
 
+    // Trim before sending: S3 bucket names cannot start or end with a space, so a
+    // stray leading/trailing space (common from copy-paste) produces an invalid
+    // bucket and the import fails. Normalize the displayed value too so the user
+    // sees the path that was actually checked.
+    const remoteS3Path = this.state.remoteS3Path.trim();
+
     this.setState({
       error: "",
-      lastPathChecked: this.state.remoteS3Path,
+      remoteS3Path,
+      lastPathChecked: remoteS3Path,
     });
 
     try {
       let newSamples = await bulkImportRemoteSamples({
         projectId: this.props.project.id,
         hostGenomeId: "",
-        bulkPath: this.state.remoteS3Path,
+        bulkPath: remoteS3Path,
       });
 
       // Remove any nil files from input_files_attributes.

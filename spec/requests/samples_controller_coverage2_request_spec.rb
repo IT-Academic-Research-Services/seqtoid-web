@@ -498,6 +498,25 @@ RSpec.describe "Samples (coverage2) request", type: :request do
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["samples"]).to be_present
     end
+
+    it "strips leading/trailing whitespace from bulk_path before it reaches S3 (SMP-1818)" do
+      # A stray space around the pasted path would otherwise flow into the bucket name --
+      # S3 bucket names cannot start or end with a space -- so the controller must normalize
+      # it before both the permission check and the object listing see it.
+      project = create(:project, users: [@joe])
+      sign_in @joe
+
+      expect_any_instance_of(User).to receive(:can_upload).with("s3://b/full").and_return(true)
+      expect_any_instance_of(SamplesController)
+        .to receive(:parsed_samples_for_s3_path)
+        .with("s3://b/full", project.id.to_s, "1")
+        .and_return([{ name: "s1" }])
+
+      get "/samples/bulk_import.json", params: { project_id: project.id, bulk_path: "  s3://b/full  ", host_genome_id: 1 }
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["samples"]).to be_present
+    end
   end
 
   describe "PUT /samples/:id/move_to_project (admin only)" do
