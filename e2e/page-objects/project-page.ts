@@ -42,6 +42,8 @@ const APPLY_BUTTON = "[data-testid='apply']";
 const ARIA_ROWINDEX = "aria-rowindex";
 const UPLOAD_HEADER_LINK = "[data-testid='menu-item-upload']";
 const PUBLIC_HEADER_LINK = "[data-testid='menu-item-public']";
+// Confirm button in the irreversible-action modal (PublicProjectConfirmationModal.tsx).
+const MAKE_PROJECT_PUBLIC_BUTTON = "Make Project Public";
 const SAMPLES_TAB = "button[data-testid='samples']";
 const SAMPLES_COUNT_TD_1 =
   "//div[@aria-rowindex='1']//div[@data-testid='sample-counts' and contains(text(), 'Sample')]";
@@ -1366,14 +1368,14 @@ export class ProjectPage extends PageObject {
   public async clickChangeToPublic() {
     await this.page.getByText("Change to public").click();
     await this.page
-      .getByRole("button", { name: "Make Project Public" })
+      .getByRole("button", { name: MAKE_PROJECT_PUBLIC_BUTTON })
       .waitFor({ state: "visible" });
   }
 
   // Confirms the irreversible action -> fires PUT /projects/<id>.json { public_access: true }.
   public async confirmMakeProjectPublic() {
     await this.page
-      .getByRole("button", { name: "Make Project Public" })
+      .getByRole("button", { name: MAKE_PROJECT_PUBLIC_BUTTON })
       .click();
   }
 
@@ -1381,7 +1383,7 @@ export class ProjectPage extends PageObject {
   public async cancelMakeProjectPublic() {
     await this.page.getByRole("button", { name: "Cancel" }).click();
     await expect(
-      this.page.getByRole("button", { name: "Make Project Public" }),
+      this.page.getByRole("button", { name: MAKE_PROJECT_PUBLIC_BUTTON }),
     ).toHaveCount(0);
   }
 
