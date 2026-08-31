@@ -580,15 +580,15 @@ ActiveRecord::Base.transaction do
   # regeneration: regenerate from a fully migrated DB (db:migrate:with_data + seed:migrate) so these
   # rows are captured, or re-apply this block. The consistency assertion at the end of the seed keeps
   # a future snapshot from silently disagreeing again.
-  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"3.5.5", "workflow"=>"consensus-genome"})
+  WorkflowVersion.create({ "deprecated" => false, "runnable" => true, "version" => "3.5.5", "workflow" => "consensus-genome" })
 
-  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"8.3.15", "workflow"=>"short-read-mngs"})
+  WorkflowVersion.create({ "deprecated" => false, "runnable" => true, "version" => "8.3.15", "workflow" => "short-read-mngs" })
 
-  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"1.4.2", "workflow"=>"amr"})
+  WorkflowVersion.create({ "deprecated" => false, "runnable" => true, "version" => "1.4.2", "workflow" => "amr" })
 
-  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"0.7.12", "workflow"=>"long-read-mngs"})
+  WorkflowVersion.create({ "deprecated" => false, "runnable" => true, "version" => "0.7.12", "workflow" => "long-read-mngs" })
 
-  WorkflowVersion.create({"deprecated"=>false, "runnable"=>true, "version"=>"6.11.0", "workflow"=>"phylotree-ng"})
+  WorkflowVersion.create({ "deprecated" => false, "runnable" => true, "version" => "6.11.0", "workflow" => "phylotree-ng" })
 
   PathogenList.create({"creator_id"=>nil, "is_global"=>true})
 
