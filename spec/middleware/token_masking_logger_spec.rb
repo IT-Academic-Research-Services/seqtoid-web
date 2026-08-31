@@ -13,7 +13,11 @@ RSpec.describe TokenMaskingLogger do
 
   # A downstream app that just returns 200, so call() runs the request-start log.
   let(:app) { ->(_env) { [200, { "Content-Type" => "text/plain" }, ["ok"]] } }
-  let(:middleware) { described_class.new(app) }
+  # Build the middleware exactly as config/initializers/silencer.rb wires it in
+  # production -- `swap ..., silence: ["/health_check"]` -- so the /health_check
+  # silencing this swap has always provided is actually exercised here. Omitting
+  # the option constructs a logger with no silence list, which logs /health_check.
+  let(:middleware) { described_class.new(app, silence: ["/health_check"]) }
 
   # Capture what the middleware actually writes to Rails.logger.
   let(:log_io) { StringIO.new }
