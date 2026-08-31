@@ -18,9 +18,21 @@ const CT20K_SAMPLE_FILES = [SAMPLE_FILE_1_PAIRED_R1, SAMPLE_FILE_1_PAIRED_R2];
 const SAMPLE_1_PAIRED = "Sample_1_Paired";
 const CT20K_SAMPLE_NAMES = [SAMPLE_1_PAIRED];
 
-const NEXTCLADE_REFERENCE_JSON_FILE = require.resolve(
-  "@e2e/fixtures/nextclade_trees/pawnee_fake_example.json",
-);
+// Resolve the Nextclade reference-tree fixture LAZILY, inside the one test that uploads it
+// (SNo SC2-46). Resolving it at module load meant a single missing file aborted collection of
+// the ENTIRE suite -- exactly the silent breakage the SMP-1720 PR gate exists to catch, since
+// the subsampled pipeline/reference fixtures are not committed yet (deferred in SMP-1720).
+// Returning null when the fixture is absent lets that one test skip with a clear reason instead
+// of breaking `playwright test --list` and every other spec with it.
+function resolveNextcladeReferenceTree(): string | null {
+  try {
+    return require.resolve(
+      "@e2e/fixtures/nextclade_trees/pawnee_fake_example.json",
+    );
+  } catch {
+    return null;
+  }
+}
 
 let projectPage = null;
 let timeout = 60 * 1000 * 30;
@@ -281,6 +293,13 @@ test.describe("NextClade Tree: Functional: P-0", () => {
   test("SNo SC2-46: Nextclade uploading a reference .json tree file", async ({
     page,
   }) => {
+    const nextcladeReferenceTree = resolveNextcladeReferenceTree();
+    test.skip(
+      nextcladeReferenceTree === null,
+      "Nextclade reference-tree fixture (@e2e/fixtures/nextclade_trees/pawnee_fake_example.json) " +
+        "is not committed; SMP-1720 defers the subsampled pipeline/reference fixtures.",
+    );
+
     const sc2_project = await projectPage.getOrCreateProject(
       `SC2-46_NextClade_CT20K_${WORKFLOWS.SC2}`,
     );
@@ -334,7 +353,7 @@ test.describe("NextClade Tree: Functional: P-0", () => {
 
     // Nextclade reference .json file
     // https://drive.google.com/file/d/1xbB1Yp1nfMwSERYFM1MnSZEvoEjTWGsf/view?usp=sharing
-    await projectPage.setUploadTreeInput(NEXTCLADE_REFERENCE_JSON_FILE);
+    await projectPage.setUploadTreeInput(nextcladeReferenceTree);
     // #endregion 6. Click on ""click to use a file browser"" box and select a valid .json tree file (See data section)
 
     // #region 7. Select Upload a Tree radio button

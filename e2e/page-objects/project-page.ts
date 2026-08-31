@@ -790,7 +790,9 @@ export class ProjectPage extends PageObject {
 
   public async clickSampleCheckbox(sampleName: string, unselect = false) {
     await this.waitForTableLoad();
-    const matchingSamples = await this.page.locator(SAMPLE_CHECKBOX_BY_SAMPLE_NAME(sampleName)).all();
+    const matchingSamples = await this.page
+      .locator(SAMPLE_CHECKBOX_BY_SAMPLE_NAME(sampleName))
+      .all();
     expect(matchingSamples.length).toBeGreaterThan(0);
     for (const sampleLocator of matchingSamples) {
       const isChecked = await sampleLocator.locator("input").isChecked();
@@ -1342,4 +1344,64 @@ export class ProjectPage extends PageObject {
     return this.page.locator(BACKGROUND_FILTER_LABEL).isVisible();
   }
   // #endregion Macro
+
+  // #region Project visibility (public sharing)
+  // The public-visibility toggle is the SMP-1720 P0: making a project public is
+  // IRREVERSIBLE, so the flow is deliberately guarded by a "Make ... public" confirmation
+  // modal (PublicProjectConfirmationModal.tsx). None of these controls carry a data-testid,
+  // so they are addressed by role/text, scoped to the project header where possible.
+
+  // The "Share" button lives in the project header (ProjectHeader.tsx -> ProjectSettingsModal
+  // -> ShareButton). Scope to the header so it is never confused with the SampleView "Share".
+  public async clickShareButton() {
+    await this.page
+      .getByTestId("project-header")
+      .getByRole("button", { name: "Share" })
+      .click();
+    // Share modal ("Share <project name>") is open.
+    await this.page.getByText("Change to public").waitFor({ state: "visible" });
+  }
+
+  // Opens the irreversible-action confirmation modal (does NOT make the project public yet).
+  public async clickChangeToPublic() {
+    await this.page.getByText("Change to public").click();
+    await this.page
+      .getByRole("button", { name: "Make Project Public" })
+      .waitFor({ state: "visible" });
+  }
+
+  // Confirms the irreversible action -> fires PUT /projects/<id>.json { public_access: true }.
+  public async confirmMakeProjectPublic() {
+    await this.page
+      .getByRole("button", { name: "Make Project Public" })
+      .click();
+  }
+
+  // Backs out of the confirmation modal WITHOUT publishing (no PUT is sent).
+  public async cancelMakeProjectPublic() {
+    await this.page.getByRole("button", { name: "Cancel" }).click();
+    await expect(
+      this.page.getByRole("button", { name: "Make Project Public" }),
+    ).toHaveCount(0);
+  }
+
+  // The confirmation modal's irreversibility warning text, asserted by the lifecycle spec.
+  public async getPublicConfirmationWarningText(): Promise<string> {
+    return this.page
+      .getByText("This action is", { exact: false })
+      .first()
+      .textContent();
+  }
+
+  // Header visibility label: "Public project" / "Private project" / "View-only version".
+  public async getProjectVisibilityLabel(): Promise<string> {
+    const header = this.page.getByTestId("project-header");
+    for (const label of ["Public project", "Private project"]) {
+      if (await header.getByText(label, { exact: true }).isVisible()) {
+        return label;
+      }
+    }
+    return "";
+  }
+  // #endregion Project visibility (public sharing)
 }
