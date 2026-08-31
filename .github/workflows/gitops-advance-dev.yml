@@ -34,6 +34,12 @@ jobs:
       contents: read
       # The digest resolution below assumes the dev-account ECR-read role via GitHub OIDC.
       id-token: write
+    # SMP-1767: surface whether a NEW digest actually advanced (and which tag) so the auto-gauntlet
+    # trigger below fires ONCE per newly-vetted dev digest, not on every no-op re-run.
+    outputs:
+      changed: ${{ steps.advance.outputs.changed }}
+      tag: ${{ steps.advance.outputs.tag }}
+      digest: ${{ steps.advance.outputs.digest }}
     env:
       # Same rotatable CI-identity vars the build + promote workflows use, with the DEV-account
       # defaults. Resolve the built image's DIGEST from this account's ECR so the advance can pin it.
@@ -251,6 +257,50 @@ jobs:
           done
           [ -n "$merged" ] || { echo "::error::could not merge PR #${PR_NUM} after retries (checks were green). Leaving it OPEN."; exit 1; }
           echo "Dev advanced to ${TAG} and merged; Argo CD will sync."
+
+  # SMP-1767: auto-trigger the staging promotion gauntlet for the exact sha that just advanced to dev.
+  # This is the "dev deploy went green -> vet it for staging" hop that today is manual (the gauntlet is
+  # workflow_dispatch-only). It fires ONCE per newly-vetted digest (advance.changed == 'true'), passing
+  # the immutable sha-<commit> tag + the env-staging confirm token the gauntlet's guard requires.
+  #
+  # OFF BY DEFAULT (vars.STAGING_AUTO_GAUNTLET_ENABLED). Leave it unset until the SMP-1786 gauntlet
+  # residuals land -- notably the provision job's GITOPS_TOKEN (bin/gauntlet_env REQUIRES a token to
+  # push the candidate element; the gauntlet's provision job does not yet pass one). This trigger is
+  # fail-safe regardless: if the gauntlet is disabled or its provision/attest fail for ANY reason, no
+  # gauntlet-passed attestation is written, so gitops-promote.yml cannot advance staging (see there).
+  # The gauntlet's own STAGING_GAUNTLET_ENABLED master switch must also be on for the dispatched run to
+  # do anything, so both are required here to avoid dispatching a no-op run.
+  trigger-gauntlet:
+    needs: advance
+    if: >-
+      ${{ vars.STAGING_AUTO_GAUNTLET_ENABLED == 'true'
+          && vars.STAGING_GAUNTLET_ENABLED == 'true'
+          && needs.advance.result == 'success'
+          && needs.advance.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # dispatch the gauntlet's workflow_dispatch in this same repo
+    steps:
+      - name: Dispatch staging-gauntlet for the freshly-vetted dev sha
+        env:
+          # workflow_dispatch via GITHUB_TOKEN DOES create a run (the recursion guard exempts
+          # workflow_dispatch); prefer the GITOPS_TOKEN PAT when present for parity with the other
+          # gitops hops, else fall back to the job token (needs the actions: write above).
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN || github.token }}
+          TAG: ${{ needs.advance.outputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            sha-[0-9a-f]*) : ;;
+            *) echo "::error::refusing to dispatch gauntlet for a non sha-<commit> tag ('$TAG')"; exit 1 ;;
+          esac
+          echo "auto-triggering staging promotion gauntlet for ${TAG} (advanced to dev this run)"
+          gh workflow run staging-gauntlet.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f sha="${TAG}" \
+            -f confirm_target=env-staging.seqtoid.org
 
   # Sentry release + dev deploy tracking (CZID-552) + frontend source-map upload (SMP-1826).
   # Runs on the same successful main build as the advance above, keyed to the exact commit
