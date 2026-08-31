@@ -81,7 +81,15 @@ class Sample < ApplicationRecord
   end
 
   before_save :check_host_genome, :concatenate_input_parts, :check_status
-  after_create :initiate_input_file_upload
+  # Enqueue the input-file copy/transfer only AFTER the create transaction commits. In bulk upload
+  # the Sample and its InputFiles are created in one transaction; an after_create hook fires
+  # mid-transaction, so the enqueued InitiateS3Cp job could run before the InputFiles (or even the
+  # Sample) were committed -- the copy job then saw 0 input fastqs and failed validation ("Input
+  # fastqs invalid number (0)"), or dead-lettered with RecordNotFound on a rolled-back batch, so
+  # every S3 import failed ("All uploads failed"). after_create_commit guarantees the Sample + its
+  # InputFiles are persisted before the job is enqueued, and nothing is enqueued if the transaction
+  # rolls back. Refs PROD-RAILS-PROJECT-F.
+  after_create_commit :initiate_input_file_upload
   before_destroy :cleanup_relations
   after_destroy :cleanup_s3
 
