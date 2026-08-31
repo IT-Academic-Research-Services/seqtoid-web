@@ -399,6 +399,20 @@ RSpec.describe "Samples (coverage2) request", type: :request do
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)).to be_an(Array)
     end
+
+    # SMP-1768 -- a stale client can post a fork request after the sample was deleted (e.g. by
+    # data retention). Fail gracefully with a useful message instead of a 500 / dangling run.
+    it "returns unprocessable_content when the sample has been soft-deleted" do
+      sample = sample_for(@joe)
+      sample.update_column(:deleted_at, Time.now.utc)
+
+      expect_any_instance_of(WorkflowRun).not_to receive(:dispatch)
+
+      post "/samples/#{sample.id}/kickoff_workflow", params: { workflow: WorkflowRun::WORKFLOW[:consensus_genome], inputs_json: {} }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["error"]).to match(/has been deleted/)
+    end
   end
 
   describe "POST /samples/bulk_kickoff_workflow_runs" do
