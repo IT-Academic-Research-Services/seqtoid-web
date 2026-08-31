@@ -1,0 +1,164 @@
+name: gitops-promote (auto dev -> staging on a passed gauntlet)
+
+# SMP-1767: the second half of auto dev->staging promotion. When the staging promotion gauntlet
+# (staging-gauntlet.yml) finishes GREEN it writes a cosign `gauntlet-passed` attestation on the image
+# DIGEST. This workflow chains off that success, VERIFIES the attestation in-pipeline (fail-closed),
+# and only then advances env-staging to that exact digest via the reusable promote-to-env.yml.
+#
+# WHY VERIFY HERE (not rely on admission): env-staging does NOT yet have an enforcing sigstore
+# attestation-admission webhook (SMP-1786 residual). Until it does, THIS in-pipeline verification is
+# the enforcement -- an unattested / mis-signed digest can never advance through this path. The
+# `environment: staging` approval gate inside promote-to-env.yml still fires as well, so a human
+# reviewer approves the staging deploy even on the auto path.
+#
+# Invariant: dev-vetted digest -> staging, NEVER staging -> dev. This only ever advances the staging
+# GitOps values to a digest that (a) was built + advanced to dev, (b) passed the full gauntlet against
+# an isolated candidate, and (c) carries a verifiable gauntlet-passed attestation.
+#
+# OFF BY DEFAULT: the auto path runs only when vars.STAGING_AUTO_PROMOTE_ENABLED == 'true'. Keep it
+# unset until the SMP-1786 gauntlet residuals land (provision GITOPS_TOKEN + an ENFORCING env-staging
+# admission policy). A manual workflow_dispatch is always allowed for an operator to drive a known
+# gauntlet-passed sha to staging by hand -- it is still fully attestation-gated below.
+
+on:
+  workflow_run:
+    workflows: ["Staging promotion gauntlet"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "sha-<commit> to promote to env-staging. Must already be gauntlet-passed + attested."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize staging promotions; never cancel one mid-flight.
+  group: gitops-promote-staging
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    # Auto path (workflow_run): gated on the master auto-promote switch AND a green gauntlet run.
+    # Manual path (workflow_dispatch): an operator action -- always allowed, still attestation-gated.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+          || (github.event.workflow_run.conclusion == 'success'
+              && vars.STAGING_AUTO_PROMOTE_ENABLED == 'true') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # cosign keyless verify + ECR read (dev/CI account)
+      actions: read # download the gauntlet-passed record from the triggering run
+    outputs:
+      promotable: ${{ steps.verify.outputs.promotable }}
+      digest: ${{ steps.verify.outputs.digest }}
+      sha_tag: ${{ steps.verify.outputs.sha_tag }}
+    env:
+      AWS_REGION: us-west-2
+      # Mirror build-docker-image.yml / gitops-advance-dev.yml: resolve + verify against the SAME
+      # dev/CI-account ECR the gauntlet attested. promote-to-env.yml then copies the digest to the
+      # env-staging account (SMP-1775) before advancing its values.
+      CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+      GHA_ROLE: ${{ vars.GHA_ROLE || 'czid-dev-gh-actions-build' }}
+      ECR_REPO_NAME: ${{ vars.ECR_REPO_NAME || 'seqtoid-web' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download gauntlet-passed record (workflow_run path)
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: gauntlet-passed
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: gauntlet-passed
+
+      - name: Configure AWS (dev/CI account, ECR read + cosign verify)
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CI_ACCOUNT_ID }}:role/${{ env.GHA_ROLE }}
+          role-session-name: gitops-promote-verify
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Verify gauntlet-passed attestation (fail-closed), then emit the promotable digest
+        id: verify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SHA: ${{ inputs.sha }}
+          # Keyless verification: the attestation is signed by the gauntlet workflow's GitHub OIDC
+          # identity. Defaults match staging-gauntlet.yml on this repo's default branch; override via
+          # repo vars if the workflow path / issuer ever change.
+          CERT_IDENTITY_REGEXP: ${{ vars.GAUNTLET_ATTEST_CERT_IDENTITY_REGEXP || format('^https://github.com/{0}/.github/workflows/staging-gauntlet.yml@refs/', github.repository) }}
+          CERT_OIDC_ISSUER: ${{ vars.GAUNTLET_ATTEST_OIDC_ISSUER || 'https://token.actions.githubusercontent.com' }}
+        run: |
+          set -euo pipefail
+          REG="${CI_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+
+          # Resolve which sha to promote. Auto path reads the record the gauntlet's attest job wrote;
+          # manual path takes the dispatch input.
+          RECORDED_DIGEST=""
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            REC=gauntlet-passed/gauntlet-passed.json
+            [ -f "$REC" ] || { echo "::error::no gauntlet-passed record from the triggering run -- refusing to promote (the gauntlet did not attest a digest)."; exit 1; }
+            SHA_TAG="$(jq -r '.sha' "$REC")"
+            RECORDED_DIGEST="$(jq -r '.digest' "$REC")"
+          else
+            SHA_TAG="$DISPATCH_SHA"
+          fi
+          case "$SHA_TAG" in
+            sha-[0-9a-f][0-9a-f]*) : ;;
+            *) echo "::error::sha_tag must be an immutable sha-<commit> tag (got '$SHA_TAG')"; exit 1 ;;
+          esac
+
+          # Re-resolve the digest from ECR by tag (never trust the recorded value blindly); if a record
+          # was present, it MUST match -- a mismatch means tampering or a re-tag, so refuse.
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | cosign login "${CI_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" -u AWS --password-stdin
+          DIGEST="$(aws ecr describe-images --repository-name "$ECR_REPO_NAME" --region "$AWS_REGION" \
+            --image-ids "imageTag=$SHA_TAG" --query 'imageDetails[0].imageDigest' --output text)"
+          case "$DIGEST" in
+            sha256:*) : ;;
+            *) echo "::error::could not resolve a digest for ${ECR_REPO_NAME}:${SHA_TAG} in ${CI_ACCOUNT_ID} ECR (got '${DIGEST}')."; exit 1 ;;
+          esac
+          if [ -n "$RECORDED_DIGEST" ] && [ "$RECORDED_DIGEST" != "None" ] && [ "$RECORDED_DIGEST" != "$DIGEST" ]; then
+            echo "::error::recorded gauntlet digest (${RECORDED_DIGEST}) != current ECR digest for ${SHA_TAG} (${DIGEST}); refusing to promote."; exit 1
+          fi
+
+          # THE GATE (fail-closed): only a digest cosign can verify as gauntlet-passed may promote.
+          # env-staging has no enforcing admission webhook yet, so this verification is the enforcement.
+          echo "verifying gauntlet-passed attestation on ${REG}@${DIGEST}"
+          if ! cosign verify-attestation --type custom \
+                --certificate-identity-regexp "$CERT_IDENTITY_REGEXP" \
+                --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+                "${REG}@${DIGEST}" >/dev/null 2>cosign.err; then
+            echo "::error::no valid gauntlet-passed attestation on ${REG}@${DIGEST} -- refusing to promote to env-staging."
+            sed 's/^/cosign: /' cosign.err || true
+            exit 1
+          fi
+
+          {
+            echo "promotable=true"
+            echo "digest=$DIGEST"
+            echo "sha_tag=$SHA_TAG"
+          } >> "$GITHUB_OUTPUT"
+          echo "verified gauntlet-passed: ${REG}@${DIGEST} (${SHA_TAG}) -- promotable to env-staging"
+
+  promote-staging:
+    needs: verify
+    if: ${{ needs.verify.outputs.promotable == 'true' }}
+    # The env-staging approval gate + the cross-account ECR copy (SMP-1775) live INSIDE promote-to-env.yml
+    # (keyed off env_name), so the auto path still waits on the staging Environment's required reviewers.
+    uses: ./.github/workflows/promote-to-env.yml
+    with:
+      env_name: staging
+      digest: ${{ needs.verify.outputs.digest }}
+      sha_tag: ${{ needs.verify.outputs.sha_tag }}
+      deployment_reason: "auto dev->staging (SMP-1767): gauntlet-passed ${{ needs.verify.outputs.sha_tag }}"
+    secrets: inherit
