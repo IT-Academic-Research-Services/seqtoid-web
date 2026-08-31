@@ -30,6 +30,18 @@
   }
 }
 
+// Wraps the react-virtualized Table when horizontal scrolling is enabled.
+// The table is sized to the sum of its column widths and overflows this
+// container, so the sideways scroll lives here rather than on the page body.
+.horizontalScrollContainer {
+  overflow-x: auto;
+  // overflow-y is left to the inner Grid, which owns vertical virtualization.
+  // (Browsers compute this as auto because overflow-x is non-visible; the
+  // table's height matches this container's height, so it never scrolls or
+  // clips vertically.)
+  overflow-y: hidden;
+}
+
 .cell {
   @include font-body-xs;
 

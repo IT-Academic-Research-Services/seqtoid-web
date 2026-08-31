@@ -649,13 +649,20 @@ class SamplesController < ApplicationController
       return
     end
 
-    unless current_user.can_upload(params[:bulk_path])
+    # Normalize the user-supplied S3 path before it is used anywhere. A leading/trailing
+    # space (common from copy-paste) would otherwise flow into the bucket name -- and S3
+    # bucket names cannot start or end with a space -- causing URI.parse to raise or the
+    # object listing to fail. Strip once here so both the permission check and the listing
+    # see a clean path.
+    bulk_path = params[:bulk_path].to_s.strip
+
+    unless current_user.can_upload(bulk_path)
       render json: { status: "Sorry, it looks like your email doesn’t have permissions to this s3 bucket." }, status: :unprocessable_content
       return
     end
 
     @host_genome_id = params[:host_genome_id]
-    @bulk_path = params[:bulk_path]
+    @bulk_path = bulk_path
     begin
       @samples = parsed_samples_for_s3_path(@bulk_path, @project_id, @host_genome_id)
     rescue Aws::S3::Errors::ServiceError => e

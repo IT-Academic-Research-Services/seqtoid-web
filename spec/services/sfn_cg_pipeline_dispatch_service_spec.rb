@@ -683,6 +683,17 @@ RSpec.describe SfnCgPipelineDispatchService, type: :service do
                  inputs_json: { technology: illumina_technology, accession_id: "ABC123" }.to_json)
         end
 
+        # SMP-1566 -- the sample's original uploaded FASTQs are not retained, so a CG run
+        # kicked off from an mNGS report must start from the retained non-host reads produced
+        # by the sample's mNGS pipeline run.
+        let!(:mngs_pipeline_run) do
+          create(:pipeline_run,
+                 sample: sample,
+                 wdl_version: fake_wdl_version,
+                 pipeline_version: "6.0",
+                 s3_output_prefix: "s3://#{fake_samples_bucket}/results/#{sample.id}")
+        end
+
         it "correctly stores the creation source" do
           subject
           expect(JSON.parse(workflow_run.inputs_json)).to include_json({ creation_source: ConsensusGenomeWorkflowRun::CREATION_SOURCE[:mngs_report] })
@@ -699,6 +710,62 @@ RSpec.describe SfnCgPipelineDispatchService, type: :service do
               },
             }
           )
+        end
+
+        # SMP-1566 -- FASTQs come from the mNGS run's retained non-host reads, NOT the
+        # (unretained) uploaded input files. This sample's host genome is non-human, so the
+        # fully non-host reads are the human-filtered outputs.
+        it "starts the run from the mNGS non-host reads instead of the raw input files" do
+          expect(subject).to include_json(
+            sfn_input_json: {
+              Input: {
+                Run: {
+                  fastqs_0: mngs_pipeline_run.s3_file_for_sfn_result(PipelineRun::HISAT2_HUMAN_FILTERED_NAMES[0]),
+                  fastqs_1: mngs_pipeline_run.s3_file_for_sfn_result(PipelineRun::HISAT2_HUMAN_FILTERED_NAMES[1]),
+                },
+              },
+            }
+          )
+        end
+
+        context "for a human-host sample" do
+          let(:sample) do
+            create(:sample,
+                   project: project,
+                   host_genome_name: "Human",
+                   alignment_config_name: alignment_config.name)
+          end
+
+          it "starts the run from the host-filtered reads" do
+            expect(subject).to include_json(
+              sfn_input_json: {
+                Input: {
+                  Run: {
+                    fastqs_0: mngs_pipeline_run.s3_file_for_sfn_result(PipelineRun::HISAT2_HOST_FILTERED_NAMES[0]),
+                    fastqs_1: mngs_pipeline_run.s3_file_for_sfn_result(PipelineRun::HISAT2_HOST_FILTERED_NAMES[1]),
+                  },
+                },
+              }
+            )
+          end
+        end
+
+        context "when the sample has no completed mNGS run" do
+          let!(:mngs_pipeline_run) { nil }
+
+          it "raises MngsInputsUnavailableError instead of dispatching a run that cannot succeed" do
+            expect { subject }.to raise_error(SfnCgPipelineDispatchService::MngsInputsUnavailableError, /No completed mNGS run found for sample #{sample.id}/)
+          end
+        end
+
+        context "when the only mNGS run is deprecated" do
+          let!(:mngs_pipeline_run) do
+            create(:pipeline_run, sample: sample, deprecated: true, wdl_version: fake_wdl_version, pipeline_version: "6.0")
+          end
+
+          it "ignores the deprecated run and raises MngsInputsUnavailableError" do
+            expect { subject }.to raise_error(SfnCgPipelineDispatchService::MngsInputsUnavailableError)
+          end
         end
       end
     end

@@ -1017,6 +1017,7 @@ export const SamplesView = forwardRef(function SamplesView(
           columns={columns}
           defaultRowHeight={rowHeight}
           draggableColumns
+          horizontallyScrollable
           initialActiveColumns={activeColumns}
           loadingClassName={csTableRenderer.loading}
           onActiveColumnsChange={onActiveColumnsChange}

@@ -497,6 +497,16 @@ const config: PlaywrightTestConfig = {
       },
       grep: /Sample Heatmap/,
     },
+    {
+      // SMP-1720: projects lifecycle + the irreversible public-visibility toggle (P0).
+      name: "smoke test: Functional: P-0: Projects lifecycle + public visibility (SMP-1720)",
+      testMatch: ["tests/project/project-lifecycle.spec.ts"],
+      use: {
+        ...devices[DESKTOP_CHROME],
+        video: VIDEO_CONFIG,
+      },
+      grep: /Projects lifecycle/,
+    },
   ],
   reporter: [["list"], process.env.CI ? ["github"] : ["null"]],
   testDir: "../",

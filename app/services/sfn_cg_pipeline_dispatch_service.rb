@@ -52,6 +52,16 @@ class SfnCgPipelineDispatchService
     end
   end
 
+  # SMP-1566 -- a CG run kicked off from an mNGS report reads the host-filtered
+  # non-host reads produced by the sample's mNGS run (see cg_fastq_paths). If the
+  # sample has no completed, non-deprecated mNGS pipeline run those reads do not
+  # exist, so we refuse to dispatch a run that could never succeed.
+  class MngsInputsUnavailableError < StandardError
+    def initialize(sample_id)
+      super("No completed mNGS run found for sample #{sample_id}; cannot start a consensus genome run from its non-host reads.")
+    end
+  end
+
   def initialize(workflow_run)
     @workflow_run = workflow_run
     @sample = workflow_run.sample
@@ -219,10 +229,46 @@ class SfnCgPipelineDispatchService
     "s3://#{ENV['SAMPLES_BUCKET_NAME']}/#{@sample.sample_path}/#{@workflow_run.id}"
   end
 
+  # SMP-1566 -- FASTQ inputs for the CG run.
+  #
+  # Under the data-retention policy the sample's original uploaded FASTQs are
+  # not durably stored, so a CG run kicked off from an mNGS report cannot read
+  # them. Instead we start from the allowable host-filtered "non-host" reads
+  # that the sample's mNGS run produced and retained -- the same reads the AMR
+  # start_from_mngs path consumes (see SfnAmrPipelineDispatchService). All other
+  # CG creation sources (SARS-CoV-2 / viral CG uploads) supply their own durable
+  # FASTQs, so they keep reading the sample input files directly.
+  def cg_fastq_paths
+    return @sample.input_files.fastq.map(&:s3_path) unless creation_source == ConsensusGenomeWorkflowRun::CREATION_SOURCE[:mngs_report]
+
+    mngs_non_host_read_paths
+  end
+
+  def latest_mngs_pipeline_run
+    @sample.pipeline_runs.non_deprecated.first
+  end
+
+  # S3 paths of the retained non-host reads from the sample's mNGS run. Mirrors
+  # the selection in SfnAmrPipelineDispatchService: samples on a non-human host
+  # get an extra human-filtering pass, so the fully non-host reads live in the
+  # human-filtered output; human-host samples only have the host-filtered output.
+  def mngs_non_host_read_paths
+    pipeline_run = latest_mngs_pipeline_run
+    raise MngsInputsUnavailableError, @sample.id if pipeline_run.nil?
+
+    non_host_read_names = if @sample.host_genome_name == "Human"
+                            PipelineRun::HISAT2_HOST_FILTERED_NAMES
+                          else
+                            PipelineRun::HISAT2_HUMAN_FILTERED_NAMES
+                          end
+    input_file_count = @sample.input_files.by_type(InputFile::FILE_TYPE_FASTQ).count
+    non_host_read_names.map { |name| pipeline_run.s3_file_for_sfn_result(name) }.take(input_file_count)
+  end
+
   def generate_wdl_input
     ref_fasta_name = @sample.input_files.reference_sequence.first.name if @sample.input_files.reference_sequence.present?
     primer_bed_name = @sample.input_files.primer_bed.first.name if @sample.input_files.primer_bed.present?
-    input_fastqs = @sample.input_files.fastq
+    fastq_paths = cg_fastq_paths
 
     # SECURITY: To mitigate pipeline command injection, ensure any interpolated string inputs are either validated or controlled by the server.
     additional_inputs = if creation_source == ConsensusGenomeWorkflowRun::CREATION_SOURCE[:sars_cov_2_upload] && technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:nanopore]
@@ -263,8 +309,8 @@ class SfnCgPipelineDispatchService
 
     run_inputs = {
       docker_image_id: retrieve_docker_image_id,
-      fastqs_0: input_fastqs[0].s3_path,
-      fastqs_1: input_fastqs[1] ? input_fastqs[1].s3_path : nil,
+      fastqs_0: fastq_paths[0],
+      fastqs_1: fastq_paths[1],
       sample: @sample.name.tr(" ", "_"),
       ref_host: "s3://#{S3_DATABASE_BUCKET}/consensus-genome/hg38.fa.gz",
       kraken2_db_tar_gz: "s3://#{S3_DATABASE_BUCKET}/consensus-genome/kraken_coronavirus_db_only.tar.gz",
