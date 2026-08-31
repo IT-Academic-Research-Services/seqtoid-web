@@ -37,11 +37,40 @@ const isGenerateFetchFnInfoNoise = (event: Sentry.Event): boolean => {
   );
 };
 
+// SMP-1808: the frontend DSN is public -- it is embedded verbatim in the client
+// bundle and cannot be obfuscated, so anyone who reads it can POST forged events to
+// our Sentry project and burn quota. The PRIMARY control is server-side: each
+// reactjs project's client key (DSN) is given an "Allowed Domains" allowlist in the
+// Sentry console so events are only accepted from an approved Origin/Referer. That
+// configuration is not managed by IaC (the Sentry projects/keys are provisioned by
+// hand, there is no terraform sentry provider in the fleet) and is documented in
+// docs/SENTRY-ALLOWED-DOMAINS.md for the operator to apply per env.
+//
+// As defense-in-depth we also refuse, client-side, to send any event whose
+// originating script did not load from a seqtoid.org origin. allowUrls matches the
+// URL of the frame that threw, so this drops browser-extension and injected
+// third-party script noise before it ever leaves the browser; events with no frame
+// URL are unaffected and still reported. This is safe because our app JS is served
+// SAME-ORIGIN in every deployed tier -- dev, env-staging and env-prod all leave
+// CZID_CLOUDFRONT_ENDPOINT unset, so assets come from the *.seqtoid.org host rather
+// than a CDN domain. localhost is allowed so a developer who sets a local DSN still
+// sees their own events. If a CDN asset_host is ever introduced, add its origin here.
+const SEQTOID_ALLOWED_URLS = [
+  // seqtoid.org apex plus every subdomain: dev., pr-N.dev., env-staging.,
+  // env-prod., sandbox., and the apex prod host after the cutover DNS flip. The
+  // trailing lookahead pins the host boundary so a suffix lookalike such as
+  // dev.seqtoid.org.evil.com does NOT match.
+  /https?:\/\/([a-z0-9-]+\.)*seqtoid\.org(?=[/:?#]|$)/i,
+  /https?:\/\/localhost(:\d+)?\//i,
+  /https?:\/\/127\.0\.0\.1(:\d+)?\//i,
+];
+
 // Sentry Basic Configuration Options: https://docs.sentry.io/platforms/javascript/guides/react/config/basics/
 Sentry.init({
   dsn: window.SENTRY_DSN_FRONTEND,
   environment: window.ENVIRONMENT,
   release: window.GIT_RELEASE_SHA,
+  allowUrls: SEQTOID_ALLOWED_URLS,
   beforeSend: event => (isGenerateFetchFnInfoNoise(event) ? null : event),
 });
 
