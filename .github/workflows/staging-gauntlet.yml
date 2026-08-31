@@ -78,10 +78,19 @@ jobs:
       url: ${{ steps.up.outputs.url }}
     steps:
       - uses: actions/checkout@v6
+      # Dedicated dev provision role (SMP-1786). The gauntlet dispatches via workflow_dispatch, so it
+      # presents the OIDC subject `repo:<org>/seqtoid-web:ref:refs/heads/<branch>` -- NOT a
+      # `:pull_request` subject. The former default `czid-dev-gh-actions-preview-build` trusts ONLY
+      # `repo:<org>/seqtoid-web:pull_request` (and is ECR-push-only), so the assume was denied
+      # ("Not authorized to perform sts:AssumeRoleWithWebIdentity") and it could not provision anyway.
+      # czid-dev-gh-actions-gauntlet-provision (cypherid-web-infra, gated apply) trusts the workflow's
+      # branch/dispatch subject and carries eks:DescribeCluster + read-only cluster access for the
+      # `bin/gauntlet_env` Argo wait. Dev account has no OIDC-federation SCP allowlist (that is
+      # staging/prod-only), so the dev role federates once its trust admits the subject.
       - name: Configure AWS (dev account provision role)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_PROVISION_ROLE || 'czid-dev-gh-actions-preview-build' }}
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_PROVISION_ROLE || 'czid-dev-gh-actions-gauntlet-provision' }}
           aws-region: us-west-2
       - name: Bring up the candidate env
         id: up
@@ -263,7 +272,7 @@ jobs:
       - name: Configure AWS (dev account)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_ATTEST_ROLE || 'czid-dev-gh-actions-preview-build' }}
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_ATTEST_ROLE || 'czid-dev-gh-actions-gauntlet-attest' }}
           aws-region: us-west-2
       - uses: sigstore/cosign-installer@v3
       - name: Resolve digest and attest gauntlet-passed
@@ -295,7 +304,7 @@ jobs:
       - name: Configure AWS (dev account)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_PROVISION_ROLE || 'czid-dev-gh-actions-preview-build' }}
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_PROVISION_ROLE || 'czid-dev-gh-actions-gauntlet-provision' }}
           aws-region: us-west-2
       - name: Tear down the candidate env
         run: ./bin/gauntlet_env down "${{ needs.provision.outputs.env_name }}"
