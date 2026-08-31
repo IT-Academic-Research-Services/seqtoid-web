@@ -1,10 +1,6 @@
 import { Menu, MenuItem } from "@czi-sds/components";
 import React, { useState } from "react";
-import {
-  ANALYTICS_EVENT_NAMES,
-  useTrackEvent,
-  useWithAnalytics,
-} from "~/api/analytics";
+import { ANALYTICS_EVENT_NAMES, useTrackEvent } from "~/api/analytics";
 import { createAnnotation } from "~/api/blast";
 import AnnotationLabel from "~/components/ui/labels/AnnotationLabel";
 import {
@@ -35,19 +31,17 @@ export const AnnotationMenu = ({
   analyticsContext,
 }: AnnotationMenuProps) => {
   const trackEvent = useTrackEvent();
-  const withAnalytics = useWithAnalytics();
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleClick = (event: $TSFixMe) => {
-    withAnalytics(
-      ANALYTICS_EVENT_NAMES.REPORT_TABLE_ANNOTATION_MENU_OPENED,
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore-next-line ignore ts error for now while we add types to withAnalytics/trackEvent
-      analyticsContext,
-    );
-    withAnalytics(
+    trackEvent(ANALYTICS_EVENT_NAMES.REPORT_TABLE_ANNOTATION_MENU_OPENED, {
+      ...analyticsContext,
+    });
+    trackEvent(
       ANALYTICS_EVENT_NAMES.REPORT_TABLE_ANNOTATION_MENU_OPENED_ALLISON_TESTING,
-      JSON.stringify(analyticsContext),
+      {
+        ...analyticsContext,
+      },
     );
     setAnchorEl(event.currentTarget);
   };
