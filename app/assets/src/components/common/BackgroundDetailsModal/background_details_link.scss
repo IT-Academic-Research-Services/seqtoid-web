@@ -1,0 +1,9 @@
+@import "~styles/themes/colors";
+@import "~styles/themes/typography";
+@import "~styles/themes/elements";
+@import "~@czi-sds/components/dist/variables";
+
+.icon {
+  fill: $sds-color-gray-500;
+  vertical-align: middle;
+}

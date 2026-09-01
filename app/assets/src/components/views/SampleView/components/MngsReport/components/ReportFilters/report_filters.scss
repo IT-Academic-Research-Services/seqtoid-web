@@ -13,6 +13,18 @@
   }
 }
 
+.backgroundFilterRow {
+  display: flex;
+  align-items: center;
+
+  .backgroundDetailsLink {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    margin-left: $sds-spaces-xxs;
+  }
+}
+
 .tagList {
   margin-top: $sds-spaces-l;
   margin-bottom: $sds-spaces-l;
