@@ -196,22 +196,39 @@ describe("BulkDownloadModalFooter notifications", () => {
     expect(container.textContent).toContain(
       "because they either failed or are still processing",
     );
-    // The component appends an "...and N more" row to the listed names, so the
-    // header counts the two real names plus that summary row.
-    expect(container.textContent).toContain("3 samples");
+    // Two named invalid samples: the header reports exactly two and there is no
+    // "...and N more" summary row because every invalid sample is listed.
+    expect(container.textContent).toContain("2 samples");
+    expect(container.textContent).not.toContain("3 samples");
     fireEvent.click(screen.getByText(/won.t be included in the bulk download/));
     expect(container.textContent).toContain("bad-sample-a");
     expect(container.textContent).toContain("bad-sample-b");
-    expect(container.textContent).toContain("...and 2 more");
+    expect(container.textContent).not.toContain("...and");
   });
 
-  it("drops blank names from the listed invalid samples", () => {
+  it("uses a singular header for a single invalid sample", () => {
+    const { container } = renderFooter({
+      invalidSampleNames: ["bad-sample-a"],
+    });
+    // One invalid sample: singular "1 sample" and no "...and N more" row.
+    expect(container.textContent).toContain("1 sample won");
+    expect(container.textContent).not.toContain("samples");
+    fireEvent.click(screen.getByText(/won.t be included in the bulk download/));
+    expect(container.textContent).toContain("bad-sample-a");
+    expect(container.textContent).not.toContain("...and");
+  });
+
+  it("collapses blank (unnamed) invalid samples into an accurate summary row", () => {
     const { container } = renderFooter({
       invalidSampleNames: ["", "bad-sample-a"],
     });
+    // Two invalid samples total (one named, one blank): the header still counts
+    // both, and the single unnamed sample collapses to "...and 1 more".
+    expect(container.textContent).toContain("2 samples");
     fireEvent.click(screen.getByText(/won.t be included in the bulk download/));
     expect(container.textContent).toContain("bad-sample-a");
-    expect(container.textContent).toContain("...and 2 more");
+    expect(container.textContent).toContain("...and 1 more");
+    expect(container.textContent).not.toContain("...and 2 more");
   });
 
   it("does not render the invalid-sample warning for an empty list", () => {

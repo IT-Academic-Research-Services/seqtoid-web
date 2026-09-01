@@ -289,6 +289,18 @@ jobs:
           printf '{"gauntlet":"staging","result":"passed","sha":"%s","run":"%s"}\n' "$SHA" "$RUN_URL" > /tmp/pred.json
           cosign attest --yes --type custom --predicate /tmp/pred.json "${REG}@${DIGEST}"
           echo "attested ${REG}@${DIGEST} as gauntlet-passed -- promotable to env-staging"
+          # SMP-1767: record the vetted sha + digest so gitops-promote.yml (chained off this run's
+          # success) knows exactly which artifact to verify-and-promote. The digest is re-resolved and
+          # the attestation re-verified there, so this record is a convenience pointer, not the trust.
+          printf '{"sha":"%s","digest":"%s","registry":"%s"}\n' "$SHA" "$DIGEST" "$REG" > "${GITHUB_WORKSPACE}/gauntlet-passed.json"
+          cat "${GITHUB_WORKSPACE}/gauntlet-passed.json"
+
+      - name: Upload gauntlet-passed record (consumed by gitops-promote.yml)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gauntlet-passed
+          path: gauntlet-passed.json
+          if-no-files-found: error
 
   teardown:
     # Always reap the candidate env if it came up (the ApplicationSet TTL reaper is the backstop).

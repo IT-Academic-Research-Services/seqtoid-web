@@ -34,6 +34,12 @@ jobs:
       contents: read
       # The digest resolution below assumes the dev-account ECR-read role via GitHub OIDC.
       id-token: write
+    # SMP-1767: surface whether a NEW digest actually advanced (and which tag) so the auto-gauntlet
+    # trigger below fires ONCE per newly-vetted dev digest, not on every no-op re-run.
+    outputs:
+      changed: ${{ steps.advance.outputs.changed }}
+      tag: ${{ steps.advance.outputs.tag }}
+      digest: ${{ steps.advance.outputs.digest }}
     env:
       # Same rotatable CI-identity vars the build + promote workflows use, with the DEV-account
       # defaults. Resolve the built image's DIGEST from this account's ECR so the advance can pin it.
@@ -252,17 +258,62 @@ jobs:
           [ -n "$merged" ] || { echo "::error::could not merge PR #${PR_NUM} after retries (checks were green). Leaving it OPEN."; exit 1; }
           echo "Dev advanced to ${TAG} and merged; Argo CD will sync."
 
+  # SMP-1767: auto-trigger the staging promotion gauntlet for the exact sha that just advanced to dev.
+  # This is the "dev deploy went green -> vet it for staging" hop that today is manual (the gauntlet is
+  # workflow_dispatch-only). It fires ONCE per newly-vetted digest (advance.changed == 'true'), passing
+  # the immutable sha-<commit> tag + the env-staging confirm token the gauntlet's guard requires.
+  #
+  # OFF BY DEFAULT (vars.STAGING_AUTO_GAUNTLET_ENABLED). Leave it unset until the SMP-1786 gauntlet
+  # residuals land -- notably the provision job's GITOPS_TOKEN (bin/gauntlet_env REQUIRES a token to
+  # push the candidate element; the gauntlet's provision job does not yet pass one). This trigger is
+  # fail-safe regardless: if the gauntlet is disabled or its provision/attest fail for ANY reason, no
+  # gauntlet-passed attestation is written, so gitops-promote.yml cannot advance staging (see there).
+  # The gauntlet's own STAGING_GAUNTLET_ENABLED master switch must also be on for the dispatched run to
+  # do anything, so both are required here to avoid dispatching a no-op run.
+  trigger-gauntlet:
+    needs: advance
+    if: >-
+      ${{ vars.STAGING_AUTO_GAUNTLET_ENABLED == 'true'
+          && vars.STAGING_GAUNTLET_ENABLED == 'true'
+          && needs.advance.result == 'success'
+          && needs.advance.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # dispatch the gauntlet's workflow_dispatch in this same repo
+    steps:
+      - name: Dispatch staging-gauntlet for the freshly-vetted dev sha
+        env:
+          # workflow_dispatch via GITHUB_TOKEN DOES create a run (the recursion guard exempts
+          # workflow_dispatch); prefer the GITOPS_TOKEN PAT when present for parity with the other
+          # gitops hops, else fall back to the job token (needs the actions: write above).
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN || github.token }}
+          TAG: ${{ needs.advance.outputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            sha-[0-9a-f]*) : ;;
+            *) echo "::error::refusing to dispatch gauntlet for a non sha-<commit> tag ('$TAG')"; exit 1 ;;
+          esac
+          echo "auto-triggering staging promotion gauntlet for ${TAG} (advanced to dev this run)"
+          gh workflow run staging-gauntlet.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f sha="${TAG}" \
+            -f confirm_target=env-staging.seqtoid.org
+
   # Sentry release + dev deploy tracking (CZID-552) + frontend source-map upload (SMP-1826).
   # Runs on the same successful main build as the advance above, keyed to the exact commit
   # that produced the image. Creates a Sentry release, associates commits (suspect commits),
   # records a dev deploy, and uploads the frontend source maps EXTRACTED FROM THE BUILT IMAGE
   # so Sentry can symbolicate minified frames (e.g. vendors.bundle.min.js:205) back to source.
   #
-  # DEV-ONLY: this workflow only fires for main builds and hard-codes -e dev + the DEV frontend
-  # project. PR previews are pull_request builds and never reach this job (the main-only `if`),
-  # so they are excluded by construction -- no per-preview guard needed. When staging/prod are
-  # un-held, mirror this with their own gated deploy env + their own SENTRY_PROJECT -- do NOT
-  # broaden this job to those envs here.
+  # DEV-ONLY: this workflow only fires for main builds and hard-codes -e dev. It reads the DEV
+  # frontend project from the dev-scoped vars.SENTRY_PROJECT (the job's `environment: dev` above).
+  # PR previews are pull_request builds and never reach this job (the main-only `if`), so they are
+  # excluded by construction -- no per-preview guard needed. staging/prod uploads are mirrored in
+  # promote-to-env.yml (their own gated tiers + their own env-scoped SENTRY_PROJECT), SMP-1855 -- do
+  # NOT broaden this job to those envs here.
   #
   # Isolated from `advance`: separate job, no needs/dependency, so a Sentry API hiccup or an
   # unprovisioned secret can NEVER block the dev rollout. The source-map upload additionally
@@ -273,6 +324,12 @@ jobs:
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
+    # SMP-1855: bind this job to the dev GitHub Environment so vars.SENTRY_PROJECT resolves to the
+    # environment-scoped value (the dev frontend project) rather than the repo-level default. Staging
+    # and prod uploads run from promote-to-env.yml, which is already environment-scoped per tier, and
+    # each reads its OWN vars.SENTRY_PROJECT -- so all three tiers upload to the correct project with
+    # no per-env workflow branching. dev has no protection rules, so this bind is a no-op on gating.
+    environment: dev
     permissions:
       contents: read
       id-token: write # OIDC assume-role to pull the built image from ECR (SMP-1826)
@@ -282,9 +339,10 @@ jobs:
       #   SENTRY_AUTH_TOKEN (secret) -- MUST carry `project:releases` AND `org:read`. The
       #     sourcemap upload needs both; a release-creation-only token creates the release
       #     fine and then 403s on `sourcemaps upload`. (release creation alone = project:releases)
-      #   SENTRY_ORG     (var) = ucsf-rm
-      #   SENTRY_PROJECT (var) = dev-reactjs-project  -- the DEV FRONTEND project (maps are a
-      #     frontend artifact; NOT the rails/backend project).
+      #   SENTRY_ORG     (var) = ucsf-rm  -- one org; stays repo-level.
+      #   SENTRY_PROJECT (var) -- the DEV FRONTEND project (maps are a frontend artifact; NOT the
+      #     rails/backend project). SMP-1855 made this ENVIRONMENT-scoped: set it on the `dev` GitHub
+      #     Environment (dev-reactjs-project). The `environment: dev` on this job resolves it here.
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ vars.SENTRY_ORG }}
       SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
