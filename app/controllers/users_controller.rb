@@ -126,6 +126,13 @@ class UsersController < ApplicationController
 
   # GET /users/register
   def register
+    # SMP-1709 -- the self-service registration/confirmation page. When self-service signup is
+    # disabled (beta/staging/prod), send the visitor back to the landing page to request access
+    # instead of rendering the signup confirmation, so directly hitting this URL cannot bypass the
+    # gate. Invited/provisioned users never land here (they use the account-activation link).
+    return if AppConfigHelper.self_service_signup_enabled?
+
+    redirect_to root_path, alert: "Self-service signup is disabled. Please request access to be invited."
   end
 
   # GET /users/password/new

@@ -98,9 +98,57 @@ RSpec.describe GraphqlController, type: :request do
       end
     end
 
+    # SMP-1709 -- self-service signup is disabled (beta/staging/prod) even though automatic account
+    # creation is enabled. A logged-out visitor is refused with a clear message and NO account is
+    # created; the admin / invite path (which does not use this mutation) is unaffected.
+    context "when self-service signup is disabled" do
+      before do
+        AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "1")
+        AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "0")
+      end
+
+      subject do
+        post "/graphql", headers: { "Content-Type" => "application/json" }, params: {
+          query: query,
+          context: { current_user: nil },
+          variables: { email: fake_email },
+        }.to_json
+      end
+
+      it "does not call UserFactoryService to create a new user" do
+        expect(UserFactoryService).not_to receive(:call)
+
+        subject
+      end
+
+      it "returns the signup-disabled message" do
+        subject
+        expect(response).to have_http_status :success
+
+        result = JSON.parse response.body
+        expect(result).to include_json(
+          { "errors" => [{ "message" => Mutations::CreateUser::SIGNUP_DISABLED_MESSAGE }] }
+        )
+      end
+
+      it "is disabled by default when the flag row is absent (fail-closed)" do
+        AppConfig.where(key: AppConfig::SELF_SERVICE_SIGNUP_ENABLED).delete_all
+        expect(UserFactoryService).not_to receive(:call)
+
+        subject
+
+        result = JSON.parse response.body
+        expect(result).to include_json(
+          { "errors" => [{ "message" => Mutations::CreateUser::SIGNUP_DISABLED_MESSAGE }] }
+        )
+      end
+    end
+
     context "when automatic account creation is enabled" do
       before do
         AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "1")
+        # SMP-1709 -- self-service signup must also be enabled for the landing-page create path.
+        AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "1")
       end
 
       context "and the current user is a non-admin" do
