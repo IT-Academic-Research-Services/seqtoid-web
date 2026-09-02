@@ -71,7 +71,9 @@ jobs:
           # A pure-number input is a PR number -> resolve to its squash/merge commit. Else it is a sha.
           if printf '%s' "$CHANGE" | grep -qE '^[0-9]+$'; then
             SHA="$(gh pr view "$CHANGE" --repo "$GITHUB_REPOSITORY" --json mergeCommitSha --jq '.mergeCommitSha')"
-            [ -n "$SHA" ] && [ "$SHA" != "null" ] || { echo "::error::PR #$CHANGE has no merge commit -- is it merged?"; exit 1; }
+            if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+              echo "::error::PR #$CHANGE has no merge commit -- is it merged?"; exit 1
+            fi
             echo "Resolved PR #$CHANGE -> commit $SHA"
           else
             SHA="$CHANGE"
