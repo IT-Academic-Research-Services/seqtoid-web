@@ -1,0 +1,75 @@
+name: promote-staging-on-build
+
+# Chained step of the curated single-change flow (see stage-change.yml).
+#
+# When a build of the `staging` branch succeeds, promote that exact image to env-staging behind the
+# staging approval gate. stage-change.yml cherry-picked one approved change onto `staging`; the build
+# produced sha-<stagingHEAD8>; this resolves that digest and hands it to promote-to-env.yml.
+#
+# Guarded to head_branch == staging, so it NEVER fires for dev/main builds (those advance dev via
+# gitops-advance-dev.yml instead). This is the auto half of "one action, chained": the operator only
+# runs stage-change and approves the gate this workflow reaches.
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types:
+      - completed
+
+permissions:
+  id-token: write
+  contents: read
+  packages: read
+
+concurrency:
+  group: promote-staging-on-build
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve the staging build digest
+    # Only on a SUCCESSFUL build of the staging line.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'staging' }}
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.pick.outputs.digest }}
+      sha_tag: ${{ steps.pick.outputs.sha_tag }}
+      reason: ${{ steps.pick.outputs.reason }}
+    steps:
+      - name: Resolve digest + reason for the staging HEAD
+        id: pick
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GHCR_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA_TAG="sha-${HEAD_SHA:0:8}"
+          # The build dual-publishes to GHCR (source of record); resolve the immutable digest from it.
+          GHCR_REPO="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/seqtoid-web"
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          DIGEST="$(docker buildx imagetools inspect "${GHCR_REPO}:${SHA_TAG}" --format '{{.Manifest.Digest}}')"
+          [ -n "$DIGEST" ] || { echo "::error::no image found for ${GHCR_REPO}:${SHA_TAG}"; exit 1; }
+          # Carry the operator's reason through from the staging commit trailer (set by stage-change.yml).
+          MSG="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}" --jq '.commit.message' 2>/dev/null || true)"
+          REASON="$(printf '%s\n' "$MSG" | sed -n 's/^Env-staging-reason: //p' | head -1)"
+          [ -n "$REASON" ] || REASON="curated env-staging promotion (staging @ ${SHA_TAG})"
+          {
+            echo "digest=$DIGEST"
+            echo "sha_tag=$SHA_TAG"
+            echo "reason=$REASON"
+          } >> "$GITHUB_OUTPUT"
+          echo "Promoting env-staging to ${SHA_TAG} (${DIGEST}) -- ${REASON}"
+
+  promote-staging:
+    name: Promote to env-staging
+    needs: resolve
+    uses: ./.github/workflows/promote-to-env.yml
+    with:
+      env_name: staging
+      digest: ${{ needs.resolve.outputs.digest }}
+      sha_tag: ${{ needs.resolve.outputs.sha_tag }}
+      deployment_reason: ${{ needs.resolve.outputs.reason }}
+    secrets: inherit

@@ -8,6 +8,11 @@ on:
   push:
     branches:
       - main
+      # The curated env-staging line. A push to `staging` (via stage-change.yml, which cherry-picks
+      # one approved change onto it) builds that exact commit as sha-<sha8> so promote-staging-on-build
+      # can promote it. Safe for dev: gitops-advance-dev is guarded to head_branch==main, and non-main
+      # builds use CACHE_MODE=read, so a staging build never advances dev or writes the shared cache.
+      - staging
   workflow_dispatch:
     inputs:
       environment:
