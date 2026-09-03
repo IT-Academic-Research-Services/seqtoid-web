@@ -33,6 +33,7 @@ module ExportControlAttestationGate
   # Everything else is gated. We match on controller name so route changes don't silently open a hole.
   ATTESTATION_EXEMPT_CONTROLLERS = %w[
     export_control_attestations
+    export_control_signups
     auth0
   ].freeze
 

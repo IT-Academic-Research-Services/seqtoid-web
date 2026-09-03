@@ -1,0 +1,25 @@
+<%#
+  SMP-1854 — the pending / "under review" page. The ONLY page a signup applicant lands on: the screen is
+  asynchronous, so at submit time the outcome is unknown. Approval and denial both arrive by email
+  (ProvisionScreenedAccountJob sends the activation link, or UserMailer.account_creation_denied). This page
+  does not poll and does not update; there is no status endpoint an accountless applicant could authenticate
+  against, so it is a terminal state.
+
+  Amber (warning) treatment, not the red deny treatment: this is a neutral waiting state. The <h1> stays
+  black (red means denial; amber-as-text fails contrast). Tokens: $warning-medium / $warning-dark /
+  $warning-lightest (see export_control/_styles).
+%>
+<%= render "export_control/styles" %>
+<main class="ec-page">
+  <div class="ec-card ec-card--pending">
+    <p class="ec-pill">Under review</p>
+    <h1 class="ec-h1">Your request is under review</h1>
+    <div class="ec-body" role="status">
+      <p>
+        Thank you for submitting your information. We are reviewing your access and will email you once a
+        decision has been made. Most decisions are made within minutes. Some requests require additional
+        review and can take 2-3 business days. You can close this tab, no further action is needed.
+      </p>
+    </div>
+  </div>
+</main>

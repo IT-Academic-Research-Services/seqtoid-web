@@ -1,31 +1,30 @@
 <%#
-  CZID-285 -- Layer 3 clearance deny UX. Shown when a user's denied-party screening did not come back clear
-  (a hit, still pending, or a provider error).
+  SMP-1853 — CZID-285 Layer 3 clearance UX. Shown when a user's denied-party screening has not come back
+  clear: a hit or an error puts access on HOLD pending compliance review. This is NOT a denial — the hold
+  is released by a compliance officer (the resolution poller auto-clears it), so it uses the amber "under
+  review" treatment (matching the signup pending page), not the red deny treatment. Rendered with HTTP 403.
 
-  TODO(counsel): the denial copy is a PLACEHOLDER with legal weight -- counsel-owned before go-live. A
-  screening HIT in particular may carry legal/reporting obligations and its user-facing handling is
-  counsel's, not engineering's (design doc S10).
+  "Check again" re-runs the clearance: it returns the same held result until the officer clears the hold,
+  at which point it is the way back in. Sign out is the only other affordance.
 
-  Non-bypassable by design: NO "continue anyway" link. The only affordances are to retry clearance or to
-  sign out. Rendered with HTTP 403.
+  Approval model (legal-approved 2026-08-24): clearance is attestation + denied-party screening, with no
+  identity-verification step, so the copy speaks only to screening.
 %>
-<div class="export-control-denied" style="max-width: 640px; margin: 96px auto; padding: 0 24px; text-align:center; font-family: 'Open Sans', sans-serif;">
-  <h1 style="font-size: 26px; margin-bottom: 16px; color:#cf222e;">
-    <%# TODO(counsel): heading copy %>
-    Access denied
-  </h1>
-
-  <p style="line-height:1.6; color:#24292f; margin-bottom:28px;">
-    <%# TODO(counsel): denial body copy — legal weight %>
-    <strong>PLACEHOLDER — pending counsel-approved text.</strong><br />
-    Access to export-controlled functions requires a clear denied-party screening. Because that clearance
-    could not be confirmed, access cannot be granted. [Counsel-owned denial language will replace this text.]
-  </p>
-
-  <div style="display:flex; gap:12px; justify-content:center;">
-    <%= link_to "Try again", new_export_control_clearance_path,
-                style: "background:#0969da; color:#fff; text-decoration:none; border-radius:6px; padding:10px 20px; font-size:15px;" %>
-    <%= link_to "Sign out", auth0_logout_path,
-                style: "background:#fff; color:#24292f; border:1px solid #d0d7de; text-decoration:none; border-radius:6px; padding:10px 20px; font-size:15px;" %>
+<%= render "export_control/styles" %>
+<main class="ec-page">
+  <div class="ec-card ec-card--pending">
+    <p class="ec-pill">Under review</p>
+    <h1 class="ec-h1">Access under review</h1>
+    <div class="ec-body" role="status">
+      <p>
+        Access to export-controlled functions requires a clear denied-party screening. Your screening has
+        not come back clear yet, so your access is on hold while it is reviewed. You will be able to continue
+        once the review is complete.
+      </p>
+    </div>
+    <div class="ec-actions">
+      <%= link_to "Check again", new_export_control_clearance_path, class: "ec-btn ec-btn--primary" %>
+      <%= link_to "Sign out", auth0_logout_path, class: "ec-btn ec-btn--secondary" %>
+    </div>
   </div>
-</div>
+</main>

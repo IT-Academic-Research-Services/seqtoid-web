@@ -143,6 +143,13 @@ Rails.application.routes.draw do
   post 'export_control_clearance',          to: 'export_control_clearances#create',   as: :export_control_clearances
   get  'export_control_clearance_denied',   to: 'export_control_clearances#denied',    as: :export_control_clearance_denied
 
+  # SMP-1854 — pre-account export-control SIGNUP flow (public/anonymous; dependency-free, works with JS off).
+  # create is a STUB that discards the payload until the pre-account screening producer endpoint exists;
+  # see ExportControlSignupsController.
+  get  'export_control_signup',          to: 'export_control_signups#new',      as: :new_export_control_signup
+  post 'export_control_signup',          to: 'export_control_signups#create',   as: :export_control_signups
+  get  'export_control_signup/pending',  to: 'export_control_signups#pending',  as: :export_control_signup_pending
+
   # CZID-286 — Layer 3 device/location attestation (SERVER-SIDE verify; client SDK HELD, ships DARK).
   get  'device_location_attestation',        to: 'device_location_attestations#new',    as: :new_device_location_attestation
   post 'device_location_attestation',        to: 'device_location_attestations#create', as: :device_location_attestations

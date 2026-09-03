@@ -32,8 +32,9 @@ class ProcessScreeningJob
       # Zero-tolerance geo rule (CZID-321): an association with a SANCTIONED JURISDICTION (the applicant's
       # declared country is on the embargo list, or the vendor flagged risk_country) is an UNAMBIGUOUS,
       # hard denial -- the same list the edge WAF geo-block enforces. Auto-DENY immediately (no 48h manual
-      # queue, no held signup to resolve): a party who must not be admitted is denied at once.
-      post_callback(payload, decision: 'denied', path: 'auto', account: nil)
+      # queue, no held signup to resolve): a party who must not be admitted is denied at once. The account
+      # is still forwarded so the callback receiver can email the applicant (UserMailer.account_creation_denied).
+      post_callback(payload, decision: 'denied', path: 'auto', account: payload['account'])
       Rails.logger.warn("[ProcessScreeningJob] #{payload['correlation_id']} auto-denied: sanctioned jurisdiction")
     elsif outcome
       # A NAME-MATCH hit or a fail-closed error -- genuine ambiguity that needs a human. HOLD the applicant
@@ -103,7 +104,7 @@ class ProcessScreeningJob
         correlation_id: payload['correlation_id'],
         decision: decision,
         path: path,
-        account: account
+        account: account,
       }.compact
     )
     ExportControl::ScreeningServiceClient.post_signed(url, body)

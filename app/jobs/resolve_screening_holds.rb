@@ -176,7 +176,9 @@ class ResolveScreeningHolds
     url = signup.callback_url.presence
     return if url.blank?
 
-    account = decision == PendingSignup::DECISION_APPROVED ? signup.account_payload : nil
+    # Forward the held account on BOTH decisions: approved provisions from it; denied needs the email so the
+    # callback receiver can send UserMailer.account_creation_denied (deny reads only the email).
+    account = signup.account_payload
     body = JSON.dump(
       {
         screening_id: signup.screening_id,

@@ -1,46 +1,42 @@
 <%#
-  CZID-285 -- Layer 3 export-screening start page.
+  CZID-285 — Layer 3 export-screening start page (the clearance hand-off for SIGNED-IN users).
 
   Approval model (legal-approved 2026-08-24): clearance is attestation + denied-party screening, with NO
-  document identity-verification step. This page hands off to the screen.
+  document identity-verification step. This page hands off to the screen; the POST runs it server-side and
+  records the outcome (with the reference stub that is a PENDING clearance, i.e. deny, the correct dark-mode
+  behavior).
 
-  TODO(counsel): ALL user-facing copy here is a PLACEHOLDER with legal weight and MUST be drafted or
-  approved by counsel before go-live (design doc S10). Do not treat the text below as final.
+  Dependency-free (no React/webpack entry): renders inside the SPA shell (blank navy header + white logo)
+  but the content is plain ERB, so the gate works even if JS fails. Styling comes from the shared,
+  brand-tokened partial (export_control/_styles).
 
-  Minimal, dependency-free skeleton (no React/webpack entry) so the gate is functional now.
+  FORM CONTRACT (unchanged): a single POST to export_control_clearances_path with NO fields; the create
+  action screens current_user server-side. Do not add inputs or rename the action.
 %>
-<div class="export-control-clearance" style="max-width: 720px; margin: 64px auto; padding: 0 24px; font-family: 'Open Sans', sans-serif;">
-  <h1 style="font-size: 24px; margin-bottom: 16px;">
-    <%# TODO(counsel): heading copy %>
-    Export-control screening required
-  </h1>
+<%= render "export_control/styles" %>
+<main class="ec-page">
+  <div class="ec-card">
+    <h1 class="ec-h1">
+      Export-control screening required
+    </h1>
 
-  <div style="background:#f6f8fa; border:1px solid #d0d7de; border-radius:6px; padding:20px; margin-bottom:24px; line-height:1.6;">
-    <p><strong>PLACEHOLDER -- pending counsel-approved text (TODO(counsel)).</strong></p>
-    <p>
-      Access to export-controlled data and functions on this service requires that you be screened against
-      U.S. denied- and restricted-party lists. To proceed, your account will be screened before access is
-      granted.
-    </p>
-    <p>
-      [The exact language, the applicable screening lists, and the handling of a screening result are
-      counsel-owned and will replace this placeholder before enforcement is enabled.]
-    </p>
+    <div class="ec-panel">
+      <p>
+        Access to export-controlled data and functions on this service requires that you be screened against
+        U.S. denied- and restricted-party lists. To proceed, your account will be screened before access is
+        granted.
+      </p>
+    </div>
+
+    <%= form_with url: export_control_clearances_path, method: :post, local: true do %>
+      <%# The clearance version being recorded; surfaced here for the record. %>
+      <p class="ec-meta">Clearance version: <%= @clearance_version %></p>
+
+      <div class="ec-actions">
+        <button type="submit" class="ec-btn ec-btn--primary">
+          Continue
+        </button>
+      </div>
+    <% end %>
   </div>
-
-  <%= form_with url: export_control_clearances_path, method: :post, local: true do %>
-    <p style="color:#57606a; font-size:13px; margin-bottom:20px;">
-      Clearance version: <%= @clearance_version %>
-    </p>
-
-    <%#
-      This synchronous submit runs the screen and records the outcome. With the reference stub it records a
-      PENDING clearance and the gate keeps the user out (deny), which is the correct dark-mode behavior.
-    %>
-    <button type="submit"
-            style="background:#0969da; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:15px; cursor:pointer;">
-      <%# TODO(counsel): button label %>
-      Continue
-    </button>
-  <% end %>
-</div>
+</main>

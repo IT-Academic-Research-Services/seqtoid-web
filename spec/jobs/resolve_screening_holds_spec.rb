@@ -280,7 +280,7 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(PendingSignup.pending_for('User:900')).to be_nil # resolved
     end
 
-    it 'posts a DENIED callback (no account) on a True Hit' do
+    it 'posts a DENIED callback carrying the account on a True Hit (so the applicant can be emailed)' do
       held_subject(sdistributedid: '900002', subject_ref: 'User:901')
       create(:pending_signup, subject_ref: 'User:901', callback_url: 'http://web/internal/v1/screening_result')
       captured = nil
@@ -289,7 +289,9 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       run_with([verdict(status: 'True Hit', shresult_id: '900002')])
 
       expect(captured['decision']).to eq('denied')
-      expect(captured).not_to have_key('account')
+      # The held account is forwarded on denial too (full account_payload) so the callback receiver has a
+      # recipient for UserMailer.account_creation_denied; deny reads only the email.
+      expect(captured['account']['email']).to eq('applicant@ucsf.edu')
     end
 
     it 'does nothing when there is no held signup for the subject' do

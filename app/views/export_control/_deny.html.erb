@@ -1,0 +1,31 @@
+<%#
+  Shared export-control deny shell (used by the SMP-1852 attestation deny page). Rendered as a LAYOUT: the
+  caller passes the heading + retry affordance and yields the denial body.
+
+  Non-bypassable by design — there is NO "continue anyway". The only affordances are to retry (the caller's
+  path) or to sign out. The controller renders this with HTTP 403.
+
+  Locals:
+    heading     — the <h1> text
+    retry_path  — where the primary "try again" link goes
+    retry_label — the primary link's label
+
+  NOTE (follow-up): device_location_attestations/denied.html.erb is the same shape and could adopt this
+  shell in a one-line change once that deferred (ships-dark) route is picked up. Left untouched here so a
+  restyle does not alter a deferred page's rendering.
+%>
+<%= render "export_control/styles" %>
+<main class="ec-page">
+  <div class="ec-card ec-card--denied">
+    <h1 class="ec-h1 ec-h1--denied"><%= heading %></h1>
+    <%# role="alert" so a screen reader announces the block on load — these pages cannot be navigated past. %>
+    <div class="ec-body" role="alert">
+      <%= yield %>
+    </div>
+    <div class="ec-actions ec-actions--center">
+      <%= link_to retry_label, retry_path, class: "ec-btn ec-btn--primary" %>
+      <%# Sign out uses the existing auth0 logout path. %>
+      <%= link_to "Sign out", auth0_logout_path, class: "ec-btn ec-btn--secondary" %>
+    </div>
+  </div>
+</main>
