@@ -154,7 +154,6 @@ class SfnPipelineDispatchService
                       diamond_db: @pipeline_run.alignment_config.diamond_db_path,
                     }, Postprocess: {
                       nt_db: @pipeline_run.alignment_config.s3_nt_db_path,
-                      accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
                       nt_loc_db: @pipeline_run.alignment_config.s3_nt_loc_db_path,
                       nr_db: @pipeline_run.alignment_config.s3_nr_db_path,
                       nr_loc_db: @pipeline_run.alignment_config.s3_nr_loc_db_path,
@@ -165,7 +164,8 @@ class SfnPipelineDispatchService
                       # and fails the postprocess outputs (taxon_counts, contig_counts,
                       # accession_coverage_stats). Every other Postprocess DB is already overridden
                       # here; accession2taxid_db was the lone omission.
-                      accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
+                      # TODO: Removed again as it changed the behavior of the pipeline!
+                      # accession2taxid_db: @pipeline_run.alignment_config.s3_accession2taxid_path,
                       taxon_blacklist: @pipeline_run.alignment_config.s3_taxon_blacklist_path,
                       use_deuterostome_filter: @sample.skip_deutero_filter_flag != 1,
                       deuterostome_db: @pipeline_run.alignment_config.s3_deuterostome_db_path,
