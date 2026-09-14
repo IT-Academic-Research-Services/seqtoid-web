@@ -10,6 +10,12 @@ import * as Sentry from "@sentry/react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import ErrorBoundary from "~/components/common/ErrorBoundary";
 
+jest.mock("@sentry/react", () => ({
+  __esModule: true,
+  ...jest.requireActual("@sentry/react"),
+  captureException: jest.fn(() => "event-id"),
+}));
+
 const boom = { shouldThrow: true };
 const Child = () => {
   if (boom.shouldThrow) throw new Error("child exploded");
@@ -22,24 +28,22 @@ jest.mock("~/components/common/SupportPortal/collectDiagnostics", () => ({
   recordClientError: (msg: string) => mockRecordClientError(msg),
 }));
 
-describe("ErrorBoundary branch coverage", () => {
-  let captureSpy: jest.SpyInstance;
-  let consoleSpy: jest.SpyInstance;
+const expectSentryCaptureException = (message: string) => {
+  expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  const caughtError = (Sentry.captureException as any).mock.calls[0][0];
+  expect(caughtError).toBeInstanceOf(Error);
+  expect(caughtError.message).toBe(message);
+};
 
+describe("ErrorBoundary branch coverage", () => {
   beforeEach(() => {
     boom.shouldThrow = true;
-    mockRecordClientError.mockClear();
-    captureSpy = jest
-      .spyOn(Sentry, "captureException")
-      .mockImplementation(() => "event-id");
-    consoleSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+    jest.clearAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
-    captureSpy.mockRestore();
-    consoleSpy.mockRestore();
+    jest.restoreAllMocks();
   });
 
   it("renders a custom fallback render-prop instead of the default fallback", () => {
@@ -57,6 +61,7 @@ describe("ErrorBoundary branch coverage", () => {
       "custom: child exploded",
     );
     expect(screen.queryByTestId("error-fallback")).toBeNull();
+    expectSentryCaptureException("child exploded");
   });
 
   it("lets the custom fallback reset the boundary via resetError", () => {
@@ -73,6 +78,7 @@ describe("ErrorBoundary branch coverage", () => {
     boom.shouldThrow = false;
     fireEvent.click(screen.getByTestId("custom-retry"));
     expect(screen.getByTestId("ok")).toBeTruthy();
+    expectSentryCaptureException("child exploded");
   });
 
   it("passes the inline flag through to the default fallback", () => {
@@ -87,6 +93,7 @@ describe("ErrorBoundary branch coverage", () => {
     expect(fallback).toBeTruthy();
     expect(fallback.getAttribute("role")).toBe("alert");
     expect(container.textContent).toBeTruthy();
+    expectSentryCaptureException("child exploded");
   });
 
   it("records the thrown message for the support portal", () => {
@@ -96,6 +103,7 @@ describe("ErrorBoundary branch coverage", () => {
       </ErrorBoundary>,
     );
     expect(mockRecordClientError).toHaveBeenCalledWith("child exploded");
+    expectSentryCaptureException("child exploded");
   });
 
   it("stringifies a thrown value that has no message", () => {
@@ -110,6 +118,9 @@ describe("ErrorBoundary branch coverage", () => {
     );
     expect(mockRecordClientError).toHaveBeenCalledWith("plain string failure");
     expect(screen.getByTestId("error-fallback")).toBeTruthy();
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const caughtError = (Sentry.captureException as any).mock.calls[0][0];
+    expect(caughtError).toBe("plain string failure");
   });
 
   it("auto-resets when a resetKeys entry changes", () => {
@@ -127,6 +138,7 @@ describe("ErrorBoundary branch coverage", () => {
       </ErrorBoundary>,
     );
     expect(screen.getByTestId("ok")).toBeTruthy();
+    expectSentryCaptureException("child exploded");
   });
 
   it("auto-resets when the resetKeys array length changes", () => {
@@ -144,6 +156,7 @@ describe("ErrorBoundary branch coverage", () => {
       </ErrorBoundary>,
     );
     expect(screen.getByTestId("ok")).toBeTruthy();
+    expectSentryCaptureException("child exploded");
   });
 
   it("stays in the error state when resetKeys are unchanged", () => {
@@ -163,6 +176,7 @@ describe("ErrorBoundary branch coverage", () => {
     // Identical keys -> no auto-reset, the fallback is still showing.
     expect(screen.getByTestId("error-fallback")).toBeTruthy();
     expect(screen.queryByTestId("ok")).toBeNull();
+    expectSentryCaptureException("child exploded");
   });
 
   it("does not auto-reset when resetKeys are absent on either render", () => {
@@ -189,6 +203,7 @@ describe("ErrorBoundary branch coverage", () => {
       </ErrorBoundary>,
     );
     expect(screen.getByTestId("error-fallback")).toBeTruthy();
+    expectSentryCaptureException("child exploded");
   });
 
   it("ignores resetKeys churn while there is no error at all", () => {
@@ -204,6 +219,6 @@ describe("ErrorBoundary branch coverage", () => {
       </ErrorBoundary>,
     );
     expect(screen.getByTestId("ok")).toBeTruthy();
-    expect(captureSpy).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 });
