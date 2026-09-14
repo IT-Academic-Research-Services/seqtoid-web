@@ -172,7 +172,8 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
                 lineage_db: %r{s3://.+},
                 # Postprocess must override accession2taxid_db so the WDL does not fall back to its
                 # hardcoded czid-public-references default and DownloadFail (SMP-1784).
-                accession2taxid_db: %r{s3://.+},
+                # TODO: Removed again as it changed the behavior of the pipeline!
+                # accession2taxid_db: %r{s3://.+},
                 taxon_blacklist: %r{s3://.+},
               }, Experimental: {
                 nt_db: %r{s3://.+},

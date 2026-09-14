@@ -9,11 +9,23 @@
 // Unlike the main SampleView suite, this file does NOT mock ErrorBoundary --
 // the real boundary is what we are exercising. Relay's useLazyLoadQuery is made
 // to throw so the boundary catches during render, before any child mounts.
-import { render, screen, waitFor } from "@testing-library/react";
-import React from "react";
 import * as Sentry from "@sentry/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { SampleView } from "~/components/views/SampleView/SampleView";
 import { GlobalContext } from "~/globalContext/reducer";
+
+jest.mock("@sentry/react", () => ({
+  __esModule: true,
+  ...jest.requireActual("@sentry/react"),
+  captureException: jest.fn(() => "event-id"),
+}));
+
+const expectSentryCaptureException = (message: string) => {
+  expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  const caughtError = (Sentry.captureException as any).mock.calls[0][0];
+  expect(caughtError).toBeInstanceOf(Error);
+  expect(caughtError.message).toBe(message);
+};
 
 // The `~`-aliased scss import in SampleView resolves ahead of the global scss
 // moduleNameMapper, so stub it explicitly (same as the main SampleView suite).
@@ -101,15 +113,10 @@ const renderSampleView = () =>
   );
 
 describe("SampleView -- missing / forbidden sample (SMP-1633)", () => {
-  let captureSpy: jest.SpyInstance;
-
   beforeEach(() => {
     jest.clearAllMocks();
     window.history.replaceState({}, "", "/");
     localStorage.clear();
-    captureSpy = jest
-      .spyOn(Sentry, "captureException")
-      .mockImplementation(() => "event-id");
     // Silence the intentional boundary console.error + React's own logging.
     jest.spyOn(console, "error").mockImplementation(() => undefined);
     jest.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -125,7 +132,7 @@ describe("SampleView -- missing / forbidden sample (SMP-1633)", () => {
       // The real thrown shape from relay/environment.ts for a missing sample:
       // the fatal wrapper carrying the Rails resolver message.
       throw new Error(
-        '[GQL fatal] SampleViewSampleQuery returned no data: ' +
+        "[GQL fatal] SampleViewSampleQuery returned no data: " +
           '[{"message":"Couldn\'t find Sample with \'id\'=278 [WHERE (1=0)]"}]',
       );
     };
@@ -137,7 +144,7 @@ describe("SampleView -- missing / forbidden sample (SMP-1633)", () => {
     expect(screen.getByTestId("sample-message")).toBeTruthy();
     expect(screen.queryByTestId("error-fallback")).toBeNull();
     // A missing/forbidden sample is expected, so it is never sent to Sentry.
-    expect(captureSpy).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("shows the generic fallback and DOES report a genuine error to Sentry", async () => {
@@ -153,8 +160,6 @@ describe("SampleView -- missing / forbidden sample (SMP-1633)", () => {
     // Not the not-found copy -- this is the real failure experience.
     expect(screen.queryByText(NOT_FOUND_COPY)).toBeNull();
     // Observability preserved for real defects.
-    expect(captureSpy).toHaveBeenCalledTimes(1);
-    const [capturedError] = captureSpy.mock.calls[0];
-    expect((capturedError as Error).message).toBe("network exploded");
+    expectSentryCaptureException("network exploded");
   });
 });
