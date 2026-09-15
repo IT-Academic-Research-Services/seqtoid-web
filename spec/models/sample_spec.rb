@@ -771,8 +771,16 @@ describe Sample, type: :model do
       expect(response.length).to be(2)
       expect(response[0]["id"]).to eq(@wr2.id)
       expect(response[1]["id"]).to eq(@wr1.id)
-      expected_keys = WorkflowRun::DEFAULT_FIELDS.map(&:to_s) + ["input_error", "inputs", "parsed_cached_results", "run_finalized"]
+      expected_keys = WorkflowRun::DEFAULT_FIELDS.map(&:to_s) + ["input_error", "inputs", "parsed_cached_results", "error_message", "run_finalized"]
       expect(response[0].keys).to contain_exactly(*expected_keys)
+    end
+
+    it "surfaces the stored error_message for a run that completed with an issue (SMP-1908)" do
+      reason = "There was insufficient coverage so a consensus genome could not be created."
+      @wr1.update!(status: WorkflowRun::STATUS[:succeeded_with_issue], error_message: reason)
+      response = @sample1.workflow_runs_info
+      expect(response.length).to be(1)
+      expect(response[0]["error_message"]).to eq(reason)
     end
   end
 
