@@ -1496,7 +1496,7 @@ export class DiscoveryView extends React.Component<
     let workflowRunId: string | undefined;
 
     if (workflowEntity === WORKFLOW_ENTITIES.WORKFLOW_RUNS) {
-      sampleId = _get("sample.id", object) ?? _get("id", object);
+      sampleId = _get("sample.id", object) || _get("id", object);
       workflowRunId = object.id;
     } else {
       sampleId = _get("id", object);
