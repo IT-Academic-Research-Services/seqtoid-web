@@ -208,7 +208,7 @@ export class TableRenderers extends React.Component {
   static renderSample = ({ sample, full = true, basicIcon = false }) => {
     const sampleName = get("name", sample);
     // TODO: sampleStatus may be null
-    const sampleStatus = sample?.uploadError ?? sample?.pipelineRunStatus;
+    const sampleStatus = sample?.uploadError || sample?.pipelineRunStatus;
 
     return (
       <div className={cs.sample}>
