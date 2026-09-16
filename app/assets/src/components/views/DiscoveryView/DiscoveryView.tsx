@@ -1233,7 +1233,8 @@ export class DiscoveryView extends React.Component<
     // session can reject here on the /my_data mount path. SMP-1620 wrapped the other
     // loaders but missed this one; route it through the same handler so a 401
     // re-authenticates instead of surfacing as an unhandled rejection.
-    fetchTotalWorkflowCounts(projectId)
+    // TODO: projectId should be a string, so the upstream caller needs to be fixed
+    fetchTotalWorkflowCounts(projectId?.toString())
       .then((workflowCounts: WorkflowCount) => {
         this.setState({
           workflowCounts,
