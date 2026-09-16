@@ -8,6 +8,11 @@ export interface WorkflowRun {
   executed_at: DateString;
   workflow: WorkflowType;
   status: string;
+  // Persisted terminal-state reason. For a SUCCEEDED_WITH_ISSUE consensus-genome run this
+  // holds the pipeline's explanation (e.g. "There was insufficient coverage so a consensus
+  // genome could not be created."). Preferred over input_error, which re-derives live from
+  // the SFN archive and goes nil once that is garbage collected (SMP-1908).
+  error_message?: string | null;
   input_error: {
     label?: string;
     message: string;

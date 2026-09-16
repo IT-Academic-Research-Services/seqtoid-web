@@ -207,3 +207,36 @@ describe("ConsensusGenomeHeader learn-more link", () => {
     );
   });
 });
+
+// SMP-1908: the header shows a "Complete - Issue" pill for a run that finished with
+// an issue, in either status vocabulary, and nothing for a normal run.
+describe("ConsensusGenomeHeader complete-with-issue pill", () => {
+  it("shows the pill for the raw SUCCEEDED_WITH_ISSUE status", () => {
+    renderHeader({
+      workflowRun: { ...cgRun(1), status: "SUCCEEDED_WITH_ISSUE" },
+      workflowRuns: [cgRun(1)],
+    });
+    expect(screen.getByText("Complete - Issue")).toBeTruthy();
+  });
+
+  it("shows the pill for the SFN-mapped COMPLETE - ISSUE status", () => {
+    renderHeader({
+      workflowRun: { ...cgRun(1), status: "COMPLETE - ISSUE" },
+      workflowRuns: [cgRun(1)],
+    });
+    expect(screen.getByText("Complete - Issue")).toBeTruthy();
+  });
+
+  it("shows no pill for a normal successful run", () => {
+    renderHeader({ workflowRun: cgRun(1), workflowRuns: [cgRun(1)] });
+    expect(screen.queryByText("Complete - Issue")).toBeNull();
+  });
+
+  it("shows no pill for a failed run", () => {
+    renderHeader({
+      workflowRun: { ...cgRun(1), status: "FAILED" },
+      workflowRuns: [cgRun(1)],
+    });
+    expect(screen.queryByText("Complete - Issue")).toBeNull();
+  });
+});

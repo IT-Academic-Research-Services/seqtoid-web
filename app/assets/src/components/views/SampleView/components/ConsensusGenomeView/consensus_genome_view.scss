@@ -174,9 +174,20 @@
     }
   }
 
+  // SMP-1908: "Complete - Issue" pill, vertically centered within the header row.
+  .issueStatusLabel {
+    align-self: center;
+    margin-right: auto;
+  }
+
   &.removeBottomMargin {
     margin-bottom: 0 !important;
   }
+}
+
+// SMP-1908: banner explaining a "Complete - Issue" run (e.g. insufficient coverage).
+.issueCallout {
+  margin-bottom: $sds-spaces-xl;
 }
 
 .hoverTooltip {
