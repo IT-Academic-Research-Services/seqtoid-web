@@ -76,6 +76,14 @@ module Czid
     # exist, heatmap code falls back to the first public background (HeatmapIndexing.default_background_id).
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
   end
+
+  config.after_initialize do
+    ActiveSupport::LogSubscriber.log_subscribers.each do |subscriber|
+      if subscriber.is_a?(ActiveRecord::LogSubscriber)
+        ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
+      end
+    end
+  end
 end
 
 HealthCheck.setup do |config|
