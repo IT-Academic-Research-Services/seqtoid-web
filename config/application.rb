@@ -73,25 +73,25 @@ module Czid
     config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ || request.path.start_with?("/internal/") } }
     config.x.constants.default_background = 26
 
-    Rails.logger.info("Application.config.ctor: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}")
-    Rails.logger.info("Application.config.ctor: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}")
+    print("Application.config.ctor: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
+    print("Application.config.ctor: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
     config.after_initialize do
-      Rails.logger.info("Application.config.after_initialize: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}")
-      Rails.logger.info("Application.config.after_initialize: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}")
+      print("Application.config.after_initialize: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
+      print("Application.config.after_initialize: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
       ActiveSupport::LogSubscriber.log_subscribers.each do |subscriber|
-        Rails.logger.info("Application.config.after_initialize: ActiveSupport.subscriber=#{subscriber&.inspect}")
+        print("Application.config.after_initialize: ActiveSupport.subscriber=#{subscriber&.inspect}") # rubocop:disable Rails/Output
         if subscriber.is_a?(ActiveRecord::LogSubscriber)
           ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
         end
       end
       ActiveRecord::LogSubscriber.log_subscribers.each do |subscriber|
-        Rails.logger.info("Application.config.after_initialize: ActiveRecord.subscriber=#{subscriber&.inspect}")
+        print("Application.config.after_initialize: ActiveRecord.subscriber=#{subscriber&.inspect}") # rubocop:disable Rails/Output
         if subscriber.is_a?(ActiveRecord::LogSubscriber)
           ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
         end
       end
-      Rails.logger.info("Application.config.after_initialize.2: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}")
-      Rails.logger.info("Application.config.after_initialize.2: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}")
+      print("Application.config.after_initialize.2: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
+      print("Application.config.after_initialize.2: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
     end
   end
 end
