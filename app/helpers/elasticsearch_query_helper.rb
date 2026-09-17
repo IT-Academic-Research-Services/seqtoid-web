@@ -848,7 +848,12 @@ module ElasticsearchQueryHelper
         raise "#{function_name} invocation failed with status_code: #{resp['status_code']}, function_error: #{resp.payload.string}"
       end
     rescue StandardError => error
-      LogUtil.log_error("#{function_name} invocation failure", exception: error)
+      LogUtil.log_error(
+        "#{function_name} invocation failure",
+        exception: error,
+        function_name: function_name,
+        **payload
+      )
       if (attempts += 1) <= max_attempts
         sleep(3.seconds)
         retry
