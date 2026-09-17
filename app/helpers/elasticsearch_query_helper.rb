@@ -852,7 +852,7 @@ module ElasticsearchQueryHelper
         "#{function_name} invocation failure",
         exception: error,
         function_name: function_name,
-        **payload
+        **payload.deep_symbolize_keys
       )
       if (attempts += 1) <= max_attempts
         sleep(3.seconds)
