@@ -73,6 +73,14 @@ module Czid
     config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ || request.path.start_with?("/internal/") } }
     config.x.constants.default_background = 26
   end
+
+  config.after_initialize do
+    ActiveSupport::LogSubscriber.log_subscribers.each do |subscriber|
+      if subscriber.is_a?(ActiveRecord::LogSubscriber)
+        ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
+      end
+    end
+  end
 end
 
 HealthCheck.setup do |config|
