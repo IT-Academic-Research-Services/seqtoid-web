@@ -118,13 +118,13 @@ class Auth0Controller < ApplicationController
   def omniauth_failure
     # Error and error_description come from Auth0. Ex: unauthorized and password_expired.
     error_type = (params["error"] || "").to_sym
-    error_code = (params["error_description"] || "").to_sym
+    error_description = (params["error_description"] || "").to_sym
     unless params["error"] && params["error_description"]
       LogUtil.log_error(
         "omniauth_failure called with missing error or error_description.",
         error_type: error_type,
-        error_description: error_code,
-        params: params.inspect
+        error_description: error_description,
+        params: JSON.parse(params.inspect)
       )
     end
 

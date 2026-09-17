@@ -77,10 +77,11 @@ module Czid
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
   end
 
-  config.after_initialize do
-    ActiveSupport::LogSubscriber.log_subscribers.each do |subscriber|
-      if subscriber.is_a?(ActiveRecord::LogSubscriber)
-        ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
+    config.after_initialize do
+      ActiveSupport::LogSubscriber.log_subscribers.each do |subscriber|
+        if subscriber.is_a?(ActiveRecord::LogSubscriber)
+          ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
+        end
       end
     end
   end
