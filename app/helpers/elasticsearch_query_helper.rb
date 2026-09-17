@@ -106,7 +106,7 @@ module ElasticsearchQueryHelper
           "Some bulk updates of last_read_at failed for pipeline_run_ids=#{pipeline_run_ids} background_id=#{background_id}",
           pipeline_run_ids: pipeline_run_ids,
           background_id: background_id,
-          **response
+          **response.deep_symbolize_keys
         )
       end
     rescue StandardError => error
@@ -844,7 +844,7 @@ module ElasticsearchQueryHelper
         "#{function_name} invocation failure",
         exception: error,
         function_name: function_name,
-        **payload
+        **payload.deep_symbolize_keys
       )
       if (attempts += 1) <= 2
         sleep(3.seconds)
