@@ -1,6 +1,43 @@
 # frozen_string_literal: true
 
 class JsonLogFormatter < ActiveSupport::Logger::SimpleFormatter
+  def initialize
+    super
+    @tags = []
+  end
+
+  def call(severity, timestamp, progname, msg)
+    current_tags = Rails.logger.respond_to?(:formatter) ? Rails.logger.formatter.current_tags : []
+    {
+      timestamp: timestamp.iso8601,
+      level: severity,
+      progname: progname,
+      message: format_message(msg),
+      tags: current_tags,
+    }.compact.to_json + "\n"
+  end
+
+  # TaggedLogging compatibility methods
+  def push_tags(*tags)
+    tags.flatten.reject(&:blank?).each do |tag|
+      @tags << tag
+    end
+  end
+
+  def pop_tags(size = 1)
+    @tags.pop(size)
+  end
+
+  def clear_tags!
+    @tags.clear
+  end
+
+  def current_tags
+    @tags.dup
+  end
+
+  private
+
   # Safely convert different message types into text or structures
   def format_message(message)
     case message
@@ -17,14 +54,5 @@ class JsonLogFormatter < ActiveSupport::Logger::SimpleFormatter
       # Strip out default color escape sequences if necessary
       message&.to_s&.strip&.gsub(/\e\[\d+m/, '')
     end
-  end
-
-  def call(severity, timestamp, progname, msg)
-    {
-      time: timestamp.iso8601,
-      level: severity,
-      progname: progname,
-      message: format_message(msg),
-    }.compact.to_json + "\n"
   end
 end
