@@ -118,13 +118,21 @@ class Auth0Controller < ApplicationController
   def omniauth_failure
     # Error and error_description come from Auth0. Ex: unauthorized and password_expired.
     error_type = (params["error"] || "").to_sym
-    error_description = (params["error_description"] || "").to_sym
+    error_code = (params["error_description"] || "").to_sym
+    error_reason = request.env['omniauth.error.type'] # e.g., :invalid_credentials, :csrf_detected
+    exception = request.env['omniauth.error'] # The actual Ruby Exception object
+    Rails.logger.error("omniauth_failure.params=#{params.inspect}")
+    Rails.logger.error("omniauth_failure.request.env=#{request.env.inspect}")
     unless params["error"] && params["error_description"]
       LogUtil.log_error(
         "omniauth_failure called with missing error or error_description.",
-        error_type: error_type,
-        error_description: error_description,
-        params: JSON.parse(params.inspect)
+        # exception: exception,
+        ec: error_code,
+        et: error_type,
+        er: error_reason,
+        ex: exception,
+        request: request.env.to_json,
+        params: params.permit(:connection, :mode, :prompt).to_h,
       )
     end
 
