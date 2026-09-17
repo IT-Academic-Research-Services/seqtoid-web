@@ -6,6 +6,8 @@ require "sprockets/railtie"
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
+require_relative "json_logging"
+
 module Czid
   class Application < Rails::Application
     # Load configuration defaults from Rails 6.1, then opt in to individual Rails 7.0
@@ -73,25 +75,27 @@ module Czid
     config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ || request.path.start_with?("/internal/") } }
     config.x.constants.default_background = 26
 
-    puts("Application.config.ctor: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
-    puts("Application.config.ctor: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
+    # Include generic and useful information about system operation, but avoid logging too much
+    # information to avoid inadvertent exposure of personally identifiable information (PII).
+    config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
+    config.log_formatter = JsonLogFormatter.new
+    logger = ActiveSupport::Logger.new($stdout)
+    logger.formatter = config.log_formatter
+    config.logger = ActiveSupport::TaggedLogging.new(logger)
+    config.active_record.verbose_query_logs = false
+    config.colorize_logging = false
+
+    ActiveRecord::Base.logger = Logger.new($stdout)
+    ActiveRecord::Base.logger.formatter = config.log_formatter
+
     config.after_initialize do
-      puts("Application.config.after_initialize: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
-      puts("Application.config.after_initialize: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
-      ActiveSupport::LogSubscriber.log_subscribers.each do |subscriber|
-        puts("Application.config.after_initialize: ActiveSupport.subscriber=#{subscriber&.inspect}") # rubocop:disable Rails/Output
-        if subscriber.is_a?(ActiveRecord::LogSubscriber)
-          ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
-        end
+      if Rails.logger
+        # Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
+        core_logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
+        core_logger.formatter = config.log_formatter
+        # Also update ActiveRecord's dedicated logger just to be completely safe
+        ActiveRecord::Base.logger.formatter = config.log_formatter
       end
-      ActiveRecord::LogSubscriber.log_subscribers.each do |subscriber|
-        puts("Application.config.after_initialize: ActiveRecord.subscriber=#{subscriber&.inspect}") # rubocop:disable Rails/Output
-        if subscriber.is_a?(ActiveRecord::LogSubscriber)
-          ActiveSupport::LogSubscriber.detach_from(:active_record, subscriber)
-        end
-      end
-      puts("Application.config.after_initialize.2: ActiveSupport::LogSubscriber.log_subscribers=#{ActiveSupport::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
-      puts("Application.config.after_initialize.2: ActiveRecord::LogSubscriber.log_subscribers=#{ActiveRecord::LogSubscriber.log_subscribers&.inspect}") # rubocop:disable Rails/Output
     end
   end
 end
