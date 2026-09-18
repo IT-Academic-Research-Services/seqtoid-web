@@ -47,6 +47,7 @@ class JsonLogFormatter < ActiveSupport::Logger::SimpleFormatter
       # "#{msg.message} (#{msg.class}):\n" + (msg.backtrace || []).join("\n")
       { error: message.class.name, message: message.message, backtrace: message.backtrace&.first(10) }
     when String
+      # Strip out default color escape sequences if necessary
       message.strip.gsub(/\e\[\d+m/, '')
     when Object
       message.inspect

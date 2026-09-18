@@ -117,7 +117,7 @@ class Auth0Controller < ApplicationController
     error_type = (request.env["omniauth.error.type"] || params["error"] || "").to_sym
     exception = request.env["omniauth.error"]
     Rails.logger.debug("omniauth_failure.omniauth.error.type=#{error_type}")
-    Rails.logger.debug("omniauth_failure.omniauth.error=#{exception}")
+    Rails.logger.debug("omniauth_failure.omniauth.error=#{exception&.inspect}")
     Rails.logger.debug("omniauth_failure.params=#{params.permit(:connection, :error, :error_description, :mode, :prompt, :state).to_h}")
     unless error_type.present? && exception.present?
       LogUtil.log_error(
