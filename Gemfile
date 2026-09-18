@@ -213,3 +213,7 @@ gem 'zlib', '~> 3.2', '>= 3.2.3'
 gem 'http-parser', '~> 1.2.3'
 
 gem 'seed_migration', git: "https://github.com/pboling/seed_migration", ref: "e919b6bf89ef33972e48c4c604337ca29b552121"
+
+# Patch CVE vulnerabilities
+gem 'rubyzip', '~> 3.4.1'
+gem 'resolv', '~> 0.3.2'
