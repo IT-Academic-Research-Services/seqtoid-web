@@ -27,10 +27,14 @@ RSpec.describe UserDataImportService do
   let!(:host_genome) { create(:host_genome) }
   let(:now) { "2026-01-01T00:00:00Z" }
 
-  # Per-table payload (schema 1.0). Reference data (host_genome) uses a real,
-  # existing ID; everything else uses the high synthetic IDs above.
+  # Per-table payload (schema 2.0). The host_genomes reference table matches the
+  # existing target host_genome by name, so the FK remaps to its id; everything
+  # else uses the high synthetic IDs above.
   def bundle_tables(email: "migrated@example.com")
     {
+      host_genomes: [
+        { id: host_genome.id, name: host_genome.name, created_at: now, updated_at: now },
+      ],
       user: {
         id: OLD_USER_ID,
         email: email,
@@ -115,8 +119,8 @@ RSpec.describe UserDataImportService do
     }
   end
 
-  # Writes a schema-1.0 bundle into a fresh temp dir and returns its path.
-  def write_bundle(tables: bundle_tables, schema_version: "1.0")
+  # Writes a schema-2.0 bundle into a fresh temp dir and returns its path.
+  def write_bundle(tables: bundle_tables, schema_version: "2.0")
     dir = Dir.mktmpdir("import_spec")
     (@import_dirs ||= []) << dir
     user = tables.delete(:user)
@@ -365,10 +369,139 @@ RSpec.describe UserDataImportService do
 
     context "with an unsupported schema version" do
       it "fails validation" do
-        result = described_class.call(input_dir: write_bundle(schema_version: "2.0"))
+        result = described_class.call(input_dir: write_bundle(schema_version: "1.0"))
 
         expect(result[:success]).to be(false)
         expect(result[:error_class]).to eq("UserDataImportService::ValidationError")
+      end
+    end
+
+    context "reference-table remapping" do
+      it "remaps a sample FK to an existing target row that has a different id" do
+        existing_hg = create(:host_genome, name: "Homo sapiens remap")
+        t = bundle_tables
+        # Bundle carries the reference row under a foreign id; target already has it by name.
+        t[:host_genomes] = [{ id: 9_990_001, name: "Homo sapiens remap", created_at: now, updated_at: now }]
+        t[:samples][0][:host_genome_id] = 9_990_001
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(Sample.find(SAMPLE_ID).host_genome_id).to eq(existing_hg.id)
+        expect(HostGenome.where(name: "Homo sapiens remap").count).to eq(1) # reused, not duplicated
+      end
+
+      it "raises ImportError naming a host_genome absent on the target (never creates it)" do
+        t = bundle_tables
+        t[:host_genomes] = [{ id: 9_990_002, name: "Martian genome", created_at: now, updated_at: now }]
+        t[:samples][0][:host_genome_id] = 9_990_002
+
+        result = nil
+        expect do
+          result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+        end.not_to(change { HostGenome.count })
+
+        expect(result[:success]).to be(false)
+        expect(result[:error_class]).to eq("UserDataImportService::ImportError")
+        expect(result[:error]).to include("host_genomes not found on target").and(include("Martian genome"))
+        expect(Sample.exists?(SAMPLE_ID)).to be(false) # transaction rolled back
+      end
+
+      it "remaps pipeline_run.alignment_config_id to an existing target row with a different id" do
+        existing_ac = create(:alignment_config, name: "2099-12-31")
+        t = bundle_tables
+        t[:alignment_configs] = [{ id: 9_990_004, name: "2099-12-31", created_at: now, updated_at: now }]
+        t[:pipeline_runs][0][:alignment_config_id] = 9_990_004
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(PipelineRun.find(PIPELINE_RUN_ID).alignment_config_id).to eq(existing_ac.id)
+        expect(AlignmentConfig.where(name: "2099-12-31").count).to eq(1) # reused, not created
+      end
+
+      it "raises ImportError naming an alignment_config absent on the target" do
+        t = bundle_tables
+        t[:alignment_configs] = [{ id: 9_990_005, name: "missing-align-config", created_at: now, updated_at: now }]
+        t[:pipeline_runs][0][:alignment_config_id] = 9_990_005
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("alignment_configs not found on target").and(include("missing-align-config"))
+      end
+
+      it "matches locations by composite natural key, creating only when absent" do
+        existing_loc = create(:location, name: "Oakland", geo_level: "city", country_name: "USA",
+                                         state_name: "California", subdivision_name: "", city_name: "Oakland",
+                                         osm_id: 300, locationiq_id: 400)
+        t = bundle_tables
+        t[:metadata_fields] = [{ id: 9_990_010, name: "collection_location_v2", is_core: 1, base_type: 0, created_at: now, updated_at: now }]
+        t[:locations] = [
+          { id: 9_990_020, name: "Oakland", geo_level: "city", country_name: "USA", state_name: "California",
+            subdivision_name: "", city_name: "Oakland", created_at: now, updated_at: now, },
+          { id: 9_990_021, name: "Reykjavik", geo_level: "city", country_name: "Iceland", state_name: "",
+            subdivision_name: "", city_name: "Reykjavik", created_at: now, updated_at: now, },
+        ]
+        t[:metadata] = [
+          { id: 9_990_030, sample_id: SAMPLE_ID, key: "collection_location_v2", metadata_field_id: 9_990_010,
+            location_id: 9_990_020, created_at: now, updated_at: now, },
+        ]
+
+        result = nil
+        expect do
+          result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+        end.to change { Location.where(name: "Reykjavik").count }.by(1)
+
+        expect(result[:success]).to be(true)
+        expect(Metadatum.find(9_990_030).location_id).to eq(existing_loc.id) # matched, not duplicated
+        expect(Location.where(name: "Oakland").count).to eq(1)
+      end
+
+      # metadata_fields: core auto-creates; custom is reused-if-present, else its metadata is dropped.
+      def field_bundle(field_id:, field_name:, is_core:)
+        t = bundle_tables
+        t[:metadata_fields] = [{ id: field_id, name: field_name, is_core: is_core, base_type: 0, created_at: now, updated_at: now }]
+        t[:metadata] = [{ id: field_id + 1, sample_id: SAMPLE_ID, key: field_name, metadata_field_id: field_id, created_at: now, updated_at: now }]
+        t
+      end
+
+      it "reuses a custom metadata field already present on the target by name, keeping its metadata" do
+        existing = create(:metadata_field, name: "custom_present", is_core: 0)
+        t = field_bundle(field_id: 9_990_040, field_name: "custom_present", is_core: 0)
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(MetadataField.where(name: "custom_present").count).to eq(1) # reused, not duplicated
+        expect(Metadatum.find(9_990_041).metadata_field_id).to eq(existing.id)
+      end
+
+      it "does NOT create a custom metadata field absent on the target and drops its metadata" do
+        t = field_bundle(field_id: 9_990_042, field_name: "custom_absent", is_core: 0)
+
+        result = nil
+        expect do
+          result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+        end.not_to(change { MetadataField.where(name: "custom_absent").count })
+
+        expect(result[:success]).to be(true)
+        expect(MetadataField.exists?(name: "custom_absent")).to be(false)
+        expect(Metadatum.exists?(9_990_043)).to be(false) # metadata row dropped
+        expect(result[:stats][:metadata_dropped_custom_field]).to eq(1)
+      end
+
+      it "auto-creates a missing CORE metadata field and keeps its metadata" do
+        t = field_bundle(field_id: 9_990_044, field_name: "core_absent", is_core: 1)
+
+        result = nil
+        expect do
+          result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+        end.to change { MetadataField.where(name: "core_absent").count }.by(1)
+
+        expect(result[:success]).to be(true)
+        new_field = MetadataField.find_by(name: "core_absent")
+        expect(Metadatum.find(9_990_045).metadata_field_id).to eq(new_field.id)
       end
     end
 

@@ -2,14 +2,25 @@
 
 require "zlib"
 
-# Service to import user data from a streaming NDJSON export bundle (schema 1.0)
+# Service to import user data from a streaming NDJSON export bundle (schema 2.0)
 # into the database. Counterpart to UserDataExportService.
 #
-# MIGRATION STRATEGY: PRESERVE IDS, REMAP THE USER
-# ------------------------------------------------
+# MIGRATION STRATEGY: PRESERVE IDS, REMAP THE USER + REFERENCE FKS
+# ---------------------------------------------------------------
 # The target database seeds its AUTO_INCREMENT counters above the highest ID
 # being migrated, so migrated rows keep their original primary keys without
 # colliding with rows created in the target afterwards.
+#
+# REFERENCE FKS: the four id-referenced reference tables ride in the bundle and
+# are matched by NATURAL KEY on the target, then samples.host_genome_id /
+# pipeline_runs.alignment_config_id / metadata.metadata_field_id + location_id are
+# rewritten to the target's ids. The target's own reference rows/ids are never
+# altered (no destructive REPLACE INTO). Per table:
+#   * host_genomes, alignment_configs -- must PRE-EXIST (created by db/data
+#     migrations); matched by name, import fails loudly listing any missing ones.
+#   * metadata_fields -- CORE fields are created if absent; CUSTOM fields are
+#     reused if the name exists, else skipped and their metadata rows dropped.
+#   * locations -- find_or_created by composite natural key (dynamic data).
 #
 # The ONE exception is the user itself: the user is (re)created on the new
 # platform and therefore gets a NEW id. Every column that points at the
@@ -62,7 +73,7 @@ class UserDataImportService
 
   # Must match UserDataExportService::SCHEMA_VERSION. Forward-compatibility guard
   # only; the feature is unreleased so there is a single current version.
-  SUPPORTED_SCHEMA_VERSION = "1.0"
+  SUPPORTED_SCHEMA_VERSION = "2.0"
 
   # Rows per insert_all! statement. Small enough to keep a contigs batch (with
   # LONGTEXT sequences) well under max_allowed_packet, large enough to make the
@@ -110,6 +121,7 @@ class UserDataImportService
       import_user_profile
       stream_user_settings
       import_projects
+      import_reference_tables
       stream_samples
       stream_input_files
       stream_metadata
@@ -218,6 +230,8 @@ class UserDataImportService
   def reconcile_counts!
     mismatches = @expected_counts.filter_map do |table, expected|
       actual = @stats[table.to_sym] + @stats[:"#{table}_skipped"]
+      # Metadata intentionally dropped for a missing custom field is still accounted for.
+      actual += @stats[:metadata_dropped_custom_field] if table.to_sym == :metadata
       "#{table}: manifest=#{expected} imported=#{actual}" if actual != expected.to_i
     end
     return if mismatches.empty?
@@ -256,7 +270,10 @@ class UserDataImportService
     stat_key ||= name.to_sym
     buffer = []
     each_row(name) do |row|
-      buffer << yield(row)
+      attrs = yield(row)
+      next if attrs.nil? # block returned nil -> filter this row out (not buffered/inserted)
+
+      buffer << attrs
       if buffer.size >= INSERT_BATCH
         flush_insert(model, stat_key, buffer)
         buffer = []
@@ -452,6 +469,139 @@ class UserDataImportService
   end
 
   # ===========================================================================
+  # REFERENCE TABLES (id-remapped by natural key; non-destructive)
+  # ===========================================================================
+
+  # find_or_creates each bundled reference row by natural key and records
+  # {source_id => target_id} so the FK columns can be rewritten. The partner's
+  # existing reference rows/ids are reused untouched; only truly-missing rows are
+  # created (from the exported row).
+  def import_reference_tables
+    # Created by db/data migrations on every instance -- a missing one by name is
+    # operator error, so map to the target's row and fail loudly if absent.
+    @host_genome_id_map = map_existing_reference("host_genomes", HostGenome)
+    @alignment_config_id_map = map_existing_reference("alignment_configs", AlignmentConfig)
+
+    # Core fields auto-create like the other reference tables; CUSTOM fields are
+    # never created -- reused only if the target already has the name, else their
+    # source id is skipped and any metadata referencing it is dropped (below).
+    @metadata_field_id_map = {}
+    @skipped_metadata_field_ids = Set.new
+    each_row("metadata_fields") do |row|
+      if core_field?(row)
+        rec = find_or_create_ref(MetadataField, { name: row[:name] }, :metadata_fields) { metadata_field_attrs(row) }
+        @metadata_field_id_map[row[:id]] = rec.id
+        next
+      end
+
+      existing = MetadataField.find_by(name: row[:name])
+      @stats[:metadata_fields_skipped] += 1
+      if existing
+        @metadata_field_id_map[row[:id]] = existing.id
+      else
+        @skipped_metadata_field_ids << row[:id]
+        @warnings << "Custom metadata field '#{row[:name]}' absent on target; not created (its metadata dropped)."
+      end
+    end
+
+    @location_id_map = {}
+    each_row("locations") do |row|
+      rec = find_or_create_ref(Location, location_natural_key(row), :locations) { location_attrs(row) }
+      @location_id_map[row[:id]] = rec.id
+    end
+  end
+
+  # Maps a reference table that must pre-exist (created by db/data migrations) by
+  # name to the target's ids. Accumulates any missing names and raises once.
+  def map_existing_reference(name, model)
+    map = {}
+    missing = []
+    each_row(name) do |row|
+      existing = model.find_by(name: row[:name])
+      if existing
+        map[row[:id]] = existing.id
+        @stats[:"#{name}_skipped"] += 1
+      else
+        missing << row[:name]
+      end
+    end
+    if missing.any?
+      raise ImportError, "#{name} not found on target (create via db migrations first): #{missing.uniq.join(', ')}"
+    end
+
+    map
+  end
+
+  # Reuse the target row matching the natural key, else create it (validation
+  # skipped, matching the rest of the import). Tracks created vs skipped stats.
+  # nil attrs are dropped on create so NOT NULL columns fall back to their DB default.
+  def find_or_create_ref(model, natural_key, stat_key)
+    existing = model.find_by(natural_key)
+    if existing
+      @stats[:"#{stat_key}_skipped"] += 1
+      return existing
+    end
+
+    record = model.new(yield.compact)
+    record.save!(validate: false)
+    @stats[stat_key] += 1
+    record
+  end
+
+  # is_core is a 0/1 integer column; cast defensively (handles int/bool/string).
+  def core_field?(row)
+    ActiveModel::Type::Boolean.new.cast(row[:is_core])
+  end
+
+  def metadata_field_attrs(row)
+    {
+      name: row[:name],
+      display_name: row[:display_name],
+      description: row[:description],
+      base_type: row[:base_type],
+      options: row[:options],
+      force_options: row[:force_options],
+      is_core: row[:is_core],
+      is_default: row[:is_default],
+      is_required: row[:is_required],
+      group: row[:group],
+      examples: row[:examples],
+      default_for_new_host_genome: row[:default_for_new_host_genome],
+      created_at: ts(row[:created_at]),
+      updated_at: ts(row[:updated_at]),
+    }
+  end
+
+  # Composite natural key for locations (name + geo hierarchy).
+  def location_natural_key(row)
+    {
+      name: row[:name],
+      geo_level: row[:geo_level],
+      country_name: row[:country_name],
+      state_name: row[:state_name],
+      subdivision_name: row[:subdivision_name],
+      city_name: row[:city_name],
+    }
+  end
+
+  def location_attrs(row)
+    location_natural_key(row).merge(
+      country_code: row[:country_code],
+      osm_id: row[:osm_id],
+      osm_type: row[:osm_type],
+      locationiq_id: row[:locationiq_id],
+      lat: row[:lat],
+      lng: row[:lng],
+      country_id: row[:country_id],
+      state_id: row[:state_id],
+      subdivision_id: row[:subdivision_id],
+      city_id: row[:city_id],
+      created_at: ts(row[:created_at]),
+      updated_at: ts(row[:updated_at])
+    )
+  end
+
+  # ===========================================================================
   # SAMPLES + PIPELINE RUNS (high volume; streamed insert_all!)
   # ===========================================================================
 
@@ -461,7 +611,7 @@ class UserDataImportService
         id: row[:id],
         user_id: map_user_id(row[:user_id]),
         project_id: row[:project_id],
-        host_genome_id: row[:host_genome_id],
+        host_genome_id: map_ref(@host_genome_id_map, row[:host_genome_id], "host_genomes"),
         name: row[:name],
         status: row[:status],
         sample_notes: row[:sample_notes],
@@ -510,6 +660,11 @@ class UserDataImportService
 
   def stream_metadata
     stream_insert("metadata", Metadatum, :metadata) do |row|
+      # Drop metadata bound to a custom field the target lacks (see import_reference_tables).
+      if @skipped_metadata_field_ids.include?(row[:metadata_field_id])
+        @stats[:metadata_dropped_custom_field] += 1
+        next nil
+      end
       {
         id: row[:id],
         sample_id: row[:sample_id],
@@ -518,8 +673,8 @@ class UserDataImportService
         string_validated_value: row[:string_validated_value],
         number_validated_value: row[:number_validated_value],
         date_validated_value: parse_time(row[:date_validated_value]),
-        location_id: row[:location_id],
-        metadata_field_id: row[:metadata_field_id],
+        location_id: map_ref(@location_id_map, row[:location_id], "locations"),
+        metadata_field_id: map_ref(@metadata_field_id_map, row[:metadata_field_id], "metadata_fields"),
         created_at: ts(row[:created_at]),
         updated_at: ts(row[:updated_at]),
       }
@@ -531,7 +686,7 @@ class UserDataImportService
       {
         id: row[:id],
         sample_id: row[:sample_id],
-        alignment_config_id: row[:alignment_config_id],
+        alignment_config_id: map_ref(@alignment_config_id_map, row[:alignment_config_id], "alignment_configs"),
         job_status: row[:job_status],
         finalized: row[:finalized],
         pipeline_version: row[:pipeline_version],
@@ -972,6 +1127,17 @@ class UserDataImportService
   # references to any other user are left unchanged.
   def map_user_id(value)
     value == @old_user_id ? @new_user_id : value
+  end
+
+  # Rewrite a reference FK from its source id to the target id built in
+  # import_reference_tables. nil passes through; an unmapped non-nil id means the
+  # bundle omitted a referenced reference row (inconsistent export) -- fail loudly.
+  def map_ref(map, source_id, table)
+    return nil if source_id.nil?
+
+    map.fetch(source_id) do
+      raise ImportError, "#{table} id #{source_id} referenced but not present in the bundle's #{table} table"
+    end
   end
 
   # Rewrite a stored S3 URI from the source samples bucket to the destination

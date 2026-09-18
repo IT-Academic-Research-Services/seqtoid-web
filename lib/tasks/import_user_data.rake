@@ -86,7 +86,9 @@ desc "Import user data from a streaming NDJSON export bundle. " \
      "<dir-or-s3-uri> is a local bundle dir, an s3:// bundle folder, or an s3:// parent " \
      "(e.g. .../user_data_exports/<id>) whose newest bundle is auto-selected. " \
      "<mode> is one of: dry_run, skip_existing, or live (default). " \
-     "<target> is the id of an existing user to import into (default), or 'new' to create a new user from the export."
+     "<target> is the id of an existing user to import into (default), or 'new' to create a new user from the export. " \
+     "Reference tables (host_genomes, alignment_configs, metadata_fields, locations) are remapped by natural key " \
+     "automatically -- do NOT load reference_tables.sql.gz (its REPLACE INTO would clobber the target's own reference rows)."
 task :import_user_data, [:input_dir, :mode, :target, :source_bucket, :dest_bucket] => :environment do |_t, args|
   input_dir = args[:input_dir]
   dry_run = args[:mode] == "dry_run"
