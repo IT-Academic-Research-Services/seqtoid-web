@@ -2,7 +2,6 @@
 
 class LogUtil
   def self.log_error(message, exception: nil, **details)
-    # TODO(tiago): [CH-13826] add json support
     Rails.logger.error({
       message: message,
       exception: exception&.message,
@@ -16,13 +15,13 @@ class LogUtil
       # message through as extra context to preserve raven's behavior.
       Sentry.capture_exception(
         exception,
-        extra: details.merge(message: message)
+        extra: details.merge(message: message).compact
       )
     else
       Sentry.capture_message(
         message,
         level: "error",
-        extra: details
+        extra: details.compact
       )
     end
   end
