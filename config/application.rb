@@ -95,6 +95,8 @@ module Czid
         core_logger.formatter = config.log_formatter
         # Also update ActiveRecord's dedicated logger just to be completely safe
         ActiveRecord::Base.logger.formatter = config.log_formatter
+        # As well as OmniAuth
+        OmniAuth.config.logger = Rails.logger
       end
     end
   end
