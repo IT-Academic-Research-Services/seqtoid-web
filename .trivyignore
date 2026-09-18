@@ -135,3 +135,11 @@ CVE-2026-73650
 # toolchain dep (webpack/asset pipeline), never processes untrusted runtime CSS on the request path.
 # Flagged across ~7 node_modules copies (one CVE, many instances). FORWARD-FIX: bump postcss to >=8.5.18.
 CVE-2026-73646
+
+# resolv is a built-in "default gem" that comes pre-packaged with the Ruby installation itself.
+# When Trivy scans the environment, it doesn't just read the Gemfile.lock; it scans the entire filesystem
+# for *.gemspec files. It is finding the default system specification file for resolv-0.3.0 that was bundled
+# with the base Ruby installation, alongside the updated version in the Gemfile.lock.
+# Even though Bundler will correctly isolate your application and only execute version 0.3.2 at runtime,
+# the physical file for 0.3.0 still exists on the disk, triggering a CVE finding. So we ignore it.
+CVE-2026-80212
