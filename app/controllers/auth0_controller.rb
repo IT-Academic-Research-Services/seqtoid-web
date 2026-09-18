@@ -17,8 +17,6 @@ class Auth0Controller < ApplicationController
   MAX_TOKEN_REFRESH_IN_SECONDS = (60.minutes / 1.second).to_i
 
   AUTH0_CONNECTION_NAME = ENV["AUTH0_CONNECTION"] || "Username-Password-Authentication"
-  AUTH0_UNAUTHORIZED = "unauthorized"
-  AUTH0_LOGIN_REQUIRED = "login_required"
   # Whitelist descriptions to prevent phishing attempts.
   ERROR_EXPLANATIONS = { password_expired: "Your password has expired. Please update it by clicking Forgot Password on the sign-in page.", default: "Sorry, something went wrong when signing in. Please try again." }.freeze
 
@@ -117,35 +115,37 @@ class Auth0Controller < ApplicationController
   # Handle omniauth errors coming from Auth0.
   def omniauth_failure
     # Error and error_description come from Auth0. Ex: unauthorized and password_expired.
-    error_type = (params["error"] || "").to_sym
-    error_code = (params["error_description"] || "").to_sym
-    error_reason = request.env['omniauth.error.type'] # e.g., :invalid_credentials, :csrf_detected
-    exception = request.env['omniauth.error'] # The actual Ruby Exception object
+    error_type = (request.env['omniauth.error.type'] || "").to_sym
+    exception = request.env['omniauth.error']
+    # When Auth0 or a similar OAuth server sends back error=access_denied&error_description=password_expired,
+    # the OmniAuth middleware intercepts the description and parses it directly into:
+    # env['omniauth.error.type'] = :password_expired
+    Rails.logger.error("omniauth_failure=#{request.env.inspect}")
+    Rails.logger.error("omniauth_failure.omniauth.error.type=#{error_type}")
+    Rails.logger.error("omniauth_failure.omniauth.error=#{exception}")
     Rails.logger.error("omniauth_failure.params=#{params.inspect}")
-    Rails.logger.error("omniauth_failure.request.env=#{request.env.inspect}")
-    unless params["error"] && params["error_description"]
+    unless request.env['omniauth.error.type'].present? && exception.present?
       LogUtil.log_error(
         "omniauth_failure called with missing error or error_description.",
-        # exception: exception,
-        ec: error_code,
-        et: error_type,
-        er: error_reason,
-        ex: exception,
-        request: request.env.to_json,
+        error_type: error_type,
+        error: exception.inspect,
         params: params.permit(:connection, :mode, :prompt).to_h,
       )
     end
+    # request.env['omniauth.error.type'] to check for :unauthorized, :login_required, or :password_expired
 
-    if error_type.present? && error_type == AUTH0_LOGIN_REQUIRED.to_sym
+    raw_error = exception.respond_to?(:error) ? exception.error : nil
+    raw_reason = exception.respond_to?(:error_reason) ? exception.error_reason : nil
+
+    if error_type == :login_required
       # Silent login is expired, we need to logout current user
       logout
-    elsif error_type.present? && error_type == AUTH0_UNAUTHORIZED.to_sym
+    elsif error_type == :password_expired || raw_error == "password_expired" || raw_reason&.downcase == "password_expired"
+      @message = ERROR_EXPLANATIONS[:password_expired]
+      render :omniauth_failure
+    elsif error_type == :unauthorized || error_type == :access_denied
       # Display 'unauthorized' errors but go to `failure` endpoint for all others.
-      @message = if ERROR_EXPLANATIONS.key?(error_code)
-                   ERROR_EXPLANATIONS[error_code]
-                 else
-                   ERROR_EXPLANATIONS[:default]
-                 end
+      @message = ERROR_EXPLANATIONS[:default]
       render :omniauth_failure
     else
       failure
