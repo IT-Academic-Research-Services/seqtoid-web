@@ -102,10 +102,20 @@ module ElasticsearchQueryHelper
     begin
       response = ES_CLIENT.bulk(body: bulk_body)
       if response['errors']
-        LogUtil.log_message("Some bulk updates of last_read_at failed for #{pipeline_run_ids}_#{background_id}", details: response['items'])
+        LogUtil.log_message(
+          "Some bulk updates of last_read_at failed for pipeline_run_ids=#{pipeline_run_ids} background_id=#{background_id}",
+          pipeline_run_ids: pipeline_run_ids,
+          background_id: background_id,
+          **response.deep_symbolize_keys
+        )
       end
     rescue StandardError => error
-      LogUtil.log_error("Failed to submit bulk update of last_read_at for #{pipeline_run_ids}_#{background_id}", exception: error)
+      LogUtil.log_error(
+        "Failed to submit bulk update of last_read_at for pipeline_run_ids=#{pipeline_run_ids} background_id=#{background_id}",
+        exception: error,
+        pipeline_run_ids: pipeline_run_ids,
+        background_id: background_id
+      )
     end
   end
 
@@ -830,7 +840,12 @@ module ElasticsearchQueryHelper
         raise "#{function_name} invocation failed with status_code: #{resp['status_code']}, function_error: #{resp.payload.string}"
       end
     rescue StandardError => error
-      LogUtil.log_error("#{function_name} invocation failure", exception: error)
+      LogUtil.log_error(
+        "#{function_name} invocation failure",
+        exception: error,
+        function_name: function_name,
+        **payload.deep_symbolize_keys
+      )
       if (attempts += 1) <= 2
         sleep(3.seconds)
         retry

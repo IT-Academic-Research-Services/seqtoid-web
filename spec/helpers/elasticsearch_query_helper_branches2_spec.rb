@@ -88,14 +88,29 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
 
     it "logs a message when the bulk response reports partial errors" do
       allow(es_client).to receive(:bulk).and_return("errors" => true, "items" => [{ "update" => { "status" => 404 } }])
-      expect(LogUtil).to receive(:log_message).with(/last_read_at failed/, hash_including(:details))
+      expect(LogUtil).to receive(:log_message).with(
+        /last_read_at failed/,
+        hash_including(
+          errors: true,
+          items: [{ update: { status: 404 } }],
+          pipeline_run_ids: [11],
+          background_id: 5
+        )
+      )
 
       described_class.update_last_read_at(5, [11])
     end
 
     it "swallows and logs a raise from the bulk call" do
       allow(es_client).to receive(:bulk).and_raise(StandardError, "opensearch down")
-      expect(LogUtil).to receive(:log_error).with(/Failed to submit bulk update/, hash_including(:exception))
+      expect(LogUtil).to receive(:log_error).with(
+        /Failed to submit bulk update/,
+        hash_including(
+          exception: having_attributes(message: /opensearch down/),
+          pipeline_run_ids: [11],
+          background_id: 5
+        )
+      )
 
       expect { described_class.update_last_read_at(5, [11]) }.not_to raise_error
     end
@@ -278,7 +293,13 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
 
       expect { described_class.call_taxon_indexing_lambda(1, [2]) }
         .to raise_error(/empty response from taxon-indexing-concurrency-manager/)
-      expect(LogUtil).to have_received(:log_error).with(/empty response/, hash_including(background_id: 1))
+      expect(LogUtil).to have_received(:log_error).with(
+        /empty response/,
+        hash_including(
+          pipeline_run_ids: [2],
+          background_id: 1
+        )
+      )
     end
 
     it "raises when the response carries no payload" do

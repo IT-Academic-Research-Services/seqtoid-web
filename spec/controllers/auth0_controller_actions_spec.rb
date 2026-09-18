@@ -163,28 +163,34 @@ RSpec.describe Auth0Controller, type: :controller do
 
   describe "#omniauth_failure" do
     it "logs out (redirects to signout) when the error is login_required" do
-      get :omniauth_failure, params: { error: "login_required", error_description: "anything" }
+      get :omniauth_failure, params: { error: "login_required", error_description: "anything" } # TODO
 
       expect(response).to be_redirect
       expect(response.redirect_url).to include("/v2/logout")
     end
 
     it "renders the whitelisted explanation for a known unauthorized error_description" do
-      get :omniauth_failure, params: { error: "unauthorized", error_description: "password_expired" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized, "password_expired")
+      request.env['omniauth.error.type'] = :unauthorized
+      get :omniauth_failure, params: {}
 
       expect(response).to have_http_status(:ok)
       expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:password_expired])
     end
 
     it "falls back to the default explanation for an unknown unauthorized error_description" do
-      get :omniauth_failure, params: { error: "unauthorized", error_description: "some_other_reason" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized, "some_other_reason")
+      request.env['omniauth.error.type'] = :unauthorized
+      get :omniauth_failure, params: {}
 
       expect(response).to have_http_status(:ok)
       expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:default])
     end
 
     it "routes any other error type through failure -> logout" do
-      get :omniauth_failure, params: { error: "access_denied", error_description: "nope" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:access_denied, "nope")
+      request.env['omniauth.error.type'] = :access_denied
+      get :omniauth_failure, params: {}
 
       expect(response).to be_redirect
       expect(response.redirect_url).to include("/v2/logout")
@@ -193,14 +199,29 @@ RSpec.describe Auth0Controller, type: :controller do
     it "logs an error and renders the default message when error_description is missing" do
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error or error_description.",
-        error_type: :unauthorized,
-        error_description: :"",
-        params: /"error"=>"unauthorized"/
+        exception: nil,
+        error_type: "unauthorized",
+        params: { "connection": "test-connection" }
       )
 
-      # error is present (unauthorized) but error_description is absent: the guard
-      # logs, then the empty error_code is not whitelisted, so :default renders.
-      get :omniauth_failure, params: { error: "unauthorized" }
+      request.env['omniauth.error.type'] = :unauthorized
+      get :omniauth_failure, params: { connection: "test-connection" }
+
+      expect(response).to have_http_status(:ok)
+      expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:default])
+    end
+
+    it "logs an error and renders the default message when error is missing" do
+      err = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized)
+      expect(LogUtil).to receive(:log_error).with(
+        "omniauth_failure called with missing error or error_description.",
+        exception: err,
+        error_type: "",
+        params: { "connection": "test-connection" }
+      )
+
+      request.env['omniauth.error'] = err
+      get :omniauth_failure, params: { connection: "test-connection" }
 
       expect(response).to have_http_status(:ok)
       expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:default])
@@ -209,9 +230,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "logs an error and routes to failure when the error type is entirely missing" do
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error or error_description.",
-        error_type: :"",
-        error_description: :"",
-        params: /"action"=>"omniauth_failure"/
+        exception: nil,
+        error_type: "",
+        params: {}
       )
 
       get :omniauth_failure

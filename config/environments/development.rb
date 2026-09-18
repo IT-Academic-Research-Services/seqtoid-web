@@ -236,18 +236,12 @@ Rails.application.configure do
       user_id: event.payload[:user_id],
       params: event.payload[:params].reject { |k| param_filtered.include? k }, }
   end
-  config.colorize_logging = false
   config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-  ActiveRecord::Base.logger = Logger.new(STDOUT)
   ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
 
-  # Development logging configuration
-  logger           = ActiveSupport::Logger.new(STDOUT)
-  logger.formatter = config.log_formatter
-  config.logger    = ActiveSupport::TaggedLogging.new(logger)
   config.log_to = %w[stdout file]
   config.active_record.verbose_query_logs = true
 
