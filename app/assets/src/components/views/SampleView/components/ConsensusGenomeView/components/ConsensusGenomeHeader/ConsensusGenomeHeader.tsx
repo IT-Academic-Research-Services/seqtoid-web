@@ -7,13 +7,8 @@ import { RUNNING_STATE } from "~/components/views/SampleView/utils";
 import Sample, { WorkflowRun } from "~/interface/sample";
 import ExternalLink from "~ui/controls/ExternalLink";
 import { IconArrowRight } from "~ui/icons";
-import StatusLabel from "~ui/labels/StatusLabel";
 import cs from "../../consensus_genome_view.scss";
-import {
-  CONSENSUS_GENOME_COMPLETE_ISSUE_LABEL,
-  getConsensusGenomeHelpLink,
-  isConsensusGenomeCompleteWithIssue,
-} from "../../utils";
+import { getConsensusGenomeHelpLink } from "../../utils";
 import { ConsensusGenomeDropdown } from "./components/ConsensusGenomeDropdown";
 
 interface ConsensusGenomeHeaderProps {
@@ -56,14 +51,6 @@ export const ConsensusGenomeHeader = ({
             }
           />
         </div>
-      )}
-      {isConsensusGenomeCompleteWithIssue(workflowRun.status) && (
-        <StatusLabel
-          className={cs.issueStatusLabel}
-          status={CONSENSUS_GENOME_COMPLETE_ISSUE_LABEL}
-          type="warning"
-          inline
-        />
       )}
       {workflowRun.status !== RUNNING_STATE && (
         <ExternalLink
