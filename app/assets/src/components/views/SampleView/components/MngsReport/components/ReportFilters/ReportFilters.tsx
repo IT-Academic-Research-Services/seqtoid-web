@@ -12,6 +12,7 @@ import {
 } from "lodash/fp";
 import React from "react";
 import { ANALYTICS_EVENT_NAMES, useTrackEvent } from "~/api/analytics";
+import { BackgroundDetailsLink } from "~/components/common/BackgroundDetailsModal";
 import ThresholdFilterTag from "~/components/common/ThresholdFilterTag";
 import { ThresholdConditions } from "~/components/utils/ThresholdMap";
 import {
@@ -321,24 +322,34 @@ export const ReportFilters = ({
         {/* from server */}
         {showBackgroundFilter && (
           <div className={cs.filterListElement} data-testid="background-filter">
-            <BackgroundModelFilter
-              allBackgrounds={backgrounds}
-              // this is broken, but alldoami found it while working on something unrelated
-              // eslint-disable-next-line @typescript-eslint/no-empty-function
-              onClick={() => {}}
-              categorizeBackgrounds
-              ownedBackgrounds={ownedBackgrounds}
-              otherBackgrounds={otherBackgrounds}
-              // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532
-              value={selected.background}
-              onChange={(value: number) =>
-                handleFilterChange({
-                  key: "background",
-                  value,
-                })
-              }
-              enableMassNormalizedBackgrounds={enableMassNormalizedBackgrounds}
-            />
+            <div className={cs.backgroundFilterRow}>
+              <BackgroundModelFilter
+                allBackgrounds={backgrounds}
+                // this is broken, but alldoami found it while working on something unrelated
+                // eslint-disable-next-line @typescript-eslint/no-empty-function
+                onClick={() => {}}
+                categorizeBackgrounds
+                ownedBackgrounds={ownedBackgrounds}
+                otherBackgrounds={otherBackgrounds}
+                // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2532
+                value={selected.background}
+                onChange={(value: number) =>
+                  handleFilterChange({
+                    key: "background",
+                    value,
+                  })
+                }
+                enableMassNormalizedBackgrounds={
+                  enableMassNormalizedBackgrounds
+                }
+              />
+              {/* SMP-1437: let the user inspect the description and member
+              samples of the background applied to this report. */}
+              <BackgroundDetailsLink
+                backgroundId={selected.background}
+                className={cs.backgroundDetailsLink}
+              />
+            </div>
           </div>
         )}
         {/* from server */}

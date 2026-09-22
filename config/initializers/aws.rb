@@ -32,7 +32,17 @@ module AwsClient
         stub_responses: stub_responses
       )
     },
-    sts: -> { Aws::STS::Client.new(stub_responses: stub_responses) },
+    sts: lambda {
+      # SMP-1896: use standard retry (exponential backoff WITH jitter + a client-side retry-quota
+      # token bucket) instead of the SDK default legacy retry, so a burst of AssumeRole /
+      # AssumeRoleWithWebIdentity calls does not amplify into an STS throttle. max_attempts 5 keeps
+      # per-call attempts near the legacy default of 4 -- the jitter, not the cap, is the mitigation.
+      Aws::STS::Client.new(
+        stub_responses: stub_responses,
+        retry_mode: 'standard',
+        max_attempts: 5
+      )
+    },
     cloudwatch: -> { Aws::CloudWatch::Client.new(stub_responses: stub_responses) },
     cloudwatchlogs: -> { Aws::CloudWatchLogs::Client.new(stub_responses: stub_responses) },
     batch: -> { Aws::Batch::Client.new(stub_responses: stub_responses) },

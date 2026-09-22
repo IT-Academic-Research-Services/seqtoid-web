@@ -317,6 +317,18 @@ RSpec.describe SamplesHelper, type: :helper do
       expect(helper.bulk_create_and_dispatch_workflow_runs([sample.id], WorkflowRun::WORKFLOW[:amr], stranger)).to eq([])
     end
 
+    # SMP-1768 -- soft-deleted samples (e.g. purged by data retention) must be skipped so a
+    # bulk AMR fork never creates a dangling run against a sample whose inputs are gone.
+    it "skips soft-deleted samples and inserts no run for them" do
+      deleted_sample = create(:sample, project: project, user: @joe, deleted_at: Time.now.utc)
+      allow_any_instance_of(WorkflowRun).to receive(:dispatch).and_return(true)
+
+      expect do
+        result = helper.bulk_create_and_dispatch_workflow_runs([deleted_sample.id], WorkflowRun::WORKFLOW[:amr], @joe)
+        expect(result).to eq([])
+      end.not_to change(WorkflowRun, :count)
+    end
+
     it "deprecates the old runs, inserts new ones and dispatches them" do
       old_run = create(:workflow_run,
                        sample: sample, user: @joe,

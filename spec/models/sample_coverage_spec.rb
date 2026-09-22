@@ -406,6 +406,19 @@ describe Sample, type: :model do
       expect(wr).to be_persisted
       expect(wr.workflow).to eq(WorkflowRun::WORKFLOW[:consensus_genome])
     end
+
+    # SMP-1768 -- a forked run started against a soft-deleted sample can never succeed and
+    # would leave a dangling workflow_run row, so it must be refused before creating one.
+    it "raises SampleDeletedError and creates no run for a soft-deleted sample" do
+      sample = create(:sample, project: project, deleted_at: Time.now.utc)
+      allow_any_instance_of(WorkflowRun).to receive(:dispatch).and_return(true)
+
+      expect do
+        expect do
+          sample.create_and_dispatch_workflow_run(WorkflowRun::WORKFLOW[:consensus_genome], @joe.id)
+        end.to raise_error(Sample::SampleDeletedError)
+      end.not_to change(WorkflowRun, :count)
+    end
   end
 
   describe "#copy_to_project" do

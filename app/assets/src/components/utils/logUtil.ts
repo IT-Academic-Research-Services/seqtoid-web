@@ -30,7 +30,7 @@ export const logError = ({
       Sentry.captureMessage(message, {
         extra: {
           ...details,
-          exception,
+          exception: JSON.stringify(exception),
         },
       });
     }

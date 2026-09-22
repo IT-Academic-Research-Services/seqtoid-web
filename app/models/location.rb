@@ -204,6 +204,49 @@ class Location < ApplicationRecord
     return true
   end
 
+  # Coarsen a too-specific location for the human-host privacy rule.
+  #
+  # Human-host samples must not carry a collection location more specific than
+  # subdivision/district level, to avoid re-identification. The client mirrors this in
+  # processLocationSelection (GeoSearchInputBox.tsx) by dropping the city and flagging the
+  # selection for a server-side refetch. Not every metadata entry path runs that client
+  # coarsening (notably the bulk "Edit Metadata" modal), so this method lets the server apply
+  # the same reduction as the single source of truth for the rule. It drops the city (and a
+  # subdivision that merely repeats the city), recomputes the display name and geo_level to the
+  # coarsest remaining level, and marks the result for refetch so the location is re-resolved to
+  # the coarsened level rather than stored as-is. SMP-1861
+  def self.coarsen_location_for_human(location)
+    coarsened = location.dup
+
+    # Drop a subdivision that is identical to the city name (mirror the client) to be safe.
+    if coarsened[:subdivision_name].present? && coarsened[:subdivision_name] == coarsened[:city_name]
+      coarsened[:subdivision_name] = ""
+    end
+    coarsened[:city_name] = ""
+
+    coarsened[:name] = [
+      coarsened[:subdivision_name],
+      coarsened[:state_name],
+      coarsened[:country_name],
+    ].reject(&:blank?).join(", ")
+
+    coarsened[:geo_level] =
+      if coarsened[:subdivision_name].present?
+        SUBDIVISION_LEVEL
+      elsif coarsened[:state_name].present?
+        STATE_LEVEL
+      elsif coarsened[:country_name].present?
+        COUNTRY_LEVEL
+      else
+        # Nothing coarser to fall back to; leave the level untouched so the caller's
+        # specificity check still rejects a location that cannot be made compliant.
+        coarsened[:geo_level]
+      end
+
+    coarsened[:refetch_adjusted_location] = true
+    coarsened
+  end
+
   # Refetch locations that were auto-adjusted for privacy reasons on the client,
   # restricting location specificity to Subdivision, State, Country.
   def self.refetch_adjusted_location(location)

@@ -234,10 +234,27 @@ describe("addAdditionalInputFilesToSamples", () => {
 
 describe("redirectToProject", () => {
   let originalLocation: Location;
+  let replaceMock: jest.Mock;
+  let hrefSetter: jest.Mock;
   beforeEach(() => {
     originalLocation = window.location;
+    replaceMock = jest.fn();
+    hrefSetter = jest.fn();
     delete (window as any).location;
-    (window as any).location = { href: "" };
+    // SMP-1500: redirectToProject now uses location.replace (not an href
+    // assignment) so a completed upload flow is dropped from history and the
+    // browser Back button cannot land back on the "upload complete" dialog.
+    // The stub must therefore expose a replace mock; href is kept as a spied
+    // setter to prove no new history entry is pushed.
+    (window as any).location = {
+      replace: replaceMock,
+      get href() {
+        return "";
+      },
+      set href(value: string) {
+        hrefSetter(value);
+      },
+    };
   });
   afterEach(() => {
     (window as any).location = originalLocation;
@@ -245,6 +262,8 @@ describe("redirectToProject", () => {
 
   it("navigates to the project home url", () => {
     redirectToProject("55");
-    expect(window.location.href).toBe("/home?project_id=55");
+    // Replaces the current history entry rather than pushing a new one.
+    expect(replaceMock).toHaveBeenCalledWith("/home?project_id=55");
+    expect(hrefSetter).not.toHaveBeenCalled();
   });
 });

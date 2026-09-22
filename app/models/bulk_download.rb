@@ -211,25 +211,51 @@ class BulkDownload < ApplicationRecord
   # once the download reaches a terminal state, so ANY path that rebuilds the task command for an
   # already-finished download hits nil. Guard it the same way server_host is guarded, and return nil.
 
+  # SMP-1868: when the rollout flag is on, callback URLs are generated WITHOUT the access_token in
+  # the path (the token is sent to the tar job via --auth-token and forwarded as the X-Access-Token
+  # header instead), so it no longer leaks via proxy/access logs, the Referer header, or browser
+  # history. When off, the legacy token-in-path URLs are generated so an old s3-tar-writer image
+  # keeps working. The server accepts the token from either location, so the two can roll out
+  # independently. The access_token.blank? guard is unchanged in both modes: even in header mode the
+  # token must exist (it now travels in the header) -- see the single-use nulling note above.
+  def callback_token_in_header?
+    get_app_config(AppConfig::BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER) == "1"
+  end
+
   # The Rails success url that the s3_tar_writer task can ping once it succeeds.
   def success_url
     return nil if server_host.blank? || access_token.blank?
 
-    "#{server_host}#{bulk_downloads_success_path(access_token: access_token, id: id)}"
+    path = if callback_token_in_header?
+             bulk_downloads_success_path(id: id)
+           else
+             bulk_downloads_success_with_token_path(access_token: access_token, id: id)
+           end
+    "#{server_host}#{path}"
   end
 
   # The Rails error url that the s3_tar_writer task can ping if it fails.
   def error_url
     return nil if server_host.blank? || access_token.blank?
 
-    "#{server_host}#{bulk_downloads_error_path(access_token: access_token, id: id)}"
+    path = if callback_token_in_header?
+             bulk_downloads_error_path(id: id)
+           else
+             bulk_downloads_error_with_token_path(access_token: access_token, id: id)
+           end
+    "#{server_host}#{path}"
   end
 
   # The Rails progress url that the s3_tar_writer task can ping to update progress.
   def progress_url
     return nil if server_host.blank? || access_token.blank?
 
-    "#{server_host}#{bulk_downloads_progress_path(access_token: access_token, id: id)}"
+    path = if callback_token_in_header?
+             bulk_downloads_progress_path(id: id)
+           else
+             bulk_downloads_progress_with_token_path(access_token: access_token, id: id)
+           end
+    "#{server_host}#{path}"
   end
 
   # The aegea ECS bulk-download tasks (cluster + executable-file bucket) are only
@@ -346,6 +372,13 @@ class BulkDownload < ApplicationRecord
     end
     if progress_url
       command += ["--progress-url", progress_url]
+    end
+    # SMP-1868: in header mode the callback URLs are tokenless, so hand the single-use token to the
+    # tar job out-of-band; it forwards it as the X-Access-Token header on each callback POST. Only
+    # emitted when the flag is on, so an old s3-tar-writer image (which would reject the unknown
+    # flag) is never handed --auth-token. access_token is present here (success_url guards on it).
+    if callback_token_in_header? && access_token.present?
+      command += ["--auth-token", access_token]
     end
     command
   end

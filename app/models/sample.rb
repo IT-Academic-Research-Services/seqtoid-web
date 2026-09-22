@@ -34,6 +34,18 @@ class Sample < ApplicationRecord
   has_and_belongs_to_many :visualizations
   has_many :workflow_runs, dependent: :destroy
 
+  # SMP-1768 -- raised when a caller tries to start (fork/re-run) a workflow run for a
+  # sample that has already been soft-deleted. A forked run (e.g. AMR or a consensus
+  # genome kicked off from an existing mNGS run) depends on this sample's inputs and
+  # prior results; once the sample has been deleted -- for instance by data-retention
+  # enforcement -- those are gone and the run could never succeed. Refusing here keeps
+  # us from creating dangling workflow_run rows that are permanently stuck.
+  class SampleDeletedError < StandardError
+    def initialize(sample_id)
+      super("Cannot start a new workflow run for sample #{sample_id} because it has been deleted.")
+    end
+  end
+
   STATUS_CREATED = 'created'.freeze
   STATUS_UPLOADED = 'uploaded'.freeze
   STATUS_RERUN    = 'need_rerun'.freeze
@@ -81,7 +93,15 @@ class Sample < ApplicationRecord
   end
 
   before_save :check_host_genome, :concatenate_input_parts, :check_status
-  after_create :initiate_input_file_upload
+  # Enqueue the input-file copy/transfer only AFTER the create transaction commits. In bulk upload
+  # the Sample and its InputFiles are created in one transaction; an after_create hook fires
+  # mid-transaction, so the enqueued InitiateS3Cp job could run before the InputFiles (or even the
+  # Sample) were committed -- the copy job then saw 0 input fastqs and failed validation ("Input
+  # fastqs invalid number (0)"), or dead-lettered with RecordNotFound on a rolled-back batch, so
+  # every S3 import failed ("All uploads failed"). after_create_commit guarantees the Sample + its
+  # InputFiles are persisted before the job is enqueued, and nothing is enqueued if the transaction
+  # rolls back. Refs PROD-RAILS-PROJECT-F.
+  after_create_commit :initiate_input_file_upload
   before_destroy :cleanup_relations
   after_destroy :cleanup_s3
 
@@ -234,7 +254,12 @@ class Sample < ApplicationRecord
     workflow_runs.non_deprecated.non_deleted.reverse_each do |wr|
       wr_info = wr.as_json(
         only: WorkflowRun::DEFAULT_FIELDS,
-        methods: [:input_error, :inputs, :parsed_cached_results]
+        # error_message is the persisted terminal-state reason (e.g. the "insufficient
+        # coverage" message on a SUCCEEDED_WITH_ISSUE consensus-genome run). It is added
+        # here rather than to DEFAULT_FIELDS so only this report surface picks it up.
+        # Prefer this stored column over the live #input_error, which re-derives from the
+        # SFN archive and returns nil once that is garbage collected (SMP-1908).
+        methods: [:input_error, :inputs, :parsed_cached_results, :error_message]
       )
       wr_info["run_finalized"] = wr.finalized?
       workflow_runs_info << wr_info
@@ -705,6 +730,12 @@ class Sample < ApplicationRecord
   end
 
   def create_and_dispatch_workflow_run(workflow, user_id, rerun_from: nil, inputs_json: nil)
+    # SMP-1768 -- guard the fork/re-run entrypoint. All forked workflow runs (bulk AMR,
+    # single AMR, consensus genome) and re-runs funnel through here, so refusing a deleted
+    # sample in one place prevents dangling forked rows regardless of the caller (REST
+    # controller or the KickoffWGSWorkflow GraphQL mutation) or a stale client.
+    raise SampleDeletedError, id if deleted_at.present?
+
     workflow_run = WorkflowRun.create(sample: self, workflow: workflow, user_id: user_id, rerun_from: rerun_from, inputs_json: inputs_json)
     workflow_run.dispatch
     workflow_run

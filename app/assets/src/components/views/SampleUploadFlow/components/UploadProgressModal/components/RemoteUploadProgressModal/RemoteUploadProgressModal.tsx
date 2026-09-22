@@ -14,6 +14,7 @@ import {
 import { TaxonOption } from "~/components/common/filters/types";
 import PrimaryButton from "~/components/ui/controls/buttons/PrimaryButton";
 import { logError } from "~/components/utils/logUtil";
+import { SAMPLE_UPLOAD_CONCURRENCY } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
 import { ResumableUpload } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/resumableUpload";
 import {
   BulkUploadWithMetadata,
@@ -96,32 +97,51 @@ export const RemoteUploadProgressModal = ({
 
   const uploadSamples = useCallback(async (samples: SampleForUpload[]) => {
     // Note that unlike LocalUploadProgressModal, we don't track the progress of the uploads.
-    await Promise.all(
-      samples.map(async (sample: SampleForUpload) => {
-        try {
-          // Get the credentials for the sample
-          const s3ClientForSample = await getS3Client(sample);
+    const uploadOneSample = async (sample: SampleForUpload) => {
+      try {
+        // Get the credentials for the sample
+        const s3ClientForSample = await getS3Client(sample);
 
-          await Promise.all(
-            (sample?.input_files || []).map(async (inputFile: PathToFile) => {
-              // Upload the additional input files to s3
-              // The sample FASTQS from Basespace or S3 will be uploaded by the backend.
-              if (inputFile.file_to_upload) {
-                await uploadInputFileToS3(sample, inputFile, s3ClientForSample);
-              }
-            }),
-          );
-        } catch (e) {
-          logError({
-            exception: e,
-            message:
-              "UploadProgressModal: Upload error to s3 occurred for additional input file of remote sample",
-            details: {
-              sample,
-            },
-          });
-        }
-      }),
+        await Promise.all(
+          (sample?.input_files || []).map(async (inputFile: PathToFile) => {
+            // Upload the additional input files to s3
+            // The sample FASTQS from Basespace or S3 will be uploaded by the backend.
+            if (inputFile.file_to_upload) {
+              await uploadInputFileToS3(sample, inputFile, s3ClientForSample);
+            }
+          }),
+        );
+      } catch (e) {
+        logError({
+          exception: e,
+          message:
+            "UploadProgressModal: Upload error to s3 occurred for additional input file of remote sample",
+          details: {
+            sample,
+          },
+        });
+      }
+    };
+
+    // SMP-1896: bound how many samples fetch credentials / upload at once. getS3Client is one
+    // upload_credentials -> STS AssumeRoleWithWebIdentity call per sample; the previous Promise.all
+    // over every sample fired the whole batch's credential requests at once (293 in the incident)
+    // and stampeded STS into throttling. A small fixed worker pool -- the same queue/worker pattern
+    // LocalUploadProgressModal uses, bounded by the shared SAMPLE_UPLOAD_CONCURRENCY -- staggers
+    // them. uploadOneSample swallows its own errors, so one bad sample never stalls the pool.
+    const queue = [...samples];
+    const runNextSample = async (): Promise<void> => {
+      while (queue.length > 0) {
+        const sample = queue.shift();
+        if (!sample) return;
+        await uploadOneSample(sample);
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(SAMPLE_UPLOAD_CONCURRENCY, samples.length) },
+        () => runNextSample(),
+      ),
     );
   }, []);
 

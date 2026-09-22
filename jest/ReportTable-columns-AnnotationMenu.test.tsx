@@ -11,11 +11,9 @@
 // settles. All four items and both anchorEl states are exercised.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const mockWithAnalytics = jest.fn();
 const mockTrackEvent = jest.fn();
 jest.mock("~/api/analytics", () => ({
   ...jest.requireActual("~/api/analytics"),
-  useWithAnalytics: () => mockWithAnalytics,
   useTrackEvent: () => mockTrackEvent,
 }));
 
@@ -65,6 +63,7 @@ jest.mock("@czi-sds/components", () => ({
   ),
 }));
 
+import { ANALYTICS_EVENT_NAMES } from "~/api/analytics";
 import { AnnotationMenu } from "~/components/views/SampleView/components/MngsReport/components/ReportTable/components/columns/components/AnnotationMenu/AnnotationMenu";
 
 const ANALYTICS_CONTEXT = { sampleId: 7, taxonName: "Klebsiella" };
@@ -121,14 +120,19 @@ describe("AnnotationMenu -- open/close", () => {
     renderMenu();
     fireEvent.click(screen.getByTestId("annotation-trigger"));
 
-    expect(mockWithAnalytics).toHaveBeenCalledTimes(2);
-    expect(mockWithAnalytics.mock.calls[0][1]).toBe(ANALYTICS_CONTEXT);
-    // The second call stringifies the same context.
-    expect(mockWithAnalytics.mock.calls[1][1]).toBe(
-      JSON.stringify(ANALYTICS_CONTEXT),
-    );
-    expect(mockWithAnalytics.mock.calls[0][0]).not.toBe(
-      mockWithAnalytics.mock.calls[1][0],
+    // Both menu-opened events go through trackEvent (SMP-1815): each carries the
+    // same flat, warehouse-compliant analytics context as the event payload.
+    expect(mockTrackEvent).toHaveBeenCalledTimes(2);
+    expect(mockTrackEvent.mock.calls[0]).toEqual([
+      ANALYTICS_EVENT_NAMES.REPORT_TABLE_ANNOTATION_MENU_OPENED,
+      { ...ANALYTICS_CONTEXT },
+    ]);
+    expect(mockTrackEvent.mock.calls[1]).toEqual([
+      ANALYTICS_EVENT_NAMES.REPORT_TABLE_ANNOTATION_MENU_OPENED_ALLISON_TESTING,
+      { ...ANALYTICS_CONTEXT },
+    ]);
+    expect(mockTrackEvent.mock.calls[0][0]).not.toBe(
+      mockTrackEvent.mock.calls[1][0],
     );
   });
 });
@@ -208,11 +212,13 @@ describe("AnnotationMenu -- selection", () => {
     fireEvent.click(screen.getByTestId("annotation-trigger"));
     fireEvent.click(itemByText("Inconclusive"));
 
-    expect(mockTrackEvent).toHaveBeenCalledTimes(1);
-    expect(mockTrackEvent.mock.calls[0][1]).toEqual({
-      ...ANALYTICS_CONTEXT,
-      annotationType: "inconclusive",
-    });
+    // Opening the menu fires the two menu-opened events first; the selection is
+    // the final trackEvent call, carrying the context plus the chosen type.
+    expect(mockTrackEvent).toHaveBeenCalledTimes(3);
+    expect(mockTrackEvent).toHaveBeenLastCalledWith(
+      ANALYTICS_EVENT_NAMES.ANNOTATION_MENU_MENU_ITEM_CLICKED,
+      { ...ANALYTICS_CONTEXT, annotationType: "inconclusive" },
+    );
   });
 
   it("still fires without an analytics context and forwards a null pipelineRunId", () => {
@@ -225,9 +231,12 @@ describe("AnnotationMenu -- selection", () => {
       taxId: 573,
       annotationType: "hit",
     });
-    expect(mockTrackEvent.mock.calls[0][1]).toEqual({
-      annotationType: "hit",
-    });
+    // With no analytics context the menu-opened events carry an empty payload;
+    // the selection still forwards just the chosen type as the last call.
+    expect(mockTrackEvent).toHaveBeenLastCalledWith(
+      ANALYTICS_EVENT_NAMES.ANNOTATION_MENU_MENU_ITEM_CLICKED,
+      { annotationType: "hit" },
+    );
   });
 
   it("does not call onAnnotationUpdate before the request resolves", () => {

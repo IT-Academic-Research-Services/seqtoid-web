@@ -215,4 +215,71 @@ RSpec.describe Location, type: :model do
       expect(is_valid).to eq(true)
     end
   end
+
+  context "#coarsen_location_for_human" do
+    it "drops the city and falls back to subdivision level" do
+      coarsened = Location.coarsen_location_for_human({
+                                                        name: "Ugena, Toledo, Castile-La Mancha, Spain",
+                                                        geo_level: "city",
+                                                        country_name: "Spain",
+                                                        state_name: "Castile-La Mancha",
+                                                        subdivision_name: "Toledo",
+                                                        city_name: "Ugena",
+                                                      })
+
+      expect(coarsened[:city_name]).to eq("")
+      expect(coarsened[:geo_level]).to eq("subdivision")
+      expect(coarsened[:name]).to eq("Toledo, Castile-La Mancha, Spain")
+      expect(coarsened[:refetch_adjusted_location]).to eq(true)
+      # The specificity rule is now satisfied for a Human host.
+      expect(Location.specificity_valid?(coarsened, "Human")).to eq(true)
+    end
+
+    it "drops a subdivision that merely repeats the city and falls back to state level" do
+      coarsened = Location.coarsen_location_for_human({
+                                                        name: "San Francisco, San Francisco, California, USA",
+                                                        geo_level: "city",
+                                                        country_name: "USA",
+                                                        state_name: "California",
+                                                        subdivision_name: "San Francisco",
+                                                        city_name: "San Francisco",
+                                                      })
+
+      expect(coarsened[:city_name]).to eq("")
+      expect(coarsened[:subdivision_name]).to eq("")
+      expect(coarsened[:geo_level]).to eq("state")
+      expect(coarsened[:name]).to eq("California, USA")
+      expect(coarsened[:refetch_adjusted_location]).to eq(true)
+      expect(Location.specificity_valid?(coarsened, "Human")).to eq(true)
+    end
+
+    it "falls back to country level when only the country remains" do
+      coarsened = Location.coarsen_location_for_human({
+                                                        name: "Some City, Country",
+                                                        geo_level: "city",
+                                                        country_name: "Country",
+                                                        city_name: "Some City",
+                                                      })
+
+      expect(coarsened[:geo_level]).to eq("country")
+      expect(coarsened[:name]).to eq("Country")
+      expect(Location.specificity_valid?(coarsened, "Human")).to eq(true)
+    end
+
+    it "does not mutate the input location" do
+      original = {
+        geo_level: "city",
+        country_name: "Spain",
+        state_name: "Castile-La Mancha",
+        subdivision_name: "Toledo",
+        city_name: "Ugena",
+      }
+
+      Location.coarsen_location_for_human(original)
+
+      expect(original[:city_name]).to eq("Ugena")
+      expect(original[:geo_level]).to eq("city")
+      expect(original[:refetch_adjusted_location]).to be_nil
+    end
+  end
 end

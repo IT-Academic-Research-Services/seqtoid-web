@@ -52,6 +52,17 @@ module SecretRedaction
   # inside a serialized request or a provider error body.
   BEARER_PATTERN = /((?:bearer|x-access-token)[\s:=]+)(\S+)/i
 
+  # The bulk-download callback routes carry BulkDownload#access_token as a PATH
+  # segment: POST /bulk_downloads/:id/(success|error|progress)/:access_token.
+  # Rails' filter_parameters redacts the token from the "Parameters:" log line
+  # but NOT from the request path, so it still lands verbatim in the
+  # "Started POST \"...\"" request-log line on every callback -- success as well
+  # as error (SMP-1751). Capture group 1 keeps the route prefix and the id;
+  # only the final token segment is replaced. Anchored on the numeric id so it
+  # cannot match an unrelated path.
+  BULK_DOWNLOAD_CALLBACK_TOKEN_PATTERN =
+    %r{(/bulk_downloads/\d+/(?:success|error|progress)/)[^/?#"\s]+}
+
   # Guard against a self-referential or pathologically nested structure. Deeper
   # than this is marked truncated, NOT redacted -- it is a depth limit, not a
   # finding, and a reader should not mistake it for a secret we removed.
@@ -119,6 +130,16 @@ module SecretRedaction
     return value unless value.is_a?(String)
 
     value.gsub(BEARER_PATTERN) { "#{Regexp.last_match(1)}#{REDACTED}" }
+  end
+
+  # Mask the access_token segment of a bulk-download callback path wherever it
+  # appears in a string -- a bare path or a full "Started POST ..." request-log
+  # line -- keeping the route and the numeric id intact. Non-matching input is
+  # returned untouched, so it is safe to run over every request-log line.
+  def redact_bulk_download_callback_token(value)
+    return value unless value.is_a?(String)
+
+    value.gsub(BULK_DOWNLOAD_CALLBACK_TOKEN_PATTERN, "\\1#{REDACTED}")
   end
 
   # Apply redact_url to a single path or to every element of a list of paths.

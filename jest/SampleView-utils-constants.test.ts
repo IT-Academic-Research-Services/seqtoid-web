@@ -8,6 +8,7 @@
 import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
 import {
   BACKGROUND_DEPENDENT_READS_THRESHOLDS,
+  getWorkflowRunErrorMessage,
   getWorkflowRunStatusCategory,
   isKnownWorkflowRunStatus,
   LONG_READS_THRESHOLDS,
@@ -20,6 +21,7 @@ import {
   TREE_VIZ_TOOLTIP_METRICS,
   WORKFLOW_RUN_STATUS_CATEGORY,
 } from "~/components/views/SampleView/utils/constants";
+import { WorkflowRun } from "~/interface/sample";
 
 describe("BACKGROUND_DEPENDENT_READS_THRESHOLDS", () => {
   it("is exactly the short-read thresholds that need a background model", () => {
@@ -112,13 +114,17 @@ describe("TREE_VIZ_TOOLTIP_METRICS aggregators", () => {
 // unknown value must NOT fall through to the failure screen.
 describe("getWorkflowRunStatusCategory", () => {
   const CASES: Array<
-    [string, "success" | "inProgress" | "waiting" | "failed"]
+    [
+      string,
+      "success" | "successWithIssue" | "inProgress" | "waiting" | "failed",
+    ]
   > = [
     // success -- both vocabularies
     ["SUCCEEDED", "success"], // raw Rails
-    ["SUCCEEDED_WITH_ISSUE", "success"], // raw Rails
     ["COMPLETE", "success"], // SFN-mapped -- the SMP-1501 regression
-    ["COMPLETE - ISSUE", "success"], // SFN-mapped
+    // success with issue -- both vocabularies (SMP-1908)
+    ["SUCCEEDED_WITH_ISSUE", "successWithIssue"], // raw Rails
+    ["COMPLETE - ISSUE", "successWithIssue"], // SFN-mapped
     // in progress
     ["RUNNING", "inProgress"],
     ["STARTED", "inProgress"],
@@ -155,6 +161,58 @@ describe("getWorkflowRunStatusCategory", () => {
     // prototype function via a bare bracket lookup.
     expect(getWorkflowRunStatusCategory("toString")).toBe("inProgress");
     expect(getWorkflowRunStatusCategory("constructor")).toBe("inProgress");
+  });
+});
+
+// SMP-1908: the reason shown for a with-issue run. Prefers the durable error_message column
+// over the GC-fragile live input_error, then a label-derived sentence, then a generic
+// fallback; always returns a non-empty string. Copy is workflow-agnostic (AMR, benchmark,
+// and consensus genome all use it).
+describe("getWorkflowRunErrorMessage", () => {
+  const run = (fields: Partial<WorkflowRun>): WorkflowRun =>
+    fields as WorkflowRun;
+
+  it("prefers the stored error_message column", () => {
+    expect(
+      getWorkflowRunErrorMessage(
+        run({
+          error_message: "the stored reason",
+          input_error: { label: "InsufficientReadsError", message: "live" },
+        }),
+      ),
+    ).toBe("the stored reason");
+  });
+
+  it("falls back to the live input_error.message when the column is blank", () => {
+    expect(
+      getWorkflowRunErrorMessage(
+        run({
+          error_message: "   ",
+          input_error: { label: "InsufficientReadsError", message: "live msg" },
+        }),
+      ),
+    ).toBe("live msg");
+  });
+
+  it("falls back to a label-derived sentence when both messages are blank", () => {
+    expect(
+      getWorkflowRunErrorMessage(
+        run({
+          error_message: null,
+          input_error: { label: "InsufficientReadsError", message: "" },
+        }),
+      ),
+    ).toBe(
+      "The number of reads after filtering was insufficient for further analysis.",
+    );
+  });
+
+  it("falls back to a generic sentence when nothing is available", () => {
+    const generic =
+      "This run completed with an issue, so no results were produced.";
+    expect(getWorkflowRunErrorMessage(run({}))).toBe(generic);
+    expect(getWorkflowRunErrorMessage(null)).toBe(generic);
+    expect(getWorkflowRunErrorMessage(undefined)).toBe(generic);
   });
 });
 

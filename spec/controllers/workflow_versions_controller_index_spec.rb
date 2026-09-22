@@ -82,7 +82,7 @@ RSpec.describe WorkflowVersionsController, type: :controller do
     it "rejects a malformed workflow name" do
       get :index, params: { workflow: "../etc/passwd" }
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "also serves the NCBI index catalog, which uses dates rather than semver" do
@@ -127,7 +127,7 @@ RSpec.describe WorkflowVersionsController, type: :controller do
 
       get :index, params: { workflow: "not a workflow!" }
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 end

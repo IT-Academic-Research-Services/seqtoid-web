@@ -1,8 +1,9 @@
 import React, { useEffect } from "react";
 import { SampleMessage } from "~/components/common/SampleMessage";
-import { IconLoading } from "~/components/ui/icons";
+import { IconInfo, IconLoading } from "~/components/ui/icons";
 import { logError } from "~/components/utils/logUtil";
 import {
+  getWorkflowRunErrorMessage,
   getWorkflowRunStatusCategory,
   isKnownWorkflowRunStatus,
 } from "~/components/views/SampleView/utils";
@@ -77,6 +78,19 @@ export const SampleReportContent = ({
           sample={sample}
           workflowRun={workflowRun}
           analyticsEventName={eventNames?.error}
+        />
+      ) : statusCategory === "successWithIssue" ? (
+        // SMP-1908: the run finished but produced no results (e.g. insufficient coverage), so
+        // the children below would render an empty report. Surface the stored reason instead.
+        // Placed AFTER upload_error so a terminal upload failure takes precedence.
+        <SampleMessage
+          icon={<IconInfo className={cs.icon} />}
+          link={loadingInfo?.helpLink}
+          linkText={loadingInfo?.linkText}
+          message={getWorkflowRunErrorMessage(workflowRun)}
+          status={"COMPLETE"}
+          type={"success"}
+          analyticsEventName={eventNames?.loading}
         />
       ) : statusCategory === "inProgress" ? (
         <SampleMessage

@@ -1,11 +1,23 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import React from "react";
 import * as Sentry from "@sentry/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import ErrorBoundary from "~/components/common/ErrorBoundary";
 import {
   onOpenSupportPortal,
   SUPPORT_PORTAL_OPEN_EVENT,
 } from "~/components/common/SupportPortal/openSupportPortal";
+
+jest.mock("@sentry/react", () => ({
+  __esModule: true,
+  ...jest.requireActual("@sentry/react"),
+  captureException: jest.fn(() => "event-id"),
+}));
+
+const expectSentryCaptureException = (message: string) => {
+  expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  const caughtError = (Sentry.captureException as any).mock.calls[0][0];
+  expect(caughtError).toBeInstanceOf(Error);
+  expect(caughtError.message).toBe(message);
+};
 
 // A child that throws on demand so we can drive the boundary into its error
 // state deterministically.
@@ -25,21 +37,15 @@ const FlakyChild = () => {
 };
 
 describe("ErrorBoundary", () => {
-  let captureSpy: jest.SpyInstance;
-  let consoleSpy: jest.SpyInstance;
-
   beforeEach(() => {
+    jest.clearAllMocks();
     flaky.shouldThrow = true;
-    captureSpy = jest
-      .spyOn(Sentry, "captureException")
-      .mockImplementation(() => "event-id");
     // Silence the intentional console.error the boundary emits on catch.
-    consoleSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
-    captureSpy.mockRestore();
-    consoleSpy.mockRestore();
+    jest.restoreAllMocks();
   });
 
   it("renders the friendly fallback when a child throws", () => {
@@ -57,6 +63,7 @@ describe("ErrorBoundary", () => {
     );
     // The raw thrown message is never shown to the user.
     expect(screen.queryByText("kaboom")).toBeNull();
+    expectSentryCaptureException("kaboom");
   });
 
   it("still reports the error to Sentry (observability preserved)", () => {
@@ -66,10 +73,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
 
-    expect(captureSpy).toHaveBeenCalledTimes(1);
-    const [capturedError] = captureSpy.mock.calls[0];
-    expect(capturedError).toBeInstanceOf(Error);
-    expect((capturedError as Error).message).toBe("sentry-me");
+    expectSentryCaptureException("sentry-me");
   });
 
   it("suppresses the Sentry report when shouldReportError returns false", () => {
@@ -81,7 +85,7 @@ describe("ErrorBoundary", () => {
 
     // The fallback still renders -- only observability reporting is gated.
     expect(screen.getByTestId("error-fallback")).toBeTruthy();
-    expect(captureSpy).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("still reports when shouldReportError returns true", () => {
@@ -91,8 +95,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
 
-    expect(captureSpy).toHaveBeenCalledTimes(1);
-    expect((captureSpy.mock.calls[0][0] as Error).message).toBe("real-defect");
+    expectSentryCaptureException("real-defect");
   });
 
   it("offers both a retry and a contact-support action for retryable errors", () => {
@@ -104,6 +107,8 @@ describe("ErrorBoundary", () => {
 
     expect(screen.getByTestId("error-fallback-retry")).toBeTruthy();
     expect(screen.getByTestId("error-fallback-report")).toBeTruthy();
+
+    expectSentryCaptureException("kaboom");
   });
 
   it("recovers the subtree when the user clicks Try again", () => {
@@ -122,6 +127,7 @@ describe("ErrorBoundary", () => {
     fireEvent.click(screen.getByTestId("error-fallback-retry"));
     expect(screen.getByTestId("recovered")).toBeTruthy();
     expect(screen.queryByTestId("error-fallback")).toBeNull();
+    expectSentryCaptureException("transient failure");
   });
 
   it("wires 'Report a problem' to the in-app support portal (#440)", () => {
@@ -140,6 +146,7 @@ describe("ErrorBoundary", () => {
     // The support note carries the failing view for context.
     expect(handler.mock.calls[0][0].note).toContain("report");
     unsubscribe();
+    expectSentryCaptureException("kaboom");
   });
 
   it("shows a non-retryable message with no retry button for a NOT_FOUND error", () => {
@@ -158,15 +165,19 @@ describe("ErrorBoundary", () => {
     // Contact-support is always offered; retry is not, for a non-retryable error.
     expect(screen.getByTestId("error-fallback-report")).toBeTruthy();
     expect(screen.queryByTestId("error-fallback-retry")).toBeNull();
+    expectSentryCaptureException("resource not found");
   });
 
   it("openSupportPortal dispatches the documented custom event", () => {
     const spy = jest.fn();
     window.addEventListener(SUPPORT_PORTAL_OPEN_EVENT, spy);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { openSupportPortal } = require("~/components/common/SupportPortal/openSupportPortal");
+    const {
+      openSupportPortal,
+    } = require("~/components/common/SupportPortal/openSupportPortal");
     openSupportPortal({ note: "hello" });
     expect(spy).toHaveBeenCalledTimes(1);
     window.removeEventListener(SUPPORT_PORTAL_OPEN_EVENT, spy);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 });

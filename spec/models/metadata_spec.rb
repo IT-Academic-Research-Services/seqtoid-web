@@ -180,11 +180,50 @@ RSpec.describe Metadatum, type: :model do
       expect(created_location.osm_id).to eq(200)
     end
 
-    it "should throw error if location for Human sample is too specific" do
+    it "should coarsen a too-specific location for a Human sample instead of failing (SMP-1861)" do
       host_genome_human = HostGenome.find_by(name: "Human")
       host_genome_human.metadata_fields << @location_metadata_field
       @human_sample = create(:sample, project: @project, name: "Mock sample human", host_genome: host_genome_human)
 
+      # A city-level selection that was NOT coarsened by the client (e.g. entered through the
+      # bulk "Edit Metadata" modal). The server must coarsen it to subdivision level and save.
+      location = {
+        name: "Ugena, Toledo, Castile-La Mancha, Spain",
+        locationiq_id: 100,
+        geo_level: "city",
+        country_name: "Spain",
+        state_name: "Castile-La Mancha",
+        subdivision_name: "Toledo",
+        city_name: "Ugena",
+      }
+
+      coarsened_location = create(:location, osm_id: 300, locationiq_id: 100, geo_level: "subdivision")
+      # The coarsened location is re-resolved through the adjusted-location refetch path.
+      expect(Location).to receive(:refetch_adjusted_location).exactly(1).times do |loc|
+        expect(loc[:city_name]).to eq("")
+        expect(loc[:geo_level]).to eq("subdivision")
+        expect(loc[:refetch_adjusted_location]).to eq(true)
+        coarsened_location
+      end
+
+      location_metadata = Metadatum.new(
+        raw_value: JSON.dump(location),
+        sample: @human_sample,
+        metadata_field: @location_metadata_field,
+        key: "mock_collection_location"
+      )
+
+      expect { location_metadata.save! }.not_to raise_error
+      expect(location_metadata.location_id).to eq(coarsened_location.id)
+      expect(location_metadata.raw_value).to eq(nil)
+    end
+
+    it "should throw error if a Human location is too specific and cannot be coarsened" do
+      host_genome_human = HostGenome.find_by(name: "Human")
+      host_genome_human.metadata_fields << @location_metadata_field
+      @human_sample = create(:sample, project: @project, name: "Mock sample human", host_genome: host_genome_human)
+
+      # A city with no country/state/subdivision to fall back to cannot be made compliant.
       location = { name: location_name, locationiq_id: 100, city_name: "Mock City", geo_level: "city" }
 
       location_metadata = Metadatum.new(

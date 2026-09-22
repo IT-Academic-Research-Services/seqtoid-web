@@ -649,13 +649,20 @@ class SamplesController < ApplicationController
       return
     end
 
-    unless current_user.can_upload(params[:bulk_path])
+    # Normalize the user-supplied S3 path before it is used anywhere. A leading/trailing
+    # space (common from copy-paste) would otherwise flow into the bucket name -- and S3
+    # bucket names cannot start or end with a space -- causing URI.parse to raise or the
+    # object listing to fail. Strip once here so both the permission check and the listing
+    # see a clean path.
+    bulk_path = params[:bulk_path].to_s.strip
+
+    unless current_user.can_upload(bulk_path)
       render json: { status: "Sorry, it looks like your email doesn’t have permissions to this s3 bucket." }, status: :unprocessable_content
       return
     end
 
     @host_genome_id = params[:host_genome_id]
-    @bulk_path = params[:bulk_path]
+    @bulk_path = bulk_path
     begin
       @samples = parsed_samples_for_s3_path(@bulk_path, @project_id, @host_genome_id)
     rescue Aws::S3::Errors::ServiceError => e
@@ -880,6 +887,17 @@ class SamplesController < ApplicationController
     respond_to do |format|
       format.json { render json: { aws_region: ENV["AWS_REGION"] }.merge(credentials) }
     end
+  rescue SamplesHelper::UploadCredentialsUnavailable
+    # SMP-1896: STS is throttling web-identity federation. Return a retryable 503 with Retry-After
+    # (instead of an opaque 500) so a client that honors it -- e.g. the CLI batch upload that
+    # triggered the throttle -- can back off and retry the same request. NOTE: the web frontend's
+    # get() only auto-retries response-less network errors (api/core.ts isTransientNetworkError), so
+    # a browser upload still surfaces this as a failed sample until a client-side retry/backoff that
+    # honors Retry-After is added; that is a separate change.
+    response.set_header("Retry-After", "5")
+    render json: {
+      error: "Upload credentials are temporarily unavailable due to rate limiting. Please retry.",
+    }, status: :service_unavailable
   end
 
   # GET /samples/1/report_csv
@@ -1525,6 +1543,11 @@ class SamplesController < ApplicationController
     inputs_json = collection_params[:inputs_json].to_json
     @sample.create_and_dispatch_workflow_run(workflow, current_user.id, inputs_json: inputs_json)
     render json: @sample.workflow_runs_info
+  rescue Sample::SampleDeletedError => e
+    # SMP-1768 -- the sample was deleted (e.g. by data retention) after the client loaded
+    # it, so a forked run can no longer be started. Fail gracefully instead of creating a
+    # dangling workflow run; the client surfaces this message to the user.
+    render json: { error: e.message }, status: :unprocessable_content
   end
 
   # POST /samples/bulk_kickoff_workflow_runs

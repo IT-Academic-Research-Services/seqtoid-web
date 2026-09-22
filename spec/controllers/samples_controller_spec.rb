@@ -792,6 +792,25 @@ RSpec.describe SamplesController, type: :controller do
         expect(request[:params][:policy]).to eq(JSON.dump(policy))
       end
 
+      it "returns a retryable 503 with Retry-After when STS throttles federation (SMP-1896)" do
+        fake_token_file = "/var/run/secrets/eks.amazonaws.com/serviceaccount/token"
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with('CLI_UPLOAD_ROLE_ARN').and_return(fake_role_arn)
+        allow(ENV).to receive(:[]).with('AWS_REGION').and_return(fake_region)
+        allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+        allow(File).to receive(:read).and_call_original
+        allow(File).to receive(:read).with(fake_token_file).and_return("fake-web-identity-token")
+
+        # STS throttles the federation call even after the client's standard-mode retries.
+        throttled_client = Aws::STS::Client.new(stub_responses: true)
+        throttled_client.stub_responses(:assume_role_with_web_identity, 'ServiceUnavailable')
+        allow_any_instance_of(SamplesController).to receive(:upload_sts_client).and_return(throttled_client)
+
+        get :upload_credentials, format: :json, params: { id: @sample.id }
+        expect(response).to have_http_status :service_unavailable
+        expect(response.headers["Retry-After"]).to eq("5")
+      end
+
       it "returns not_found if user doesn't own sample" do
         get :upload_credentials, format: :json, params: { id: @unowned_sample.id }
         expect(response).to have_http_status :not_found

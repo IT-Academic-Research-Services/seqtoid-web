@@ -17,6 +17,9 @@ export const ConsensusGenomeView = ({
   workflowRun,
 }: ConsensusGenomeViewProps) => {
   if (sample && workflowRun) {
+    // SMP-1908: a "Complete - Issue" run (e.g. insufficient coverage) produces no genome. The
+    // reason is surfaced by SampleReportContent's shared "successWithIssue" branch, below the
+    // header, so this view no longer needs a consensus-genome-specific banner.
     return (
       <>
         <ConsensusGenomeHeader

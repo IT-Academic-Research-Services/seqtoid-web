@@ -87,5 +87,34 @@ GQL
       expect(item.dig("inputs", "accession_id")).to eq("KX1")
       expect(item.dig("parsed_cached_results", "quality_metrics", "total_reads")).to eq(100)
     end
+
+    # SMP-1566: a CG run kicked off from an mNGS report starts from that run's retained non-host
+    # reads. When the sample has no completed mNGS run the dispatcher raises
+    # MngsInputsUnavailableError; the mutation must surface it as a clean GraphQL error the
+    # consensus genome creation modal can show, not a dangling run or an unhandled 500.
+    it "surfaces a clean GraphQL error when the mNGS non-host reads are unavailable" do
+      project = create(:project, users: [@joe])
+      sample = create(:sample, project: project, user: @joe)
+
+      allow_any_instance_of(Sample).to receive(:create_and_dispatch_workflow_run)
+        .and_raise(SfnCgPipelineDispatchService::MngsInputsUnavailableError.new(sample.id))
+
+      post "/graphql", headers: { "Content-Type" => "application/json" }, params: {
+        query: KICKOFF_WGS_MUTATION,
+        variables: {
+          sampleId: sample.id.to_s,
+          input: {
+            workflow: "consensus_genome",
+            inputs_json: { accession_id: "KX1", technology: "Illumina" },
+            authenticityToken: "t",
+          },
+        },
+      }.to_json
+
+      parsed = JSON.parse(response.body)
+      expect(parsed["errors"]).to be_present
+      expect(parsed["errors"].first["message"]).to match(/No completed mNGS run found for sample #{sample.id}/)
+      expect(parsed.dig("data", "KickoffWGSWorkflow")).to be_nil
+    end
   end
 end

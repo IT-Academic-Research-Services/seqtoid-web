@@ -454,6 +454,34 @@ const getBackgrounds = ({
     },
   );
 
+export interface BackgroundDetails {
+  id: number;
+  name: string;
+  description: string | null;
+  mass_normalized: boolean;
+  ready: 0 | 1;
+  created_at: string;
+  updated_at: string;
+  editable: boolean;
+  sample_count: number;
+  samples: Array<{
+    id: number;
+    name: string;
+    project_name: string | null;
+  }>;
+}
+
+// Fetch the details of a single background model -- its description and the
+// exact set of samples that were used to build it. Authorization is enforced
+// server-side (BackgroundsController#show scopes the lookup through
+// Background.viewable): a user can only retrieve backgrounds they own, that are
+// public, or all of whose samples they can view. See SMP-1437.
+const getBackground = ({
+  backgroundId,
+}: {
+  backgroundId: number;
+}): Promise<BackgroundDetails> => get(`/backgrounds/${backgroundId}.json`);
+
 const getCoverageVizSummary = ({
   sampleId,
   snapshotShareId,
@@ -844,7 +872,6 @@ export {
   bulkKickoffWorkflowRuns,
   createBackground,
   createConsensusGenomeCladeExport,
-  getConsensusGenomeCladeExportTreeUrl,
   createPhyloTree,
   createProject,
   getAlignmentData,
@@ -852,8 +879,10 @@ export {
   getAllHostGenomesPublic,
   getAllSampleTypes,
   getAppConfigs,
+  getBackground,
   getBackgrounds,
   getBenchmarkGroundTruthFiles,
+  getConsensusGenomeCladeExportTreeUrl,
   getContigsSequencesByByteranges,
   getCoverageVizData,
   getCoverageVizSummary,

@@ -8,6 +8,14 @@ export const NO_TARGET_PROJECT_ERROR =
 
 export const NO_VALID_SAMPLES_FOUND_ERROR = "No valid samples were found.";
 
+// Shown when the bulk_import request fails with no HTTP response at all -- a transient
+// connectivity/service failure (network drop, mid-deploy restart, request aborted in
+// flight) rather than anything wrong with the bucket or the files. Distinct from
+// NO_VALID_SAMPLES_FOUND_ERROR so an infrastructure blip is not mislabeled as a
+// data/filename problem (SMP-1725).
+export const TRANSIENT_UPLOAD_SERVICE_ERROR =
+  "We couldn't reach the upload service (it may be updating). Please wait a moment and try again.";
+
 export const SELECT_ID_KEY = "_selectId";
 export const ILLUMINA = "Illumina";
 export const NANOPORE = "ONT";

@@ -84,6 +84,55 @@ module AppConfigHelper
     end
   end
 
+  # SMP-1724 -- seed-time setter for a `<workflow>-version` app_config that NEVER downgrades a value
+  # an environment has already advanced past.
+  #
+  # db:seed / seed:migrate run in the migrate PreSync hook on every deploy, reconstitute, and fresh
+  # bootstrap. The version-seed migrations set `*-version` app_configs to the values hardcoded in the
+  # (necessarily stale) seed snapshot. `set_app_config` overwrites unconditionally, so when such a
+  # migration is (re)applied against an env whose live default was bumped forward -- e.g. staging
+  # hand-set short-read-mngs to 8.3.16 -- it silently reverts the runtime default to the stale seed
+  # value (8.3.15). VersionRetrievalService (CZID-982) does NOT catch this: the stale value is itself
+  # catalogued, so dispatch happily runs the OLD WDL. That bit a beta tester on 2026-08-10.
+  #
+  # Rules:
+  #   * absent/blank -> set to the seed value (a fresh bootstrap needs a default).
+  #   * live >= seed -> leave the live value untouched (never downgrade a bumped env).
+  #   * live <  seed -> advance to the seed value (normal forward bump on a not-yet-current env).
+  #
+  # Whatever value ends up live is then guaranteed a WorkflowVersion catalog row, so preserving a
+  # bumped-but-uncatalogued live value can never leave a default that the fail-closed
+  # VersionRetrievalService / SMP-1718 seed assertion would reject. Returns the effective (post-call)
+  # version string.
+  def seed_workflow_version(workflow_name, seed_version)
+    key = format(AppConfig::WORKFLOW_VERSION_TEMPLATE, workflow_name: workflow_name)
+    current = AppConfig.find_by(key: key)&.value.to_s.strip
+
+    effective =
+      if current.blank? || version_older?(current, seed_version)
+        set_app_config(key, seed_version)
+        seed_version
+      else
+        Rails.logger.info(
+          "[SMP-1724] preserving #{key}=#{current} (>= seed #{seed_version}); not downgrading on re-seed"
+        )
+        current
+      end
+
+    # Guarantee the LIVE default is catalogued so dispatch never fail-closes on it (SMP-1718).
+    create_workflow_version(workflow_name, effective)
+    effective
+  end
+
+  # True when `lhs` is a strictly older version than `rhs`, by semantic-version ordering. Falls back
+  # to conservative "not older" (so the live value is PRESERVED, never downgraded) for anything
+  # Gem::Version cannot parse -- a non-semver live value must never be clobbered by a semver seed.
+  def version_older?(lhs, rhs)
+    Gem::Version.new(lhs.to_s.strip) < Gem::Version.new(rhs.to_s.strip)
+  rescue ArgumentError
+    false
+  end
+
   def update_default_alignment_config(alignment_config_name)
     alignment_config = AlignmentConfig.find_by(name: alignment_config_name)
     if alignment_config.nil?

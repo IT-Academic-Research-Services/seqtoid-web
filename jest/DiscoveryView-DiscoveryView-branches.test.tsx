@@ -129,11 +129,15 @@ jest.mock(
     DiscoverySidebar: () => <div data-testid="discovery-sidebar" />,
   }),
 );
+const mockMapPreviewSidebarProps: $TSFixMe[] = [];
 jest.mock(
   "~/components/views/DiscoveryView/components/MapPreviewSidebar",
   () => ({
     __esModule: true,
-    MapPreviewSidebar: () => <div data-testid="map-preview-sidebar" />,
+    MapPreviewSidebar: (props: $TSFixMe) => {
+      mockMapPreviewSidebarProps.push(props);
+      return <div data-testid="map-preview-sidebar" />;
+    },
   }),
 );
 jest.mock(
@@ -1433,6 +1437,74 @@ describe("DiscoveryView branch coverage", () => {
         },
       });
       expect(getByTestId("discovery-sidebar")).toBeTruthy();
+    });
+  });
+
+  // --- map preview sidebar selection routing (SMP-1859 / SMP-1713) ----------
+  // The map/globe sidebar always shows short-read mNGS samples and reads its
+  // checkbox state from selectedSampleIdsByWorkflow[SHORT_READ_MNGS]. Because
+  // the workflow tabs are hidden in the map display, state.workflow can still
+  // be a non-mNGS workflow. The sidebar's onSelectionUpdate must therefore land
+  // in the mNGS bucket regardless of the active workflow, otherwise select-all
+  // and per-row checkboxes appear to do nothing.
+  describe("handleMapPreviewSelectionUpdate", () => {
+    it("writes the selection into the mNGS bucket even when another workflow is active", async () => {
+      const { instance } = await mountView();
+      await setStateAsync(instance, { workflow: WorkflowType.AMR });
+
+      instance.handleMapPreviewSelectionUpdate(new Set(["s1", "s2"]));
+      await waitFor(() =>
+        expect(
+          Array.from(
+            instance.state.selectedSampleIdsByWorkflow[
+              WorkflowType.SHORT_READ_MNGS
+            ],
+          ).sort(),
+        ).toEqual(["s1", "s2"]),
+      );
+      // The active (AMR) bucket is left untouched.
+      expect(
+        Array.from(
+          instance.state.selectedSampleIdsByWorkflow[WorkflowType.AMR],
+        ),
+      ).toEqual([]);
+    });
+
+    it("is the handler the map preview sidebar's selection callback is wired to", async () => {
+      mockMapPreviewSidebarProps.length = 0;
+      const { instance } = await mountView({
+        allowedFeatures: ["sorting_v0_admin"],
+      });
+      await setStateAsync(instance, {
+        userDataCounts: { sampleCountByWorkflow: {} },
+        currentDisplay: "map",
+        currentTab: TAB_SAMPLES,
+        showStats: true,
+        workflow: WorkflowType.AMR,
+        filteredSampleCountsByWorkflow: {
+          [WorkflowType.SHORT_READ_MNGS]: 3,
+        },
+      });
+
+      const sidebarProps = mockMapPreviewSidebarProps.at(-1);
+      expect(sidebarProps.onSelectionUpdate).toBe(
+        instance.handleMapPreviewSelectionUpdate,
+      );
+
+      // Driving that exact callback lands the selection in the mNGS bucket the
+      // sidebar renders from (selectedSampleIds prop), not the active AMR one.
+      sidebarProps.onSelectionUpdate(new Set(["a", "b"]));
+      await waitFor(() =>
+        expect(
+          Array.from(
+            instance.state.selectedSampleIdsByWorkflow[
+              WorkflowType.SHORT_READ_MNGS
+            ],
+          ).sort(),
+        ).toEqual(["a", "b"]),
+      );
+      // The sidebar's checkbox state reads from the same mNGS bucket.
+      expect(Array.from(sidebarProps.selectedSampleIds ?? [])).toBeDefined();
     });
   });
 

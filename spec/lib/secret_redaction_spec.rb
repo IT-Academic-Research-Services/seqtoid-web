@@ -168,4 +168,47 @@ RSpec.describe SecretRedaction do
       expect(described_class.scrub(deep).to_s).not_to include("[REDACTED]")
     end
   end
+
+  describe ".redact_bulk_download_callback_token" do
+    # Obvious fake. Shaped like a has_secure_token but not a real one.
+    let(:fake_callback_token) { "faketokenNotARealCredential0123456789" }
+
+    %w[success error progress].each do |action|
+      it "masks the token segment on the #{action} callback path, keeping route and id" do
+        path = "/bulk_downloads/123/#{action}/#{fake_callback_token}"
+
+        expect(described_class.redact_bulk_download_callback_token(path))
+          .to eq("/bulk_downloads/123/#{action}/[REDACTED]")
+      end
+    end
+
+    it "masks the token inside a full Started request-log line" do
+      line = %(Started POST "/bulk_downloads/123/success/#{fake_callback_token}" for 10.0.0.1 at 2026-08-28 00:00:00 +0000)
+
+      redacted = described_class.redact_bulk_download_callback_token(line)
+
+      expect(redacted).not_to include(fake_callback_token)
+      expect(redacted).to include('"/bulk_downloads/123/success/[REDACTED]"')
+      # The rest of the line -- method, ip, timestamp -- is untouched.
+      expect(redacted).to include("Started POST")
+      expect(redacted).to include("for 10.0.0.1 at 2026-08-28 00:00:00 +0000")
+    end
+
+    it "does not touch the callback token in a query string (already filtered there)" do
+      line = %(Started POST "/bulk_downloads/123/success?extra=1" for 10.0.0.1)
+
+      expect(described_class.redact_bulk_download_callback_token(line))
+        .to eq(line)
+    end
+
+    it "leaves unrelated request paths untouched" do
+      line = %(Started GET "/samples/42/report_v2" for 10.0.0.1)
+
+      expect(described_class.redact_bulk_download_callback_token(line)).to eq(line)
+    end
+
+    it "returns non-string input unchanged" do
+      expect(described_class.redact_bulk_download_callback_token(nil)).to be_nil
+    end
+  end
 end

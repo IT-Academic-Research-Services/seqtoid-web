@@ -74,7 +74,8 @@ const UPLOAD_REQUEST_TIMEOUT_MS = 120_000;
 // still upload in parallel within. Bounded (not a full Promise.all over every sample) because
 // credentials are fetched per sample as each pool slot opens, so we never fetch all of a large
 // batch's upload credentials at once and let the later ones expire before we reach them.
-const SAMPLE_UPLOAD_CONCURRENCY = 3;
+// Exported so RemoteUploadProgressModal shares the same bound (SMP-1896).
+export const SAMPLE_UPLOAD_CONCURRENCY = 3;
 
 // Throughput: number of parts uploaded in parallel per file (ResumableUpload worker count).
 // Higher streams more of a large file at once; the library default is 4.
