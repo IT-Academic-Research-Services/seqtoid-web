@@ -284,6 +284,16 @@ class User < ApplicationRecord
     false
   end
 
+  # SMP-1902 -- true when an EMAIL's domain is on an enabled blocklist (and not explicitly allowed). The
+  # email-level entry point shared by the model validation and the pre-account export-control signup
+  # controller, so the "@" extraction and the matching rules live in exactly one place (no duplication).
+  def self.email_domain_blocked?(email)
+    domain = email.to_s.split("@").last
+    return false if domain.blank?
+
+    blocked_email_domain?(domain)
+  end
+
   # "Greg  L.  Dingle" -> "Greg L."
   def first_name
     return nil if name.nil?
@@ -392,9 +402,7 @@ class User < ApplicationRecord
   # The error is user-facing (surfaced by the UsersController rescue and the GraphQL mutation), so keep it
   # clear and actionable.
   def email_domain_not_blocked
-    user_domain = email.to_s.split("@").last
-    return if user_domain.blank?
-    return unless User.blocked_email_domain?(user_domain)
+    return unless User.email_domain_blocked?(email)
 
     errors.add(:email, "cannot be a personal or temporary email address. Please register with your " \
                        "institutional email address, or contact your administrator.")

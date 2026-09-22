@@ -92,4 +92,28 @@ RSpec.describe ProvisionScreenedAccountJob do
       expect(CzidTransferRequest.find_by(email: 'jane@ucsf.edu')).to be_nil
     end
   end
+
+  # SMP-1902 -- backstop: if provisioning hits a User validation error (e.g. a blocked email domain that
+  # slipped past the signup-form check), the job must deny (send a decision email) rather than raise and
+  # leave the applicant in limbo with no email.
+  describe 'a validation error at provisioning' do
+    let(:approved) do
+      { 'decision' => 'approved', 'correlation_id' => 'Signup:x',
+        'account' => { 'email' => 'blocked@gmail.com', 'name' => 'Blocked User' } }
+    end
+
+    it 'denies (sends the decision email) instead of raising' do
+      allow(User).to receive(:exists?).with(email: 'blocked@gmail.com').and_return(false)
+      invalid = User.new(email: 'blocked@gmail.com')
+      invalid.errors.add(:email, 'cannot be a personal or temporary email address')
+      factory = instance_double(UserFactoryService)
+      allow(factory).to receive(:call).and_raise(ActiveRecord::RecordInvalid.new(invalid))
+      allow(UserFactoryService).to receive(:new).and_return(factory)
+
+      expect(UserMailer).to receive(:account_creation_denied)
+        .with('blocked@gmail.com').and_return(double('mail', deliver_now: true))
+
+      expect { described_class.new.run(approved) }.not_to raise_error
+    end
+  end
 end
