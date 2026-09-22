@@ -35,6 +35,7 @@ module ExportControlScreeningGate
     export_control_clearances
     device_location_attestations
     export_control_attestations
+    export_control_signups
     auth0
   ].freeze
 

@@ -57,6 +57,12 @@ class User < ApplicationRecord
     # common accented chars I knew from experience, leaving out pure symbols.
     with: /\A[- 'a-zA-ZÀ-ÖØ-öø-ÿ]+\z/, message: "must contain only letters, apostrophes, dashes or spaces",
   }, allow_nil: true
+  # SMP-1901 -- CZ ID data-transfer request. Validate czid_account_email as an email FORMAT only; it is
+  # deliberately not checked against any account/directory. Required only when the user asks to transfer.
+  validates :czid_account_email, format: {
+    with: URI::MailTo::EMAIL_REGEXP, message: "must be a valid email address",
+  }, allow_blank: true
+  validates :czid_account_email, presence: true, if: :wants_czid_data_transferred?
   # CZID-523 -- enforce that verified/uploading users belong to an approved institution by validating
   # the email domain against a configurable allowlist. Runs on both create and email changes, so it
   # covers admin creation (UsersController), self-signup (Mutations::CreateUser), and the shared

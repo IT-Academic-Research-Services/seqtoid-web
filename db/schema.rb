@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_25_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -169,6 +169,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_25_000000) do
     t.index ["pipeline_run_id", "species_taxid_merged_nt_nr"], name: "index_contigs_on_pipeline_run_id_and_species_taxid_merged_nt_nr"
     t.index ["pipeline_run_id", "species_taxid_nr"], name: "index_contigs_on_pipeline_run_id_and_species_taxid_nr"
     t.index ["pipeline_run_id", "species_taxid_nt"], name: "index_contigs_on_pipeline_run_id_and_species_taxid_nt"
+  end
+
+  create_table "czid_transfer_requests", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+    t.string "email", null: false, comment: "Normalized (stripped + downcased) signup email; the key provisioning looks up."
+    t.boolean "wants_czid_data_transferred", default: false, null: false
+    t.string "czid_account_email", comment: "Email on the applicant's existing CZ ID account for the transfer (may differ from :email)."
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["email"], name: "index_czid_transfer_requests_on_email", unique: true
   end
 
   create_table "data_migrations", primary_key: "version", id: :string, charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
@@ -906,6 +915,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_25_000000) do
     t.string "segments"
     t.string "salt", limit: 24
     t.integer "profile_form_version", default: 0, null: false, comment: "Version of completed user profile form, or 0 to denote missing profile form."
+    t.boolean "wants_czid_data_transferred", default: false, null: false
+    t.string "czid_account_email", comment: "Email on the user's existing CZ ID account, for the data-transfer request (SMP-1901). May differ from :email."
     t.index ["email"], name: "index_users_on_email", unique: true
   end
 

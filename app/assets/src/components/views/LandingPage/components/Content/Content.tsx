@@ -1,4 +1,3 @@
-import { Link } from "@czi-sds/components";
 import React from "react";
 import CtaButton from "~/components/views/LandingPage/components/Content/components/CtaButton";
 import RunPipelineIcon from "~/images/landing_page/run-pipeline-icon.png";
@@ -93,13 +92,6 @@ export const Content = () => {
       <section className={cs.bottomEmailForm}>
         <h2>Get started analyzing your genomic data today.</h2>
         <HeroEmailForm />
-        <div className={cs.finePrint}>
-          {'By clicking "Register Now," you agree to our '}
-          <Link href="/terms">Terms</Link>
-          {" and "}
-          <Link href="/privacy">Privacy Policy</Link>
-          {"."}
-        </div>
       </section>
     </div>
   );

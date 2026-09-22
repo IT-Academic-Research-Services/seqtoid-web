@@ -10,6 +10,10 @@ class DeleteUnclaimedUserAccounts < StandardError
 
   DELAY_AFTER_DELETE_SECONDS = 0.1
 
+  # SMP-1901: how long an unclaimed CZ ID transfer request (sidecar row never consumed by provisioning or
+  # denial) is retained before the backstop purge below removes it.
+  CZID_TRANSFER_REQUEST_RETENTION_DAYS = 90
+
   class DeleteUnclaimedUserAccountsError < StandardError
     def initialize
       super("Error deleting unclaimed user account.")
@@ -17,6 +21,13 @@ class DeleteUnclaimedUserAccounts < StandardError
   end
 
   def self.perform
+    # SMP-1901: backstop cleanup for CZ ID transfer requests that were never claimed -- the applicant
+    # abandoned signup, or was never provisioned/denied. Claimed rows are deleted at provisioning and
+    # denied rows at denial; this purges anything still around after the retention window. Runs
+    # unconditionally (not gated by the Auth0 deletion flag) and is wrapped so it can never break the
+    # unclaimed-account job.
+    purge_orphaned_czid_transfer_requests
+
     Rails.logger.info("Checking for unclaimed user accounts...")
     unclaimed_accounts = query_auth0_for_unclaimed_user_accounts
     if unclaimed_accounts.empty?
@@ -43,6 +54,20 @@ class DeleteUnclaimedUserAccounts < StandardError
       exception: e
     )
     raise e
+  end
+
+  # Delete CZ ID transfer sidecar rows older than the retention window that were never claimed. Its own
+  # rescue: a failure must not abort the unclaimed-account run.
+  def self.purge_orphaned_czid_transfer_requests
+    cutoff = Time.now.utc - CZID_TRANSFER_REQUEST_RETENTION_DAYS.days
+    purged = CzidTransferRequest.where("created_at < ?", cutoff).delete_all
+    if purged.positive?
+      Rails.logger.info(
+        "Purged #{purged} unclaimed CZ ID transfer request(s) older than #{CZID_TRANSFER_REQUEST_RETENTION_DAYS} days"
+      )
+    end
+  rescue StandardError => e
+    LogUtil.log_error("Failed to purge orphaned CZ ID transfer requests", exception: e)
   end
 
   def self.query_auth0_for_unclaimed_user_accounts
