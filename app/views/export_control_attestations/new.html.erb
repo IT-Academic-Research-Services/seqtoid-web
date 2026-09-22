@@ -1,54 +1,50 @@
 <%#
-  CZID-330 — export-control / Terms-of-Use attestation click-through.
+  SMP-1851 — CZID-330 export-control / Terms-of-Use attestation click-through.
 
-  ⚠️ TODO(counsel): ALL user-facing copy on this page is a PLACEHOLDER. The attestation wording has legal
-  weight and enforceability and MUST be drafted or approved by counsel before go-live (design doc §6,
-  decision point #8). Do not treat the text below as final. When the copy changes, bump
-  ExportControlAttestation::CURRENT_VERSION in lockstep so users re-attest.
+  Dependency-free (no React/webpack entry): the page renders inside the SPA shell (blank navy header + white
+  SeqtoID logo) but the content is plain ERB, so the gate works even if JS fails. Styling comes from the
+  shared, brand-tokened partial (export_control/_styles).
 
-  This is a minimal, dependency-free skeleton (no React/webpack entry) so the gate is functional now;
-  the polished UI is a follow-up (see the PR description).
+  ⚠️ Do NOT change the two submit buttons' `name`/`value`. The server compares params[:decision] for EXACT
+  equality with ExportControlAttestation::DECISION_ACCEPTED ("accepted"); any other value — including a
+  casing change — silently coerces to "declined" and routes the user to the 403 deny page.
+
+  When the attestation copy changes, bump ExportControlAttestation::CURRENT_VERSION in lockstep so users
+  re-attest.
 %>
-<div class="export-control-attestation" style="max-width: 720px; margin: 64px auto; padding: 0 24px; font-family: 'Open Sans', sans-serif;">
-  <h1 style="font-size: 24px; margin-bottom: 16px;">
-    <%# TODO(counsel): heading copy %>
-    Export-control acknowledgement required
-  </h1>
+<%= render "export_control/styles" %>
+<main class="ec-page">
+  <div class="ec-card">
+    <h1 class="ec-h1">
+      Export-control acknowledgement required
+    </h1>
 
-  <div style="background:#f6f8fa; border:1px solid #d0d7de; border-radius:6px; padding:20px; margin-bottom:24px; line-height:1.6;">
-    <p><strong>PLACEHOLDER — pending counsel-approved text (TODO(counsel)).</strong></p>
-    <p>
-      Access to this service is subject to U.S. export-control laws. By continuing, you attest that you
-      are not located in, ordinarily resident in, or accessing this service on behalf of any individual
-      or entity in a jurisdiction subject to U.S. export-control restrictions, and that you are not a
-      restricted or denied party under applicable law.
-    </p>
-    <p>
-      [The exact attestation language, the list of covered jurisdictions, and any required
-      certifications are counsel-owned and will replace this placeholder before enforcement is enabled.]
-    </p>
-  </div>
-
-  <%= form_with url: export_control_attestations_path, method: :post, local: true do %>
-    <%# The version the user is agreeing to is recorded server-side; surfaced here for the record. %>
-    <p style="color:#57606a; font-size:13px; margin-bottom:20px;">
-      Attestation version: <%= @attestation_version %>
-    </p>
-
-    <div style="display:flex; gap:12px; align-items:center;">
-      <%# ACCEPT — records "accepted" and lets the user proceed. %>
-      <button type="submit" name="decision" value="<%= ExportControlAttestation::DECISION_ACCEPTED %>"
-              style="background:#0969da; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:15px; cursor:pointer;">
-        <%# TODO(counsel): button label %>
-        I attest and agree — continue
-      </button>
-
-      <%# DECLINE — records "declined" and routes to the deny page. %>
-      <button type="submit" name="decision" value="<%= ExportControlAttestation::DECISION_DECLINED %>"
-              style="background:#fff; color:#cf222e; border:1px solid #cf222e; border-radius:6px; padding:10px 20px; font-size:15px; cursor:pointer;">
-        <%# TODO(counsel): button label %>
-        I do not agree
-      </button>
+    <div class="ec-panel">
+      <p>
+        Access to this service is subject to U.S. export-control laws. By continuing, you attest that you
+        are not located in, ordinarily resident in, or accessing this service on behalf of any individual
+        or entity in a jurisdiction subject to U.S. export-control restrictions, and that you are not a
+        restricted or denied party under applicable law.
+      </p>
     </div>
-  <% end %>
-</div>
+
+    <%= form_with url: export_control_attestations_path, method: :post, local: true do %>
+      <%# The version the user is agreeing to is recorded server-side; surfaced here for the record. %>
+      <p class="ec-meta">Attestation version: <%= @attestation_version %></p>
+
+      <div class="ec-actions">
+        <%# ACCEPT — value MUST stay ExportControlAttestation::DECISION_ACCEPTED ("accepted") verbatim. %>
+        <button type="submit" name="decision" value="<%= ExportControlAttestation::DECISION_ACCEPTED %>"
+                class="ec-btn ec-btn--primary">
+          I attest and agree — continue
+        </button>
+
+        <%# DECLINE — records "declined" and routes to the deny page. %>
+        <button type="submit" name="decision" value="<%= ExportControlAttestation::DECISION_DECLINED %>"
+                class="ec-btn ec-btn--danger">
+          I do not agree
+        </button>
+      </div>
+    <% end %>
+  </div>
+</main>
