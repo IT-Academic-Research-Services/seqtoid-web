@@ -120,7 +120,23 @@ class SfnExecution
   def workflow_result_mapping
     raise SfnDescriptionNotFoundError, @s3_path unless description && description[:output]
 
-    output_result = JSON.parse(description[:output])
-    return output_result["Result"]
+    output_result = JSON.parse(description[:output])["Result"]
+    rewrite_output_bucket(output_result)
+  end
+
+  # Point the archived output paths at @s3_path's bucket (keys are preserved), so migrated runs resolve. No-op otherwise.
+  def rewrite_output_bucket(result)
+    return result unless result.is_a?(Hash)
+    return result if @s3_path.blank?
+
+    dest_bucket, = S3Util.parse_s3_path(@s3_path)
+    return result if dest_bucket.blank?
+
+    result.transform_values do |path|
+      next path unless path.is_a?(String) && path.start_with?("s3://")
+
+      _bucket, key = S3Util.parse_s3_path(path)
+      key.blank? ? path : "s3://#{dest_bucket}/#{key}"
+    end
   end
 end
