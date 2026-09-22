@@ -1,31 +1,16 @@
 <%#
-  CZID-330 — export-control deny UX. Shown to a user whose latest attestation decision is "declined".
+  SMP-1852 — CZID-330 export-control deny UX. Shown to a user whose latest attestation decision is
+  "declined". Non-bypassable by design: there is NO "continue anyway" link — the only affordances are to
+  re-attest (return to the attestation page and accept) or to sign out. Rendered with HTTP 403.
 
-  ⚠️ TODO(counsel): the denial copy is a PLACEHOLDER with legal weight — counsel-owned before go-live
-  (design doc §6, decision point #8).
-
-  Non-bypassable by design: there is NO "continue anyway" link. The only affordances are to re-attest
-  (return to the attestation page and accept) or to sign out. Rendered with HTTP 403.
+  Shape + styling come from the shared export_control/_deny shell.
 %>
-<div class="export-control-denied" style="max-width: 640px; margin: 96px auto; padding: 0 24px; text-align:center; font-family: 'Open Sans', sans-serif;">
-  <h1 style="font-size: 26px; margin-bottom: 16px; color:#cf222e;">
-    <%# TODO(counsel): heading copy %>
-    Access denied
-  </h1>
-
-  <p style="line-height:1.6; color:#24292f; margin-bottom:28px;">
-    <%# TODO(counsel): denial body copy — legal weight %>
-    <strong>PLACEHOLDER — pending counsel-approved text.</strong><br />
+<%= render layout: "export_control/deny",
+           locals: { heading: "Access denied",
+                     retry_path: new_export_control_attestation_path,
+                     retry_label: "Review the acknowledgement again" } do %>
+  <p>
     Access to this service requires the export-control acknowledgement. Because that acknowledgement was
-    not provided, access cannot be granted. [Counsel-owned denial language will replace this text.]
+    not provided, access cannot be granted.
   </p>
-
-  <div style="display:flex; gap:12px; justify-content:center;">
-    <%# Re-attest path — the only way back in is to accept, not to bypass. %>
-    <%= link_to "Review the acknowledgement again", new_export_control_attestation_path,
-                style: "background:#0969da; color:#fff; text-decoration:none; border-radius:6px; padding:10px 20px; font-size:15px;" %>
-    <%# Sign out. Uses the existing auth0 logout path. %>
-    <%= link_to "Sign out", auth0_logout_path,
-                style: "background:#fff; color:#24292f; border:1px solid #d0d7de; text-decoration:none; border-radius:6px; padding:10px 20px; font-size:15px;" %>
-  </div>
-</div>
+<% end %>

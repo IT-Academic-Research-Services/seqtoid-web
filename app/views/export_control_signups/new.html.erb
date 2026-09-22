@@ -1,0 +1,158 @@
+<%#
+  SMP-1854 — pre-account export-control SIGNUP form. Collects everything in one submission, before any
+  account exists. Dependency-free (no React/webpack entry): works with JS off. Styling from the shared
+  export_control/_styles partial.
+
+  ============================ THE FORM POSTS TO THE ASYNC SCREEN ============================
+  It POSTs to export_control_signups#create, which hands the fields to
+  ExportControl::SignupScreeningProducer -> the async screening ingest, and redirects to the pending page.
+  The fields map onto the screening payload (a params-sourced sibling of Providers::ScreeningServiceHttp):
+    { correlation_id: "Signup:<uuid>",                 # PendingSignup.subject_ref keys on this
+      subject:  { name:     "<name_first name_last>",
+                  company:  "<institution>",           # <- this form's institution field
+                  address1: "<address1>", city: "<city>", state: "<state>", zip: "<zip>",
+                  country:  "<country>" },              # <- alpha-2 code from the native select
+      account:  { email: "<email>", name: "<name_first name_last>", institution: "<institution>" },
+      soptionalid: "0",                                 # no table-keyed id pre-account; "0" is permitted
+      callback_url: <screening callback url> }
+  The address + institution fields exist precisely so the Descartes name match is precise rather than
+  approximate: the live signed-in path sends only name + geo-IP country, leaving scompany/saddress/etc. nil.
+
+  ============================ NO-JS FIELD NOTES ============================
+  - Institution is a plain text input, NOT the profile form's ROR typeahead (that is a client-side call to
+    api.ror.org, JS-dependent, and there is no server-side proxy). We therefore do NOT capture ror_id here;
+    that enrichment is intentionally forgone so the field works with JS off. Descartes takes free text for
+    scompany, so a plain name is sufficient for screening.
+  - Country is a NATIVE <select> (value = ISO 3166-1 alpha-2). The profile form's country field is also a
+    client-side World Bank API typeahead; a native select gives consistent values with no JS.
+  - Terms acceptance is validated SERVER-SIDE (not via native `required`) so the no-JS path is the one that
+    runs: an unchecked submit re-renders here with an accessible error rather than proceeding.
+%>
+<%= render "export_control/styles" %>
+<main class="ec-page">
+  <div class="ec-card">
+    <h1 class="ec-h1">
+      Request a SeqtoID account
+    </h1>
+
+    <div class="ec-panel">
+      <p>
+        Before an account is created, the information you provide will be screened against U.S. denied- and
+        restricted-party lists as required by export-control law. Your account will be created only if that
+        screening clears; you will be notified by email either way.
+      </p>
+    </div>
+
+    <% if @terms_error %>
+      <div class="ec-formerror" role="alert">
+        <strong>There is a problem with your submission.</strong>
+        <a href="#terms_accepted"><%= @terms_error %></a>
+      </div>
+    <% end %>
+
+    <%= form_with url: export_control_signups_path, method: :post, local: true do %>
+      <div class="ec-row">
+        <div class="ec-field">
+          <label class="ec-label" for="name_first">First name <span class="ec-req" aria-hidden="true">*</span></label>
+          <input class="ec-input" type="text" id="name_first" name="name_first" maxlength="127"
+                 autocomplete="given-name" required value="<%= params[:name_first] %>">
+        </div>
+        <div class="ec-field">
+          <label class="ec-label" for="name_last">Last name <span class="ec-req" aria-hidden="true">*</span></label>
+          <input class="ec-input" type="text" id="name_last" name="name_last" maxlength="127"
+                 autocomplete="family-name" required value="<%= params[:name_last] %>">
+        </div>
+      </div>
+
+      <div class="ec-field">
+        <label class="ec-label" for="email">Email <span class="ec-req" aria-hidden="true">*</span></label>
+        <input class="ec-input" type="email" id="email" name="email"
+               autocomplete="email" required value="<%= params[:email] %>">
+      </div>
+
+      <div class="ec-field">
+        <label class="ec-label" for="institution">Institution <span class="ec-req" aria-hidden="true">*</span></label>
+        <%# Plain text input, not the ROR typeahead (JS-dependent, no server proxy). ror_id is intentionally
+            not captured here; Descartes takes free text for scompany. See the header note. %>
+        <input class="ec-input" type="text" id="institution" name="institution" maxlength="200"
+               autocomplete="organization" required value="<%= params[:institution] %>">
+      </div>
+
+      <div class="ec-field">
+        <label class="ec-label" for="address1">Street address <span class="ec-req" aria-hidden="true">*</span></label>
+        <input class="ec-input" type="text" id="address1" name="address1" maxlength="100"
+               autocomplete="address-line1" required value="<%= params[:address1] %>">
+      </div>
+
+      <div class="ec-row">
+        <div class="ec-field">
+          <label class="ec-label" for="city">City <span class="ec-req" aria-hidden="true">*</span></label>
+          <input class="ec-input" type="text" id="city" name="city" maxlength="100"
+                 autocomplete="address-level2" required value="<%= params[:city] %>">
+        </div>
+        <div class="ec-field">
+          <label class="ec-label" for="state">State / province <span class="ec-req" aria-hidden="true">*</span></label>
+          <input class="ec-input" type="text" id="state" name="state" maxlength="100"
+                 autocomplete="address-level1" required value="<%= params[:state] %>">
+        </div>
+        <div class="ec-field">
+          <label class="ec-label" for="zip">Postal code <span class="ec-req" aria-hidden="true">*</span></label>
+          <input class="ec-input" type="text" id="zip" name="zip" maxlength="25"
+                 autocomplete="postal-code" required value="<%= params[:zip] %>">
+        </div>
+      </div>
+
+      <div class="ec-field">
+        <label class="ec-label" for="country">Country <span class="ec-req" aria-hidden="true">*</span></label>
+        <%# Native select; value = ISO 3166-1 alpha-2 (matches Descartes scountry + the embargo list). %>
+        <select class="ec-select" id="country" name="country" autocomplete="country" required>
+          <option value="">Choose a country</option>
+          <%= options_for_select(@countries, params[:country]) %>
+        </select>
+      </div>
+
+      <%#
+        Expertise level and use case are DELIBERATELY OMITTED from this form. The post-activation profile
+        form (users#user_profile_form) already collects them properly once the account exists, and the
+        screening payload has no slot for either — collecting them here would ask an approved applicant the
+        same questions twice (once here for nothing, once there for real). Do not add them back.
+      %>
+
+      <div class="ec-field">
+        <%#
+          The terms checkbox is REQUIRED, but validated SERVER-SIDE ONLY (see
+          ExportControlSignupsController#create) — it deliberately has NO native `required` attribute.
+          Why: a native `required` makes the browser block the submit before the request is ever sent, so
+          the server-side check would never run in a normal browser — and that server check is the ONLY
+          validation on this form (create discards everything else). Adding `required` here as an
+          "obvious improvement" would SILENTLY DISABLE the form's only validation on the no-JS path.
+          Leave it OFF.
+        %>
+        <label class="ec-choice" for="terms_accepted">
+          <input type="checkbox" id="terms_accepted" name="terms_accepted" value="1"
+                 <%= 'aria-invalid="true"'.html_safe if @terms_error %>
+                 <%= 'aria-describedby="terms-error"'.html_safe if @terms_error %>>
+          <span>
+            <%# /terms and /privacy are public (SupportController PUBLIC_ACTIONS, authenticate_user! skipped),
+                so an applicant with no session can open them. Opened in a new tab (target=_blank) so the
+                applicant does not lose the form they have filled in. %>
+            I have read and accept the
+            <%= link_to "Terms of Use", terms_path, class: "ec-textlink", target: "_blank", rel: "noopener noreferrer" %>
+            and
+            <%= link_to "Privacy Notice", privacy_path, class: "ec-textlink", target: "_blank", rel: "noopener noreferrer" %>.
+            <span class="ec-req" aria-hidden="true">*</span>
+          </span>
+        </label>
+        <% if @terms_error %>
+          <p id="terms-error" class="ec-error"><%= @terms_error %></p>
+        <% end %>
+      </div>
+
+      <div class="ec-actions">
+        <button type="submit" class="ec-btn ec-btn--primary">
+          Submit for review
+        </button>
+      </div>
+    <% end %>
+  </div>
+</main>
