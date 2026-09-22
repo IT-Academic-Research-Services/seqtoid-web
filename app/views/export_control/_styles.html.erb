@@ -1,0 +1,161 @@
+<%#
+  Shared styling for the export-control gate pages (SMP-1851/1852/1853). Dependency-free: a scoped <style>
+  block, no React/webpack entry, so the gate renders even if JS fails.
+
+  The colors are the app's UCSF theme tokens (app/assets/src/styles/themes/_colors.scss and
+  _sds_variables_ucsf.scss). ERB cannot read SCSS vars, so they are inlined here as CSS custom properties
+  with the token name noted beside each value — change a value in one place, and it stays traceable to its
+  token. If the theme tokens move, update these to match.
+%>
+<style>
+  .ec-page {
+    --ec-primary:        #006be9; /* $primary         / $sds-color-primary-400  (UCSF CTA blue) */
+    --ec-primary-hover:  #0055ba; /* $primary-dark    / $sds-color-primary-500 */
+    --ec-navy:           #052049; /* $primary-darkest / $sds-color-primary-600  (UCSF navy) */
+    --ec-danger:         #dc132c; /* $error-medium    / $sds-color-error-400 */
+    --ec-danger-strong:  #b70016; /* $error-dark      / $sds-color-error-600 */
+    --ec-danger-tint:    #fef2f2; /* $error-off-white / $sds-color-error-100 */
+    --ec-surface:        #ffffff; /* $white */
+    --ec-surface-muted:  #f8f8f8; /* $gray-off-white */
+    --ec-border:         #cccccc; /* $gray-light */
+    --ec-text:           #000000; /* $black */
+    --ec-text-muted:     #767676; /* $gray-dark */
+    --ec-warning:        #f5a623; /* $warning-medium   / $sds-color-warning-400 (amber accent; NOT for text) */
+    --ec-warning-strong: #946314; /* $warning-dark     / $sds-color-warning-600 (amber text, AA on white) */
+    --ec-warning-tint:   #fff3e1; /* $warning-lightest / $sds-color-warning-200 (pale amber surface) */
+
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+    font-family: "Open Sans", sans-serif;
+    color: var(--ec-text);
+  }
+  .ec-page, .ec-page *, .ec-page *::before, .ec-page *::after { box-sizing: border-box; }
+
+  .ec-card {
+    background: var(--ec-surface);
+    border: 1px solid var(--ec-border);
+    border-radius: 8px;
+    padding: 40px;
+    box-shadow: 0 1px 3px rgba(5, 32, 73, 0.08); /* subtle navy-tinted lift */
+  }
+  .ec-card--denied {
+    max-width: 560px;
+    margin: 0 auto;
+    text-align: center;
+    border-top: 4px solid var(--ec-danger-strong); /* danger cue that reads without color alone via the H1 */
+  }
+  /* Neutral waiting state -- amber, deliberately calmer than the red --denied card. H1 stays black. */
+  .ec-card--pending { border-top: 4px solid var(--ec-warning); }
+  .ec-pill {
+    display: inline-block;
+    margin: 0 0 16px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--ec-warning-tint);
+    color: var(--ec-warning-strong); /* #946314 on #fff3e1 -- AA */
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .ec-h1 { margin: 0 0 16px; font-size: 24px; line-height: 1.25; font-weight: 700; }
+  .ec-h1--denied { font-size: 28px; color: var(--ec-danger-strong); } /* #b70016 ≈ 7:1 on white */
+
+  .ec-panel {
+    margin: 0 0 24px;
+    padding: 20px;
+    background: var(--ec-surface-muted);
+    border: 1px solid var(--ec-border);
+    border-radius: 6px;
+    line-height: 1.6;
+  }
+  .ec-panel p { margin: 0 0 12px; }
+  .ec-panel p:last-child { margin-bottom: 0; }
+
+  .ec-body { margin: 0 0 28px; line-height: 1.6; }
+  .ec-body p { margin: 0 0 12px; }
+  .ec-body p:last-child { margin-bottom: 0; }
+
+  .ec-meta { margin: 0 0 20px; color: var(--ec-text-muted); font-size: 13px; }
+
+  .ec-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .ec-actions--center { justify-content: center; }
+
+  .ec-btn {
+    display: inline-block;
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.2;
+    padding: 11px 20px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .ec-btn--primary   { background: var(--ec-primary); color: #fff; border-color: var(--ec-primary); }
+  .ec-btn--primary:hover   { background: var(--ec-primary-hover); border-color: var(--ec-primary-hover); }
+  .ec-btn--danger    { background: #fff; color: var(--ec-danger); border-color: var(--ec-danger); }
+  .ec-btn--danger:hover    { background: var(--ec-danger-tint); }
+  .ec-btn--secondary { background: #fff; color: var(--ec-text); border-color: var(--ec-border); }
+  .ec-btn--secondary:hover { background: var(--ec-surface-muted); }
+
+  /* Visible keyboard focus is essential — these are pages a user cannot navigate away from. */
+  .ec-btn:focus-visible { outline: 3px solid var(--ec-primary); outline-offset: 2px; }
+  .ec-btn--danger:focus-visible { outline-color: var(--ec-danger-strong); }
+
+  /* form fields (SMP-1854 signup form) */
+  .ec-field { margin: 0 0 20px; }
+  .ec-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 20px; }
+  .ec-row > .ec-field { flex: 1 1 200px; margin: 0; }
+  .ec-label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 6px; }
+  .ec-req { color: var(--ec-danger); } /* required asterisk */
+  .ec-input, .ec-select {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--ec-text);
+    background: #fff;
+    border: 1px solid var(--ec-border);
+    border-radius: 6px;
+  }
+  .ec-input:focus, .ec-select:focus {
+    outline: none;
+    border-color: var(--ec-primary);
+    box-shadow: 0 0 0 3px rgba(0, 107, 233, 0.25); /* --ec-primary #006be9 @ 25% focus ring */
+  }
+  .ec-input[aria-invalid="true"], .ec-select[aria-invalid="true"] { border-color: var(--ec-danger); }
+  .ec-help { margin: 6px 0 0; font-size: 13px; color: var(--ec-text-muted); }
+  .ec-fieldset { margin: 0 0 20px; padding: 16px 18px; border: 1px solid var(--ec-border); border-radius: 6px; }
+  .ec-legend { padding: 0 6px; font-weight: 600; font-size: 14px; }
+  .ec-choice { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; line-height: 1.45; }
+  .ec-choice:last-child { margin-bottom: 0; }
+  .ec-choice input { flex: none; margin: 3px 0 0; }
+  .ec-choice-desc { display: block; color: var(--ec-text-muted); font-size: 13px; }
+  .ec-error { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--ec-danger-strong); }
+  .ec-formerror {
+    margin: 0 0 24px;
+    padding: 12px 16px;
+    border: 1px solid var(--ec-danger);
+    border-left-width: 4px;
+    border-radius: 6px;
+    background: var(--ec-danger-tint);
+    color: var(--ec-danger-strong);
+  }
+  .ec-formerror a { color: var(--ec-danger-strong); }
+  .ec-textlink { color: var(--ec-primary); text-decoration: underline; }
+  .ec-textlink:hover { color: var(--ec-primary-hover); }
+  .ec-textlink:focus-visible { outline: 3px solid var(--ec-primary); outline-offset: 2px; border-radius: 2px; }
+
+  @media (max-width: 520px) {
+    .ec-card, .ec-card--denied { padding: 28px 20px; }
+    .ec-actions { flex-direction: column; align-items: stretch; }
+    .ec-btn { width: 100%; text-align: center; }
+    .ec-row { flex-direction: column; gap: 0; }
+    .ec-row > .ec-field { margin: 0 0 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ec-btn { transition: none; }
+  }
+</style>

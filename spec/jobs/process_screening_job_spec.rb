@@ -8,7 +8,7 @@ RSpec.describe ProcessScreeningJob do
       'screening_id' => 'scr-1', 'correlation_id' => 'User:42', 'soptionalid' => '42',
       'subject' => { 'name' => 'Jane Doe', 'country' => 'US', 'address1' => '1 Main St' },
       'account' => { 'email' => 'jane@ucsf.edu', 'name' => 'Jane Doe' },
-      'callback_url' => 'http://web/internal/v1/screening_result'
+      'callback_url' => 'http://web/internal/v1/screening_result',
     }
   end
   let(:svc) { instance_double(ExportControl::ScreeningService) }
@@ -59,7 +59,7 @@ RSpec.describe ProcessScreeningJob do
     expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
   end
 
-  it 'AUTO-DENIES a sanctioned-jurisdiction signup immediately (denied callback, no manual hold)' do
+  it 'AUTO-DENIES a sanctioned-jurisdiction signup immediately, forwarding the account (no manual hold)' do
     allow(svc).to receive(:screen_if_enabled).and_return(sanctioned_outcome)
     captured = nil
     allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_url, body| captured = JSON.parse(body) }
@@ -68,7 +68,9 @@ RSpec.describe ProcessScreeningJob do
 
     expect(captured['decision']).to eq('denied')
     expect(captured['path']).to eq('auto')
-    expect(captured).not_to have_key('account') # no account is ever seeded for a denial
+    # The account is forwarded on denial too, so the callback receiver can email the applicant
+    # (UserMailer.account_creation_denied). No PendingSignup is held for an auto-deny.
+    expect(captured['account']['email']).to eq('jane@ucsf.edu')
   end
 
   it 'does NOT hold a signup on the disabled bypass (nil outcome)' do
@@ -107,7 +109,10 @@ RSpec.describe ProcessScreeningJob do
 
   it 'builds the screening subject from the payload' do
     captured_subject = nil
-    allow(svc).to receive(:screen_if_enabled) { |s| captured_subject = s; outcome(:held) }
+    allow(svc).to receive(:screen_if_enabled) { |s|
+  captured_subject = s
+  outcome(:held)
+}
 
     described_class.new.run(payload)
 
