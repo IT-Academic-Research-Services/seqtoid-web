@@ -106,8 +106,7 @@ class UserDataImportService
 
     @warnings = []
     @stats = Hash.new(0)
-    # [s3_output_prefix, sfn_execution_arn] per workflow run, for the post-import
-    # sfn-desc bucket rewrite (see #rewrite_sfn_desc_archives).
+    # Workflow-run sfn-desc locations for the post-import bucket rewrite.
     @sfn_archive_bases = []
     # Count of created_at/updated_at values fabricated at import time (see #ts).
     @timestamps_defaulted = 0
@@ -1157,8 +1156,7 @@ class UserDataImportService
     "s3://#{@dest_bucket}/#{value.delete_prefix(@source_uri_prefix)}"
   end
 
-  # Record a workflow run's sfn-desc location (bucket-rewritten prefix + arn) for
-  # the post-import archive rewrite.
+  # Record a workflow run's sfn-desc location for the post-import rewrite.
   def collect_sfn_archive(s3_output_prefix, sfn_execution_arn)
     return unless @rewrite_s3_bucket
     return if s3_output_prefix.blank? || sfn_execution_arn.blank?
@@ -1166,10 +1164,8 @@ class UserDataImportService
     @sfn_archive_bases << [s3_output_prefix, sfn_execution_arn]
   end
 
-  # AMR/CG reports resolve their output paths through the sfn-desc archive, whose
-  # JSON bakes in the source bucket. The DB rewrite doesn't touch that file, so
-  # after the import we rewrite `s3://<source>/` -> `s3://<dest>/` inside each
-  # workflow run's sfn-desc object. Idempotent: skips objects with no source paths.
+  # Swap the baked source bucket for the dest bucket inside each workflow run's
+  # sfn-desc archive so AMR/CG reports resolve. Idempotent; no-op when unchanged.
   def rewrite_sfn_desc_archives
     return unless @rewrite_s3_bucket
     return if @sfn_archive_bases.empty?
@@ -1186,8 +1182,7 @@ class UserDataImportService
     Rails.logger.info("UserDataImport: rewrote #{@stats[:sfn_archives_rewritten]} sfn-desc archive(s)")
   end
 
-  # Read one sfn-desc object, swap the source bucket for the dest bucket in place,
-  # and write it back. Per-object rescue so one failure doesn't abort the phase.
+  # Rewrite one sfn-desc object's bucket in place; rescue so one failure isn't fatal.
   def rewrite_archive_object(s3_uri, dest_prefix)
     body = S3Util.get_s3_file(s3_uri)
     return if body.blank? || !body.include?(@source_uri_prefix)
