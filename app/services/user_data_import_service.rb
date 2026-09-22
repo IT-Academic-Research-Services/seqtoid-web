@@ -106,6 +106,9 @@ class UserDataImportService
 
     @warnings = []
     @stats = Hash.new(0)
+    # [s3_output_prefix, sfn_execution_arn] per workflow run, for the post-import
+    # sfn-desc bucket rewrite (see #rewrite_sfn_desc_archives).
+    @sfn_archive_bases = []
     # Count of created_at/updated_at values fabricated at import time (see #ts).
     @timestamps_defaulted = 0
     # Cumulative insert wall time (seconds) per table, for performance profiling
@@ -149,6 +152,7 @@ class UserDataImportService
     end
 
     reset_counter_caches unless @dry_run
+    rewrite_sfn_desc_archives
 
     if @timestamps_defaulted.positive?
       @warnings << "Defaulted #{@timestamps_defaulted} missing created_at/updated_at value(s) to import time."
@@ -925,6 +929,8 @@ class UserDataImportService
 
   def stream_workflow_runs
     stream_insert("workflow_runs", WorkflowRun) do |row|
+      output_prefix = rewrite_s3_bucket(row[:s3_output_prefix])
+      collect_sfn_archive(output_prefix, row[:sfn_execution_arn])
       {
         id: row[:id],
         sample_id: row[:sample_id],
@@ -938,7 +944,7 @@ class UserDataImportService
         cached_results: row[:cached_results],
         rerun_from: row[:rerun_from],
         sfn_execution_arn: row[:sfn_execution_arn],
-        s3_output_prefix: rewrite_s3_bucket(row[:s3_output_prefix]),
+        s3_output_prefix: output_prefix,
         time_to_finalized: row[:time_to_finalized],
         error_message: row[:error_message],
         temp_cg_coverage_viz: row[:temp_cg_coverage_viz],
@@ -1149,6 +1155,48 @@ class UserDataImportService
     return value unless value.is_a?(String) && value.start_with?(@source_uri_prefix)
 
     "s3://#{@dest_bucket}/#{value.delete_prefix(@source_uri_prefix)}"
+  end
+
+  # Record a workflow run's sfn-desc location (bucket-rewritten prefix + arn) for
+  # the post-import archive rewrite.
+  def collect_sfn_archive(s3_output_prefix, sfn_execution_arn)
+    return unless @rewrite_s3_bucket
+    return if s3_output_prefix.blank? || sfn_execution_arn.blank?
+
+    @sfn_archive_bases << [s3_output_prefix, sfn_execution_arn]
+  end
+
+  # AMR/CG reports resolve their output paths through the sfn-desc archive, whose
+  # JSON bakes in the source bucket. The DB rewrite doesn't touch that file, so
+  # after the import we rewrite `s3://<source>/` -> `s3://<dest>/` inside each
+  # workflow run's sfn-desc object. Idempotent: skips objects with no source paths.
+  def rewrite_sfn_desc_archives
+    return unless @rewrite_s3_bucket
+    return if @sfn_archive_bases.empty?
+
+    if @dry_run
+      @warnings << "DRY RUN: would rewrite sfn-desc archives for #{@sfn_archive_bases.size} workflow run(s)"
+      return
+    end
+
+    dest_prefix = "s3://#{@dest_bucket}/"
+    @sfn_archive_bases.each do |output_prefix, arn|
+      rewrite_archive_object("#{output_prefix}/sfn-desc/#{arn}", dest_prefix)
+    end
+    Rails.logger.info("UserDataImport: rewrote #{@stats[:sfn_archives_rewritten]} sfn-desc archive(s)")
+  end
+
+  # Read one sfn-desc object, swap the source bucket for the dest bucket in place,
+  # and write it back. Per-object rescue so one failure doesn't abort the phase.
+  def rewrite_archive_object(s3_uri, dest_prefix)
+    body = S3Util.get_s3_file(s3_uri)
+    return if body.blank? || !body.include?(@source_uri_prefix)
+
+    bucket, key = S3Util.parse_s3_path(s3_uri)
+    S3Util.upload_to_s3(bucket, key, body.gsub(@source_uri_prefix, dest_prefix))
+    @stats[:sfn_archives_rewritten] += 1
+  rescue StandardError => e
+    @warnings << "Failed to rewrite sfn-desc archive #{s3_uri}: #{e.message}"
   end
 
   # Associate a record with related records (preserved IDs) via a collection

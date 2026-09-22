@@ -575,6 +575,55 @@ RSpec.describe UserDataImportService do
         expect(PipelineRun.find(PIPELINE_RUN_ID).s3_output_prefix).to start_with("s3://#{src}/")
         expect(InputFile.find(INPUT_FILE_ID).source).to start_with("s3://#{src}/")
       end
+
+      context "sfn-desc archive rewrite" do
+        let(:arn) { "arn:aws:states:us-west-2:123:execution:wf:cg-#{WORKFLOW_RUN_ID}" }
+        let(:wr_prefix) { "s3://#{dst}/samples/#{PROJECT_ID}/#{SAMPLE_ID}/#{WORKFLOW_RUN_ID}/consensus-genome-3" }
+        let(:desc_uri) { "#{wr_prefix}/sfn-desc/#{arn}" }
+        let(:desc_body) do
+          { "output" => { "Result" => { "cg.report" => "s3://#{src}/samples/x/report.tsv" } }.to_json }.to_json
+        end
+
+        def sfn_tables
+          t = rewrite_tables
+          t[:workflow_runs][0][:sfn_execution_arn] = arn
+          t
+        end
+
+        before do
+          allow(S3Util).to receive(:get_s3_file).and_return(nil)
+          allow(S3Util).to receive(:get_s3_file).with(desc_uri).and_return(desc_body)
+          allow(S3Util).to receive(:upload_to_s3)
+        end
+
+        it "swaps the source bucket for the dest bucket inside the sfn-desc object" do
+          described_class.call(input_dir: write_bundle(tables: sfn_tables), create_user: true,
+                               source_bucket: src, dest_bucket: dst)
+
+          expect(S3Util).to have_received(:upload_to_s3) do |bucket, key, content|
+            expect(bucket).to eq(dst)
+            expect(key).to end_with("/sfn-desc/#{arn}")
+            expect(content).to include("s3://#{dst}/samples/x/report.tsv")
+            expect(content).not_to include("s3://#{src}/")
+          end
+        end
+
+        it "does not write when source and dest buckets match" do
+          described_class.call(input_dir: write_bundle(tables: sfn_tables), create_user: true,
+                               source_bucket: src, dest_bucket: src)
+
+          expect(S3Util).not_to have_received(:upload_to_s3)
+        end
+
+        it "skips the object when it holds no source-bucket path (idempotent)" do
+          allow(S3Util).to receive(:get_s3_file).with(desc_uri).and_return({ "output" => { "Result" => {} }.to_json }.to_json)
+
+          described_class.call(input_dir: write_bundle(tables: sfn_tables), create_user: true,
+                               source_bucket: src, dest_bucket: dst)
+
+          expect(S3Util).not_to have_received(:upload_to_s3)
+        end
+      end
     end
   end
 end
