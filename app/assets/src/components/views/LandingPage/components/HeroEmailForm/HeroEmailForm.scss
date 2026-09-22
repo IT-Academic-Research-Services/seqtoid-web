@@ -4,74 +4,32 @@
 @import "~@czi-sds/components/dist/variables";
 
 .heroEmailForm {
-  max-width: 489px;
+  display: flex;
+  justify-content: center;
   width: 100%;
-  border-radius: 999px;
 
-  form {
-    display: flex;
-
-    @media (max-width: 768px) {
-      flex-direction: column;
-      align-items: center;
-    }
-  }
-
-  input,
+  // SMP-1901: single, centered "Register Now" button (no email input). A bit wider than the old
+  // 215px button, full pill, same primary blue as before.
   button {
     font-family: $sds-font-font-family;
     @include font-body-m;
     border: none;
-
-    @media (max-width: 768px) {
-      @include font-body-s;
-      width: 100%;
-      max-width: unset;
-      padding: unset;
-      text-align: center;
-      padding: $sds-spaces-xl 0;
-    }
-  }
-
-  input {
-    border-radius: 999px 0 0 999px;
-    width: 274px;
-    padding: 13px 0 13px 38px;
-
-    &::placeholder {
-      color: $sds-color-gray-500;
-    }
-
-    @media (max-width: 768px) {
-      border-radius: 999px;
-      margin-bottom: 7px;
-      width: 100%;
-      padding: 13px;
-    }
-  }
-
-  button {
-    border-radius: 0 999px 999px 0;
+    border-radius: 999px;
     color: $sds-color-gray-white;
     background: $sds-color-primary-400;
-    width: 215px;
-    padding: 13px $sds-spaces-xxl 13px 30px;
+    width: 260px;
+    padding: 13px $sds-spaces-xxl;
+    text-align: center;
 
     &:hover {
       cursor: pointer;
     }
 
     @media (max-width: 768px) {
-      border-radius: 999px;
+      @include font-body-s;
       width: 100%;
-    }
-
-    span {
-      margin-left: 1rem;
-      border-left: none;
-    }
-    &.disabled {
-      background: $sds-color-primary-500;
+      max-width: 320px;
+      padding: $sds-spaces-xl 0;
     }
   }
 }

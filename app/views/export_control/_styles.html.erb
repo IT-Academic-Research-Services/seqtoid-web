@@ -133,6 +133,14 @@
   .ec-choice:last-child { margin-bottom: 0; }
   .ec-choice input { flex: none; margin: 3px 0 0; }
   .ec-choice-desc { display: block; color: var(--ec-text-muted); font-size: 13px; }
+  /* SMP-1901 — CZ ID transfer: pure-CSS conditional reveal (no JS). The toggle, its label, and the reveal
+     are siblings under .ec-czid so the :checked ~ sibling selector can show the CZ ID email only when the
+     box is checked; hidden by default, it degrades to hidden with JS off (server-side validation still
+     enforces required-when-checked). */
+  .ec-czid-toggle { float: left; margin: 3px 10px 0 0; }
+  .ec-czid-label { display: block; overflow: hidden; line-height: 1.45; }
+  .ec-czid-reveal { display: none; clear: both; margin: 12px 0 0; }
+  .ec-czid-toggle:checked ~ .ec-czid-reveal { display: block; }
   .ec-error { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--ec-danger-strong); }
   .ec-formerror {
     margin: 0 0 24px;

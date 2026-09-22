@@ -1,4 +1,3 @@
-import { Link } from "@czi-sds/components";
 import React, { useEffect, useState } from "react";
 import { HeroEmailForm } from "~/components/views/LandingPage/components/HeroEmailForm";
 import HeroMobileBg from "~/images/landing_page/hero-mobile-bg.png";
@@ -59,17 +58,6 @@ export const Hero = () => {
       </p>
       <div className={cs.hero__emailFormContainer}>
         <HeroEmailForm />
-      </div>
-      <div className={cs.finePrint}>
-        {'By clicking "Register Now," you agree to our '}
-        <Link href="/terms" sdsStyle="dashed">
-          Terms
-        </Link>
-        {" and "}
-        <Link href="/privacy" sdsStyle="dashed">
-          Privacy Policy
-        </Link>
-        {"."}
       </div>
       <div className={cs.heroStatsContainer}>
         <div className={cs.heroStatsContainerItem}>

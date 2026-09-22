@@ -118,6 +118,21 @@ class ExportControlSignupsController < ApplicationController
       return render :new, status: :unprocessable_entity
     end
 
+    # SMP-1901 -- the CZ ID transfer email is required + format-validated SERVER-SIDE when the box is
+    # checked. The field is revealed by CSS only, so it cannot use native `required` (a display:none
+    # required control silently blocks submit); the server is the enforcement point, exactly like the terms
+    # box above.
+    if czid_transfer_requested? && !valid_czid_account_email?
+      prepare_form
+      @czid_error = "Enter a valid email for your CZ ID account, or uncheck the transfer option."
+      return render :new, status: :unprocessable_entity
+    end
+
+    # Persist the CZ ID transfer request to the LOCAL sidecar (czid_transfer_requests) before screening,
+    # keyed by the normalized signup email; it is copied onto the User at provisioning. This deliberately
+    # does NOT touch signup_fields -- the screening payload is byte-for-byte unchanged.
+    record_czid_transfer_request
+
     # Hand the applicant to the async screening ingest. Every outcome -> pending: the producer never
     # provisions (that happens only via the service's signed callback), and unconfigured / error / 202 are
     # all fail-closed. Log the outcome so a skipped/failed submit is visible rather than looking screened.
@@ -153,5 +168,29 @@ class ExportControlSignupsController < ApplicationController
   def prepare_form
     @show_blank_header = true
     @countries = COUNTRIES
+  end
+
+  def czid_transfer_requested?
+    params[:wants_czid_data_transferred] == "1"
+  end
+
+  def valid_czid_account_email?
+    params[:czid_account_email].to_s.strip.match?(URI::MailTo::EMAIL_REGEXP)
+  end
+
+  # Upsert the local CZ ID transfer sidecar row, keyed by the normalized signup email. Only when there is a
+  # signup email to key on (a blank email is a malformed submit that screening fails closed on anyway).
+  # Never raise into the request: the applicant must still be screened even if this local write fails.
+  def record_czid_transfer_request
+    email = params[:email].to_s.strip
+    return if email.blank?
+
+    CzidTransferRequest.record!(
+      email: email,
+      wants: czid_transfer_requested?,
+      czid_account_email: params[:czid_account_email]
+    )
+  rescue StandardError => e
+    Rails.logger.error("[ExportControlSignups] czid-transfer record failed: #{e.class}")
   end
 end
