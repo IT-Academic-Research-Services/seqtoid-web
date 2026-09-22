@@ -1,12 +1,12 @@
 // Coverage: .../SampleView/components/SampleReportConent/SampleReportContent.tsx
 //
 // SampleReportContent is the status gate in front of every report body. It
-// picks one of five outcomes from loadingResults + the workflow run status +
-// sample.upload_error: the loading message, the children, the in-progress
-// message, the waiting-to-start message, or the failure message. The two
-// derived booleans each combine three conditions, so this drives every branch:
-// no run at all, a run with no status, RUNNING, CREATED, SUCCEEDED, a failed
-// status, and an upload_error that suppresses both in-progress branches.
+// picks one of six outcomes from loadingResults + the workflow run status +
+// sample.upload_error: the loading message, the children, the failure message,
+// the with-issue message (SMP-1908), the in-progress message, or the
+// waiting-to-start message. This drives every branch: no run at all, a run with
+// no status, RUNNING, CREATED, SUCCEEDED, SUCCEEDED_WITH_ISSUE, a failed status,
+// and an upload_error that suppresses the in-progress and with-issue branches.
 // The optional loadingInfo/eventNames chains are exercised present and absent.
 import { render, screen } from "@testing-library/react";
 import { SampleReportContent } from "~/components/views/SampleView/components/SampleReportConent/SampleReportContent";
@@ -41,6 +41,7 @@ jest.mock(
 
 jest.mock("~/components/ui/icons", () => ({
   IconLoading: () => <span data-testid="icon-loading" />,
+  IconInfo: () => <span data-testid="icon-info" />,
 }));
 
 const mockLogError = jest.fn();
@@ -188,18 +189,78 @@ describe("SampleReportContent", () => {
   // SMP-1501 / SMP-1476: a Relay store dataID collision can overwrite the raw Rails
   // status ("SUCCEEDED") with the SFN-mapped Rails value ("COMPLETE") on the same record
   // after a browser back/forward, so the success values of BOTH vocabularies must render
-  // the report.
-  it.each([
-    "SUCCEEDED",
-    "SUCCEEDED_WITH_ISSUE",
-    "COMPLETE",
-    "COMPLETE - ISSUE",
-  ])("renders the report for the success status %s", status => {
-    renderContent({ workflowRun: { status } });
+  // the report. (The with-issue values are covered separately below.)
+  it.each(["SUCCEEDED", "COMPLETE"])(
+    "renders the report for the success status %s",
+    status => {
+      renderContent({ workflowRun: { status } });
 
-    expect(screen.getByTestId("report-body")).not.toBeNull();
-    expect(screen.queryByTestId("failed-message")).toBeNull();
-    expect(mockLogError).not.toHaveBeenCalled();
+      expect(screen.getByTestId("report-body")).not.toBeNull();
+      expect(screen.queryByTestId("failed-message")).toBeNull();
+      expect(mockLogError).not.toHaveBeenCalled();
+    },
+  );
+
+  // SMP-1908: a run that finished "with an issue" produced no results, so the empty report
+  // body would be a blank screen. Surface the stored reason via SampleMessage instead. Both
+  // Rails status vocabularies must be recognised (the SMP-1501 dataID collision above).
+  describe("complete-with-issue runs", () => {
+    it.each(["SUCCEEDED_WITH_ISSUE", "COMPLETE - ISSUE"])(
+      "shows the issue message, not the report body, for %s",
+      status => {
+        renderContent({
+          workflowRun: { status, error_message: "insufficient coverage" },
+        });
+
+        expect(message().getAttribute("data-message")).toBe(
+          "insufficient coverage",
+        );
+        expect(message().getAttribute("data-status")).toBe("COMPLETE");
+        expect(message().getAttribute("data-type")).toBe("success");
+        expect(screen.queryByTestId("report-body")).toBeNull();
+        expect(screen.queryByTestId("failed-message")).toBeNull();
+        expect(mockLogError).not.toHaveBeenCalled();
+      },
+    );
+
+    // Regression guard: a with-issue run still carries a live input_error -- that is WHY it
+    // is SUCCEEDED_WITH_ISSUE (workflow_run.rb promotes the status only when input_error is
+    // present). An earlier draft tested input_error before the with-issue branch and so
+    // rendered FailedMessage. The branch must be reached regardless.
+    it("reaches the issue branch even when input_error is populated", () => {
+      renderContent({
+        workflowRun: {
+          status: "SUCCEEDED_WITH_ISSUE",
+          input_error: {
+            label: "InsufficientReadsError",
+            message: "not enough reads",
+          },
+        },
+      });
+
+      expect(screen.queryByTestId("failed-message")).toBeNull();
+      expect(screen.queryByTestId("report-body")).toBeNull();
+      expect(message().getAttribute("data-message")).toBe("not enough reads");
+    });
+
+    it("shows a generic message when the run carries no reason", () => {
+      renderContent({ workflowRun: { status: "SUCCEEDED_WITH_ISSUE" } });
+
+      expect(message().getAttribute("data-message")).toBe(
+        "This run completed with an issue, so no results were produced.",
+      );
+    });
+
+    // A terminal upload error still wins: the with-issue branch sits AFTER upload_error.
+    it("prefers the upload-error failure over the issue message", () => {
+      renderContent({
+        workflowRun: { status: "SUCCEEDED_WITH_ISSUE", error_message: "x" },
+        sample: { id: 12, upload_error: "Upload failed" },
+      });
+
+      expect(screen.getByTestId("failed-message")).not.toBeNull();
+      expect(screen.queryByTestId("sample-message")).toBeNull();
+    });
   });
 
   it.each(["FAILED", "TIMED_OUT", "ABORTED"])(

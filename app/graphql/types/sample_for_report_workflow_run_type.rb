@@ -10,6 +10,7 @@ module Types
     field :wdl_version, String, null: true, camelize: false
     field :executed_at, String, null: true, camelize: false
     field :deprecated, Boolean, null: true, camelize: false
+    field :error_message, String, null: true, camelize: false
     field :input_error, Types::SampleForReportWorkflowRunInputErrorType, null: true, camelize: false
     field :inputs, Types::SampleForReportWorkflowRunInputsType, null: true, camelize: false
     field :parsed_cached_results, Types::SampleForReportWorkflowRunParsedCachedResultsType, null: true, camelize: false

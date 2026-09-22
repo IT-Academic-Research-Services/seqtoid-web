@@ -1,4 +1,5 @@
 import { WORKFLOW_TABS, WorkflowType } from "~/components/utils/workflows";
+import { WorkflowRun } from "~/interface/sample";
 import { FilterSelections } from "~/interface/sampleView";
 
 export const SPECIES_LEVEL_INDEX = 1;
@@ -377,6 +378,7 @@ export const SUCCEEDED_STATE = "SUCCEEDED";
 // only appear in the federation-era NEXT_GEN_TO_LEGACY_STATUS leftover.
 export type WorkflowRunStatusCategory =
   | "success"
+  | "successWithIssue"
   | "inProgress"
   | "waiting"
   | "failed";
@@ -387,9 +389,12 @@ export const WORKFLOW_RUN_STATUS_CATEGORY: Record<
 > = {
   // success -- render the report
   SUCCEEDED: "success", // raw
-  SUCCEEDED_WITH_ISSUE: "success", // raw
   COMPLETE: "success", // SFN-mapped -- the SMP-1501 regression
-  "COMPLETE - ISSUE": "success", // SFN-mapped
+  // success with issue -- the run finished but produced no results (e.g. insufficient
+  // coverage). Surface the stored reason instead of an empty report (SMP-1908). BOTH Rails
+  // vocabularies must map here, since either can win the Relay dataID collision.
+  SUCCEEDED_WITH_ISSUE: "successWithIssue", // raw
+  "COMPLETE - ISSUE": "successWithIssue", // SFN-mapped
   // in progress -- results are being generated
   RUNNING: "inProgress",
   STARTED: "inProgress",
@@ -421,6 +426,48 @@ export const getWorkflowRunStatusCategory = (
   isKnownWorkflowRunStatus(status)
     ? WORKFLOW_RUN_STATUS_CATEGORY[status as string]
     : "inProgress";
+
+// SMP-1908. Human sentences for the known input-error labels (the WorkflowRun::INPUT_ERRORS
+// whitelist), used only when neither the stored error_message column nor the live
+// input_error.message is present, so a with-issue run still gets something specific. The copy
+// mirrors the neutral Rails INPUT_ERRORS messages -- workflow-agnostic, since AMR, benchmark,
+// and consensus genome all flow through this.
+const INPUT_ERROR_LABEL_MESSAGES: Record<string, string> = {
+  InsufficientReadsError:
+    "The number of reads after filtering was insufficient for further analysis.",
+  InvalidInputFileError: "There was an error parsing one of the input files.",
+  InvalidFileFormatError:
+    "The input file you provided has a formatting error in it.",
+  BrokenReadPairError:
+    "There were too many discordant read pairs in the paired-end sample.",
+};
+
+// Last-resort copy when a with-issue run carries no reason at all.
+const WORKFLOW_RUN_ISSUE_FALLBACK =
+  "This run completed with an issue, so no results were produced.";
+
+// SMP-1908. The reason to surface for a workflow run that finished "with an issue" -- it did
+// not fail, but produced no results (e.g. insufficient coverage). Prefers the persisted
+// error_message column (durable) over the live input_error (re-derived from the SFN archive,
+// nil once garbage collected), then a label-derived sentence, then a generic fallback -- so a
+// with-issue run always gets an explanation. Callers gate on the "successWithIssue" category,
+// so this deliberately does not re-check the status and always returns a non-empty string.
+export const getWorkflowRunErrorMessage = (
+  workflowRun?: WorkflowRun | null,
+): string => {
+  const storedMessage = workflowRun?.error_message?.trim();
+  if (storedMessage) {
+    return storedMessage;
+  }
+  const liveMessage = workflowRun?.input_error?.message?.trim();
+  if (liveMessage) {
+    return liveMessage;
+  }
+  const label = workflowRun?.input_error?.label?.trim();
+  return (
+    (label && INPUT_ERROR_LABEL_MESSAGES[label]) || WORKFLOW_RUN_ISSUE_FALLBACK
+  );
+};
 
 // Taxonomy levels
 export const TAX_LEVEL_GENUS = "genus";

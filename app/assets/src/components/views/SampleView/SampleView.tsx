@@ -191,6 +191,7 @@ const SampleQuery = graphql`
       user_id
       workflow_runs {
         deprecated
+        error_message
         executed_at
         id
         input_error {

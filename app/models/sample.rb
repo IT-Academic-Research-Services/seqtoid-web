@@ -254,7 +254,12 @@ class Sample < ApplicationRecord
     workflow_runs.non_deprecated.non_deleted.reverse_each do |wr|
       wr_info = wr.as_json(
         only: WorkflowRun::DEFAULT_FIELDS,
-        methods: [:input_error, :inputs, :parsed_cached_results]
+        # error_message is the persisted terminal-state reason (e.g. the "insufficient
+        # coverage" message on a SUCCEEDED_WITH_ISSUE consensus-genome run). It is added
+        # here rather than to DEFAULT_FIELDS so only this report surface picks it up.
+        # Prefer this stored column over the live #input_error, which re-derives from the
+        # SFN archive and returns nil once that is garbage collected (SMP-1908).
+        methods: [:input_error, :inputs, :parsed_cached_results, :error_message]
       )
       wr_info["run_finalized"] = wr.finalized?
       workflow_runs_info << wr_info

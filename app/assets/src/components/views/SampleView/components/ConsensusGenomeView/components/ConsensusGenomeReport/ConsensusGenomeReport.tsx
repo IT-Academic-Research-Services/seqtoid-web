@@ -2,11 +2,12 @@ import React from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 import cs from "~/components/views/SampleView/components/ConsensusGenomeView/consensus_genome_view.scss";
 import { SampleReportContent } from "~/components/views/SampleView/components/SampleReportConent";
+import { getWorkflowRunStatusCategory } from "~/components/views/SampleView/utils";
 import Sample, { WorkflowRun } from "~/interface/sample";
 import { getConsensusGenomeHelpLink } from "../../utils";
+import { ConsensusGenomeReportQuery as ConsensusGenomeReportQueryType } from "./__generated__/ConsensusGenomeReportQuery.graphql";
 import { ConsensusGenomeCoverageView } from "./components/ConsensusGenomeCoverageView";
 import { ConsensusGenomeMetricsTable } from "./components/ConsensusGenomeMetricsTable";
-import { ConsensusGenomeReportQuery as ConsensusGenomeReportQueryType } from "./__generated__/ConsensusGenomeReportQuery.graphql";
 
 const ConsensusGenomeReportQuery = graphql`
   query ConsensusGenomeReportQuery($workflowRunId: String) {
@@ -36,13 +37,18 @@ export const ConsensusGenomeReport = ({
   );
 
   const workflowRunResultsDataNullable = data.fedConsensusGenomes;
-  if (!workflowRunResultsDataNullable) {
+  // SMP-1908: a complete-with-issue run produces no genome, so fedConsensusGenomes is
+  // empty/absent. Do NOT early-return null for it -- fall through to SampleReportContent so
+  // its shared "successWithIssue" branch can surface the reason. A genuinely SUCCEEDED run
+  // with no genome still early-returns null here (unchanged behaviour).
+  const isCompleteWithIssue =
+    getWorkflowRunStatusCategory(workflowRun?.status) === "successWithIssue";
+  if (!workflowRunResultsDataNullable && !isCompleteWithIssue) {
     return null;
   }
   // filter out null values from the array
-  const workflowRunResultsData = workflowRunResultsDataNullable.filter(
-    (value): value is NonNullable<(typeof workflowRunResultsDataNullable)[0]> =>
-      !!value,
+  const workflowRunResultsData = (workflowRunResultsDataNullable ?? []).filter(
+    (value): value is NonNullable<typeof value> => !!value,
   );
 
   const helpLinkUrl = getConsensusGenomeHelpLink(

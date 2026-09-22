@@ -1,6 +1,9 @@
 // Frontend coverage: ConsensusGenomeView/utils.ts getConsensusGenomeHelpLink
 // picks the SARS-CoV-2 doc link for the SARS-CoV-2 accession and the generic
 // viral doc link otherwise. Pure branch -- cover both arms.
+//
+// The SMP-1908 with-issue reason helper is now shared (getWorkflowRunErrorMessage
+// in SampleView/utils/constants) and covered in SampleView-utils-constants.test.ts.
 import {
   SARS_COV_2_CONSENSUS_GENOME_DOC_LINK,
   VIRAL_CONSENSUS_GENOME_DOC_LINK,
