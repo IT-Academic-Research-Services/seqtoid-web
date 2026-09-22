@@ -112,6 +112,40 @@
       </div>
 
       <%#
+        SMP-1901 — CZ ID data-transfer request. Optional checkbox that reveals a required CZ ID account
+        email. The reveal is PURE CSS (.ec-czid-toggle:checked ~ .ec-czid-reveal in export_control/_styles),
+        so it works with JS off exactly like the rest of this form. The email is validated SERVER-SIDE
+        (required-when-checked + format) in ExportControlSignupsController#create — a conditionally hidden
+        field must NOT carry a native `required` (a display:none required control silently blocks submit),
+        the same reason the terms box below is server-validated. These fields go ONLY to the local
+        czid_transfer_requests sidecar; they are never added to the screening payload.
+      %>
+      <div class="ec-field ec-czid">
+        <input class="ec-czid-toggle" type="checkbox" id="wants_czid_data_transferred"
+               name="wants_czid_data_transferred" value="1"
+               <%= "checked" if params[:wants_czid_data_transferred] == "1" %>>
+        <label class="ec-czid-label" for="wants_czid_data_transferred">
+          Transfer my existing CZ ID data to SeqtoID
+          <span class="ec-choice-desc">
+            If you have a CZ ID account, we can migrate your existing data. Enter the email on that account
+            below — it may differ from the email you are registering with.
+          </span>
+        </label>
+        <div class="ec-czid-reveal">
+          <label class="ec-label" for="czid_account_email">
+            CZ ID account email <span class="ec-req" aria-hidden="true">*</span>
+          </label>
+          <input class="ec-input" type="email" id="czid_account_email" name="czid_account_email"
+                 autocomplete="email" maxlength="255" value="<%= params[:czid_account_email] %>"
+                 <%= 'aria-invalid="true"'.html_safe if @czid_error %>
+                 <%= 'aria-describedby="czid-error"'.html_safe if @czid_error %>>
+          <% if @czid_error %>
+            <p id="czid-error" class="ec-error"><%= @czid_error %></p>
+          <% end %>
+        </div>
+      </div>
+
+      <%#
         Expertise level and use case are DELIBERATELY OMITTED from this form. The post-activation profile
         form (users#user_profile_form) already collects them properly once the account exists, and the
         screening payload has no slot for either — collecting them here would ask an approved applicant the
