@@ -893,6 +893,7 @@ type query_SampleForReport_project {
 
 type query_SampleForReport_workflow_runs_items {
   deprecated: Boolean
+  error_message: String
   executed_at: String
   id: String
   input_error: query_SampleForReport_workflow_runs_items_input_error
