@@ -4,8 +4,6 @@
 // every 2500ms, advances an index and (on a 400ms inner timeout) rewrites the
 // .rotating-text node, toggling longUnderline when the index lands on 2. We use
 // fake timers to walk several ticks so every branch of that interval body runs.
-import React from "react";
-
 const mockEmailForm = jest.fn();
 
 jest.mock("~/components/views/LandingPage/components/HeroEmailForm", () => ({
@@ -13,12 +11,6 @@ jest.mock("~/components/views/LandingPage/components/HeroEmailForm", () => ({
     mockEmailForm();
     return <div data-testid="hero-email-form" />;
   },
-}));
-
-jest.mock("@czi-sds/components", () => ({
-  Link: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
 }));
 
 jest.mock(
@@ -43,7 +35,7 @@ afterEach(() => {
 });
 
 describe("Hero", () => {
-  it("renders the headline, stats, terms links and the email form", () => {
+  it("renders the headline, stats and the embedded register form", () => {
     const { container } = render(<Hero />);
     // The h1 text is split across nodes (headline + <br> + rotating word).
     expect(
@@ -57,11 +49,9 @@ describe("Hero", () => {
     expect(screen.getByText("121+")).toBeTruthy();
     expect(screen.getByText("320,000+")).toBeTruthy();
 
-    // Terms / Privacy links from the mocked SDS Link.
-    const terms = screen.getByText("Terms") as HTMLAnchorElement;
-    expect(terms.getAttribute("href")).toBe("/terms");
-    const privacy = screen.getByText("Privacy Policy") as HTMLAnchorElement;
-    expect(privacy.getAttribute("href")).toBe("/privacy");
+    // SMP-1901: the "By clicking Register Now… Terms / Privacy" fine print was removed.
+    expect(screen.queryByText("Terms")).toBeNull();
+    expect(screen.queryByText("Privacy Policy")).toBeNull();
   });
 
   it("starts with the word 'Free' before any interval tick", () => {
