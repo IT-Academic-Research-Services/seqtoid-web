@@ -419,16 +419,19 @@ class UserDataImportService
       # keys, so a new/remapped id would orphan every transferred object.
       # Ownership (trickle, any order): creator_id is set only by the true owner
       # (is_owner); a member arriving first creates it owner-less (nil is valid --
-      # belongs_to :creator is optional), never falsely owning it. Access is via
-      # membership, so every migrant is added as a member regardless.
+      # belongs_to :creator is optional), never falsely owning it. Membership is
+      # granted unless the row is referenced-only (membership: false) -- a project
+      # merely FK-referenced by the user's data, where the user had no access on
+      # source. Old bundles lack the key (nil), so only explicit false skips it.
+      grant_membership = row[:membership] != false
       if Project.exists?(row[:id])
         project = Project.find(row[:id])
-        add_user_as_member(project)
+        add_user_as_member(project) if grant_membership
         # Only the true owner claims ownership (an earlier member left it nil).
         project.update_columns(creator_id: @new_user_id) if row[:is_owner] # rubocop:disable Rails/SkipsModelValidations
         @stats[:projects_skipped] += 1
-        @warnings << "Project '#{row[:name]}' (id: #{row[:id]}) already present; " \
-                     "added user as member#{row[:is_owner] ? ' and set as creator' : ''}"
+        @warnings << "Project '#{row[:name]}' (id: #{row[:id]}) already present" \
+                     "#{grant_membership ? '; added user as member' : ''}#{row[:is_owner] ? ' and set as creator' : ''}"
         next
       end
 
@@ -448,7 +451,7 @@ class UserDataImportService
                              updated_at: ts(row[:updated_at]),
                            })
 
-      add_user_as_member(project)
+      add_user_as_member(project) if grant_membership
 
       (row[:project_workflow_versions] || []).each do |pwv|
         insert_one(ProjectWorkflowVersion, :project_workflow_versions, {
