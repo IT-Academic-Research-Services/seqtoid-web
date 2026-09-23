@@ -422,10 +422,31 @@ workers:
       requests:
         cpu: 250m
         memory: 1Gi
+  # WEB-ROLE workers. Their queue lists are EXPLICIT and must stay that way -- do not re-add the Resque
+  # "*" catch-all that used to terminate each of these four lists.
+  #
+  # Why: "*" makes every web worker eligible for EVERY queue, including the screening worker's own
+  # process_screening / resolve_screening_holds. Four web workers then race one screening worker for those
+  # jobs and usually win, and a screen that lands on a web pod goes wrong three ways, silently:
+  #   1. The web role's `screening` connection is a ROUTING ALIAS to the app DB (SCREENING_DB_ADDRESS is
+  #      unset there), so screening_results/holds are written to the APP database instead of the isolated
+  #      screening cluster -- defeating the data isolation the separate cluster exists to provide.
+  #   2. ACTIVE_RECORD_ENCRYPTION_* is seeded only into the screening chamber namespace, so
+  #      PendingSignup.hold! raises Errors::Configuration. ProcessScreeningJob rescues and logs the class
+  #      only, so the held applicant's account payload is DROPPED -- once a compliance officer releases the
+  #      hold there is nothing left to provision from and the account can never be created.
+  #   3. The web role does carry DESCARTES_RPS_*, so the misrouted screen SUCCEEDS rather than failing
+  #      loudly -- which is why this went unnoticed.
+  # Observed in env-prod 2026-09-23 on a real signup.
+  #
+  # The four queues below replace what "*" was silently covering: enforce_data_retention,
+  # provision_screened_account (must run on the WEB role -- it creates the Auth0 user), rerun and
+  # support_enrichment. Verified against every `@queue =` declaration in app/ and lib/.
+  # ADDING A NEW JOB: add its queue here explicitly, or it will never be worked.
   resque:
     args: ["rake", "resque:workers"]
     replicaCount: 1
-    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,*"
+    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,enforce_data_retention,provision_screened_account,rerun,support_enrichment"
     samplesBucket: true
     resources:
       requests:
@@ -434,7 +455,7 @@ workers:
   resque-scheduler:
     args: ["rake", "resque:scheduler"]
     replicaCount: 1
-    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,*"
+    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,enforce_data_retention,provision_screened_account,rerun,support_enrichment"
     samplesBucket: true
     resources:
       requests:
@@ -443,7 +464,7 @@ workers:
   resque-pipeline-monitor:
     args: ["rake", "pipeline_monitor"]
     replicaCount: 1
-    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,*"
+    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,enforce_data_retention,provision_screened_account,rerun,support_enrichment"
     samplesBucket: true
     resources:
       requests:
@@ -452,7 +473,7 @@ workers:
   resque-result-monitor:
     args: ["rake", "result_monitor"]
     replicaCount: 1
-    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,*"
+    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,enforce_data_retention,provision_screened_account,rerun,support_enrichment"
     samplesBucket: true
     resources:
       requests:
