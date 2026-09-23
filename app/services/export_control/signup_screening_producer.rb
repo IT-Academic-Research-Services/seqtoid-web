@@ -38,6 +38,10 @@ module ExportControl
       # Never raise into the request. Log the CLASS only -- an HTTP error can echo request-body fragments
       # (the applicant's name). Fail-closed: nothing was screened, nobody is provisioned, caller -> pending.
       Rails.logger.error("[SignupScreeningProducer] submit failed: #{e.class}")
+      # ALERT: from the applicant's side this is indistinguishable from success -- they still land on the
+      # "under review" page -- so without an alert a broken ingest looks exactly like a working one and
+      # every signup silently disappears. There is no correlation id to report: the payload never left.
+      ExportControl::ScreeningAudit.report_failure("signup.submit_failed", error: e)
       :failed
     end
 
