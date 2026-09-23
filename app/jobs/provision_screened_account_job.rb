@@ -50,6 +50,17 @@ class ProvisionScreenedAccountJob
     # is normal (they did not use the signup form, or it was already claimed) and must never fail
     # provisioning -- the account and activation email above have already succeeded.
     apply_czid_transfer_request(user)
+  rescue ActiveRecord::RecordInvalid => e
+    # SMP-1902 -- the account failed model validation (e.g. a blocked personal/temporary email domain that
+    # was not caught at the signup form: an admin/older screened request, or the flag flipped on after
+    # submit). A validation failure is DETERMINISTIC, so a Resque retry would fail identically and leave the
+    # applicant in limbo with no email. Treat it as a denial: send the decision email and stop, do not
+    # re-raise. The generic error is logged (never shown to anyone) and never names which list matched.
+    Rails.logger.warn(
+      "[ProvisionScreenedAccountJob] #{correlation_id} provisioning rejected -- denying " \
+      "(#{e.record&.errors&.full_messages&.to_sentence})"
+    )
+    deny(account)
   end
 
   def deny(account)
