@@ -53,6 +53,12 @@ class ProcessScreeningJob
   rescue StandardError => e
     # Fail-closed: never post an approval on error. The applicant stays unscreened/held.
     Rails.logger.error("[ProcessScreeningJob] #{payload['correlation_id']} error: #{e.class}")
+    # ...but ALERT. Swallowing the exception is correct here (a re-raise would re-bill the vendor on a
+    # Resque retry); swallowing the signal is not -- this rescue is the outermost one on the screen path,
+    # so anything it eats means an applicant silently never got screened.
+    ExportControl::ScreeningAudit.report_failure(
+      "screen.job_error", error: e, correlation_id: payload["correlation_id"], screening_id: payload["screening_id"]
+    )
   end
 
   private
@@ -76,6 +82,13 @@ class ProcessScreeningJob
     )
   rescue StandardError => e
     Rails.logger.error("[ProcessScreeningJob] #{payload['correlation_id']} pending-signup hold failed: #{e.class}")
+    # This is the failure that stranded a real applicant in env-prod on 2026-09-23: the hold row could not
+    # be written (ActiveRecord::Encryption::Errors::Configuration on a misrouted web pod), so once a
+    # compliance officer released the hold there was nothing left to provision from and the account could
+    # never be created. The applicant just sat on "under review" forever. It must never be silent again.
+    ExportControl::ScreeningAudit.report_failure(
+      "signup.hold_lost", error: e, correlation_id: payload["correlation_id"], screening_id: payload["screening_id"]
+    )
   end
 
   def subject_from(payload)
