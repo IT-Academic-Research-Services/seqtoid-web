@@ -67,7 +67,12 @@
       <div class="ec-field">
         <label class="ec-label" for="email">Email <span class="ec-req" aria-hidden="true">*</span></label>
         <input class="ec-input" type="email" id="email" name="email"
-               autocomplete="email" required value="<%= params[:email] %>">
+               autocomplete="email" required value="<%= params[:email] %>"
+               <%= 'aria-invalid="true"'.html_safe if @email_error %>
+               <%= 'aria-describedby="email-error"'.html_safe if @email_error %>>
+        <% if @email_error %>
+          <p id="email-error" class="ec-error"><%= @email_error %></p>
+        <% end %>
       </div>
 
       <div class="ec-field">

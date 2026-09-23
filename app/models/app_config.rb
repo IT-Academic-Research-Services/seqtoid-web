@@ -168,6 +168,23 @@ class AppConfig < ApplicationRecord
   # email is accepted -- so this ships DARK and is opt-in per deployment (UCSF go-live sets the list).
   # An ENV var ALLOWED_EMAIL_DOMAINS (comma-separated) is used as a fallback when this key is unset.
   ALLOWED_EMAIL_DOMAINS = "allowed_email_domains".freeze
+  # SMP-1902 -- when this is "1", registration is BLOCKED for emails whose domain (or any parent domain)
+  # is on the bundled disposable/temporary-inbox list (config/blocked_email_domains/disposable.txt).
+  # Defaults OFF ("" / nil) so this ships DARK and is opt-in per deployment -- any email is accepted
+  # until an environment flips it on after approval. An explicit allow (BLOCKED_EMAIL_DOMAIN_EXCEPTIONS
+  # or the ALLOWED_EMAIL_DOMAINS allowlist) always wins over this blocklist.
+  BLOCK_DISPOSABLE_EMAIL_DOMAINS = "block_disposable_email_domains".freeze
+  # SMP-1902 -- when this is "1", registration is BLOCKED for emails whose domain (or any parent domain)
+  # is on the bundled free personal-email list (config/blocked_email_domains/free.txt, e.g. gmail.com).
+  # Defaults OFF ("" / nil) so this ships DARK and is opt-in per deployment. An explicit allow
+  # (BLOCKED_EMAIL_DOMAIN_EXCEPTIONS or the ALLOWED_EMAIL_DOMAINS allowlist) always wins over this
+  # blocklist.
+  BLOCK_FREE_EMAIL_DOMAINS = "block_free_email_domains".freeze
+  # SMP-1902 -- JSON array of email domains that are NEVER blocked, e.g. ["gmail.com", "partner.org"].
+  # An entry (matched exactly or as a parent domain) overrides the disposable/free blocklists above, so
+  # a specific personal/temporary domain can be waved through without disabling enforcement. Unset/empty
+  # => no exceptions. This is the block-side counterpart to the ALLOWED_EMAIL_DOMAINS allowlist.
+  BLOCKED_EMAIL_DOMAIN_EXCEPTIONS = "blocked_email_domain_exceptions".freeze
 
   after_save :clear_cached_record
 

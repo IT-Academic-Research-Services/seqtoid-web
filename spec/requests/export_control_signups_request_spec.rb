@@ -90,4 +90,52 @@ RSpec.describe "ExportControlSignups", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
     end
   end
+
+  # SMP-1902 -- reject a blocked (personal/temporary) email domain at the signup form, before screening or
+  # any local write, so the applicant sees the error immediately instead of a silent rejection later.
+  describe "email-domain blocklist" do
+    let(:blocked_params) { base_params.merge(email: "user@gmail.com") }
+
+    # Self-contained default regardless of run order -- the AppConfig value is cached, so a prior example
+    # leaving the switch on must not bleed into the "off" case (mirrors user_blocked_email_domain_spec).
+    before { AppConfigHelper.set_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS, "0") }
+
+    context "when the free-email blocklist is ON" do
+      before { AppConfigHelper.set_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS, "1") }
+
+      it "re-renders with the email error, screens nothing, and writes no sidecar row" do
+        expect do
+          post export_control_signups_path,
+               params: blocked_params.merge(wants_czid_data_transferred: "1", czid_account_email: "user@czid.org")
+        end.not_to change(CzidTransferRequest, :count)
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.body).to include("institutional email address")
+        expect(ExportControl::SignupScreeningProducer).not_to have_received(:submit)
+      end
+
+      it "blocks case- and whitespace-insensitively" do
+        post export_control_signups_path, params: base_params.merge(email: "  USER@GMAIL.COM  ")
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(ExportControl::SignupScreeningProducer).not_to have_received(:submit)
+      end
+
+      it "lets an institutional (non-blocked) domain through to screening" do
+        post export_control_signups_path, params: base_params.merge(email: "researcher@ucsf.edu")
+        expect(response).to redirect_to(export_control_signup_pending_path)
+        expect(ExportControl::SignupScreeningProducer).to have_received(:submit)
+      end
+    end
+
+    context "when the blocklist is OFF (default)" do
+      it "lets a free-domain email through unchanged (screens + writes the sidecar row)" do
+        expect do
+          post export_control_signups_path, params: blocked_params
+        end.to change(CzidTransferRequest, :count).by(1)
+
+        expect(response).to redirect_to(export_control_signup_pending_path)
+        expect(ExportControl::SignupScreeningProducer).to have_received(:submit)
+      end
+    end
+  end
 end

@@ -128,6 +128,18 @@ class ExportControlSignupsController < ApplicationController
       return render :new, status: :unprocessable_entity
     end
 
+    # SMP-1902 -- reject a blocked (personal/temporary) email domain HERE, before anything is screened or
+    # written, so the applicant sees the error immediately instead of a silent rejection later at
+    # provisioning. Reuses the User model's blocklist (the same flags + lists + exceptions + parent-domain
+    # matching); both switches are default-off, so this is inert until enabled. Never reveal which list
+    # matched -- the message mirrors the model-level error's institutional-email guidance.
+    if User.email_domain_blocked?(params[:email])
+      prepare_form
+      @email_error = "Please use your institutional email address. Personal and temporary email " \
+                     "addresses can't be used to register."
+      return render :new, status: :unprocessable_entity
+    end
+
     # Persist the CZ ID transfer request to the LOCAL sidecar (czid_transfer_requests) before screening,
     # keyed by the normalized signup email; it is copied onto the User at provisioning. This deliberately
     # does NOT touch signup_fields -- the screening payload is byte-for-byte unchanged.

@@ -11,6 +11,7 @@ module SeedResource
       sfn_configs
       alignment_config
       export_control_flags
+      email_blocklist_flags
     end
 
     private
@@ -46,10 +47,27 @@ module SeedResource
       #   SCREENING_WHITELIST   "" => nobody whitelisted
       #   RESCREEN_CADENCE_DAYS "0" => always re-screen
       #   HIT_HANDLING          "hold" => place a hold and await human adjudication (never "allow")
+      #   SCREENING_PROVIDER    "reference_stub" => the in-repo stub (PENDING => deny), NOT the live
+      #                         Descartes vendor. Seeded explicitly because an ABSENT value silently falls
+      #                         back to the stub, which is easy to mistake for working screening; go-live
+      #                         sets this row to "descartes" (DeniedPartyScreeningProvider::DEFAULT_PROVIDER).
       find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_RPS_GROUPS, value: "")
       find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST, value: "")
       find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_RESCREEN_CADENCE_DAYS, value: "0")
       find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_HIT_HANDLING, value: "hold")
+      find_or_create(:app_config, key: AppConfig::EXPORT_CONTROL_SCREENING_PROVIDER, value: "reference_stub")
+    end
+
+    # SMP-1902 -- seed the disposable/free email-domain blocklist switches so their state is EXPLICIT in
+    # every environment (like the export-control rows above, no app_configs row existed before; the code
+    # default is safe -- absent == OFF -- but nothing was seeded, so the state was implicit). Both seed
+    # OFF ("0"); enforcement is turned on per environment only after the bundled domain lists are signed
+    # off. As with export_control_flags, find_or_create matches AppConfig on `key` and returns the existing
+    # row untouched, so a re-seed NEVER overwrites a value someone set out-of-band -- safe to run on every
+    # deploy.
+    def email_blocklist_flags
+      find_or_create(:app_config, key: AppConfig::BLOCK_FREE_EMAIL_DOMAINS, value: "0")
+      find_or_create(:app_config, key: AppConfig::BLOCK_DISPOSABLE_EMAIL_DOMAINS, value: "0")
     end
 
     def sfn_configs

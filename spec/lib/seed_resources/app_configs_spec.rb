@@ -142,6 +142,7 @@ RSpec.describe SeedResource::AppConfigs do
       expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST)).to eq("")
       expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_RESCREEN_CADENCE_DAYS)).to eq("0")
       expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_HIT_HANDLING)).to eq("hold")
+      expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_SCREENING_PROVIDER)).to eq("reference_stub")
     end
 
     it "does NOT seed the Descartes resolution poll cursor (the poller manages it)" do
@@ -175,6 +176,36 @@ RSpec.describe SeedResource::AppConfigs do
 
       expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_HIT_HANDLING)).to eq("block")
       expect(AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST)).to eq('["ucsf.edu"]')
+    end
+  end
+
+  # SMP-1902: the disposable/free email-domain blocklist switches must be seeded EXPLICITLY (their state
+  # was previously implicit -- no row existed), both OFF, and a re-seed must NEVER overwrite a value set
+  # out-of-band.
+  describe "#email_blocklist_flags" do
+    subject(:email_blocklist_flags) { described_class.new.send(:email_blocklist_flags) }
+
+    it "seeds both blocklist switches OFF (\"0\") -- it never enables blocking" do
+      email_blocklist_flags
+
+      expect(AppConfigHelper.get_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS)).to eq("0")
+      expect(AppConfigHelper.get_app_config(AppConfig::BLOCK_DISPOSABLE_EMAIL_DOMAINS)).to eq("0")
+    end
+
+    it "is idempotent -- a re-seed creates no duplicate rows" do
+      email_blocklist_flags
+      count_after_first = AppConfig.count
+
+      expect { email_blocklist_flags }.not_to change(AppConfig, :count)
+      expect(AppConfig.count).to eq(count_after_first)
+    end
+
+    it "NEVER overwrites a switch someone deliberately turned on" do
+      AppConfig.create!(key: AppConfig::BLOCK_FREE_EMAIL_DOMAINS, value: "1")
+
+      email_blocklist_flags
+
+      expect(AppConfigHelper.get_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS)).to eq("1")
     end
   end
 end
