@@ -114,7 +114,7 @@ module ExportControl
         # SMP-1693: log the error CLASS only -- an exception message from the client/transport can carry
         # the screened party's name (vendor body interpolation), which must never reach a log line.
         Rails.logger.error("[ScreeningService] fail-closed HOLD for #{subject.subject_ref}: #{e.class}")
-        return hold_on_error(subject)
+        return hold_on_error(subject, error: e)
       end
 
       return hold_on_error(subject) if response.errored?
@@ -220,22 +220,32 @@ module ExportControl
       Rails.logger.error(
         "[ScreeningService] fail-closed (persist error) for #{subject.subject_ref}: #{error.class}"
       )
-      ExportControl::ScreeningAudit.record(
+      # report_failure, not record: persistence is what just failed, so there is NO screening_results row
+      # and NO hold -- the audit log is the only trace this screen ever happened. That is precisely the
+      # case that must page someone rather than sit in a log file.
+      ExportControl::ScreeningAudit.report_failure(
         "screen.persist_error",
+        error: error,
         subject_ref: subject.subject_ref, decision: "error", reason: Hold::REASON_SCREENING_ERROR,
-        error_class: error.class.name, provider: PROVIDER,
-        trace_id: ExportControl::ScreeningAudit.current_trace_id
+        provider: PROVIDER
       )
       Outcome.new(decision: :error, screening_result: nil, hold: nil)
     end
 
     # Fail-closed hold with no screening row (transport/timeout/config/per-search error).
-    def hold_on_error(subject)
+    #
+    # `error` is present when an exception drove us here (transport/config) and nil when the vendor itself
+    # reported a per-search error. Either way this ALERTS: a vendor outage or a broken credential surfaces
+    # only as users being held, and holding is the correct behaviour -- which is exactly why it needs an
+    # alert. Without one, a total Descartes failure looks identical to a run of genuinely-flagged
+    # applicants, and nobody notices for days.
+    def hold_on_error(subject, error: nil)
       hold = create_hold(subject, Hold::REASON_SCREENING_ERROR, nil)
-      ExportControl::ScreeningAudit.record(
+      ExportControl::ScreeningAudit.report_failure(
         "screen.error",
+        error: error,
         subject_ref: subject.subject_ref, decision: "error", reason: Hold::REASON_SCREENING_ERROR,
-        hold_id: hold.id, provider: PROVIDER, trace_id: ExportControl::ScreeningAudit.current_trace_id
+        hold_id: hold.id, provider: PROVIDER
       )
       Outcome.new(decision: :error, screening_result: nil, hold: hold)
     end
