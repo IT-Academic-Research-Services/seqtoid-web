@@ -25,12 +25,14 @@ spec:
             - chamber
             - exec
             - seqtoid-env-prod-web
+            - "--"
             - rake
+            - "--tasks"
 #            - "taxon_lineage_slice:remove_slice"
 #            - "taxon_lineage_slice:import_data_from_s3"
-            - "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
+#            - "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
 #            - "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
-
+#
 #            - "--"
 #            - rake
 #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
