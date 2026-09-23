@@ -1,0 +1,148 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rake-task-job
+  namespace: seqtoid-env-prod
+spec:
+  backoffLimit: 2 # 3
+  #completions: 1
+  #parallelism: 1
+  ttlSecondsAfterFinished: 36000
+  #ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
+      restartPolicy: Never
+      serviceAccountName: seqtoid-env-prod-seqtoid-web
+      #serviceAccountName: czid-staging-seqtoid-web
+      containers:
+        - name: rails-app
+          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-659b1d50"
+          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
+          command:
+            - chamber
+            - exec
+            - seqtoid-env-prod-web
+            - rake
+#            - "taxon_lineage_slice:remove_slice"
+#            - "taxon_lineage_slice:import_data_from_s3"
+            - "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
+#            - "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
+
+#            - "--"
+#            - rake
+#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+#
+#            - "--"
+#            - bundle
+#            - exec
+#            - rails
+#            - runner
+#            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+##            - genay.pilarowski@czbiohub.org
+##            - Genay Pilarowski
+#            - gowtham.thakku@czbiohub.org
+#            - Gowtham Thakku
+#
+#            - rake
+#            - "taxon_lineage_slice:remove_slice"
+#            - taxon_lineage_slice:import_data_from_s3
+#          "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
+#          "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
+#          # TODO: Not sure if loading Taxon Descriptions is required or not
+#          "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
+#          )
+
+          #            - "update_pathogen_list"
+#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,live,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+#            - bundle
+#            - exec
+#            - rails
+#            - runner
+#            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+#            - tcarvalho@chanzuckerberg.com
+#            - Tiago Carvalho
+            #- krosariocora@contractor.chanzuckerberg.com
+            #- Karyna Rosario Cora
+            #- "jsims@slower.ai"
+            #- "Jay"
+            #- "seed:migrate"
+            #- "--tasks"
+          env:
+            - name: DRY_RUN
+              value: "false"
+            - name: RAILS_ENV
+              value: "env-prod"
+            - name: ENVIRONMENT
+              value: "env-prod"
+            - name: RAILS_LOG_TO_STDOUT
+              value: "yes"
+            - name: AWS_REGION
+              value: "us-west-2"
+            - name: AWS_DEFAULT_REGION
+              value: "us-west-2"
+            - name: AWS_ACCOUNT_ID
+              value: "283694049553"
+            - name: SKIP_RESQUE_SCHEDULE
+              value: "1"
+            #- name: S3_DATABASE_BUCKET
+            #  value: "seqtoid-public-references"
+
+
+
+
+#
+#          command:
+#            - chamber
+#            - exec
+#            - seqtoid-env-prod-web
+#            - "--"
+#            - bundle
+#            - exec
+#            - rails
+#            - runner
+          #            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+          #            - matt.jobin@ucsf.edu
+          #            - Matt Jobin
+          #            - "Auth0UserManagementHelper.delete_auth0_user(email: ARGV[0])"
+          #            - "Auth0UserManagementHelper.create_auth0_user(email: ARGV[0], name: ARGV[1])"
+          #            - "jsims@slower.ai"
+          #            - "Jay"
+          #            - "tom@slower.ai"
+          #            - "Tom"
+          #            - abigail.morrissey@ucsf.edu
+          #            - Abigail Glascock
+          #            - eric.chow@ucsf.edu
+          #            - Eric Chow
+          #            - gowtham.thakku@czbiohub.org
+          #            - Gowtham Thakku
+          #            - genay.pilarowski@czbiohub.org
+          #            - Genay Pilarowski
+          #            - amy.kistler@ucsf.edu
+          #            - Amy Kistler
+          #            - sumanth.reddy@ucsf.edu
+          #            - Sumanth Reddy
+          #            - davewang@wustl.edu
+          #            - Dave Wang
+          #            - matt.zinter@ucsf.edu
+          #            - Matt Zinter
+          #            - krosariocora@contractor.chanzuckerberg.com
+          #            - Karyna Rosario Cora
+          #            - cbrook@berkeley.edu
+          #            - Cara Brooks
+          #            - t.j.saville@sheffield.ac.uk
+          #            - Thomas Saville
+
+          #| 2557 | Genay Pilarowski | genay.pilarowski@czbiohub.org | CZ Biohub |
+          #| 2572 | Gowtham Thakku | gowtham.thakku@czbiohub.org | CZ Biohub |
+          #| 1277 | Abigail Glascock | abigail.morrissey@ucsf.edu | CZ Biohub (Langelier Lab) / UCSF |
+          #| 18 | Amy Kistler | amy.kistler@ucsf.edu | CZ Biohub / UCSF |
+          #| 88 | Eric Chow | eric.chow@ucsf.edu | UCSF |
+          #| 7357 | Sumanth Reddy | sumanth.reddy@ucsf.edu | UCSF (Wilson Lab) |
+          #| 131 | Dave Wang | davewang@wustl.edu | UW |
+          #| 26 | Matt Zinter | matt.zinter@ucsf.edu | UCSF |
+          #| 2567 | Thomas Saville | t.j.saville@sheffield.ac.uk | The University of Sheffield |
+          #| 2533 | Karyna Rosario Cora | krosariocora@contractor.chanzuckerberg.com | CZ |
+          #| 296 | Cara Brooks | cbrook@berkeley.edu | UC Berkeley |
