@@ -1,7 +1,13 @@
+# Credentials are single-quoted with internal ' doubled (YAML's own escape) because the values come
+# from the environment and are NOT under our control: an RDS-MANAGED master password is rotated by
+# AWS and can start with a YAML indicator. A password beginning with '>' made Psych read a BLOCK
+# SCALAR and the whole file failed to parse (`did not find expected comment or line break while
+# scanning a block scalar`), so every pod using that connection crash-looped even though the password
+# was correct. Single-quoting keeps >, |, &, *, !, #, :, and backslashes literal. See forgejo ticket 1209.
 default: &default
   adapter: mysql2
-  username: <%= ENV['DB_USERNAME'] || 'root' %>
-  password: <%= ENV['DB_PASSWORD'] %>
+  username: '<%= (ENV['DB_USERNAME'] || 'root').gsub("'", "''") %>'
+  password: '<%= ENV['DB_PASSWORD'].to_s.gsub("'", "''") %>'
   host: <%= ENV['RDS_ADDRESS'] || ENV['DB_HOST'] || '127.0.0.1' %>
   port: <%= ENV['DB_PORT'] || 3306 %>
   database: idseq_<%= Rails.env %>
@@ -39,8 +45,8 @@ primary_deployed: &primary_deployed
 # runs ONLY in the service role.
 screening_conn: &screening_conn
   adapter: mysql2
-  username: <%= ENV['SCREENING_DB_USERNAME'] || ENV['DB_USERNAME'] || 'root' %>
-  password: <%= ENV['SCREENING_DB_PASSWORD'] || ENV['DB_PASSWORD'] %>
+  username: '<%= (ENV['SCREENING_DB_USERNAME'] || ENV['DB_USERNAME'] || 'root').gsub("'", "''") %>'
+  password: '<%= (ENV['SCREENING_DB_PASSWORD'] || ENV['DB_PASSWORD']).to_s.gsub("'", "''") %>'
   port: <%= ENV['SCREENING_DB_PORT'] || ENV['DB_PORT'] || 3306 %>
   encoding: utf8mb4
   collation: utf8mb4_unicode_ci
