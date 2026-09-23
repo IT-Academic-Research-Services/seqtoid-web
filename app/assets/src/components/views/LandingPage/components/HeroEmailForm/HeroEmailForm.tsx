@@ -1,87 +1,30 @@
-import React, { useState } from "react";
-import { graphql, useMutation } from "react-relay";
-import { useHistory } from "react-router-dom";
+import React from "react";
 import { ANALYTICS_EVENT_NAMES, useTrackEvent } from "~/api/analytics";
-import { EMAIL_TAKEN_ERROR } from "~/api/user";
-import ArrowSubmit from "~/components/ui/icons/IconSubmitArrow";
 import cs from "./HeroEmailForm.scss";
 
-const HeroEmailFormMutation = graphql`
-  mutation HeroEmailFormMutation($email: String!) {
-    createUser(email: $email) {
-      email
-    }
-  }
-`;
-
+// SMP-1901: the landing page no longer collects an email. This is now a single "Register Now"
+// button that sends the user to the pre-account export-control signup form
+// (/export_control_signup), where the email and the rest of the account details are captured and
+// screened. (/users/register is the post-activation profile form and needs an authenticated user,
+// so it cannot be the entry point for a brand-new visitor.)
 export const HeroEmailForm = () => {
   const trackEvent = useTrackEvent();
-  const [enteredEmail, setEnteredEmail] = useState("");
-  const [commitMutation, isMutationInFlight] = useMutation(
-    HeroEmailFormMutation,
-  );
-  const RouterHistory = useHistory();
 
-  function isValidEmail(enteredEmail: string) {
-    const emailRegex =
-      /^(([^<>()\]\\.,;:\s@"]+(\.[^<>()\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-    return emailRegex.test(enteredEmail);
-  }
-
-  async function registerAccount(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    if (isValidEmail(enteredEmail)) {
-      commitMutation({
-        variables: {
-          email: enteredEmail,
-        },
-        onCompleted: () => {
-          RouterHistory.push("/users/register");
-          location.reload();
-        },
-        onError: err => {
-          if (err.message.includes(EMAIL_TAKEN_ERROR)) {
-            RouterHistory.push("/users/register?error=email");
-          } else {
-            RouterHistory.push("/users/register?error=unknown");
-          }
-          location.reload();
-        },
-      });
-
-      // Log lowercase emails, since emails are lowercased in the database
-      trackEvent(
-        ANALYTICS_EVENT_NAMES.LANDING_PAGE_REGISTER_NOW_BUTTON_CLICKED,
-        { email: enteredEmail.toLowerCase() },
-      );
-    } else {
-      alert("Please enter a valid email address.");
-    }
+  function goToRegistration() {
+    trackEvent(ANALYTICS_EVENT_NAMES.LANDING_PAGE_REGISTER_NOW_BUTTON_CLICKED, {});
+    // The signup form is a server-rendered (non-React) page, so navigate with a full page load.
+    window.location.assign("/export_control_signup");
   }
 
   return (
     <div className={cs.heroEmailForm}>
-      <form onSubmit={e => registerAccount(e)}>
-        <input
-          placeholder="Your email address"
-          value={enteredEmail}
-          onChange={e => {
-            setEnteredEmail(e.target.value);
-          }}
-        />
-        <button
-          aria-label="Register for a SeqtoID account with your email address"
-          type="submit"
-          disabled={isMutationInFlight}
-          className={isMutationInFlight ? cs.disabled : ""}
-        >
-          Register Now
-          <span>
-            <ArrowSubmit />
-          </span>
-        </button>
-      </form>
+      <button
+        type="button"
+        aria-label="Register for a SeqtoID account"
+        onClick={goToRegistration}
+      >
+        Register Now
+      </button>
     </div>
   );
 };

@@ -37,6 +37,16 @@
     </p>
 
     <p>
+      <strong>Wants CZ ID data transferred:</strong>
+      <%= @user.wants_czid_data_transferred ? "Yes" : "No" %>
+    </p>
+
+    <p>
+      <strong>CZ ID account email:</strong>
+      <%= @user.czid_account_email.presence || "—" %>
+    </p>
+
+    <p>
       <%= link_to 'Edit', edit_user_path(@user) %> |
       <%= link_to 'See all users', users_path %> |
       <%= link_to 'Front portal', root_path %>

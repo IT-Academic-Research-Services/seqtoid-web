@@ -39,11 +39,28 @@ class ProvisionScreenedAccountJob
       return
     end
 
-    UserFactoryService.new(
+    user = UserFactoryService.new(
       email: email,
       name: account['name'],
       send_activation: true
     ).call
+
+    # SMP-1901: if this applicant asked to transfer their CZ ID data on the (accountless) signup form, copy
+    # that request from the local sidecar onto the now-provisioned user, then delete the row. A missing row
+    # is normal (they did not use the signup form, or it was already claimed) and must never fail
+    # provisioning -- the account and activation email above have already succeeded.
+    apply_czid_transfer_request(user)
+  rescue ActiveRecord::RecordInvalid => e
+    # SMP-1902 -- the account failed model validation (e.g. a blocked personal/temporary email domain that
+    # was not caught at the signup form: an admin/older screened request, or the flag flipped on after
+    # submit). A validation failure is DETERMINISTIC, so a Resque retry would fail identically and leave the
+    # applicant in limbo with no email. Treat it as a denial: send the decision email and stop, do not
+    # re-raise. The generic error is logged (never shown to anyone) and never names which list matched.
+    Rails.logger.warn(
+      "[ProvisionScreenedAccountJob] #{correlation_id} provisioning rejected -- denying " \
+      "(#{e.record&.errors&.full_messages&.to_sentence})"
+    )
+    deny(account)
   end
 
   def deny(account)
@@ -51,5 +68,31 @@ class ProvisionScreenedAccountJob
     return if email.blank?
 
     UserMailer.account_creation_denied(email).deliver_now
+    # SMP-1901: a denied applicant never becomes a user, so drop any CZ ID transfer request they left.
+    delete_czid_transfer_request(email)
+  end
+
+  # Copy the local CZ ID transfer request onto the freshly provisioned user, then delete the sidecar row.
+  # Its own rescue: a failure here must never break account creation (which already happened) -- worst case
+  # the row is left for the 90-day backstop purge and the user keeps the column defaults.
+  def apply_czid_transfer_request(user)
+    return if user.blank?
+
+    row = CzidTransferRequest.find_by(email: CzidTransferRequest.normalize_email(user.email))
+    return if row.nil?
+
+    user.update!(
+      wants_czid_data_transferred: row.wants_czid_data_transferred,
+      czid_account_email: row.czid_account_email
+    )
+    row.destroy!
+  rescue StandardError => e
+    Rails.logger.error("[ProvisionScreenedAccountJob] czid-transfer copy failed for user #{user&.id}: #{e.class}")
+  end
+
+  def delete_czid_transfer_request(email)
+    CzidTransferRequest.where(email: CzidTransferRequest.normalize_email(email)).delete_all
+  rescue StandardError => e
+    Rails.logger.error("[ProvisionScreenedAccountJob] czid-transfer delete-on-deny failed: #{e.class}")
   end
 end

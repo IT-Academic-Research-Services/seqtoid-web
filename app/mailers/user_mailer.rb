@@ -58,7 +58,7 @@ class UserMailer < ApplicationMailer
     @email = email
     mail(
       to: email,
-      subject: "Your CZ ID account request"
+      subject: "Your SeqtoID account request"
     )
   end
 

@@ -57,12 +57,23 @@ class User < ApplicationRecord
     # common accented chars I knew from experience, leaving out pure symbols.
     with: /\A[- 'a-zA-ZÀ-ÖØ-öø-ÿ]+\z/, message: "must contain only letters, apostrophes, dashes or spaces",
   }, allow_nil: true
+  # SMP-1901 -- CZ ID data-transfer request. Validate czid_account_email as an email FORMAT only; it is
+  # deliberately not checked against any account/directory. Required only when the user asks to transfer.
+  validates :czid_account_email, format: {
+    with: URI::MailTo::EMAIL_REGEXP, message: "must be a valid email address",
+  }, allow_blank: true
+  validates :czid_account_email, presence: true, if: :wants_czid_data_transferred?
   # CZID-523 -- enforce that verified/uploading users belong to an approved institution by validating
   # the email domain against a configurable allowlist. Runs on both create and email changes, so it
   # covers admin creation (UsersController), self-signup (Mutations::CreateUser), and the shared
   # UserFactoryService choke point. Enforcement is OFF unless an allowlist is configured (see below),
   # so existing deployments/tests are unaffected until UCSF go-live populates the list.
   validate :email_domain_allowed, if: -> { email.present? && (new_record? || will_save_change_to_email?) }
+  # SMP-1902 -- reject registration from disposable/temporary and free personal email domains, each gated
+  # by its own AppConfig switch (both default OFF, so this ships DARK). Same guard as the allowlist above,
+  # so it covers admin creation, self-signup and the shared UserFactoryService, and never re-checks an
+  # existing user on an unrelated update. An explicit allow always beats the blocklist (see below).
+  validate :email_domain_not_blocked, if: -> { email.present? && (new_record? || will_save_change_to_email?) }
   attr_accessor :email_arguments
 
   # `User` creation/changes/deletions get auto-tracked for analytics
@@ -198,6 +209,91 @@ class User < ApplicationRecord
     domains.any? { |allowed| user_domain == allowed || user_domain.end_with?(".#{allowed}") }
   end
 
+  # SMP-1902 -- bundled blocklists of email domains. Each file is a plain newline-delimited list; lines
+  # starting with "#" and blank lines are comments/padding and are skipped. Loaded once into a frozen,
+  # lowercased Set and memoized on the class, so the ~9.5k/4.5k entries are not re-read or re-parsed per
+  # request. (In dev the memo is cleared on code reload, which is fine.)
+  BLOCKED_EMAIL_DOMAIN_FILES = {
+    disposable: "config/blocked_email_domains/disposable.txt",
+    free: "config/blocked_email_domains/free.txt",
+  }.freeze
+
+  def self.disposable_email_domains
+    @disposable_email_domains ||= load_blocked_email_domains(:disposable)
+  end
+
+  def self.free_email_domains
+    @free_email_domains ||= load_blocked_email_domains(:free)
+  end
+
+  def self.load_blocked_email_domains(kind)
+    path = Rails.root.join(BLOCKED_EMAIL_DOMAIN_FILES.fetch(kind))
+    File.foreach(path).each_with_object(Set.new) do |line, set|
+      domain = line.strip.downcase
+      next if domain.empty? || domain.start_with?("#")
+
+      set << domain
+    end.freeze
+  end
+
+  def self.block_disposable_email_domains?
+    AppConfigHelper.get_app_config(AppConfig::BLOCK_DISPOSABLE_EMAIL_DOMAINS) == "1"
+  end
+
+  def self.block_free_email_domains?
+    AppConfigHelper.get_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS) == "1"
+  end
+
+  # SMP-1902 -- domains that are NEVER blocked. Reads the AppConfig JSON array and normalizes it the same
+  # way as the allowlist (lowercased, "@"-stripped, blank-free, de-duped). Combined with the CZID-523
+  # allowlist, this is the "explicit allow" set that overrides the blocklists.
+  def self.blocked_email_domain_exceptions
+    from_config = AppConfigHelper.get_json_app_config(AppConfig::BLOCKED_EMAIL_DOMAIN_EXCEPTIONS, [])
+    from_config = [] unless from_config.is_a?(Array)
+    from_config.map { |d| d.to_s.strip.downcase.delete_prefix("@") }.reject(&:blank?).uniq
+  end
+
+  # SMP-1902 -- the domain itself plus every parent domain, most-specific first. So "x.mailinator.com"
+  # yields ["x.mailinator.com", "mailinator.com", "com"], which lets a blocklist/allowlist entry for a
+  # parent domain match a subdomain.
+  def self.email_domain_and_parents(domain)
+    parts = domain.split(".")
+    (0...parts.length).map { |i| parts[i..].join(".") }.reject(&:blank?)
+  end
+
+  # SMP-1902 -- true when the given email domain (or any parent domain) is on an ENABLED blocklist and is
+  # NOT explicitly allowed. An explicit allow -- the exceptions list or the CZID-523 institutional
+  # allowlist, matched on the domain or any parent -- always wins over the blocklist. Case-insensitive.
+  def self.blocked_email_domain?(domain)
+    normalized = domain.to_s.strip.downcase
+    return false if normalized.blank?
+
+    candidates = email_domain_and_parents(normalized)
+
+    # An explicit allow always beats the blocklist.
+    allowed = blocked_email_domain_exceptions + allowed_email_domains
+    return false if candidates.any? { |candidate| allowed.include?(candidate) }
+
+    if block_disposable_email_domains? && candidates.any? { |candidate| disposable_email_domains.include?(candidate) }
+      return true
+    end
+    if block_free_email_domains? && candidates.any? { |candidate| free_email_domains.include?(candidate) }
+      return true
+    end
+
+    false
+  end
+
+  # SMP-1902 -- true when an EMAIL's domain is on an enabled blocklist (and not explicitly allowed). The
+  # email-level entry point shared by the model validation and the pre-account export-control signup
+  # controller, so the "@" extraction and the matching rules live in exactly one place (no duplication).
+  def self.email_domain_blocked?(email)
+    domain = email.to_s.split("@").last
+    return false if domain.blank?
+
+    blocked_email_domain?(domain)
+  end
+
   # "Greg  L.  Dingle" -> "Greg L."
   def first_name
     return nil if name.nil?
@@ -299,5 +395,16 @@ class User < ApplicationRecord
 
     errors.add(:email, "domain is not on the list of approved institutional email domains. " \
                        "Please sign up with your institutional email address, or contact your administrator.")
+  end
+
+  # SMP-1902 -- reject accounts whose email domain is on an enabled disposable/free blocklist (and not
+  # explicitly allowed). No-op when both switches are off (enforcement disabled) or the domain is allowed.
+  # The error is user-facing (surfaced by the UsersController rescue and the GraphQL mutation), so keep it
+  # clear and actionable.
+  def email_domain_not_blocked
+    return unless User.email_domain_blocked?(email)
+
+    errors.add(:email, "cannot be a personal or temporary email address. Please register with your " \
+                       "institutional email address, or contact your administrator.")
   end
 end
