@@ -213,38 +213,55 @@ RSpec.describe UserFactoryService do
         allow(Auth0UserManagementHelper).to receive(:get_auth0_password_reset_token).and_return(
           { "ticket" => auth0_reset_url }
         )
+        allow(Auth0UserManagementHelper).to receive(:send_auth0_password_reset_email)
         email_message = instance_double(ActionMailer::MessageDelivery)
         allow(email_message).to receive(:deliver_now)
         allow(UserMailer).to receive(:new_auth0_user_new_project).and_return(email_message)
         allow(UserMailer).to receive(:account_activation).and_return(email_message)
       end
 
-      it "gets auth0 reset token" do
-        expect(Auth0UserManagementHelper).to receive(:get_auth0_password_reset_token)
-        user_factory_instance.call
-      end
-
-      context "when project_id is nil" do
-        it "calls UserMail.account_activate to send activation email" do
-          expect(UserMailer).not_to receive(:new_auth0_user_new_project)
-
+      context "when project_id is nil (a screened sign-up)" do
+        it "has Auth0 send its change-password email to the new user" do
           user_factory_instance.call
           created_user = User.last
 
-          expect(UserMailer).to have_received(:account_activation)
-            .with(
-              created_user.email,
-              auth0_reset_url
-            )
+          expect(Auth0UserManagementHelper).to have_received(:send_auth0_password_reset_email)
+            .with(created_user.email)
+        end
+
+        it "does not send our own activation email or mint a ticket for it" do
+          user_factory_instance.call
+
+          expect(UserMailer).not_to have_received(:account_activation)
+          expect(UserMailer).not_to have_received(:new_auth0_user_new_project)
+          expect(Auth0UserManagementHelper).not_to have_received(:get_auth0_password_reset_token)
+        end
+
+        context "when Auth0 fails to send the email" do
+          before do
+            allow(Auth0UserManagementHelper).to receive(:send_auth0_password_reset_email)
+              .and_raise(StandardError, "auth0 down")
+          end
+
+          it "alerts, keeps the account, and does not raise into provisioning" do
+            expect(LogUtil).to receive(:log_error)
+              .with("Auth0 activation email failed for new user", hash_including(:exception, :user_id))
+
+            expect { user_factory_instance.call }.not_to raise_error
+            expect(User.find_by(email: new_user_email.downcase)).to be_present
+          end
         end
       end
 
       context "when project_id is set" do
         let(:project_id) { create(:project).id }
 
-        it "calls UserMail.new_auth0_user_new_project to send activation email" do
-          expect(UserMailer).not_to receive(:account_activation)
+        it "gets an auth0 reset ticket for the invite" do
+          expect(Auth0UserManagementHelper).to receive(:get_auth0_password_reset_token)
+          user_factory_instance.call
+        end
 
+        it "calls UserMailer.new_auth0_user_new_project to send activation email" do
           user_factory_instance.call
           created_user = User.last
 
@@ -254,17 +271,19 @@ RSpec.describe UserFactoryService do
             project_id,
             auth0_reset_url
           )
-        end
-      end
-
-      context "when send activation email raises an error" do
-        before do
-          allow(UserMailer).to receive(:account_activation).and_raise(Net::SMTPAuthenticationError, "test UserMailer error")
+          expect(Auth0UserManagementHelper).not_to have_received(:send_auth0_password_reset_email)
         end
 
-        it "logs error" do
-          expect(LogUtil).to receive(:log_error)
-          expect { user_factory_instance.call }.to raise_error(Net::SMTPAuthenticationError)
+        context "when the invite email raises an SMTP error" do
+          before do
+            allow(UserMailer).to receive(:new_auth0_user_new_project)
+              .and_raise(Net::SMTPAuthenticationError, "test UserMailer error")
+          end
+
+          it "logs error and re-raises" do
+            expect(LogUtil).to receive(:log_error)
+            expect { user_factory_instance.call }.to raise_error(Net::SMTPAuthenticationError)
+          end
         end
       end
     end
