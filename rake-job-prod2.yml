@@ -1,0 +1,47 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rake-task-job2
+  namespace: seqtoid-env-prod
+spec:
+  backoffLimit: 1 # 3
+  #completions: 1
+  #parallelism: 1
+  ttlSecondsAfterFinished: 36000
+  #ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
+      restartPolicy: Never
+      serviceAccountName: seqtoid-env-prod-seqtoid-web
+      #serviceAccountName: czid-staging-seqtoid-web
+      containers:
+        - name: rails-app
+          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-659b1d50"
+          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
+          command:
+            - chamber
+            - exec
+            - seqtoid-env-prod-web
+            - "--"
+            - rake
+            - "update_pathogen_list"
+          env:
+            - name: DRY_RUN
+              value: "false"
+            - name: RAILS_ENV
+              value: "env-prod"
+            - name: ENVIRONMENT
+              value: "env-prod"
+            - name: RAILS_LOG_TO_STDOUT
+              value: "yes"
+            - name: AWS_REGION
+              value: "us-west-2"
+            - name: AWS_DEFAULT_REGION
+              value: "us-west-2"
+            - name: AWS_ACCOUNT_ID
+              value: "283694049553"
+            - name: SKIP_RESQUE_SCHEDULE
+              value: "1"
