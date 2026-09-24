@@ -141,7 +141,10 @@ smoke:
     - /auth0/login
     - /home
   timeoutSeconds: 10
-  # How many times the blueGreen analysis retries the smoke Job before declaring failure.
+  # Extra attempts per path inside the blueGreen smoke Job before it fails the build (so 2 =
+  # up to 3 tries, 5s apart). NOT the Argo metric failureLimit: that is pinned to 0 in
+  # analysistemplate.yaml, because with a single measurement any higher value meant the gate
+  # could never fail.
   failureLimit: 2
   # PreSync smoke GATE (pingpong mode, platform-overhaul 782). Runs the NEW image and
   # drives an in-process integration request to each smoke.path BEFORE the Rollout is

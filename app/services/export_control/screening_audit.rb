@@ -67,6 +67,42 @@ module ExportControl
       Rails.logger.error("#{LOG_MARKER} failed to record #{event}: #{e.class}: #{e.message}")
     end
 
+    # Report a SWALLOWED failure on the screening path to Sentry, so a rescue that must not re-raise
+    # still produces an alert instead of vanishing into a log line.
+    #
+    # WHY THIS EXISTS. The screening path rescues aggressively and correctly -- a logging or persistence
+    # failure must never flip an ALLOW into a DENY or re-bill the vendor on a Resque retry -- but every one
+    # of those rescues logged `e.class` and returned, so nothing alerted. On 2026-09-23 three separate
+    # silent failures compounded in env-prod (a misrouted screen writing to the wrong database, a dropped
+    # PendingSignup, and a no-op'd job) and none of them raised a single alert; they were found only by
+    # reading pod logs by hand. Swallowing the exception is right. Swallowing the SIGNAL is not.
+    #
+    # NO-PII, DELIBERATELY NARROWER THAN LogUtil.log_error. LogUtil forwards `exception.message` (and
+    # capture_exception uses it as the event title). On this path an exception message can carry the
+    # screened party's name or address -- an HTTP/transport error echoes request-body fragments, which is
+    # exactly why these call sites log the CLASS only (SMP-1693). So we deliberately do NOT pass the
+    # exception object or its message to Sentry: we send a fixed, PII-free title plus the error CLASS and
+    # sanitized identifier context. That keeps the alert actionable (what failed, for which subject, with
+    # which error type) while keeping identity out of the alerting system entirely.
+    #
+    # NEVER RAISES, like everything else here -- a reporting failure must not disturb the caller.
+    def report_failure(event, error: nil, **context)
+      attrs = sanitize(context)
+      attrs["error_class"] = error.class.name if error
+      attrs["trace_id"] ||= current_trace_id
+
+      emit_log(event, attrs)
+      set_span_attributes(event, attrs)
+
+      Sentry.capture_message(
+        "#{LOG_MARKER} #{event}",
+        level: "error",
+        extra: attrs
+      )
+    rescue StandardError => e
+      Rails.logger.error("#{LOG_MARKER} failed to report #{event}: #{e.class}")
+    end
+
     # Drop any sensitive keys and stringify -- belt-and-suspenders so the audit signal only ever
     # carries identifiers, even if a call site passes a whole Subject by mistake.
     def sanitize(attributes)

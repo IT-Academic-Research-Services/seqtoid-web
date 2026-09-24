@@ -63,4 +63,61 @@ RSpec.describe ExportControl::ScreeningAudit do
       expect { described_class.record('screen.error', 'not-a-hash') }.not_to raise_error
     end
   end
+
+  describe '.report_failure' do
+    # The whole point of report_failure is that a SWALLOWED failure still alerts. These guard the two
+    # properties that make it safe to call from a rescue on the screening path: it reaches Sentry, and it
+    # never carries the screened party's identity there.
+    it 'captures to Sentry with the error CLASS and the sanitized context' do
+      allow(Sentry).to receive(:capture_message)
+
+      described_class.report_failure(
+        'screen.error', error: Timeout::Error.new('boom'), subject_ref: 'User:42', hold_id: 7
+      )
+
+      expect(Sentry).to have_received(:capture_message).with(
+        '[screening_audit] screen.error',
+        hash_including(
+          level: 'error',
+          extra: hash_including('error_class' => 'Timeout::Error', 'subject_ref' => 'User:42', 'hold_id' => 7)
+        )
+      )
+    end
+
+    it 'never sends the screened party identity to Sentry, even if a call site passes it' do
+      captured = nil
+      allow(Sentry).to receive(:capture_message) { |_title, opts| captured = opts }
+
+      described_class.report_failure(
+        'screen.error', error: StandardError.new('x'),
+                        subject_ref: 'User:42', name: 'Wayne Smith', address1: '1 Main St', email: 'w@example.com'
+      )
+
+      expect(captured[:extra].keys).to include('subject_ref')
+      expect(captured[:extra].keys).not_to include('name', 'address1', 'email')
+      expect(captured.to_s).not_to match(/Wayne|Main St|example\.com/)
+    end
+
+    it 'never sends the exception MESSAGE (it can echo vendor request-body fragments)' do
+      captured = nil
+      allow(Sentry).to receive(:capture_message) { |title, opts| captured = [title, opts] }
+
+      described_class.report_failure('screen.error', error: StandardError.new('screened Wayne Smith failed'))
+
+      expect(captured.to_s).not_to include('Wayne Smith')
+    end
+
+    it 'never raises into the caller, even when Sentry itself blows up' do
+      allow(Sentry).to receive(:capture_message).and_raise(StandardError, 'sentry down')
+      expect { described_class.report_failure('screen.error', error: StandardError.new('x')) }.not_to raise_error
+    end
+
+    it 'works with no exception at all (vendor-reported error, nothing raised)' do
+      allow(Sentry).to receive(:capture_message)
+      expect { described_class.report_failure('screen.error', subject_ref: 'User:9') }.not_to raise_error
+      expect(Sentry).to have_received(:capture_message).with(
+        '[screening_audit] screen.error', hash_including(extra: hash_including('subject_ref' => 'User:9'))
+      )
+    end
+  end
 end
