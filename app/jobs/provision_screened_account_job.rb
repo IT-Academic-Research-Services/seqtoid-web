@@ -10,6 +10,11 @@ class ProvisionScreenedAccountJob
 
   @queue = :provision_screened_account
 
+  # users.institution is VARCHAR(100), while the signup form accepts up to 200 characters. Truncate rather
+  # than fail: an over-long value would raise at insert (MySQL strict mode) and leave an APPROVED applicant
+  # with no account. The full value is still in the applicant's screening record.
+  USER_INSTITUTION_MAX_LENGTH = 100
+
   def self.enqueue(payload)
     Resque.enqueue(self, payload)
   end
@@ -42,6 +47,12 @@ class ProvisionScreenedAccountJob
     user = UserFactoryService.new(
       email: email,
       name: account['name'],
+      # The applicant gave their institution on the signup form and it rides through screening in the
+      # account payload, but it was dropped here, so every screened account was created with none.
+      institution: institution_for(account),
+      # Set explicitly, as admin-created accounts are. The model allows a nil role (and nil is not an
+      # admin), but a blank role on a real user is an odd state to leave behind.
+      role: User::ROLE_REGULAR_USER,
       send_activation: true
     ).call
 
@@ -67,9 +78,35 @@ class ProvisionScreenedAccountJob
     email = account['email'].to_s
     return if email.blank?
 
-    UserMailer.account_creation_denied(email).deliver_now
+    # A denied applicant is sent NOTHING by default (AppConfig::SEND_SIGNUP_DENIAL_EMAIL, off unless "1").
+    if send_denial_email?
+      send_denial_email(email)
+    else
+      Rails.logger.info("[ProvisionScreenedAccountJob] denial recorded; no email sent (denial email disabled)")
+    end
     # SMP-1901: a denied applicant never becomes a user, so drop any CZ ID transfer request they left.
     delete_czid_transfer_request(email)
+  end
+
+  def send_denial_email?
+    AppConfigHelper.get_app_config(AppConfig::SEND_SIGNUP_DENIAL_EMAIL) == "1"
+  end
+
+  # Used only when the denial email is switched on. deliver_now! (bang), so a failed send RAISES: the plain
+  # deliver_now honours config.action_mailer.raise_delivery_errors, which is false in the deployed
+  # environments, so a rejected send simply vanished -- no log line, no Sentry event, no failed job. (In
+  # env-prod every denial email was lost that way: the environment had no verified sender.) Report it, then
+  # re-raise so the job lands in the Resque failure queue and can be retried once mail works. Nothing has
+  # been written for a denied applicant at this point, so a retry cannot provision anything.
+  def send_denial_email(email)
+    UserMailer.account_creation_denied(email).deliver_now!
+  rescue StandardError => e
+    ExportControl::ScreeningAudit.report_failure("signup.denial_email_failed", error: e)
+    raise
+  end
+
+  def institution_for(account)
+    account['institution'].to_s.strip.presence&.slice(0, USER_INSTITUTION_MAX_LENGTH)
   end
 
   # Copy the local CZ ID transfer request onto the freshly provisioned user, then delete the sidecar row.
