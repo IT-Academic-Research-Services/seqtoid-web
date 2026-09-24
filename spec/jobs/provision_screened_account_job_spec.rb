@@ -12,10 +12,33 @@ RSpec.describe ProvisionScreenedAccountJob do
       allow(User).to receive(:exists?).with(email: 'jane@ucsf.edu').and_return(false)
       factory = instance_double(UserFactoryService)
       expect(UserFactoryService).to receive(:new)
-        .with(email: 'jane@ucsf.edu', name: 'Jane Doe', send_activation: true).and_return(factory)
+        .with(email: 'jane@ucsf.edu', name: 'Jane Doe', institution: nil,
+              role: User::ROLE_REGULAR_USER, send_activation: true).and_return(factory)
       expect(factory).to receive(:call)
 
       described_class.new.run(payload)
+    end
+
+    it 'saves the institution from the signup form on the new account' do
+      allow(User).to receive(:exists?).and_return(false)
+      factory = instance_double(UserFactoryService, call: nil)
+      expect(UserFactoryService).to receive(:new)
+        .with(hash_including(institution: 'University of California, San Francisco')).and_return(factory)
+
+      described_class.new.run(payload.merge(
+                                'account' => account.merge('institution' => '  University of California, San Francisco  ')
+                              ))
+    end
+
+    it 'truncates an institution longer than the users column instead of failing the insert' do
+      allow(User).to receive(:exists?).and_return(false)
+      factory = instance_double(UserFactoryService, call: nil)
+      long_name = 'X' * 180
+      expect(UserFactoryService).to receive(:new)
+        .with(hash_including(institution: 'X' * ProvisionScreenedAccountJob::USER_INSTITUTION_MAX_LENGTH))
+        .and_return(factory)
+
+      described_class.new.run(payload.merge('account' => account.merge('institution' => long_name)))
     end
 
     it 'is idempotent: a replayed callback for an existing email is a no-op' do
@@ -34,12 +57,34 @@ RSpec.describe ProvisionScreenedAccountJob do
   describe 'denied' do
     let(:payload) { { 'decision' => 'denied', 'correlation_id' => 'User:1', 'account' => account } }
 
-    it 'sends the "unable to accept" email' do
-      mail = double('mail')
-      expect(UserMailer).to receive(:account_creation_denied).with('Jane@UCSF.edu').and_return(mail)
-      expect(mail).to receive(:deliver_now)
+    context 'by default (denied applicants are sent nothing)' do
+      it 'sends no email' do
+        expect(UserMailer).not_to receive(:account_creation_denied)
 
-      described_class.new.run(payload)
+        expect { described_class.new.run(payload) }.not_to raise_error
+      end
+    end
+
+    context 'when the denial email is switched on' do
+      before { AppConfig.create!(key: AppConfig::SEND_SIGNUP_DENIAL_EMAIL, value: '1') }
+
+      it 'sends the "unable to accept" email' do
+        mail = double('mail')
+        expect(UserMailer).to receive(:account_creation_denied).with('Jane@UCSF.edu').and_return(mail)
+        expect(mail).to receive(:deliver_now!)
+
+        described_class.new.run(payload)
+      end
+
+      it 'alerts and raises when the email cannot be sent, instead of losing it silently' do
+        mail = double('mail')
+        allow(UserMailer).to receive(:account_creation_denied).and_return(mail)
+        allow(mail).to receive(:deliver_now!).and_raise(StandardError, 'MessageRejected')
+        expect(ExportControl::ScreeningAudit).to receive(:report_failure)
+          .with('signup.denial_email_failed', hash_including(:error))
+
+        expect { described_class.new.run(payload) }.to raise_error(StandardError, 'MessageRejected')
+      end
     end
   end
 
@@ -85,7 +130,6 @@ RSpec.describe ProvisionScreenedAccountJob do
     it 'deletes any stored request when the applicant is denied' do
       CzidTransferRequest.create!(email: 'jane@ucsf.edu', wants_czid_data_transferred: true,
                                   czid_account_email: 'jane@czid.org')
-      allow(UserMailer).to receive(:account_creation_denied).and_return(double('mail', deliver_now: true))
 
       described_class.new.run('decision' => 'denied', 'correlation_id' => 'Signup:x', 'account' => account)
 
@@ -94,15 +138,15 @@ RSpec.describe ProvisionScreenedAccountJob do
   end
 
   # SMP-1902 -- backstop: if provisioning hits a User validation error (e.g. a blocked email domain that
-  # slipped past the signup-form check), the job must deny (send a decision email) rather than raise and
-  # leave the applicant in limbo with no email.
+  # slipped past the signup-form check), the job must take the DENY path rather than raise and leave the
+  # applicant in limbo. (Whether that sends an email is governed by SEND_SIGNUP_DENIAL_EMAIL, off by default.)
   describe 'a validation error at provisioning' do
     let(:approved) do
       { 'decision' => 'approved', 'correlation_id' => 'Signup:x',
-        'account' => { 'email' => 'blocked@gmail.com', 'name' => 'Blocked User' } }
+        'account' => { 'email' => 'blocked@gmail.com', 'name' => 'Blocked User' }, }
     end
 
-    it 'denies (sends the decision email) instead of raising' do
+    it 'denies instead of raising' do
       allow(User).to receive(:exists?).with(email: 'blocked@gmail.com').and_return(false)
       invalid = User.new(email: 'blocked@gmail.com')
       invalid.errors.add(:email, 'cannot be a personal or temporary email address')
@@ -110,8 +154,8 @@ RSpec.describe ProvisionScreenedAccountJob do
       allow(factory).to receive(:call).and_raise(ActiveRecord::RecordInvalid.new(invalid))
       allow(UserFactoryService).to receive(:new).and_return(factory)
 
-      expect(UserMailer).to receive(:account_creation_denied)
-        .with('blocked@gmail.com').and_return(double('mail', deliver_now: true))
+      expect_any_instance_of(described_class).to receive(:deny).and_call_original
+      expect(UserMailer).not_to receive(:account_creation_denied)
 
       expect { described_class.new.run(approved) }.not_to raise_error
     end

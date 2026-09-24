@@ -94,6 +94,11 @@ class AppConfig < ApplicationRecord
   # go-live switch (and rollback) is a config row, not a code deploy. Go-live is counsel + vendor gated
   # (CZID-335) and additionally requires ENABLE_DESCARTES_SCREENING for Descartes to place holds.
   EXPORT_CONTROL_SCREENING_PROVIDER = 'export_control_screening_provider'.freeze
+  # Whether a DENIED sign-up applicant is sent the "unable to accept" email (UserMailer.account_creation_denied).
+  # OFF by default: current instruction (2026-09-24) is that a denied applicant is sent NOTHING. Absent or
+  # anything but "1" => no email; the denial is still recorded and the applicant's CZ ID transfer request is
+  # still discarded. Turning this on also requires working outbound mail in the environment.
+  SEND_SIGNUP_DENIAL_EMAIL = 'send_signup_denial_email'.freeze
   # When this is "1", all requests other than the landing page will be re-directed to the maintenance page.
   DISABLE_SITE_FOR_MAINTENANCE = 'disable_site_for_maintenance'.freeze
   # When this is "1", the Video Tour banner on the landing page will be shown.
