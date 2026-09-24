@@ -1,9 +1,20 @@
 {{- if .Values.blueGreen.analysis.enabled -}}
 # Smoke gate for the blueGreen promotion. Job-based first cut (Prometheus-backed
 # metrics later, #326): curl the PREVIEW color's /health_check (+ any smoke.paths)
-# and require HTTP 200. A failure aborts the rollout -> the active color is untouched.
+# and require an accepted status. A failure aborts the rollout -> the active color is untouched.
 # The preview Service name is known at render time, so we target it directly rather
 # than threading an Argo Rollouts arg.
+#
+# The metric takes ONE measurement (no count/interval), so failureLimit MUST be 0: Argo only
+# fails an analysis when failures EXCEED failureLimit, and with a single measurement any
+# failureLimit >= 1 can never be exceeded -- the gate silently passed every build. Retries for a
+# transient boot blip happen INSIDE the Job instead (smoke.failureLimit extra attempts per path).
+#
+# Probe as a host the app permits. The bare preview Service name is not in config.hosts, so
+# host-authorization 403s every path except /health_check (which is exempt). Same host rule
+# and accepted statuses as the pingpong PreSync gate (smoke-hook.yaml), so both strategies
+# judge a build identically: 200 or a clean redirect (an authed path -> login) passes.
+{{- $smokeHost := .Values.smoke.host | default (.Values.ingress).host }}
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
@@ -13,8 +24,7 @@ metadata:
 spec:
   metrics:
     - name: smoke
-      # Try up to failureLimit+1 times before declaring the analysis failed.
-      failureLimit: {{ .Values.smoke.failureLimit }}
+      failureLimit: 0
       provider:
         job:
           spec:
@@ -29,19 +39,34 @@ spec:
                     env:
                       - name: HOST
                         value: {{ printf "%s-preview:%d" (include "seqtoid-web.fullname" .) (int .Values.service.port) | quote }}
+                      - name: SMOKE_HOST
+                        value: {{ $smokeHost | default "" | quote }}
                       - name: PATHS
                         value: {{ .Values.smoke.paths | join " " | quote }}
+                      - name: ACCEPT
+                        value: {{ .Values.smoke.gate.acceptStatuses | quote }}
                       - name: TIMEOUT
                         value: {{ .Values.smoke.timeoutSeconds | quote }}
+                      - name: ATTEMPTS
+                        value: {{ add1 (int .Values.smoke.failureLimit) | quote }}
                     command:
                       - sh
                       - -c
                       - |
                         set -eu
                         for p in $PATHS; do
-                          echo "smoke: GET http://$HOST$p"
-                          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "http://$HOST$p")
-                          [ "$code" = "200" ] || { echo "FAIL $p -> $code"; exit 1; }
+                          n=1
+                          while :; do
+                            echo "smoke: GET http://$HOST$p (Host: ${SMOKE_HOST:-<none>}, attempt $n/$ATTEMPTS)"
+                            if [ -n "$SMOKE_HOST" ]; then
+                              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" -H "Host: $SMOKE_HOST" "http://$HOST$p" || true)
+                            else
+                              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "http://$HOST$p" || true)
+                            fi
+                            case " $ACCEPT " in *" $code "*) echo "ok $p -> $code"; break;; esac
+                            if [ "$n" -ge "$ATTEMPTS" ]; then echo "FAIL $p -> $code"; exit 1; fi
+                            n=$((n + 1)); sleep 5
+                          done
                         done
                         echo "smoke OK"
 {{- end }}
