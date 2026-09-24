@@ -20,7 +20,7 @@ RSpec.describe Auth0UserManagementHelper do
     it "creates a regular user with empty role metadata and assigns NO Auth0 role" do
       expect(client).to receive(:create_user).with(
         Auth0UserManagementHelper::AUTH0_CONNECTION_NAME,
-        hash_including(email: "r@x.co", name: "Reg", app_metadata: { roles: [] })
+        hash_including(email: "r@x.co", name: "Reg", app_metadata: { roles: [] }, verify_email: false)
       ).and_return("user_id" => "u1")
       expect(client).not_to receive(:get_roles)
       expect(client).not_to receive(:add_user_roles)
@@ -32,7 +32,7 @@ RSpec.describe Auth0UserManagementHelper do
     it "creates an admin user with admin role metadata and assigns the Auth0 Admin role" do
       expect(client).to receive(:create_user).with(
         Auth0UserManagementHelper::AUTH0_CONNECTION_NAME,
-        hash_including(app_metadata: { roles: ["admin"] })
+        hash_including(app_metadata: { roles: ["admin"] }, verify_email: false)
       ).and_return("user_id" => "u2")
       allow(client).to receive(:get_roles).and_return([{ "name" => "Admin", "id" => "role-admin" }])
       expect(client).to receive(:add_user_roles).with("u2", ["role-admin"])

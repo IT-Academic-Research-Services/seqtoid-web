@@ -13,6 +13,15 @@ module Auth0UserManagementHelper
       name: name,
       password: UsersHelper.generate_random_password,
       app_metadata: { roles: role == User::ROLE_ADMIN ? ['admin'] : [] },
+      # Do NOT let Auth0 send its automatic "Verify your email" message. Its link is one-click: the first
+      # visit verifies and consumes it. Institutional mail scanners (Microsoft Safe Links and similar) open
+      # every link in an inbound message to inspect it, so the scanner spends the link seconds after
+      # delivery and the person who clicks it later sees "Your email could not be verified". Observed on
+      # env-prod 2026-09-24 for a ucsf.edu applicant: email_verified flipped 7s after the user was created.
+      # New users are activated through Auth0's change-password email instead (UserFactoryService), whose
+      # link opens a form and is only consumed when a password is submitted -- a scanner's visit cannot
+      # burn it -- and setting the password through that email proves the user controls the inbox.
+      verify_email: false,
     }
     # See:
     # - https://auth0.com/docs/api/management/v2#!/Users/post_users
