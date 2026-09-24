@@ -26,6 +26,8 @@ RSpec.describe GraphqlController, type: :request do
     email_message = instance_double(ActionMailer::MessageDelivery)
     allow(email_message).to receive(:deliver_now)
     allow(UserMailer).to receive(:account_activation).and_return(email_message)
+    # A self-registered account (no project) is activated by Auth0's change-password email.
+    allow(Auth0UserManagementHelper).to receive(:send_auth0_password_reset_email)
   end
 
   describe ".resolve" do
@@ -165,6 +167,13 @@ RSpec.describe GraphqlController, type: :request do
             expect(result).to include_json(
               { email: fake_email }
             )
+          end
+
+          it "has Auth0 send the activation email, not our mailer" do
+            subject
+
+            expect(Auth0UserManagementHelper).to have_received(:send_auth0_password_reset_email).with(fake_email)
+            expect(UserMailer).not_to have_received(:account_activation)
           end
         end
 
