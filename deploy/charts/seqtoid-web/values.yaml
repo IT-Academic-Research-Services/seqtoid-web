@@ -78,6 +78,13 @@ serviceAccount:
 bulkDownload:
   rbac:
     create: false
+  # The tar Job's own least-privilege IRSA identity (templates/bulk-download-job-serviceaccount.yaml).
+  # name must match the app's BULK_DOWNLOAD_JOB_SA (default seqtoid-web-bulk-download). Off by default:
+  # dev gets this SA from Terraform, previews run the Job as the app SA (BULK_DOWNLOAD_JOB_SA=seqtoid-web).
+  jobServiceAccount:
+    create: false
+    name: seqtoid-web-bulk-download
+    roleArn: ""
 
 # Secrets: least-change path is Chamber-in-container (the image ENTRYPOINT already
 # runs `chamber exec idseq-<env>-web`). ESO is a later swap (#325). When chamber is
