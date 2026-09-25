@@ -289,6 +289,28 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    context "with a referenced-only project (membership: false)" do
+      # A project the user merely FK-references (e.g. a sample uploaded into a
+      # project the user left). Created owner-less to satisfy the FK, but the user
+      # is NOT added as a member -- they had no access on source.
+      def referenced_project_bundle
+        write_bundle(tables: {
+                       user: { id: 999, email: "ref@example.com", name: "Ref User", role: 0,
+                               sign_in_count: 1, profile_form_version: 0, created_at: now, updated_at: now, },
+                       projects: [{ id: PROJECT_ID, creator_id: OWNER_SRC_USER_ID, name: "Referenced Project",
+                                    days_to_keep_sample_private: 365, is_owner: false, membership: false,
+                                    created_at: now, updated_at: now, }],
+                     })
+      end
+
+      it "creates the project owner-less but does not add the user as a member" do
+        result = described_class.call(input_dir: referenced_project_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).creator_id).to be_nil
+        expect(User.find(result[:user_id]).projects.map(&:id)).not_to include(PROJECT_ID)
+      end
+    end
+
     context "when neither target_user_id nor create_user is given" do
       it "fails validation instead of silently creating a user" do
         result = described_class.call(input_dir: write_bundle)
