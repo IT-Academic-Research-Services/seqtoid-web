@@ -77,22 +77,32 @@ class UserFactoryService
     raise
   end
 
+  # Account activation ("set your password").
+  #
+  # A new account with no project -- a screened sign-up -- is activated by AUTH0's own change-password
+  # email rather than by our mailer:
+  #   - Auth0 sends it from the tenant's email provider, so activation does not depend on this
+  #     environment's outbound mail setup; and
+  #   - it survives institutional mail scanners, which open every link in an inbound message to inspect
+  #     it. The change-password link only loads a form and is consumed when a password is SUBMITTED, so a
+  #     scanner's visit cannot spend it. (Auth0's one-click "verify your email" link is consumed by the
+  #     visit itself, which is why create_auth0_user switches that email off.)
+  # Verified on env-prod 2026-09-24: a ucsf.edu user set a password through this exact email.
+  #
+  # The project-invite path keeps its own UserMailer template because that email names the inviter and
+  # the project, which Auth0's generic template cannot carry.
   def send_activation_email
+    return send_auth0_activation_email if project_id.nil?
+
     reset_response = Auth0UserManagementHelper.get_auth0_password_reset_token(auth0_user_id)
     reset_url = reset_response["ticket"]
 
-    # Send them an invitation and account activation email.
-    email_message = if project_id
-                      UserMailer.new_auth0_user_new_project(
-                        current_user,
-                        new_user.email,
-                        project_id,
-                        reset_url
-                      )
-                    else
-                      UserMailer.account_activation(new_user.email, reset_url)
-                    end
-    email_message.deliver_now
+    UserMailer.new_auth0_user_new_project(
+      current_user,
+      new_user.email,
+      project_id,
+      reset_url
+    ).deliver_now
   rescue Net::SMTPAuthenticationError => err
     LogUtil.log_error(
       "Error when sending account notification email to user.",
@@ -101,5 +111,19 @@ class UserFactoryService
     )
     # re-raise error for awareness to callers
     raise
+  end
+
+  def send_auth0_activation_email
+    Auth0UserManagementHelper.send_auth0_password_reset_email(new_user.email)
+  rescue StandardError => err
+    # The account already exists at this point. Re-raising would not help: a retry of the provisioning job
+    # finds the existing user and stops, so the email would never be resent -- and it would skip the rest
+    # of provisioning. Alert instead and let provisioning finish; the user can still request a password
+    # email from the login page, and the alert tells us to follow up. Log the user id, not the address.
+    LogUtil.log_error(
+      "Auth0 activation email failed for new user",
+      exception: err,
+      user_id: new_user.id
+    )
   end
 end
