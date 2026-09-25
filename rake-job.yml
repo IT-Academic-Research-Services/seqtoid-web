@@ -1,0 +1,60 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rake-task-job
+  namespace: seqtoid-pr-469
+  #namespace: seqtoid-dev
+spec:
+  backoffLimit: 2 # 3
+  #completions: 1
+  #parallelism: 1
+  ttlSecondsAfterFinished: 36000
+  #ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
+        seqtoid.io/pool: preview
+      restartPolicy: Never
+      #serviceAccountName: seqtoid-web-provisioner
+      serviceAccountName: seqtoid-web
+      containers:
+        - name: rails-app
+          #image: "491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web-preview:sha-a11bf5c5"
+          #image: "491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web-preview:sha-f8b0bea0"
+          image: "491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web-preview:sha-217630b8"
+          command:
+            - chamber
+            - exec
+            #- idseq-dev-web
+            - idseq-sandbox-pr-469-web
+            - "--"
+            - bundle
+            - exec
+            - rake
+            - update_pathogen_list
+            #- "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
+          env:
+            - name: RAILS_ENV
+              value: "development"
+            - name: ENVIRONMENT
+              value: "dev"
+            - name: RAILS_LOG_TO_STDOUT
+              value: "yes"
+            #AWS_ROLE_ARN=arn:aws:iam::491013321714:role/seqtoid-web-preview
+            #AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
+            - name: DRY_RUN
+              value: "false"
+            - name: AWS_REGION
+              value: "us-west-2"
+            #- name: AWS_STS_REGIONAL_ENDPOINTS
+            #  value: regional
+            - name: AWS_DEFAULT_REGION
+              value: "us-west-2"
+            - name: AWS_ACCOUNT_ID
+              value: "491013321714"
+            - name: SKIP_RESQUE_SCHEDULE
+              value: "1"
+            #- name: S3_DATABASE_BUCKET
+            #  value: "seqtoid-public-references"
