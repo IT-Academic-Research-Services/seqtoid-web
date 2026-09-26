@@ -88,7 +88,7 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
 
     it "logs a message when the bulk response reports partial errors" do
       allow(es_client).to receive(:bulk).and_return("errors" => true, "items" => [{ "update" => { "status" => 404 } }])
-      expect(LogUtil).to receive(:log_message).with(/last_read_at failed/, hash_including(:details))
+      expect(LogUtil).to receive(:log_message).with(/last_read_at failed/, hash_including(background_id: 5, errors: true, items: [{ "update" => { "status" => 404 } }]))
 
       described_class.update_last_read_at(5, [11])
     end

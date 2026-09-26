@@ -43,6 +43,13 @@ jest.mock("~/api", () => ({
   getWorkflowRuns: jest.fn(),
 }));
 
+const mockCaptureMessage = jest.fn();
+const mockCaptureException = jest.fn();
+jest.mock("@sentry/browser", () => ({
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+}));
+
 const mocked = (fn: unknown) => fn as jest.Mock;
 
 let consoleErrorSpy: jest.SpyInstance;
@@ -117,6 +124,9 @@ describe("getDiscoveryDimensions", () => {
       sampleDimensions: [{ dimension: "host" }],
       projectDimensions: [{ dimension: "tissue" }],
     });
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it("skips project dimensions on a snapshot share and leaves them undefined", async () => {
@@ -132,6 +142,9 @@ describe("getDiscoveryDimensions", () => {
       sampleDimensions: ["s"],
       projectDimensions: undefined,
     });
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it("logs and returns an empty object when the dimension fetch rejects", async () => {
@@ -142,6 +155,8 @@ describe("getDiscoveryDimensions", () => {
     });
 
     expect(result).toEqual({});
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });
@@ -153,6 +168,9 @@ describe("getDiscoveryStats", () => {
     await expect(
       getDiscoveryStats({ domain: DISCOVERY_DOMAIN_PUBLIC }),
     ).resolves.toEqual({ sampleStats: { countByWorkflow: { amr: 3 } } });
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it("logs and returns an empty object on failure", async () => {
@@ -161,6 +179,8 @@ describe("getDiscoveryStats", () => {
     await expect(
       getDiscoveryStats({ domain: DISCOVERY_DOMAIN_PUBLIC }),
     ).resolves.toEqual({});
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });
@@ -172,6 +192,9 @@ describe("getDiscoveryLocations", () => {
     await expect(
       getDiscoveryLocations({ domain: DISCOVERY_DOMAIN_MY_DATA }),
     ).resolves.toEqual({ 1: { name: "CA" } });
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it("logs and returns an empty object when the locations fetch rejects", async () => {
@@ -180,6 +203,8 @@ describe("getDiscoveryLocations", () => {
     await expect(
       getDiscoveryLocations({ domain: DISCOVERY_DOMAIN_MY_DATA }),
     ).resolves.toEqual({});
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });

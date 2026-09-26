@@ -18,8 +18,8 @@ require "zlib"
 # altered (no destructive REPLACE INTO). Per table:
 #   * host_genomes, alignment_configs -- must PRE-EXIST (created by db/data
 #     migrations); matched by name, import fails loudly listing any missing ones.
-#   * metadata_fields -- CORE fields are created if absent; CUSTOM fields are
-#     reused if the name exists, else skipped and their metadata rows dropped.
+#   * metadata_fields -- created if absent (core and custom alike), matched by
+#     name; an existing name is reused as-is. No sample metadata is dropped.
 #   * locations -- find_or_created by composite natural key (dynamic data).
 #
 # The ONE exception is the user itself: the user is (re)created on the new
@@ -122,6 +122,7 @@ class UserDataImportService
       stream_user_settings
       import_projects
       import_reference_tables
+      import_metadata_field_associations
       stream_samples
       stream_input_files
       stream_metadata
@@ -230,8 +231,6 @@ class UserDataImportService
   def reconcile_counts!
     mismatches = @expected_counts.filter_map do |table, expected|
       actual = @stats[table.to_sym] + @stats[:"#{table}_skipped"]
-      # Metadata intentionally dropped for a missing custom field is still accounted for.
-      actual += @stats[:metadata_dropped_custom_field] if table.to_sym == :metadata
       "#{table}: manifest=#{expected} imported=#{actual}" if actual != expected.to_i
     end
     return if mismatches.empty?
@@ -419,16 +418,19 @@ class UserDataImportService
       # keys, so a new/remapped id would orphan every transferred object.
       # Ownership (trickle, any order): creator_id is set only by the true owner
       # (is_owner); a member arriving first creates it owner-less (nil is valid --
-      # belongs_to :creator is optional), never falsely owning it. Access is via
-      # membership, so every migrant is added as a member regardless.
+      # belongs_to :creator is optional), never falsely owning it. Membership is
+      # granted unless the row is referenced-only (membership: false) -- a project
+      # merely FK-referenced by the user's data, where the user had no access on
+      # source. Old bundles lack the key (nil), so only explicit false skips it.
+      grant_membership = row[:membership] != false
       if Project.exists?(row[:id])
         project = Project.find(row[:id])
-        add_user_as_member(project)
+        add_user_as_member(project) if grant_membership
         # Only the true owner claims ownership (an earlier member left it nil).
         project.update_columns(creator_id: @new_user_id) if row[:is_owner] # rubocop:disable Rails/SkipsModelValidations
         @stats[:projects_skipped] += 1
-        @warnings << "Project '#{row[:name]}' (id: #{row[:id]}) already present; " \
-                     "added user as member#{row[:is_owner] ? ' and set as creator' : ''}"
+        @warnings << "Project '#{row[:name]}' (id: #{row[:id]}) already present" \
+                     "#{grant_membership ? '; added user as member' : ''}#{row[:is_owner] ? ' and set as creator' : ''}"
         next
       end
 
@@ -448,7 +450,7 @@ class UserDataImportService
                              updated_at: ts(row[:updated_at]),
                            })
 
-      add_user_as_member(project)
+      add_user_as_member(project) if grant_membership
 
       (row[:project_workflow_versions] || []).each do |pwv|
         insert_one(ProjectWorkflowVersion, :project_workflow_versions, {
@@ -482,32 +484,47 @@ class UserDataImportService
     @host_genome_id_map = map_existing_reference("host_genomes", HostGenome)
     @alignment_config_id_map = map_existing_reference("alignment_configs", AlignmentConfig)
 
-    # Core fields auto-create like the other reference tables; CUSTOM fields are
-    # never created -- reused only if the target already has the name, else their
-    # source id is skipped and any metadata referencing it is dropped (below).
+    # Core AND custom fields are created if absent, matched by name, so no sample
+    # metadata is ever dropped. An existing name is reused as-is (its base_type/
+    # options win); only truly-absent fields are created from the exported row.
     @metadata_field_id_map = {}
-    @skipped_metadata_field_ids = Set.new
     each_row("metadata_fields") do |row|
-      if core_field?(row)
-        rec = find_or_create_ref(MetadataField, { name: row[:name] }, :metadata_fields) { metadata_field_attrs(row) }
-        @metadata_field_id_map[row[:id]] = rec.id
-        next
-      end
-
-      existing = MetadataField.find_by(name: row[:name])
-      @stats[:metadata_fields_skipped] += 1
-      if existing
-        @metadata_field_id_map[row[:id]] = existing.id
-      else
-        @skipped_metadata_field_ids << row[:id]
-        @warnings << "Custom metadata field '#{row[:name]}' absent on target; not created (its metadata dropped)."
-      end
+      rec = find_or_create_ref(MetadataField, { name: row[:name] }, :metadata_fields) { metadata_field_attrs(row) }
+      @metadata_field_id_map[row[:id]] = rec.id
     end
 
     @location_id_map = {}
     each_row("locations") do |row|
       rec = find_or_create_ref(Location, location_natural_key(row), :locations) { location_attrs(row) }
       @location_id_map[row[:id]] = rec.id
+    end
+  end
+
+  # Rebuilds the metadata-field association join tables the export carries
+  # (field <-> project, field <-> host genome). Field/host-genome ids remap via the
+  # reference maps built above (projects keep their ids). A row whose field isn't in
+  # the bundle's metadata_fields (an inconsistent bundle) is still counted so
+  # reconcile_counts! balances against the manifest; that association is dropped.
+  def import_metadata_field_associations
+    each_row("metadata_fields_projects") do |row|
+      @stats[:metadata_fields_projects] += 1
+      field_id = @metadata_field_id_map[row[:metadata_field_id]]
+      project = field_id && Project.find_by(id: row[:project_id])
+      next unless project
+
+      field = MetadataField.find(field_id)
+      project.metadata_fields << field unless project.metadata_fields.include?(field)
+    end
+
+    each_row("host_genomes_metadata_fields") do |row|
+      @stats[:host_genomes_metadata_fields] += 1
+      field_id = @metadata_field_id_map[row[:metadata_field_id]]
+      host_genome_id = @host_genome_id_map[row[:host_genome_id]]
+      next unless field_id && host_genome_id
+
+      field = MetadataField.find(field_id)
+      host_genome = HostGenome.find(host_genome_id)
+      host_genome.metadata_fields << field unless host_genome.metadata_fields.include?(field)
     end
   end
 
@@ -546,11 +563,6 @@ class UserDataImportService
     record.save!(validate: false)
     @stats[stat_key] += 1
     record
-  end
-
-  # is_core is a 0/1 integer column; cast defensively (handles int/bool/string).
-  def core_field?(row)
-    ActiveModel::Type::Boolean.new.cast(row[:is_core])
   end
 
   def metadata_field_attrs(row)
@@ -660,11 +672,6 @@ class UserDataImportService
 
   def stream_metadata
     stream_insert("metadata", Metadatum, :metadata) do |row|
-      # Drop metadata bound to a custom field the target lacks (see import_reference_tables).
-      if @skipped_metadata_field_ids.include?(row[:metadata_field_id])
-        @stats[:metadata_dropped_custom_field] += 1
-        next nil
-      end
       {
         id: row[:id],
         sample_id: row[:sample_id],

@@ -9,6 +9,7 @@ import {
   getVisualizations,
   getWorkflowRuns,
 } from "~/api";
+import { logError } from "~/components/utils/logUtil";
 import { camelize } from "~/components/utils/objectUtil";
 import { WorkflowType } from "~/components/utils/workflows";
 import {
@@ -37,7 +38,7 @@ const getDiscoveryDimensions = async ({
   sampleIds,
 }: $TSFixMe) => {
   try {
-    const actions = [
+    const actions: Promise<any>[] = [
       getSampleDimensions({
         domain,
         filters,
@@ -54,8 +55,19 @@ const getDiscoveryDimensions = async ({
     const [sampleDimensions, projectDimensions] = await Promise.all(actions);
     return { sampleDimensions, projectDimensions };
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(error);
+    logError({
+      exception: error,
+      message:
+        "getDiscoveryDimensions(): getSampleDimensions() or getProjectDimensions() failed",
+      details: {
+        domain,
+        filters,
+        projectId,
+        snapshotShareId,
+        search,
+        sampleIds,
+      },
+    });
     return {};
   }
 };
@@ -79,8 +91,18 @@ const getDiscoveryStats = async ({
     });
     return { sampleStats };
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(error);
+    logError({
+      exception: error,
+      message: "getDiscoveryStats(): getSampleStats() failed",
+      details: {
+        domain,
+        filters,
+        projectId,
+        snapshotShareId,
+        search,
+        sampleIds,
+      },
+    });
     return {};
   }
 };
@@ -447,8 +469,17 @@ const getDiscoveryLocations = async ({
       search,
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(error);
+    logError({
+      exception: error,
+      message: "getDiscoveryLocations(): getSamplesLocations() failed",
+      details: {
+        domain,
+        filters,
+        projectId,
+        snapshotShareId,
+        search,
+      },
+    });
     return {};
   }
 };

@@ -212,6 +212,42 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    context "metadata-field association join tables" do
+      METADATA_FIELD_ID = 9_920_001
+
+      def bundle_with_field_associations(field_overrides = {})
+        field = { id: METADATA_FIELD_ID, name: "assoc_core_field", base_type: 0, is_core: 1, created_at: now, updated_at: now }
+        tables = bundle_tables.merge(
+          metadata_fields: [field.merge(field_overrides)],
+          metadata_fields_projects: [{ project_id: PROJECT_ID, metadata_field_id: METADATA_FIELD_ID }],
+          host_genomes_metadata_fields: [{ host_genome_id: host_genome.id, metadata_field_id: METADATA_FIELD_ID }]
+        )
+        write_bundle(tables: tables)
+      end
+
+      it "rebuilds the field <-> project and field <-> host genome associations" do
+        described_class.call(input_dir: bundle_with_field_associations, create_user: true)
+
+        field = MetadataField.find_by(name: "assoc_core_field")
+        expect(Project.find(PROJECT_ID).metadata_fields).to include(field)
+        expect(HostGenome.find(host_genome.id).metadata_fields).to include(field)
+      end
+
+      it "drops (but still reconciles) an association whose field is absent from the bundle" do
+        # Association points at a metadata_field id with no metadata_fields row, so it
+        # never maps -- dropped, but counted so reconcile balances. Independent of
+        # whether custom fields get created on import.
+        tables = bundle_tables.merge(
+          metadata_fields_projects: [{ project_id: PROJECT_ID, metadata_field_id: 9_920_999 }],
+          host_genomes_metadata_fields: [{ host_genome_id: host_genome.id, metadata_field_id: 9_920_999 }]
+        )
+        result = described_class.call(input_dir: write_bundle(tables: tables), create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).metadata_fields.pluck(:id)).not_to include(9_920_999)
+      end
+    end
+
     context "when importing into an existing user (target_user_id)" do
       let!(:target_user) { create(:user, email: "target@example.com") }
 
@@ -286,6 +322,28 @@ RSpec.describe UserDataImportService do
 
         expect(Project.find(PROJECT_ID).creator_id).to eq(owner[:user_id])
         expect(User.find(member[:user_id]).projects.map(&:id)).to include(PROJECT_ID)
+      end
+    end
+
+    context "with a referenced-only project (membership: false)" do
+      # A project the user merely FK-references (e.g. a sample uploaded into a
+      # project the user left). Created owner-less to satisfy the FK, but the user
+      # is NOT added as a member -- they had no access on source.
+      def referenced_project_bundle
+        write_bundle(tables: {
+                       user: { id: 999, email: "ref@example.com", name: "Ref User", role: 0,
+                               sign_in_count: 1, profile_form_version: 0, created_at: now, updated_at: now, },
+                       projects: [{ id: PROJECT_ID, creator_id: OWNER_SRC_USER_ID, name: "Referenced Project",
+                                    days_to_keep_sample_private: 365, is_owner: false, membership: false,
+                                    created_at: now, updated_at: now, }],
+                     })
+      end
+
+      it "creates the project owner-less but does not add the user as a member" do
+        result = described_class.call(input_dir: referenced_project_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).creator_id).to be_nil
+        expect(User.find(result[:user_id]).projects.map(&:id)).not_to include(PROJECT_ID)
       end
     end
 
@@ -458,7 +516,7 @@ RSpec.describe UserDataImportService do
         expect(Location.where(name: "Oakland").count).to eq(1)
       end
 
-      # metadata_fields: core auto-creates; custom is reused-if-present, else its metadata is dropped.
+      # metadata_fields: core and custom both auto-create if absent; an existing name is reused.
       def field_bundle(field_id:, field_name:, is_core:)
         t = bundle_tables
         t[:metadata_fields] = [{ id: field_id, name: field_name, is_core: is_core, base_type: 0, created_at: now, updated_at: now }]
@@ -477,18 +535,18 @@ RSpec.describe UserDataImportService do
         expect(Metadatum.find(9_990_041).metadata_field_id).to eq(existing.id)
       end
 
-      it "does NOT create a custom metadata field absent on the target and drops its metadata" do
+      it "auto-creates a missing CUSTOM metadata field and keeps its metadata" do
         t = field_bundle(field_id: 9_990_042, field_name: "custom_absent", is_core: 0)
 
         result = nil
         expect do
           result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
-        end.not_to(change { MetadataField.where(name: "custom_absent").count })
+        end.to change { MetadataField.where(name: "custom_absent").count }.by(1)
 
         expect(result[:success]).to be(true)
-        expect(MetadataField.exists?(name: "custom_absent")).to be(false)
-        expect(Metadatum.exists?(9_990_043)).to be(false) # metadata row dropped
-        expect(result[:stats][:metadata_dropped_custom_field]).to eq(1)
+        new_field = MetadataField.find_by(name: "custom_absent")
+        expect(new_field.is_core).to eq(0) # created as a custom (non-core) field
+        expect(Metadatum.find(9_990_043).metadata_field_id).to eq(new_field.id) # metadata kept, not dropped
       end
 
       it "auto-creates a missing CORE metadata field and keeps its metadata" do

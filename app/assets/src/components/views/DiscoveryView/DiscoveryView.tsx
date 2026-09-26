@@ -2639,10 +2639,7 @@ export class DiscoveryView extends React.Component<
                   : { count: filteredProjectCount }
               }
               sampleDimensions={computedSampleDimensions}
-              sampleStats={{
-                ...filteredSampleStats,
-                count: filteredSampleStats.count,
-              }}
+              sampleStats={filteredSampleStats}
               project={
                 !snapshotShareId
                   ? project
