@@ -150,7 +150,7 @@ export const PrivacyDropdownItem = (
         href="/privacy"
         aria-label="View the SeqtoID privacy notice"
       >
-        Privacy Policy
+        Privacy Notice
       </a>
     }
   />
