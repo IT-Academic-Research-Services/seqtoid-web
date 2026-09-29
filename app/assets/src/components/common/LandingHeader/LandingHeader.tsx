@@ -183,7 +183,7 @@ export const LandingHeader = ({
                       aria-label="View the SeqtoID privacy notice"
                       data-testid="home-mobile-menu-privacy"
                     >
-                      Privacy Policy
+                      Privacy Notice
                     </a>
                   </>
                 ) : (

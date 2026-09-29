@@ -69,6 +69,14 @@ describe("Header showBlank / showLogOut short-circuits", () => {
     expect(document.querySelector('a[href="/"]')).toBeNull();
   });
 
+  it("wraps the blank header's logo in a link when logoHref is set", () => {
+    renderHeader({ showBlank: true, logoHref: "/" });
+    const link = document.querySelector('a[href="/"]');
+    expect(link).not.toBeNull();
+    // The logo is inside the link.
+    expect(link?.querySelector("img")).toBeTruthy();
+  });
+
   it("prefers the blank header over the log-out header when both flags are set", () => {
     renderHeader({ showBlank: true, showLogOut: true });
     expect(screen.queryByText("Log Out")).toBeNull();

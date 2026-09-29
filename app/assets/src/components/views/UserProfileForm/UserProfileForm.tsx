@@ -211,7 +211,7 @@ export function UserProfileForm() {
         />
         <div className={cs["submit-button"]}>{submitButton()}</div>
         <div className={cs.linkContainer}>
-          You can view our Privacy Policy{" "}
+          You can view our Privacy Notice{" "}
           <Link
             target="_blank"
             rel="noopener"

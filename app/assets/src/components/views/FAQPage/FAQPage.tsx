@@ -19,6 +19,58 @@ export class FAQPage extends React.Component {
         <Accordion
           className={cs.question}
           header={
+            <h3>Can I register with a free or personal email address?</h3>
+          }
+        >
+          <p>
+            SeqtoID requires an organizational email address. You cannot
+            register using free/personal email services (Gmail, Yahoo, etc.).
+            However, if your CZ ID account previously used a free/personal email
+            address, that does not prevent your eligible CZ ID data from being
+            migrated. You will need to register for SeqtoID with an eligible
+            organizational email address and request the transfer during
+            registration.
+          </p>
+        </Accordion>
+        <Accordion
+          className={cs.question}
+          header={
+            <h3>How do I migrate my existing CZ ID data to SeqtoID?</h3>
+          }
+        >
+          <List
+            listItems={[
+              <React.Fragment key={nanoid()}>
+                You request migration during registration by choosing to
+                transfer your CZ ID data and entering the email address on your
+                CZ ID account.
+              </React.Fragment>,
+              <React.Fragment key={nanoid()}>
+                <b>What is eligible:</b> Report Data from your CZ ID account—the
+                reports and projects produced when your uploaded sequencing data
+                was processed—can be migrated to SeqtoID.
+              </React.Fragment>,
+              <React.Fragment key={nanoid()}>
+                <b>What is not eligible:</b> Your original sequencing files (raw
+                FASTQ uploads) are not migrated. To reprocess a migrated sample,
+                you will need to re-upload the original sequencing files.
+              </React.Fragment>,
+              <React.Fragment key={nanoid()}>
+                Migration requests can only be made during the migration request
+                window, from October 1 to December 1, 2026.
+              </React.Fragment>,
+              <React.Fragment key={nanoid()}>
+                If you have more than one CZ ID account, you must first request
+                that they be consolidated at{" "}
+                <a href="https://czid.org">CZID.org</a> before registering for
+                SeqtoID and requesting migration.
+              </React.Fragment>,
+            ]}
+          />
+        </Accordion>
+        <Accordion
+          className={cs.question}
+          header={
             <h3>Does SeqtoID own any of the data I upload to the tool?</h3>
           }
         >
@@ -403,7 +455,7 @@ export class FAQPage extends React.Component {
         >
           <p>
             The best place to start is SeqtoID’s{" "}
-            <a href="/privacy">Privacy Policy</a> and{" "}
+            <a href="/privacy">Privacy Notice</a> and{" "}
             <a href="/terms">Terms of Use</a>. If you have additional questions
             about our infrastructure, application, and physical security, or our
             security governance and policies, please feel free to reach out to

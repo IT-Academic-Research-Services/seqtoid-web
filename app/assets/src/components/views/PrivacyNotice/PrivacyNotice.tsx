@@ -36,7 +36,7 @@ export const PrivacyNotice = () => {
       <LandingHeader legalNav />
       <NarrowContainer size="small" className="privacy-notice-page">
         <div className="privacy-notice-legal-body">
-        <h1 className="privacy-notice-title">Privacy Policy</h1>
+        <h1 className="privacy-notice-title">Privacy Notice</h1>
         <p className="privacy-notice-updated">
           Last Updated: {LAST_UPDATED_DATE} &middot;{" "}
           <a href="/terms_changes">See Recent Changes</a>
@@ -114,7 +114,7 @@ export const PrivacyNotice = () => {
               </tr>
               <tr>
                 <td><strong>Visitor Data</strong></td>
-                <td>Data about visitors (non-Users) to SeqtoID pages, and includes basic analytics information (ex: links clicked).</td>
+                <td>Data about visitors (non-Users) to SeqtoID pages, such as czid.org and includes basic analytics information (ex: links clicked).</td>
                 <td>See above.</td>
                 <td>See above.</td>
                 <td>This data is not personally identifiable.</td>
@@ -190,7 +190,7 @@ export const PrivacyNotice = () => {
 
         <p>Once Raw Sample Data has been put through the Data Pipeline, the Report Data that is produced no longer includes any human genetic sequence data, is not personal data, and does not, on its own, permit association with any specific individual. If you are able to find human sequence data in any Reports in SeqtoID, please let us know at <a href="mailto:seqtoid-support@ucsf.edu">seqtoid-support@ucsf.edu</a> and we will address it.</p>
 
-        <p>UCSF acts as steward of processed outputs (Report Data) required for platform operation, quality assurance, research, and public-health use. Users retain ownership of their underlying Upload Data. UCSF will delete Raw Sample Data (e.g., FASTQ) after processing and will not retain access to such data. Users retain the right to publish or otherwise use their data.</p>
+        <p>Users retain ownership of their underlying Upload Data. UCSF will delete Raw Sample Data (e.g., FASTQ) after processing and will not retain access to such data. Users retain the right to publish or otherwise use their data as described in our Terms of Use.</p>
 
         <h3>Who can see Report Data?</h3>
 
@@ -214,7 +214,7 @@ export const PrivacyNotice = () => {
 
         <h3>How We Use That Data</h3>
 
-        <p>Visitor Data and User Data (including any personal data in the Visitor Data or User Data) is used for the following business purposes:</p>
+        <p>Visitor Data and User Data (including any personal data in the Visitor Data and User Data) is used for the following business purposes:</p>
         <ul>
           <li>To identify you, create a profile for Users, and verify User&apos;s identity so you can log in to and use SeqtoID.</li>
           <li>To provide you with notices about your account and updates about SeqtoID.</li>
@@ -285,7 +285,7 @@ export const PrivacyNotice = () => {
 
         <h2>12. Changes to This Privacy Notice.</h2>
 
-        <p>This Privacy Notice was last updated on June 4, 2026. We may update this Privacy Notice from time to time and will provide you with notice of any material updates before they become effective.</p>
+        <p>This Privacy Notice was last updated on the &quot;Last Updated&quot; date. We may update this Privacy Notice from time to time and will provide you with notice of any material updates before they become effective.</p>
       </div>
       </NarrowContainer>
       <Footer />

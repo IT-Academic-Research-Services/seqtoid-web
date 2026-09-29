@@ -30,7 +30,7 @@ class TermsAgreement extends React.Component<TermsAgreementProps> {
               </ExternalLink>
               {" and "}
               <ExternalLink href="/privacy">
-                Privacy Policy
+                Privacy Notice
               </ExternalLink>
               .
             </span>

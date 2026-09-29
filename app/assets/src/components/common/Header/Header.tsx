@@ -15,6 +15,7 @@ interface HeaderProps {
   emergencyBannerMessage: string;
   disableNavigation: boolean;
   showBlank: boolean;
+  logoHref?: string;
   showLogOut: boolean;
   userSignedIn: boolean;
   email: string;
@@ -26,6 +27,7 @@ const Header = ({
   adminUser,
   disableNavigation,
   showBlank,
+  logoHref,
   showLogOut,
   userSignedIn,
   emergencyBannerMessage,
@@ -37,7 +39,13 @@ const Header = ({
     return (
       <div className={cs.header}>
         <div className={cs.logo}>
-          <SeqtoIDLogoReversed className={cs.icon} />
+          {logoHref ? (
+            <a href={logoHref}>
+              <SeqtoIDLogoReversed className={cs.icon} />
+            </a>
+          ) : (
+            <SeqtoIDLogoReversed className={cs.icon} />
+          )}
         </div>
       </div>
     );
