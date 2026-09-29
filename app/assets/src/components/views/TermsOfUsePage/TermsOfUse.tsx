@@ -14,8 +14,8 @@ const TERMS_STYLES = `
   .terms-notice-legal-body p.tcl2 { margin-left: 4.5rem; padding-left: 2rem; text-indent: -2rem; }
   .terms-notice-legal-body p.tcl3 { margin-left: 7rem; padding-left: 2rem; text-indent: -2rem; }
   .terms-notice-legal-body h3.tcl1 { margin-left: 2rem; }
-  .terms-notice-legal-body ol { margin-left: 2rem; }
-  .terms-notice-legal-body ul, .terms-notice-legal-body ol { padding-left: 24px; margin-bottom: 16px; }
+  .terms-notice-legal-body ol { margin-left: 4.5rem; padding-left: 2rem; margin-bottom: 16px; }
+  .terms-notice-legal-body ul { padding-left: 24px; margin-bottom: 16px; }
   .terms-notice-legal-body li { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 8px; }
   .terms-notice-title { font-size: 28px; font-weight: 700; color: #052049; margin-bottom: 8px; }
   .terms-notice-updated { font-size: 13px; color: #6b7280; margin: 0 0 24px; }
