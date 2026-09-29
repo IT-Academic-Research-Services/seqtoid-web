@@ -34,6 +34,16 @@ export const TermsChanges = () => {
           </p>
 
           <h2>
+            September 25, 2026 — Updated Terms of Use and Privacy Notice
+          </h2>
+          <p>
+            Effective September 25, 2026, SeqtoID updated its Terms of Use and
+            Privacy Notice. Please review the current{" "}
+            <a href="/terms">Terms of Use</a> and{" "}
+            <a href="/privacy">Privacy Notice</a> for the latest terms.
+          </p>
+
+          <h2>
             June 4, 2026 — Initial SeqtoID Terms of Use and Privacy Notice
           </h2>
           <p>

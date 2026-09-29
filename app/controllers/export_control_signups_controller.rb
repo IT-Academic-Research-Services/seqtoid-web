@@ -114,7 +114,7 @@ class ExportControlSignupsController < ApplicationController
   def create
     unless params[:terms_accepted] == "1"
       prepare_form
-      @terms_error = "You must accept the terms of use and privacy policy to continue."
+      @terms_error = "You must accept the Terms of Use and Privacy Notice to continue."
       return render :new, status: :unprocessable_entity
     end
 
@@ -179,6 +179,11 @@ class ExportControlSignupsController < ApplicationController
 
   def prepare_form
     @show_blank_header = true
+    # SMP-2042 — on the registration form, make the blank-header SeqtoID logo a link back to the public
+    # home page (applicants have no account/session; "/" is the landing page). Scoped to this form only:
+    # the signed-in export-control gates deliberately keep a non-navigable logo so a user cannot click past
+    # the gate. The pending page is likewise left non-navigable.
+    @blank_header_logo_href = "/"
     @countries = COUNTRIES
   end
 

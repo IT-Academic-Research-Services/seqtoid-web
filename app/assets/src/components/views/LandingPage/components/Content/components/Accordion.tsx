@@ -53,7 +53,7 @@ const Accordion = () => {
             anyone working on SeqtoID unless specifically requested by a user,
             such as to debug an issue. Read more in SeqtoID’s{" "}
             <a href="/privacy" aria-label="View the SeqtoID privacy notice">
-              Privacy Policy
+              Privacy Notice
             </a>
             .
           </>
@@ -73,7 +73,7 @@ const Accordion = () => {
             filter out all human genetic information, regardless of host. Read
             more in SeqtoID’s{" "}
             <a href="/privacy" aria-label="View the SeqtoID privacy notice">
-              Privacy Policy
+              Privacy Notice
             </a>
             .
           </>

@@ -5,7 +5,8 @@
     <%= javascript_tag do %>
       react_component('Header', {
         userSignedIn: false,
-        showBlank: <%= !!@show_blank_header %>
+        showBlank: <%= !!@show_blank_header %>,
+        logoHref: <%= raw escape_json(@blank_header_logo_href.to_s) %>
       }, 'page_header')
     <% end %>
   <% elsif !current_user && !@show_landing_header%>
