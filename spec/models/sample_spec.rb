@@ -771,7 +771,7 @@ describe Sample, type: :model do
       expect(response.length).to be(2)
       expect(response[0]["id"]).to eq(@wr2.id)
       expect(response[1]["id"]).to eq(@wr1.id)
-      expected_keys = WorkflowRun::DEFAULT_FIELDS.map(&:to_s) + ["input_error", "inputs", "parsed_cached_results", "error_message", "run_finalized"]
+      expected_keys = WorkflowRun::DEFAULT_FIELDS.map(&:to_s) + ["input_error", "inputs", "parsed_cached_results", "run_finalized"]
       expect(response[0].keys).to contain_exactly(*expected_keys)
     end
 
