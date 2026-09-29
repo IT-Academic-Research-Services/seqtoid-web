@@ -516,6 +516,41 @@ RSpec.describe UserDataImportService do
         expect(Location.where(name: "Oakland").count).to eq(1)
       end
 
+      it "remaps created locations' geo-hierarchy FKs (country/state/...) to target ids" do
+        t = bundle_tables
+        # Fictional names so they're created (not matched to a seeded row). The city's
+        # country_id points at the country's SOURCE id; import must rewrite it.
+        t[:locations] = [
+          { id: 9_990_100, name: "Testlandia", geo_level: "country", country_name: "Testlandia",
+            country_id: 9_990_100, created_at: now, updated_at: now, },
+          { id: 9_990_101, name: "Testville", geo_level: "city", country_name: "Testlandia",
+            city_name: "Testville", country_id: 9_990_100, created_at: now, updated_at: now, },
+        ]
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(true)
+        country = Location.find_by(name: "Testlandia", geo_level: "country")
+        city = Location.find_by(name: "Testville", geo_level: "city")
+        # FKs point at the TARGET country id, not the source 9_990_100.
+        expect(city.country_id).to eq(country.id)
+        expect(country.country_id).to eq(country.id) # self-referential country remapped too
+        expect([city.country_id, country.country_id]).not_to include(9_990_100)
+      end
+
+      it "nulls a geo-hierarchy FK whose parent is absent from the bundle" do
+        t = bundle_tables
+        t[:locations] = [
+          { id: 9_990_110, name: "Orphanville", geo_level: "city", country_name: "Nowhere",
+            city_name: "Orphanville", country_id: 9_999_999, created_at: now, updated_at: now, },
+        ]
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(Location.find_by(name: "Orphanville").country_id).to be_nil # dangling source id not kept
+      end
+
       # metadata_fields: core and custom both auto-create if absent; an existing name is reused.
       def field_bundle(field_id:, field_name:, is_core:)
         t = bundle_tables
