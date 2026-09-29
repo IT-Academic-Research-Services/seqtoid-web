@@ -194,6 +194,7 @@ class WorkflowRun < ApplicationRecord
 
   DEFAULT_FIELDS = [
     :deprecated,
+    :error_message,
     :executed_at,
     :id,
     :status,
