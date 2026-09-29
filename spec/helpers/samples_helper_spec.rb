@@ -119,6 +119,29 @@ RSpec.describe SamplesHelper, type: :helper do
       expect(request[:params][:duration_seconds]).to eq(3_600)
     end
 
+    it "falls back to a 1h chained assume_role when the role trusts federation but MaxSessionDuration is below 12h" do
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(fake_token_file).and_return(fake_web_identity_token)
+
+      # Trust allows federation, but the role's MaxSessionDuration is still 3600, so STS rejects the
+      # 43200s request with ValidationError. That must degrade to the 1h token, not 500 the upload.
+      web_identity_client = Aws::STS::Client.new(stub_responses: true)
+      web_identity_client.stub_responses(:assume_role_with_web_identity, 'ValidationError')
+      allow_any_instance_of(SamplesHelper).to receive(:upload_sts_client).and_return(web_identity_client)
+
+      chained_client = stub_sts_client_for(:assume_role, 3_600)
+      allow(AwsClient).to receive(:[]).with(:sts).and_return(chained_client)
+
+      creds = get_upload_credentials([@sample_one])
+      expect(creds[:credentials][:access_key_id]).to eq fake_access_key_id
+      expect(chained_client.api_requests.length).to be 1
+      request = chained_client.api_requests.first
+      expect(request[:operation_name]).to eq(:assume_role)
+      expect(request[:params][:policy]).to eq(JSON.dump(expected_upload_policy))
+      expect(request[:params][:duration_seconds]).to eq(3_600)
+    end
+
     it "falls back to a 1h chained assume_role when no OIDC token file is mounted (e.g. ECS / var unset)" do
       # No AWS_WEB_IDENTITY_TOKEN_FILE -> federation cannot be attempted.
       allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(nil)

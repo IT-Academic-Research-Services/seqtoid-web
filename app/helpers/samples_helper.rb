@@ -1259,18 +1259,24 @@ module SamplesHelper
     # own OIDC token for the upload role and honors MaxSessionDuration, so a
     # 12h (43200s) session is allowed.
     #
-    # Envs whose upload role trust already federates the seqtoid-web SA (dev)
-    # get 12h. Envs not yet wired (or an ECS runtime with no OIDC token file)
-    # transparently fall back to the working 1h chained token -- the user never
-    # sees a 403. Both paths serve the shared CLI + UI upload flow and both
-    # keep the identical scoped session policy, so only the token lifetime
-    # differs between them.
+    # Envs whose upload role trust federates the seqtoid-web SA get 12h. Envs
+    # not yet wired (or an ECS runtime with no OIDC token file) transparently
+    # fall back to the working 1h chained token -- the user never sees a 403.
+    # (As of 2026-09-29 NO env's upload role federates yet: dev's trust is in
+    # cypherid-web-infra but was never applied, and staging/prod's ssot-infra
+    # upload role only trusts AssumeRole. Every env is on the 1h path.) Both
+    # paths serve the shared CLI + UI upload flow and keep the identical scoped
+    # session policy, so only the token lifetime differs between them.
     begin
       assume_upload_role_via_web_identity(policy_json, session_name)
-    rescue Aws::STS::Errors::AccessDenied, Errno::ENOENT => e
+    rescue Aws::STS::Errors::AccessDenied, Aws::STS::Errors::ValidationError, Errno::ENOENT => e
       # Narrow rescue only: AccessDenied means the env's upload role does not
-      # trust web-identity federation yet; Errno::ENOENT means no OIDC token
-      # file is mounted (e.g. missing AWS_WEB_IDENTITY_TOKEN_FILE, or ECS).
+      # trust web-identity federation yet; ValidationError means it does trust
+      # it but its MaxSessionDuration is still below the 43200 we request (a
+      # half-wired role, or the moment between the two IAM calls of a Terraform
+      # apply that updates trust and MaxSessionDuration) -- without this every
+      # upload 500s instead of degrading to 1h; Errno::ENOENT means no OIDC
+      # token file is mounted (e.g. missing AWS_WEB_IDENTITY_TOKEN_FILE, or ECS).
       # Throttling is handled separately below; any other STS/network error
       # still surfaces as before. Log the class only (never the token or
       # credentials) so we can see which envs are on the 1h path.
@@ -1295,8 +1301,9 @@ module SamplesHelper
   # 12h upload token via web-identity federation (AssumeRoleWithWebIdentity).
   # Requires the CLI_UPLOAD_ROLE_ARN role's trust policy to federate the EKS
   # cluster OIDC provider + this ServiceAccount, and MaxSessionDuration >=
-  # 43200 (see cypherid-web-infra); otherwise STS raises AccessDenied and the
-  # caller falls back to the 1h chained path.
+  # 43200 (cypherid-web-infra for dev, seqtoid-ssot-infra for staging/prod);
+  # otherwise STS raises AccessDenied (no trust) or ValidationError (trust but
+  # MaxSessionDuration too low) and the caller falls back to the 1h chained path.
   def assume_upload_role_via_web_identity(policy_json, session_name)
     token_file = ENV['AWS_WEB_IDENTITY_TOKEN_FILE']
     # A missing/blank token-file path is the "no federation configured" signal;
