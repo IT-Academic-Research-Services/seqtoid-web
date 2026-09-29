@@ -493,10 +493,43 @@ class UserDataImportService
       @metadata_field_id_map[row[:id]] = rec.id
     end
 
+    # Locations created here start with the source geo-hierarchy FKs
+    # (country/state/subdivision/city_id) copied verbatim; those source ids are
+    # rewritten to target ids in a second pass once the full id map exists. Reused
+    # target rows already carry correct local FKs and are left untouched.
     @location_id_map = {}
+    created_location_source_ids = []
     each_row("locations") do |row|
-      rec = find_or_create_ref(Location, location_natural_key(row), :locations) { location_attrs(row) }
-      @location_id_map[row[:id]] = rec.id
+      existing = Location.find_by(location_natural_key(row))
+      if existing
+        @stats[:locations_skipped] += 1
+        @location_id_map[row[:id]] = existing.id
+      else
+        rec = Location.new(location_attrs(row).compact)
+        rec.save!(validate: false)
+        @stats[:locations] += 1
+        @location_id_map[row[:id]] = rec.id
+        created_location_source_ids << row[:id]
+      end
+    end
+    remap_location_hierarchy(created_location_source_ids)
+  end
+
+  # Rewrites the geo-hierarchy FKs on locations we created from source ids to the
+  # target ids (via @location_id_map). Runs after the whole map is built so a child
+  # created before its parent still resolves. A parent absent from the bundle maps to
+  # nil (the FK is nulled rather than left dangling at a meaningless source id).
+  def remap_location_hierarchy(created_source_ids)
+    created_source_ids.each do |source_id|
+      location = Location.find(@location_id_map[source_id])
+      updates = {}
+      [:country_id, :state_id, :subdivision_id, :city_id].each do |col|
+        source_fk = location[col]
+        updates[col] = @location_id_map[source_fk] if source_fk.present?
+      end
+      # rubocop:disable Rails/SkipsModelValidations
+      location.update_columns(updates) if updates.present?
+      # rubocop:enable Rails/SkipsModelValidations
     end
   end
 
