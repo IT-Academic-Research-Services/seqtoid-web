@@ -108,7 +108,10 @@ jest.mock("~/components/ui/controls/buttons/SecondaryButton", () => {
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { LocalUploadProgressModal } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
+import {
+  LocalUploadProgressModal,
+  uploadAutoResume,
+} from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
 
 const PROJECT = { id: 77, name: "Ocean" } as any;
 
@@ -143,6 +146,8 @@ const renderModal = (overrides: Record<string, unknown> = {}) =>
   );
 
 beforeEach(() => {
+  // These specs cover a single upload attempt; automatic resume has its own spec.
+  uploadAutoResume.autoResumeDelaysMs = [];
   jest.clearAllMocks();
   mockAddFlags.mockImplementation(({ samples }: any) => samples ?? []);
   mockInitiateBulkUpload.mockResolvedValue([]);
