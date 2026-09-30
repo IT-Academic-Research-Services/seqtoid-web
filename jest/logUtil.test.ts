@@ -29,7 +29,7 @@ describe("logUtil.ts logError", () => {
     const exception = "invalid thingy" as unknown as Error;
     logError({ message: "bad error", exception, details: { id: 77 } });
     expect(Sentry.captureMessage).toHaveBeenCalledWith("bad error", {
-      extra: { exception: "invalid thingy", id: 77 },
+      extra: { exception: '"invalid thingy"', id: 77 },
     });
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });

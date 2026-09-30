@@ -134,6 +134,42 @@ RSpec.describe SamplesHelper, type: :helper do
       expect(request[:params][:policy]).to eq(JSON.dump(expected_upload_policy))
       expect(request[:params][:duration_seconds]).to eq(3_600)
     end
+
+    it "raises UploadCredentialsUnavailable and does NOT chain when STS throttles federation (ServiceUnavailable)" do
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(fake_token_file).and_return(fake_web_identity_token)
+
+      # Federation is attempted but STS is throttling -> ServiceUnavailable (NOT a trust failure).
+      web_identity_client = Aws::STS::Client.new(stub_responses: true)
+      web_identity_client.stub_responses(:assume_role_with_web_identity, 'ServiceUnavailable')
+      allow_any_instance_of(SamplesHelper).to receive(:upload_sts_client).and_return(web_identity_client)
+
+      # The 1h chained fallback (AccessDenied path) must NOT run for a throttle.
+      chained_client = stub_sts_client_for(:assume_role, 3_600)
+      allow(AwsClient).to receive(:[]).with(:sts).and_return(chained_client)
+
+      expect { get_upload_credentials([@sample_one]) }
+        .to raise_error(SamplesHelper::UploadCredentialsUnavailable)
+      expect(chained_client.api_requests).to be_empty
+    end
+
+    it "raises UploadCredentialsUnavailable and does NOT chain when STS throttles federation (Throttling)" do
+      allow(ENV).to receive(:[]).with('AWS_WEB_IDENTITY_TOKEN_FILE').and_return(fake_token_file)
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(fake_token_file).and_return(fake_web_identity_token)
+
+      web_identity_client = Aws::STS::Client.new(stub_responses: true)
+      web_identity_client.stub_responses(:assume_role_with_web_identity, 'Throttling')
+      allow_any_instance_of(SamplesHelper).to receive(:upload_sts_client).and_return(web_identity_client)
+
+      chained_client = stub_sts_client_for(:assume_role, 3_600)
+      allow(AwsClient).to receive(:[]).with(:sts).and_return(chained_client)
+
+      expect { get_upload_credentials([@sample_one]) }
+        .to raise_error(SamplesHelper::UploadCredentialsUnavailable)
+      expect(chained_client.api_requests).to be_empty
+    end
   end
   describe "#upload_samples_with_metadata" do
     before do

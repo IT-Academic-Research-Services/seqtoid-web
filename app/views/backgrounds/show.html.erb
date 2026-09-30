@@ -11,8 +11,10 @@
   <%= @background.name %>
 </p>
 
-<!--
--->
+<p>
+  <strong>Description:</strong>
+  <%= @background.description.presence || "(no description provided)" %>
+</p>
 
 <p>
   <strong>Date created:</strong>

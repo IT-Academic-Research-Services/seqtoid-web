@@ -301,12 +301,21 @@ class BulkDownloadsController < ApplicationController
 
   def set_bulk_download_and_validate_access_token
     @bulk_download = BulkDownload.find(params[:id])
-    unless @bulk_download.validate_access_token(params[:access_token])
+    unless @bulk_download.validate_access_token(callback_access_token)
       render json: { error: BulkDownloadsHelper::INVALID_ACCESS_TOKEN }, status: :unauthorized
     end
   rescue ActiveRecord::RecordNotFound
     render json: { error: BulkDownloadsHelper::BULK_DOWNLOAD_NOT_FOUND }, status: :not_found
     # Rendering halts the filter chain
+  end
+
+  # SMP-1868: the callback access_token is now carried in the X-Access-Token header so it stays
+  # out of the URL path (where it would leak into proxy/access logs, the Referer header, and
+  # browser history). Fall back to the legacy :access_token path segment (params) so callbacks
+  # from in-flight s3-tar-writer jobs launched before the header-based caller rolled out keep
+  # validating during the transition.
+  def callback_access_token
+    request.headers["X-Access-Token"].presence || params[:access_token]
   end
 
   def viewable_bulk_download_from_params

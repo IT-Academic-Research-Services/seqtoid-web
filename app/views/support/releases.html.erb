@@ -7,6 +7,6 @@
 
 <div id="ReleaseNotesPage_page">
   <%= javascript_tag do %>
-    react_component('ReleaseNotesPage', { dataUrl: '/releases_data', public: <%= @release_notes_public ? "true" : "false" %> }, 'ReleaseNotesPage_page', JSON.parse('<%= raw escape_json(help_center_context) %>'));
+    react_component('ReleaseNotesPage', { dataUrl: '/releases_data', public: <%= @release_notes_public ? "true" : "false" %>, environment: '<%= j @environment %>' }, 'ReleaseNotesPage_page', JSON.parse('<%= raw escape_json(help_center_context) %>'));
   <% end %>
 </div>

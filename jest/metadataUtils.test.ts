@@ -53,6 +53,43 @@ describe("processCSVMetadata", () => {
     });
     expect(result.rows[1]).toEqual({ "Sample Name": "s2", Age: "40" });
   });
+
+  // SMP-1663: a CSV that uses the snake_case "collection_location" header (as
+  // emitted by our own metadata export) must be aliased to the canonical
+  // "collection_location_v2" so the location geosearch and confirmation menu,
+  // which key off "collection_location_v2", pick up the value.
+  it("aliases the legacy collection_location header to collection_location_v2", () => {
+    const csv = {
+      headers: ["Sample Name", "collection_location"],
+      rows: [["s1", "California, USA"]],
+    } as any;
+    const result = processCSVMetadata(csv);
+    expect(result.headers).toEqual(["Sample Name", "collection_location_v2"]);
+    expect(result.rows[0]).toEqual({
+      "Sample Name": "s1",
+      collection_location_v2: "California, USA",
+    });
+  });
+
+  // Guard against collapsing two distinct columns: if the canonical header is
+  // already present, leave the legacy one untouched.
+  it("does not rewrite the legacy header when the canonical one is present", () => {
+    const csv = {
+      headers: ["Sample Name", "collection_location", "collection_location_v2"],
+      rows: [["s1", "legacy", "California, USA"]],
+    } as any;
+    const result = processCSVMetadata(csv);
+    expect(result.headers).toEqual([
+      "Sample Name",
+      "collection_location",
+      "collection_location_v2",
+    ]);
+    expect(result.rows[0]).toEqual({
+      "Sample Name": "s1",
+      collection_location: "legacy",
+      collection_location_v2: "California, USA",
+    });
+  });
 });
 
 describe("ensureDefinedValue", () => {

@@ -199,6 +199,24 @@ describe("BareDropdown", () => {
       expect(screen.queryByText("No results found.")).toBeNull();
     });
 
+    it("shows a Searching indicator while search options are loading", () => {
+      const { rerender } = renderSearchable({ isLoadingSearchOptions: false });
+      expect(screen.queryByText("Searching...")).toBeNull();
+
+      rerender(
+        <BareDropdown
+          trigger={trigger}
+          search
+          options={OPTIONS}
+          onChange={jest.fn()}
+          isLoadingSearchOptions
+        />,
+      );
+      // The indicator shows even when there are stale options still displayed.
+      expect(screen.getByText("Searching...")).toBeTruthy();
+      expect(menuItemTexts()).toEqual(["Alpha", "Beta gamma", "Gamma ray"]);
+    });
+
     it("renders the menu label when provided", () => {
       renderSearchable({ menuLabel: "Pick one" });
       expect(screen.getByText("Pick one")).toBeTruthy();

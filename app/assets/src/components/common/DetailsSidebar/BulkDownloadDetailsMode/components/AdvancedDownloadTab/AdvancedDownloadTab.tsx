@@ -68,7 +68,10 @@ export const AdvancedDownloadTab = ({
       return "Failed to generate command. Please contact us for help.";
     }
 
-    const currentTimestamp = moment().format("MM-D-YYYY hh-mm-ssa");
+    // Sortable, filesystem-safe timestamp for the generated download filename
+    // (SMP-1816). The previous "MM-D-YYYY hh-mm-ssa" mixed zero-padded and
+    // unpadded fields, used a 12-hour clock, and embedded a space.
+    const currentTimestamp = moment().format("YYYY-MM-DD-HHmmss");
     const bulkDownloadFileName = `${getDownloadDisplayName(
       downloadType,
     )}-${currentTimestamp}`;

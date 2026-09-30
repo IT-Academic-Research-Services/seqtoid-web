@@ -24,6 +24,11 @@ RSpec.describe LogUtil do
       expect(Sentry).to receive(:capture_exception).with(zero_division_error, hash_including(extra: details.merge(message: message)))
       subject.log_error(message, exception: zero_division_error, **details)
     end
+
+    it "should log message if exception is missing" do
+      expect(Sentry).to receive(:capture_message).with(message, hash_including(extra: details))
+      subject.log_error(message, **details)
+    end
   end
 
   describe "#log_message" do

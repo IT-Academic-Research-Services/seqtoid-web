@@ -2343,6 +2343,7 @@ GEM
     request_store (1.7.0)
       rack (>= 1.4)
     require_all (3.0.0)
+    resolv (0.3.2)
     resque (2.7.0)
       mono_logger (~> 1)
       multi_json (~> 1.0)
@@ -2411,7 +2412,7 @@ GEM
       rubocop-ast (>= 1.44.0, < 2.0)
     ruby-progressbar (1.13.0)
     ruby2_keywords (0.0.5)
-    rubyzip (3.3.1)
+    rubyzip (3.4.1)
     rufus-scheduler (3.9.2)
       fugit (~> 1.1, >= 1.11.1)
     securerandom (0.4.1)
@@ -2577,6 +2578,7 @@ DEPENDENCIES
   rake
   redis (~> 4.3)
   require_all
+  resolv (~> 0.3.2)
   resque (~> 2.3)
   resque-lock
   resque-retry (~> 1.8)
@@ -2587,6 +2589,7 @@ DEPENDENCIES
   rubocop-graphql (~> 1.6)
   rubocop-performance (~> 1.26)
   rubocop-rails (~> 2.35)
+  rubyzip (~> 3.4.1)
   seed_migration!
   selenium-webdriver
   sentry-rails (~> 5.17)

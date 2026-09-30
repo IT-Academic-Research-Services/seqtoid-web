@@ -82,6 +82,9 @@ class SupportController < ApplicationController
     # the client-side half of the internal-vs-public gating. The server-side half
     # (filter + strip) lives in releases_data, so this flag is presentation-only.
     @release_notes_public = release_notes_public?
+    # The real deployment env, shown in the page's context label so it reflects where you are
+    # (dev / env-staging / env-prod) instead of a hardcoded value.
+    @environment = ENV["ENVIRONMENT"].presence || Rails.env.to_s
   end
 
   def releases_data

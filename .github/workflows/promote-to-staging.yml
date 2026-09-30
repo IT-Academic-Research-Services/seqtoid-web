@@ -1,0 +1,132 @@
+name: Promote to env-staging
+run-name: Promote ${{ inputs.source }} to env-staging by ${{ github.actor }}
+
+# One-button promotion of an already-built, dev-deployed seqtoid-web image to env-staging.
+#
+# This is the SMOOTH path for env-staging: pick what to promote (default: exactly what dev is
+# running right now), give a reason, click Run, approve the staging gate. It reuses the proven
+# promote-to-env.yml per-tier step (cross-account ECR copy + digest-pinned GitOps bump + the
+# staging Environment approval gate + auto-merge), so there is NO bespoke deploy machinery here --
+# only the resolve-the-digest convenience on top.
+#
+# What it does NOT do (by design):
+#   - It does not rebuild. It promotes an EXISTING, already-tested artifact by immutable digest.
+#   - It does not cherry-pick a single file. It promotes a whole BUILD (the app at one main commit).
+#     To isolate one PR, promote the build produced right after that PR reached main (see the runbook).
+#   - It does not run the stricter gauntlet/attestation contract. For that, use the
+#     staging-gauntlet -> gitops-promote chain instead (this is the fast lane).
+#
+# Relationship to the other CD workflows:
+#   - build-docker-image.yml       builds + scans + cosign-signs + pushes on push to main.
+#   - gitops-advance-dev.yml       auto-advances DEV on a green main build (so dev.yaml == "on dev now").
+#   - THIS workflow                promotes dev's exact digest (or a chosen one) to env-staging.
+#   - promote-image.yml            the full dev -> staging -> prod digest promotion with per-tier tests.
+#   - staging-gauntlet + gitops-promote  the stricter attested contract (isolated candidate + cosign).
+#
+# One-time prerequisites (set once by an admin; promote-to-env.yml fails closed with a clear message
+# if they are missing):
+#   - The `staging` GitHub Environment must have Actions variables ENV_ACCOUNT_ID (030998640247) and
+#     ENV_ECR_WRITE_ROLE (the env-staging ECR-write role), plus its required reviewers.
+#   - Repo var CI_APP_ENABLED=true (GitHub App gitops writes) OR secret GITOPS_TOKEN (PAT fallback).
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "What to promote: 'dev' (default = exactly what dev runs now) OR a sha-<commit> tag / main commit sha / vX.Y.Z version tag."
+        required: true
+        type: string
+        default: dev
+      deployment_reason:
+        description: "Why (issue ID, hotfix, beta refresh, ...)."
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+  packages: read
+
+concurrency:
+  group: promote-to-staging
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPO_NAME: ${{ vars.ECR_REPO_NAME || 'seqtoid-web' }}
+
+jobs:
+  # 1) Resolve the exact image DIGEST to promote. Two modes:
+  #    - source=dev (default): read the current dev GitOps pin -- the SSOT for "what dev runs now".
+  #    - source=<tag/sha>:      resolve the digest from GHCR (the registry the build publishes to).
+  resolve:
+    name: Resolve the promotion digest
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.pick.outputs.digest }}
+      sha_tag: ${{ steps.pick.outputs.sha_tag }}
+    steps:
+      # IT-ARS authenticates cross-repo reads/writes with a GitHub App (repo var CI_APP_ENABLED=true).
+      # A fork with no app installed falls back to the GITOPS_TOKEN PAT. Mirrors promote-to-env.yml.
+      - name: Generate app token
+        id: app_token
+        if: ${{ vars.CI_APP_ENABLED == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Resolve digest + tag
+        id: pick
+        env:
+          SOURCE: ${{ inputs.source }}
+          INFRA_REPO: ${{ vars.INFRA_REPO || format('{0}/cypherid-web-infra', github.repository_owner) }}
+          # For the 'dev' path we read a file from the (private) infra repo, so we need the app/PAT
+          # token -- the default github.token cannot read another repo. The GHCR path uses github.token.
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN || github.token }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${SOURCE}" = "dev" ]; then
+            # Promote EXACTLY what dev is running now: the dev GitOps values file is the SSOT for that.
+            echo "Reading the current dev pin from ${INFRA_REPO} (main): deploy/argocd/values/seqtoid-web/dev.yaml"
+            YQ=v4.44.3
+            curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ}/yq_linux_amd64" -o /tmp/yq
+            chmod +x /tmp/yq
+            gh api "repos/${INFRA_REPO}/contents/deploy/argocd/values/seqtoid-web/dev.yaml?ref=main" \
+              --jq '.content' | base64 -d > /tmp/dev.yaml
+            DIGEST="$(/tmp/yq '.image.digest // ""' /tmp/dev.yaml)"
+            SHA_TAG="$(/tmp/yq '.image.tag // ""' /tmp/dev.yaml)"
+            [ -n "$DIGEST" ] || { echo "::error::dev.yaml has no image.digest -- cannot promote 'dev'. Pass an explicit sha-<commit> source instead."; exit 1; }
+            [ -n "$SHA_TAG" ] || SHA_TAG="dev-current"
+          else
+            # Resolve a specific artifact from GHCR (the source-of-record the build publishes to).
+            # GHCR requires a lowercase owner; github.repository_owner is verbatim-cased, so lowercase it.
+            GHCR_REPO="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/seqtoid-web"
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            case "$SOURCE" in
+              sha-*|v*) REF="${GHCR_REPO}:${SOURCE}";            SHA_TAG="${SOURCE}" ;;
+              *)        REF="${GHCR_REPO}:sha-${SOURCE:0:8}";    SHA_TAG="sha-${SOURCE:0:8}" ;;
+            esac
+            echo "Resolving digest for ${REF}"
+            DIGEST="$(docker buildx imagetools inspect "$REF" --format '{{.Manifest.Digest}}')"
+            [ -n "$DIGEST" ] || { echo "::error::no image found for ${REF}. Has the build for this commit finished on main? (build-docker-image.yml runs on push to main.)"; exit 1; }
+          fi
+          echo "digest=$DIGEST"   >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+          echo "Promotion unit for env-staging: seqtoid-web @ ${SHA_TAG} (${DIGEST})"
+
+  # 2) Promote that digest to env-staging using the SAME per-tier step every promotion uses.
+  #    env_name=staging selects the `staging` GitHub Environment -> its required-reviewer approval
+  #    gate fires before anything is copied or advanced (fail-closed, copy-first).
+  promote-staging:
+    name: Promote to env-staging
+    needs: resolve
+    uses: ./.github/workflows/promote-to-env.yml
+    with:
+      env_name: staging
+      digest: ${{ needs.resolve.outputs.digest }}
+      sha_tag: ${{ needs.resolve.outputs.sha_tag }}
+      deployment_reason: ${{ inputs.deployment_reason }}
+    secrets: inherit

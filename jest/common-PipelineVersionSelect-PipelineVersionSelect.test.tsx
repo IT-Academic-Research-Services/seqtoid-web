@@ -166,6 +166,34 @@ describe("PipelineVersionSelect -- multiple version header", () => {
     expect(mockMultiProps.otherPipelineVersions).toEqual(["7.1"]);
   });
 
+  it("drops null/blank versions so they never appear as options", () => {
+    render(
+      <PipelineVersionSelect
+        currentRun={
+          {
+            created_at: "2024-01-01",
+            pipeline_version: "8.0",
+            alignment_config_name: "2024-02-06",
+          } as $TSFixMe
+        }
+        allRuns={
+          [
+            { pipeline_version: "8.0" },
+            { pipeline_version: "7.1" },
+            { pipeline_version: null },
+            { pipeline_version: undefined },
+            { pipeline_version: "" },
+          ] as $TSFixMe
+        }
+        workflowType={WorkflowType.SHORT_READ_MNGS}
+        onVersionChange={jest.fn()}
+      />,
+    );
+    expect(screen.getByTestId("multi-header")).toBeTruthy();
+    // Only the real other version (7.1) survives; no null/blank entries.
+    expect(mockMultiProps.otherPipelineVersions).toEqual(["7.1"]);
+  });
+
   it("reads allRuns as a pre-computed string array", () => {
     render(
       <PipelineVersionSelect

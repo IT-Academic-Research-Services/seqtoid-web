@@ -32,6 +32,7 @@ import {
   DropdownHeader,
   DropdownItem,
 } from "semantic-ui-react";
+import LoadingMessage from "~/components/common/LoadingMessage";
 import Input from "~ui/controls/Input";
 import { IconArrowDownSmall, IconSearch } from "~ui/icons";
 import cs from "./bare_dropdown.scss";
@@ -60,9 +61,9 @@ interface BareDropdownProps {
   // you should provide your own handler
   onFilterChange?: $TSFixMeFunction;
   showNoResultsMessage?: boolean;
-  // Don't show the no results message if search options are currently loading.
-  // TODO(mark): Visually indicate that search options are loading even if
-  // there are old search results to display.
+  // When search options are loading, hide the no results message and show a
+  // "Searching..." loading indicator instead, even if there are old search
+  // results still being displayed.
   isLoadingSearchOptions?: boolean;
   // Custom props for rendering options
   options?: {
@@ -422,6 +423,12 @@ class BareDropdown extends React.Component<
         >
           {filteredItems}
         </BaseDropdown.Menu>
+        {search && isLoadingSearchOptions && (
+          <LoadingMessage
+            className={cs.loadingSearchMessage}
+            message="Searching..."
+          />
+        )}
         {filteredItems.length === 0 &&
           showNoResultsMessage &&
           !isLoadingSearchOptions && (

@@ -130,9 +130,20 @@ class Metadatum < ApplicationRecord
       return
     end
 
-    # Re-fetch the location if it is specifically marked as "refetch_adjusted_location",
-    # which indicates that we auto-corrected user input that was too specific
-    # in the user-interface (and the user confirmed).
+    # Human-host privacy rule: a Human sample's collection location must be no more specific than
+    # subdivision/district level (no city / GPS-level detail), to avoid re-identification. The
+    # client is expected to coarsen too-specific selections (processLocationSelection), and the
+    # Sample Upload flow does, but other entry paths -- notably the bulk "Edit Metadata" modal --
+    # can still submit a city-level location, which used to raise here and fail the save. Enforce
+    # the rule server-side, as the single source of truth, by coarsening the location instead of
+    # failing, so the guarantee holds regardless of which UI path was used. SMP-1861
+    unless Location.specificity_valid?(loc, sample.host_genome_name)
+      loc = Location.coarsen_location_for_human(loc)
+    end
+
+    # Re-fetch the location if it is marked as "refetch_adjusted_location", which indicates the
+    # selection was coarsened for privacy -- either on the client (and the user confirmed) or by
+    # the server-side enforcement above -- and must be re-resolved to the coarsened level.
     location = if loc[:refetch_adjusted_location]
                  Location.refetch_adjusted_location(loc)
                else
@@ -141,8 +152,9 @@ class Metadatum < ApplicationRecord
                  Location.find_or_new_by_fields(loc)
                end
 
-    # If the location is too specific, reject it as invalid.
-    # In theory, the user should never trigger this error, if the front-end is auto-correcting properly.
+    # Safety net: coarsening should always yield a compliant specificity. If it somehow did not
+    # (e.g. a human-host location with no country/state/subdivision to fall back to), reject
+    # rather than store a location that is too specific for the privacy rule.
     unless Location.specificity_valid?(loc, sample.host_genome_name)
       raise "Location specificity invalid for host genome #{sample.host_genome_name} #{JSON.dump(loc)}"
     end

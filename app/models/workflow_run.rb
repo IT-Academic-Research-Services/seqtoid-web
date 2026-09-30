@@ -565,14 +565,30 @@ class WorkflowRun < ApplicationRecord
   end
 
   def parse_yaml_error_message
-    _, error_message = sfn_execution.pipeline_error
-    begin
-      # uncaught errors require another level of parsing in YAML this time
-      YAML.safe_load(error_message, symbolize_names: true)[:message]
-    rescue StandardError => e
-      Rails.logger.error("YAML safe_load failed parsing sfn error message, #{e.message}\n " \
-      "error_message object #{error_message}")
-      return nil
+    _, cause = sfn_execution.pipeline_error
+    return if cause.blank?
+
+    # Some stage errors nest a YAML/JSON document (with a "message" key) inside the SFN
+    # cause; others -- a non-input tool or infra failure -- hand back a plain human-readable
+    # string. Parse defensively: keep the structured-message behavior when present, but never
+    # let a genuine failure render blank by returning nil for a plain-string cause (SMP-1894).
+    parsed =
+      begin
+        # uncaught errors require another level of parsing in YAML this time
+        YAML.safe_load(cause, symbolize_names: true)
+      rescue StandardError => e
+        Rails.logger.error("YAML safe_load failed parsing sfn error message, #{e.message}\n " \
+        "error_message object #{cause}")
+        nil
+      end
+
+    if parsed.is_a?(Hash)
+      message = parsed[:message] || parsed["message"]
+      return message.to_s.strip.presence || cause.to_s.strip.presence
     end
+
+    # Plain string, non-hash scalar, or unparseable cause: fall back to the raw cause so the
+    # real error still surfaces instead of a blank error_message.
+    cause.to_s.strip.presence
   end
 end

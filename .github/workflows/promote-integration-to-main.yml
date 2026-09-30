@@ -90,10 +90,11 @@ jobs:
       - name: Generate app token
         id: app_token
         if: ${{ steps.diff.outputs.ahead != '0' && vars.CI_APP_ENABLED == 'true' }}
-        uses: chanzuckerberg/github-app-token@365b1f2db827eb8f17288ec335b1a7e3c03ff683 # v1.1.4
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app_id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
-          private_key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
 
       - name: Open or reuse the promotion PR + enable auto-merge
         if: steps.diff.outputs.ahead != '0'

@@ -57,26 +57,26 @@ RSpec.describe WorkflowVersionsController, type: :controller do
     it "rejects a malformed digest rather than recording it" do
       post :create, params: full_manifest_params(image_digest: "latest")
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(WorkflowVersion.where(workflow: "consensus-genome").count).to eq(0)
     end
 
     it "rejects an unknown tier" do
       post :create, params: full_manifest_params(tier: "tier-1")
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "rejects an unknown engine" do
       post :create, params: full_manifest_params(engines: ["nomad"])
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "rejects an unparseable published_at" do
       post :create, params: full_manifest_params(published_at: "not-a-time")
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 

@@ -8,6 +8,7 @@ import {
   getTaxaWithContigsSuggestions,
   getTaxaWithReadsSuggestions,
 } from "~/api";
+import { isTransientNetworkError, logError } from "~/components/utils/logUtil";
 import Dropdown from "~ui/controls/dropdowns/Dropdown";
 import cs from "./taxon_hit_select.scss";
 
@@ -48,35 +49,60 @@ export class TaxonHitSelect extends React.Component<TaxonHitSelectProps> {
         ? getTaxaWithContigsSuggestions
         : getTaxaWithReadsSuggestions;
 
-    const searchResults = await suggestionsEndpoint(
-      query,
-      // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2769
-      Array.from(sampleIds),
-    );
+    try {
+      const searchResults = await suggestionsEndpoint(
+        query,
+        // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2769
+        Array.from(sampleIds),
+      );
 
-    // If the query has since changed, discard the response.
-    if (query !== this._lastQuery) {
-      return;
+      // If the query has since changed, discard the response. A newer query is
+      // already in flight and will clear the loading state when it resolves.
+      if (query !== this._lastQuery) {
+        return;
+      }
+
+      const options = searchResults.map(result => ({
+        value: result.taxid,
+        text: result.title,
+        customNode: (
+          <div className={cs.option}>
+            <div className={cs.taxonName}>{result.title}</div>
+            <div className={cs.fill} />
+            <div className={cs.sampleCount}>{result.sample_count}</div>
+          </div>
+        ),
+        // Ignored by the dropdown, used for sorting.
+        sampleCount: result.sample_count,
+      }));
+
+      this.setState({
+        options,
+        isLoadingOptions: false,
+      });
+    } catch (error) {
+      // If the query has since changed, let the newer request manage the state.
+      if (query !== this._lastQuery) {
+        return;
+      }
+
+      // The suggestions endpoint can be slow and occasionally fails (e.g. a 502
+      // when the request times out). Clear the loading state so the spinner does
+      // not spin forever, and log the error instead of leaving it unhandled --
+      // unless it is a client connectivity blip (axios ERR_NETWORK or a canceled
+      // request), which is not an application error and must not reach Sentry (SMP-1494).
+      if (!isTransientNetworkError(error)) {
+        logError({
+          message: "TaxonHitSelect: failed to load taxon suggestions",
+          exception: error,
+          details: { query, hitType },
+        });
+      }
+
+      this.setState({
+        isLoadingOptions: false,
+      });
     }
-
-    const options = searchResults.map(result => ({
-      value: result.taxid,
-      text: result.title,
-      customNode: (
-        <div className={cs.option}>
-          <div className={cs.taxonName}>{result.title}</div>
-          <div className={cs.fill} />
-          <div className={cs.sampleCount}>{result.sample_count}</div>
-        </div>
-      ),
-      // Ignored by the dropdown, used for sorting.
-      sampleCount: result.sample_count,
-    }));
-
-    this.setState({
-      options,
-      isLoadingOptions: false,
-    });
   });
 
   sortOptions = memoize(options =>

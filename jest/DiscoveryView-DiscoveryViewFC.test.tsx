@@ -233,25 +233,6 @@ describe("DiscoveryViewFC fetchTotalWorkflowCounts", () => {
     expect(input.todoRemove).toEqual({ domain: "my_data", projectId: "5" });
   });
 
-  it("execute with numeric projectId", async () => {
-    responses[TOTAL_COUNT] = totalCountResponse([
-      {
-        count: 3,
-        groupBy: {
-          workflowVersion: { workflow: { name: "consensus-genome" } },
-        },
-      },
-    ]);
-    const counts = await renderFC()().fetchTotalWorkflowCounts(5);
-
-    expect(mockGetProjects).not.toHaveBeenCalled();
-    expect(counts).toEqual({ "consensus-genome": 3 });
-    const input = inputFor(TOTAL_COUNT);
-    expect(input.where.collectionId).toEqual({ _in: [5] });
-    expect(input.where.deprecatedById).toEqual({ _is_null: true });
-    expect(input.todoRemove).toEqual({ domain: "my_data", projectId: "5" });
-  });
-
   it("falls back to the user's project ids when no project is selected", async () => {
     responses[TOTAL_COUNT] = totalCountResponse([]);
     const counts = await renderFC()().fetchTotalWorkflowCounts();
@@ -361,7 +342,27 @@ describe("DiscoveryViewFC workflow-run fetching", () => {
 
     await waitForRunIds(latest);
     expect(mockGetProjects).not.toHaveBeenCalled();
-    expect(inputFor(WORKFLOWS).where.collectionId).toEqual({ _in: [8] });
+    const input = inputFor(WORKFLOWS);
+    expect(input.where.collectionId).toEqual({ _in: [8] });
+    expect(input.todoRemove.projectId).toEqual("8");
+  });
+
+  // TODO: Sometimes projectId is a number, when it is expected to be a String.
+  //  Upstream needs to be fixed, and this test revamped
+  it("Converts numeric projectId to string", async () => {
+    responses[WORKFLOWS] = { fedWorkflowRuns: [] };
+    responses[SEQ_READS] = { fedSequencingReads: [] };
+
+    const latest = renderFC();
+    await act(async () => {
+      await latest().fetchNextGenWorkflowRuns(conditions({ projectId: 8 }));
+    });
+
+    await waitForRunIds(latest);
+    expect(mockGetProjects).not.toHaveBeenCalled();
+    const input = inputFor(WORKFLOWS);
+    expect(input.where.collectionId).toEqual({ _in: [8] });
+    expect(input.todoRemove.projectId).toEqual("8");
   });
 
   it("skips the Rails project lookup on the all-data domain", async () => {

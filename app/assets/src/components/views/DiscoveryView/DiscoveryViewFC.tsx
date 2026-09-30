@@ -343,6 +343,8 @@ async function queryWorkflowRuns(
   environment: RelayModernEnvironment,
   projectIds?: number[],
 ): Promise<WorkflowRunRow[]> {
+  // TODO: projectId should be a string, but sometimes is not, so the upstream caller needs to be fixed!
+  projectId = projectId?.toString();
   let collectionIdInput: IntListInFilter | undefined;
   if (projectId != null && projectIds !== undefined) {
     collectionIdInput = {
@@ -765,7 +767,7 @@ async function queryWorkflowRuns(
   // TRANSFORM RESPONSES:
   const result = sortedWorkflowResponses.map((run): WorkflowRunRow => {
     const sequencingReadId = run.entityInputs.edges[0]?.node.inputEntityId;
-    let parsedInputJson;
+    let parsedInputJson: any;
     try {
       parsedInputJson = JSON.parse(run.rawInputsJson ?? "");
     } catch (e) {
@@ -1292,6 +1294,7 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
    *  immediately/synchronously until the first workflowRun query sent out because the
    *  InfiniteTable has already been reset() by now.
    *
+   * @param conditions
    * @param sortOnlyWorkflow workflow that experienced a sort change (only need to reset/requery
    *  of data when sorting changes). If this is undefined, we are resetting+requerying everything.
    */
@@ -1436,18 +1439,17 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
   };
 
   const fetchWorkflowCounts = async (
-    selectedProjectId?: string | number, // TODO: selectedProjectId should be a string, so the upstream caller needs to be fixed
+    selectedProjectId?: string,
   ): Promise<WorkflowCount | undefined> => {
-    const selectedProjectIdStr = selectedProjectId?.toString();
-    const projectIds = selectedProjectIdStr
-      ? [parseInt(selectedProjectIdStr)]
+    const projectIds = selectedProjectId
+      ? [parseInt(selectedProjectId)]
       : await fetchProjectIds(props.domain, {});
     return queryWorkflowRunsTotalCount(
       props,
       [WorkflowType.CONSENSUS_GENOME], // all workflows in nextgen
       environment,
       projectIds,
-      selectedProjectIdStr,
+      selectedProjectId,
     );
   };
 

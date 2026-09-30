@@ -1,6 +1,6 @@
-import moment from "moment";
 import React from "react";
 import { WorkflowType } from "~/components/utils/workflows";
+import { parseServerDate } from "~/helpers/dates";
 import { WorkflowRun } from "~/interface/sample";
 import { PipelineRun } from "~/interface/shared";
 import { MultipleVersionsDropdownHeader } from "./components/MultipleVersionsDropdownHeader";
@@ -35,10 +35,17 @@ export const PipelineVersionSelect = ({
   // if the pipeline never finished processing, return null
   if (!lastProcessedAt || !currentPipelineVersion) return null;
 
-  const allPipelineVersions: string[] =
+  // Some runs (e.g. a Consensus Genome run that never finished, or one run for
+  // a different taxon that lacks a version) can have a null/blank version. Drop
+  // those so they do not surface as a bogus "Pipeline vnull" dropdown option.
+  const allPipelineVersions: string[] = (
     allRuns && allRuns.length > 0 && typeof allRuns[0] === "string"
       ? (allRuns as string[])
-      : ([...new Set(allRuns?.map(run => run[versionKey]))] as string[]);
+      : ([...new Set(allRuns?.map(run => run[versionKey]))] as string[])
+  ).filter(
+    (version): version is string =>
+      typeof version === "string" && version.trim() !== "",
+  );
 
   const otherPipelineVersions = allPipelineVersions.filter(
     (otherPipelineVersion: string) =>
@@ -47,9 +54,15 @@ export const PipelineVersionSelect = ({
 
   // grab strings for last processed date and workflow version
   const getLastProcessedString = () => {
-    const lastProcessedFormattedDate = moment(lastProcessedAt)
-      .startOf("second")
-      .fromNow();
+    // Parse against the known server datetime formats so moment does not emit
+    // its "not in a recognized ISO/RFC2822 format" deprecation warning
+    // (SMP-1816). Skip the "processed ... ago" clause if the date is missing or
+    // unparseable rather than surfacing "Invalid date".
+    const parsed = parseServerDate(lastProcessedAt);
+    if (!parsed) {
+      return "";
+    }
+    const lastProcessedFormattedDate = parsed.startOf("second").fromNow();
 
     return ` processed ${lastProcessedFormattedDate} |`;
   };

@@ -1,11 +1,24 @@
 import { cx } from "@emotion/css";
 import React, { useCallback } from "react";
 import { graphql, useFragment } from "react-relay";
+import { SampleMessage } from "~/components/common/SampleMessage";
+import csSampleMessage from "~/components/common/SampleMessage/sample_message.scss";
 import { HelpIcon } from "~/components/ui/containers";
+import { IconAlert } from "~/components/ui/icons";
 import { FIELDS_METADATA } from "~/components/utils/tooltip";
 import cs from "~/components/views/SampleView/components/ConsensusGenomeView/consensus_genome_view.scss";
 import { Table } from "~/components/visualizations/table";
+import { SampleStatus } from "~/interface/sample";
 import { ConsensusGenomeMetricsTableFragment$key } from "./__generated__/ConsensusGenomeMetricsTableFragment.graphql";
+
+// SMP-1817: shown to the user (instead of a blank screen) when a consensus
+// genome workflow succeeded but its metric results have aged out of the data
+// retention window, so the detailed metrics are no longer available to display.
+export const CONSENSUS_GENOME_METRICS_EXPIRED_MESSAGE =
+  "The detailed metrics for this consensus genome are no longer available. " +
+  "Per the data retention policy, results are stored for a limited time after " +
+  "a workflow runs. Try viewing a more recently run workflow.";
+
 export const ConsensusGenomeMetricsTableFragment = graphql`
   fragment ConsensusGenomeMetricsTableFragment on query_fedConsensusGenomes_items
   @relay(plural: true) {
@@ -120,13 +133,24 @@ export const ConsensusGenomeMetricsTable = ({
     ...data[0]?.metrics,
   };
 
-  // This is a note to future developers.
-  // If you are seeing a blank screen here, it is likely because we only save the metric_consensus_genome data 6 months on staging/local.
+  // SMP-1817: A succeeded workflow whose metric_consensus_genome data has aged
+  // out of the retention window (we only keep it ~6 months on staging/local)
+  // comes back with a taxon name but no computed metrics. Previously this only
+  // logged a console warning and returned null, leaving the user staring at a
+  // blank screen. Keep the developer-facing warning, but also surface a clear
+  // message in the UI so the user understands the results have expired.
   if (metricsData.taxonName && !metricsData.percentIdentity) {
     console.warn(
       "You may be seeing a blank screen here because of the data retention policy on staging. Try looking at a more recently run workflow.",
     );
-    return null;
+    return (
+      <SampleMessage
+        icon={<IconAlert className={csSampleMessage.icon} type="warning" />}
+        message={CONSENSUS_GENOME_METRICS_EXPIRED_MESSAGE}
+        status={SampleStatus.COMPLETE_ISSUE}
+        type="warning"
+      />
+    );
   }
 
   return (

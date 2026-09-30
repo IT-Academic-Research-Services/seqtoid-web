@@ -309,6 +309,57 @@ describe WorkflowRun, type: :model do
     end
   end
 
+  # SMP-1894: a genuine failure must never render a blank error_message. parse_yaml_error_message
+  # used to return nil whenever the SFN cause was a plain string (a non-input tool/infra failure)
+  # instead of a YAML/JSON document with a "message" key, hiding the real error from the user.
+  describe "#parse_yaml_error_message" do
+    def stub_pipeline_error(cause, error: "SomeError")
+      allow(@workflow_failed).to receive(:sfn_execution)
+        .and_return(instance_double(SfnExecution, pipeline_error: [error, cause]))
+    end
+
+    context "when the cause is a structured document with a message" do
+      it "returns the nested message unchanged" do
+        stub_pipeline_error({ message: "structured stage error" }.to_json)
+        expect(@workflow_failed.send(:parse_yaml_error_message)).to eq("structured stage error")
+      end
+    end
+
+    context "when the cause is a plain string (non-input tool/infra failure)" do
+      it "falls back to the raw cause string instead of nil" do
+        stub_pipeline_error("Segmentation fault in aligner")
+        expect(@workflow_failed.send(:parse_yaml_error_message)).to eq("Segmentation fault in aligner")
+      end
+    end
+
+    context "when the cause is a structured document without a message key" do
+      it "falls back to the raw cause string" do
+        raw = { detail: "no message key here" }.to_json
+        stub_pipeline_error(raw)
+        expect(@workflow_failed.send(:parse_yaml_error_message)).to eq(raw)
+      end
+    end
+
+    context "when the cause is nil or empty" do
+      it "returns nil without raising" do
+        stub_pipeline_error(nil)
+        expect { @workflow_failed.send(:parse_yaml_error_message) }.not_to raise_error
+        expect(@workflow_failed.send(:parse_yaml_error_message)).to be_nil
+
+        stub_pipeline_error("")
+        expect(@workflow_failed.send(:parse_yaml_error_message)).to be_nil
+      end
+    end
+
+    context "when the cause is unparseable YAML" do
+      it "does not raise and falls back to the raw cause string" do
+        stub_pipeline_error("[unterminated flow")
+        expect { @workflow_failed.send(:parse_yaml_error_message) }.not_to raise_error
+        expect(@workflow_failed.send(:parse_yaml_error_message)).to eq("[unterminated flow")
+      end
+    end
+  end
+
   describe "#output" do
     let(:fake_output_wdl_key) { "fake_output_wdl_key" }
     let(:fake_output_s3_key) { "fake_output_key" }

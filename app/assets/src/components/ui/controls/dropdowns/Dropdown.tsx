@@ -43,9 +43,9 @@ interface DropdownProps {
   onFilterChange?: (query: unknown) => void;
   showNoResultsMessage?: boolean;
   showSelectedItemSubtext?: boolean;
-  // Don't show the no results message if search options are still loading.
-  // TODO(mark): Visually indicate that search options are loading even if
-  // there are old search results to display.
+  // When search options are still loading, hide the no results message and
+  // show a "Searching..." loading indicator instead, even if there are old
+  // search results still being displayed.
   isLoadingSearchOptions?: boolean;
   nullLabel?: string;
 }

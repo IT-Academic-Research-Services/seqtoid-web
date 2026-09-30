@@ -59,9 +59,22 @@ export const SampleViewMessage = ({
     link = UPLOAD_URL;
     linkText = "Upload new sample";
   } else if (
-    // Else if the data has loaded from the backend, but the pipeline is still running,
-    // let the user know that the pipeline is in progress.
-    pipelineRunStatus === PipelineRunStatus.WAITING &&
+    // Else if the pipeline is still in progress and the upload has not errored,
+    // let the user know that the sample is in progress. Two sub-cases:
+    //   - pipelineRunStatus === WAITING: a run exists and the results monitor is
+    //     still loading its outputs.
+    //   - !pipelineRun: no run has started yet (a freshly uploaded / queued
+    //     sample). Its report metadata is never fetched, so pipelineRunStatus is
+    //     undefined -- see SampleView's early return when pipeline_runs is empty.
+    //
+    // SMP-1900: the "!pipelineRun" arm is the fix. Without it, a queued sample
+    // with no pipeline run and no upload_error fell through to the else branch
+    // below, where sampleErrorInfo's default returned SAMPLE FAILED -- while the
+    // project table (pipeline_run_info) correctly showed QUEUED FOR PROCESSING.
+    // The guard has to live here because the report page derives its status from
+    // get_pipeline_status + sampleErrorInfo (NOT PipelineRun#status_display), and
+    // get_pipeline_status is never reached for a run-less sample.
+    (pipelineRunStatus === PipelineRunStatus.WAITING || !pipelineRun) &&
     sample &&
     !sample.upload_error
   ) {

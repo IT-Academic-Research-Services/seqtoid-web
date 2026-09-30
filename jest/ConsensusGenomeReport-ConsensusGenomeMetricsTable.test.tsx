@@ -16,6 +16,12 @@ jest.mock(
   { virtual: true },
 );
 
+jest.mock(
+  "~/components/common/SampleMessage/sample_message.scss",
+  () => ({}),
+  { virtual: true },
+);
+
 jest.mock("react-relay", () => ({
   graphql: () => ({}),
   useFragment: (_fragment: unknown, key: unknown) => key,
@@ -33,7 +39,10 @@ jest.mock("~/components/visualizations/table", () => ({
   },
 }));
 
-import { ConsensusGenomeMetricsTable } from "~/components/views/SampleView/components/ConsensusGenomeView/components/ConsensusGenomeReport/components/ConsensusGenomeMetricsTable/ConsensusGenomeMetricsTable";
+import {
+  CONSENSUS_GENOME_METRICS_EXPIRED_MESSAGE,
+  ConsensusGenomeMetricsTable,
+} from "~/components/views/SampleView/components/ConsensusGenomeView/components/ConsensusGenomeReport/components/ConsensusGenomeMetricsTable/ConsensusGenomeMetricsTable";
 
 const fullMetrics = {
   mappedReads: 100000,
@@ -72,14 +81,21 @@ describe("ConsensusGenomeMetricsTable", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders nothing when there is a taxon name but no percentIdentity (data retention case)", () => {
+  it("shows the data-retention message (not a blank screen) when there is a taxon name but no percentIdentity", () => {
+    // SMP-1817: an expired consensus genome (metrics aged out of the retention
+    // window) must surface a user-facing message instead of rendering nothing.
     const warnSpy = jest
       .spyOn(console, "warn")
       .mockImplementation(() => undefined);
-    const { container } = renderComponent(
+    renderComponent(
       makeData({ metrics: { ...fullMetrics, percentIdentity: undefined } }),
     );
-    expect(container.firstChild).toBeNull();
+    expect(
+      screen.getByText(CONSENSUS_GENOME_METRICS_EXPIRED_MESSAGE),
+    ).toBeTruthy();
+    // The metrics table itself is not rendered in the expired case.
+    expect(screen.queryByTestId("metrics-table")).toBeNull();
+    // The developer-facing warning is still emitted.
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });

@@ -87,4 +87,86 @@ RSpec.describe AppConfigHelper, type: :helper do
       end
     end
   end
+
+  # SMP-1724 -- non-downgrading seed setter for `<workflow>-version` app_configs.
+  describe "#seed_workflow_version" do
+    let(:key) { "short-read-mngs-version" }
+
+    context "when the default is absent (fresh bootstrap)" do
+      it "sets the seed value and catalogues it" do
+        expect(AppConfig.find_by(key: key)).to be_nil
+        result = AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15")
+        expect(result).to eq("8.3.15")
+        expect(AppConfig.find_by(key: key).value).to eq("8.3.15")
+        expect(WorkflowVersion.exists?(workflow: "short-read-mngs", version: "8.3.15")).to be(true)
+      end
+    end
+
+    context "when the live default is NEWER than the seed value" do
+      before do
+        AppConfigHelper.set_app_config(key, "8.3.16")
+        create(:workflow_version, workflow: "short-read-mngs", version: "8.3.16")
+      end
+
+      it "preserves the live value and never downgrades" do
+        result = AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15")
+        expect(result).to eq("8.3.16")
+        expect(AppConfig.find_by(key: key).value).to eq("8.3.16")
+      end
+
+      it "does not create a catalog row for the stale seed value" do
+        AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15")
+        expect(WorkflowVersion.exists?(workflow: "short-read-mngs", version: "8.3.15")).to be(false)
+      end
+
+      it "guarantees the preserved live value is catalogued even if it was not already" do
+        WorkflowVersion.where(workflow: "short-read-mngs", version: "8.3.16").delete_all
+        AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15")
+        expect(WorkflowVersion.exists?(workflow: "short-read-mngs", version: "8.3.16")).to be(true)
+      end
+    end
+
+    context "when the live default is OLDER than the seed value" do
+      before { AppConfigHelper.set_app_config(key, "8.3.11") }
+
+      it "advances the default to the seed value and catalogues it" do
+        result = AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15")
+        expect(result).to eq("8.3.15")
+        expect(AppConfig.find_by(key: key).value).to eq("8.3.15")
+        expect(WorkflowVersion.exists?(workflow: "short-read-mngs", version: "8.3.15")).to be(true)
+      end
+    end
+
+    context "when the live default equals the seed value" do
+      before { AppConfigHelper.set_app_config(key, "8.3.15") }
+
+      it "leaves the value in place (no downgrade, no error)" do
+        expect { AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15") }
+          .not_to(change { AppConfig.find_by(key: key).value })
+        expect(AppConfig.find_by(key: key).value).to eq("8.3.15")
+      end
+    end
+
+    context "when the live value is not semver-parseable" do
+      before { AppConfigHelper.set_app_config(key, "custom-tag") }
+
+      it "preserves it rather than clobbering with a semver seed" do
+        result = AppConfigHelper.seed_workflow_version("short-read-mngs", "8.3.15")
+        expect(result).to eq("custom-tag")
+        expect(AppConfig.find_by(key: key).value).to eq("custom-tag")
+      end
+    end
+  end
+
+  describe "#version_older?" do
+    it "orders by semantic version, not string comparison" do
+      expect(AppConfigHelper.version_older?("8.3.9", "8.3.10")).to be(true) # string compare would say false
+      expect(AppConfigHelper.version_older?("8.3.16", "8.3.15")).to be(false)
+      expect(AppConfigHelper.version_older?("8.3.15", "8.3.15")).to be(false)
+    end
+
+    it "treats unparseable versions as NOT older, so a live value is preserved" do
+      expect(AppConfigHelper.version_older?("custom-tag", "8.3.15")).to be(false)
+    end
+  end
 end

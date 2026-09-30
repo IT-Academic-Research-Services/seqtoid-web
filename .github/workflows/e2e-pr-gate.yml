@@ -1,0 +1,136 @@
+name: e2e-pr-gate (Playwright suite gate)
+
+# SMP-1720: gate pull requests on the Playwright e2e suite.
+#
+# Before this, the browser suite under e2e/ ran ONLY on a schedule + manual dispatch
+# (e2e-automation.yml is workflow_call-only; its callers are the nightly regime and the
+# staging gauntlet). Nothing ran on pull_request, so a PR could rename a data-testid,
+# break a page-object import, delete a spec a Playwright project points at, or otherwise
+# break every browser journey while PR CI stayed green -- the breakage only surfaced in
+# the nightly, hours later and off the PR that caused it.
+#
+# The runtime suite (89 specs) is deliberately NOT a required per-PR check: those specs
+# drive a fully deployed environment with seeded pipeline data (staging / sandbox / a
+# per-PR sandbox) and real uploads + pipeline runs. No un-deployed PR head -- and no fork
+# PR (no secrets, no OIDC) -- can serve that as a REQUIRED, deterministic, fast gate. So
+# this workflow gates PRs in two tiers:
+#
+#   1. suite-gate  (REQUIRED, blocking, deterministic, secret-free, ~1-2 min)
+#      Typescript-transpiles and loads EVERY runnable spec + resolves EVERY Playwright
+#      project via `playwright test --list`. `--list` does not run globalSetup, so it needs
+#      no login, no deployed app, no browsers -- it just proves the suite still collects.
+#      This is the check that actually blocks a PR, and it catches the real regression
+#      class above the moment it lands, on the PR that caused it. Add this job's check name
+#      ("E2E Suite Gate (collect runnable suite)") to the `integration` branch-protection
+#      required status checks to enforce the block.
+#
+#   2. smoke-preview  (informational, opt-in, preview-labelled + same-repo PRs only)
+#      Runs the smoke category -- including the SMP-1720 projects-lifecycle spec -- against
+#      THIS PR's own preview sandbox (build-pr-preview.yml). Only preview-labelled PRs get a
+#      sandbox and it takes ~10-15 min to serve, so this can never be a required check; it
+#      gives real runtime signal on demand. Guarded by vars.E2E_PREVIEW_GATE_ENABLED so the
+#      canonical repo turns it on once dev creds are wired, and it is a clean no-op on the
+#      fork (mirrors NIGHTLY_E2E_ENABLED in nightly-full-regime.yml).
+
+on:
+  pull_request:
+    branches: [integration]
+  workflow_dispatch:
+
+# One in-flight gate per PR (or per ref for dispatch); a new push supersedes the old run.
+# Keyed on the PR number (never the SHA) for the same reason ci-test-mysql8.yml is: a
+# main->integration back-sync branch shares main's HEAD SHA, and a SHA-keyed group would
+# let those two distinct gates cancel each other.
+concurrency:
+  group: e2e-pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suite-gate:
+    name: E2E Suite Gate (collect runnable suite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: "./.node-version"
+          # Reuse the e2e npm cache keyed on its own lockfile (mirrors e2e-automation.yml).
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./e2e
+        # No `npx playwright install` -- collection (`--list`) launches no browser, so the
+        # gate stays fast and needs neither the chromium download nor system deps.
+        run: npm ci
+
+      - name: Collect the runnable suite (every wired spec + every Playwright project)
+        working-directory: ./e2e
+        # `--list` transpiles and imports every spec the runnable suite wires in and resolves
+        # every project's testMatch/grep WITHOUT executing anything (no globalSetup, no login,
+        # no deployed env). A broken import, a bad testMatch, a syntax error, or a project that
+        # points at a deleted spec fails this step -- which is exactly the silent breakage this
+        # gate exists to catch. NODE_ENV=staging selects the canonical runnable project set;
+        # its baseURL is never contacted because no test runs.
+        env:
+          NODE_ENV: staging
+        run: npx playwright test -c setup/staging.config.ts --list
+
+  # Wait for THIS PR's preview sandbox to actually serve before pointing the browser suite at
+  # it. Only meaningful for preview-labelled, same-repo PRs (a fork PR gets no sandbox), and
+  # only when the canonical repo has enabled the preview gate. Never fails the PR: a sandbox
+  # that never serves leaves this (non-required) job red without touching the required gate.
+  wait-for-sandbox:
+    name: Wait for PR preview sandbox
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.E2E_PREVIEW_GATE_ENABLED == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    permissions:
+      contents: read
+    outputs:
+      url: ${{ steps.wait.outputs.url }}
+    steps:
+      - name: Poll the sandbox URL until it serves
+        id: wait
+        # Mirrors build-pr-preview.yml's own readiness poll: hit the real page (`/`), never
+        # /health_check (that path is excluded from Rails host authorization and 200s while
+        # every real page 403s). Up to ~22 min (66 * 20s); sandboxes normally land at 10-15.
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          url="https://pr-${PR_NUMBER}.dev.seqtoid.org"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+          for _ in $(seq 1 66); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "${url}/" || echo 000)
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then
+              echo "Sandbox ${url} is serving (HTTP ${code})."
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Sandbox ${url} did not serve in time." >&2
+          exit 1
+
+  smoke-preview:
+    name: E2E smoke on PR preview sandbox
+    needs: wait-for-sandbox
+    # Reuse the existing browser-suite workflow, pointed at the per-PR sandbox via the gauntlet
+    # config (base-url -> GAUNTLET_BASE_URL). node-environment MUST be `gauntlet`, never
+    # `staging` -- the whole point is to exercise the PR's own deployed code, not real staging.
+    uses: ./.github/workflows/e2e-automation.yml
+    with:
+      node-environment: gauntlet
+      base-url: ${{ needs.wait-for-sandbox.outputs.url }}
+      test-category: smoke
+      should-run-with-feature-flags: false
+    secrets: inherit

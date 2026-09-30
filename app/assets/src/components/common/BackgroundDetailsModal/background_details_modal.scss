@@ -1,0 +1,52 @@
+@import "~styles/themes/colors";
+@import "~styles/themes/typography";
+@import "~styles/themes/elements";
+@import "~@czi-sds/components/dist/variables";
+
+.title {
+  @include font-header-l;
+  margin-bottom: $sds-spaces-l;
+}
+
+.details {
+  .field {
+    margin-bottom: $sds-spaces-l;
+
+    .label {
+      @include font-header-xs;
+      color: $sds-color-gray-500;
+      margin-bottom: $sds-spaces-xxs;
+    }
+
+    .value {
+      @include font-body-s;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  }
+}
+
+.samplesTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: $sds-spaces-xs;
+
+  th,
+  td {
+    @include font-body-xs;
+    text-align: left;
+    padding: $sds-spaces-xxs $sds-spaces-s;
+    border-bottom: 1px solid $sds-color-gray-200;
+  }
+
+  th {
+    @include font-header-xs;
+    color: $sds-color-gray-500;
+  }
+}
+
+.emptyMessage,
+.errorMessage {
+  @include font-body-s;
+  color: $sds-color-gray-500;
+}

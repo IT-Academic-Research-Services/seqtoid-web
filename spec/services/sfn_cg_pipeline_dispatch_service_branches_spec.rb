@@ -38,6 +38,17 @@ RSpec.describe SfnCgPipelineDispatchService, type: :service do
   let(:alignment_config) { create(:alignment_config, name: AlignmentConfig.default_name) }
   let(:sample) { create(:sample, project: project, alignment_config_name: alignment_config.name) }
 
+  # SMP-1566 -- CG runs kicked off from an mNGS report (accession_id, no ref/primer) now read
+  # the retained non-host reads from the sample's mNGS pipeline run, so the mngs_report examples
+  # below need a completed run to source those reads from. Non-mngs creation sources ignore it.
+  let!(:mngs_pipeline_run) do
+    create(:pipeline_run,
+           sample: sample,
+           wdl_version: fake_wdl_version,
+           pipeline_version: "6.0",
+           s3_output_prefix: "s3://#{fake_samples_bucket}/results/#{sample.id}")
+  end
+
   before do
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with('SAMPLES_BUCKET_NAME').and_return(fake_samples_bucket)

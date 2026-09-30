@@ -102,6 +102,13 @@ class AppConfig < ApplicationRecord
   AUTO_RESTART_ALLOWED_STAGES = 'auto_restart_allowed_stages'.freeze
   # The ECR image to use for the s3 tar writer service. Defaults to "idseq-s3-tar-writer:latest"
   S3_TAR_WRITER_SERVICE_ECR_IMAGE = 's3_tar_writer_service_ecr_image'.freeze
+  # SMP-1868 rollout flag. When this is "1", bulk-download callback URLs are generated WITHOUT the
+  # access_token in the path and the token is instead passed to the s3-tar-writer job via --auth-token
+  # (sent as the X-Access-Token header on each callback). Leave "0"/unset until the header-aware
+  # s3-tar-writer image is deployed, otherwise the old image errors on the unknown --auth-token flag.
+  # The server accepts the token from either the header or the legacy path segment regardless of this
+  # flag, so in-flight callbacks are never broken.
+  BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER = 'bulk_download_callback_token_in_header'.freeze
   # The maximum number of objects (samples or workflow runs) that can be part of one bulk download.
   MAX_OBJECTS_BULK_DOWNLOAD = 'max_objects_bulk_download'.freeze
   # The maximum number of samples that can be part of an original input files bulk download.

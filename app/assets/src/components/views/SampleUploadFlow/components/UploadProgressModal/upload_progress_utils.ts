@@ -171,5 +171,15 @@ export const addAdditionalInputFilesToSamples = ({
 };
 
 export const redirectToProject = (projectId: string) => {
-  location.href = `/home?project_id=${projectId}`;
+  // SMP-1500: Use replace, not an href assignment, when leaving a COMPLETED
+  // upload. Assigning location.href pushes a new history entry, so the finished
+  // upload flow stays in history immediately behind the project page. On upload
+  // completion SampleUploadFlow also clears window.onbeforeunload (to skip the
+  // "leave?" prompt on this redirect), which makes the flow page bfcache
+  // eligible -- so pressing browser Back restores its frozen in-memory state,
+  // re-showing the "upload complete" progress modal on a stale, un-resettable
+  // wizard. Replacing the current entry drops the completed flow from history
+  // entirely, so Back returns the user to the page they were on before starting
+  // the upload rather than the completed dialog.
+  location.replace(`/home?project_id=${projectId}`);
 };

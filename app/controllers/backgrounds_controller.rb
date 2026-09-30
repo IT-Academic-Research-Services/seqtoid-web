@@ -1,7 +1,12 @@
 class BackgroundsController < ApplicationController
   before_action :login_required
-  before_action :admin_required, except: [:create, :show_taxon_dist, :index]
-  before_action :set_background, only: [:show, :destroy, :show_taxon_dist]
+  # `show` is intentionally NOT admin-only: any signed-in user may view the
+  # details (description + member samples) of a background they are authorized
+  # to see. The authorization is enforced by `set_viewable_background` below,
+  # which scopes the lookup through Background.viewable(current_user).
+  before_action :admin_required, except: [:create, :show, :show_taxon_dist, :index]
+  before_action :set_background, only: [:destroy, :show_taxon_dist]
+  before_action :set_viewable_background, only: [:show]
 
   # GET /backgrounds
   # GET /backgrounds.json
@@ -27,7 +32,19 @@ class BackgroundsController < ApplicationController
 
   # GET /backgrounds/1
   # GET /backgrounds/1.json
+  #
+  # Returns a background's details so a user can review what a background
+  # actually is after it has been created -- its description and the exact set
+  # of samples that were used to build it. Prior to this, there was no way for a
+  # non-admin to see either, so a user who did not record the name/contents at
+  # creation time had no way to recover them (SMP-1437).
   def show
+    # Distinct samples that went into the background, eager-loading project to
+    # avoid an N+1 when rendering each sample's project name.
+    @samples = @background.samples.includes(:project).distinct.order(:name)
+    # Whether the current user owns the background (drives edit/delete
+    # affordances in the UI; ownership is required to manage a background).
+    @editable = current_user.present? && @background.user_id == current_user.id
   end
 
   def show_taxon_dist
@@ -121,6 +138,30 @@ class BackgroundsController < ApplicationController
   # Use callbacks to share common setup or constraints between actions.
   def set_background
     @background = Background.find(params[:id])
+  end
+
+  # Authorization for `show`. A user may only view a background they are
+  # entitled to see: one they own, one all of whose underlying samples they can
+  # view, or a public background (Background.viewable encodes this rule; admins
+  # get everything). Scoping the lookup through `viewable` -- rather than a bare
+  # Background.find -- prevents a user from reading the description or member
+  # samples of a background that is not theirs.
+  def set_viewable_background
+    @background = Background.viewable(current_user).find_by(id: params[:id])
+    return if @background.present?
+
+    respond_to do |format|
+      # Mirror the app's other not-authorized redirects (login_required /
+      # admin_required both send the user to root_path) rather than leaking the
+      # existence of a background the user may not view.
+      format.html { redirect_to root_path }
+      format.json do
+        render json: {
+          status: :not_found,
+          message: "Background not found or you are not authorized to view it.",
+        }, status: :not_found
+      end
+    end
   end
 
   def index_params

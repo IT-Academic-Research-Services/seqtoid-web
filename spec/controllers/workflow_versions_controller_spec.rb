@@ -88,20 +88,20 @@ RSpec.describe WorkflowVersionsController, type: :controller do
       it "rejects a non-semver version" do
         post :create, params: { workflow: "consensus-genome", version: "3.5" }
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(WorkflowVersion.where(workflow: "consensus-genome").count).to eq(0)
       end
 
       it "rejects a malformed workflow name" do
         post :create, params: { workflow: "../etc/passwd", version: "1.0.0" }
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
 
       it "rejects a missing workflow" do
         post :create, params: { version: "1.0.0" }
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
   end

@@ -1,0 +1,113 @@
+name: Stage a change to env-staging
+run-name: Stage ${{ inputs.change }} to env-staging by ${{ github.actor }}
+
+# Curated single-change promotion to env-staging.
+#
+# env-staging must run a CURATED subset of dev -- not all of main. Because a container image is the
+# whole app at one commit, "promote just one change" means building (current staging baseline + only
+# that one change) and promoting THAT image. The long-lived `staging` branch IS that baseline: it holds
+# exactly what env-staging runs, and only approved changes are added to it, one at a time.
+#
+# This action does step one: cherry-pick a single, already-merged commit onto `staging` and push it.
+# The push builds the new staging HEAD (build-docker-image.yml), and promote-staging-on-build.yml then
+# promotes the resulting image to env-staging behind the staging approval gate. So the operator runs
+# THIS action and approves one gate; the build + promote chain automatically.
+#
+# If the cherry-pick CONFLICTS, the change depends on something not yet on the staging line -- the run
+# fails loudly so you stage that dependency first (or rework), instead of silently dragging extra code
+# into env-staging.
+#
+# Prereq: the `staging` branch must exist (seed it once at the commit env-staging currently runs).
+
+on:
+  workflow_dispatch:
+    inputs:
+      change:
+        description: "The change to stage: a seqtoid-web PR number, or a main commit sha."
+        required: true
+        type: string
+      deployment_reason:
+        description: "Why this change is going to env-staging (issue ID, batch, ...)."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # One staging advance at a time -- serialize cherry-picks onto the branch.
+  group: stage-change-to-staging
+  cancel-in-progress: false
+
+jobs:
+  cherry-pick:
+    runs-on: ubuntu-latest
+    steps:
+      # IT-ARS authenticates the push with a GitHub App (CI_APP_ENABLED=true); a fork falls back to
+      # the GITOPS_TOKEN PAT. The default GITHUB_TOKEN is not used to push (branch-protection friendly).
+      - name: Generate app token
+        id: app_token
+        if: ${{ vars.CI_APP_ENABLED == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout the staging line (full history)
+        uses: actions/checkout@v6
+        with:
+          ref: staging
+          fetch-depth: 0
+          token: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN || github.token }}
+
+      - name: Resolve the commit to cherry-pick
+        id: resolve
+        env:
+          CHANGE: ${{ inputs.change }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          # A pure-number input is a PR number -> resolve to its squash/merge commit. Else it is a sha.
+          if printf '%s' "$CHANGE" | grep -qE '^[0-9]+$'; then
+            SHA="$(gh pr view "$CHANGE" --repo "$GITHUB_REPOSITORY" --json mergeCommitSha --jq '.mergeCommitSha')"
+            if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+              echo "::error::PR #$CHANGE has no merge commit -- is it merged?"; exit 1
+            fi
+            echo "Resolved PR #$CHANGE -> commit $SHA"
+          else
+            SHA="$CHANGE"
+          fi
+          git fetch --quiet origin main
+          git cat-file -e "${SHA}^{commit}" 2>/dev/null || { echo "::error::commit $SHA not found in the repo history."; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Cherry-pick onto staging
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+          REASON: ${{ inputs.deployment_reason }}
+        run: |
+          set -euo pipefail
+          git config user.name  "seqtoid-gitops"
+          git config user.email "gitops@seqtoid.local"
+          echo "Cherry-picking $SHA onto staging (baseline = what env-staging runs now)."
+          if ! git cherry-pick -x "$SHA"; then
+            git cherry-pick --abort || true
+            echo "::error title=Cherry-pick conflict::$SHA does not apply cleanly onto the staging line. It likely depends on a change not yet on env-staging. Stage that dependency first (or rework the change), then retry."
+            exit 1
+          fi
+          # Record the operator's reason as a trailer so promote-staging-on-build can carry it through.
+          git commit --amend -m "$(git log -1 --format=%B)" -m "Env-staging-reason: ${REASON}"
+          git push origin HEAD:staging
+          NEW="$(git rev-parse --short=8 HEAD)"
+          echo "Staged $SHA onto staging (new staging HEAD sha-$NEW)."
+          {
+            echo "### Staged to env-staging line"
+            echo ""
+            echo "- cherry-picked: \`$SHA\`"
+            echo "- new staging HEAD: \`sha-$NEW\`"
+            echo "- reason: ${REASON}"
+            echo ""
+            echo "A build of \`sha-$NEW\` will run, then **promote-staging-on-build** promotes it to"
+            echo "env-staging -- approve the \`staging\` gate when it pauses."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -154,6 +154,10 @@
     color: $sds-color-gray-500;
   }
 
+  .loadingSearchMessage {
+    padding: $sds-spaces-xs $sds-spaces-l;
+  }
+
   .innerMenu {
     /* Override semantic-ui */
     box-shadow: none !important;
