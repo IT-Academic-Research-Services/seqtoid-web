@@ -6,6 +6,8 @@ require "sprockets/railtie"
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
+require_relative "json_logging"
+
 module Czid
   class Application < Rails::Application
     # Load configuration defaults from Rails 6.1, then opt in to individual Rails 7.0
@@ -72,6 +74,31 @@ module Czid
     # would 403 them before the signature check runs. The signature is the real auth on these paths.
     config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ || request.path.start_with?("/internal/") } }
     config.x.constants.default_background = 26
+
+    # Include generic and useful information about system operation, but avoid logging too much
+    # information to avoid inadvertent exposure of personally identifiable information (PII).
+    config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
+    config.log_formatter = JsonLogFormatter.new
+    logger = ActiveSupport::Logger.new($stdout)
+    logger.formatter = config.log_formatter
+    config.logger = ActiveSupport::TaggedLogging.new(logger)
+    config.active_record.verbose_query_logs = false
+    config.colorize_logging = false
+
+    ActiveRecord::Base.logger = Logger.new($stdout)
+    ActiveRecord::Base.logger.formatter = config.log_formatter
+
+    config.after_initialize do
+      if Rails.logger
+        # Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
+        core_logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
+        core_logger.formatter = config.log_formatter
+        # Also update ActiveRecord's dedicated logger just to be completely safe
+        ActiveRecord::Base.logger.formatter = config.log_formatter
+        # As well as OmniAuth
+        OmniAuth.config.logger = Rails.logger
+      end
+    end
   end
 end
 
