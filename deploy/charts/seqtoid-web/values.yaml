@@ -297,6 +297,12 @@ workerDrain:
 # `rake` / `shoryuken`); if the process tree is gone the kubelet restarts the pod.
 # Per-worker override/opt-out via workers.<name>.livenessProbe (set to null to disable).
 # initialDelaySeconds is generous because rake worker boot (chamber + Rails) is slow.
+# Scheduling affinity for every worker Deployment (per-worker `workers.<name>.affinity` wins). Empty by
+# default. envs set it to keep workers off spot capacity: a spot reclaim kills whatever job is in flight.
+# Use `karpenter.sh/capacity-type NotIn [spot]` -- it matches Karpenter on-demand nodes AND managed
+# node-group nodes (which carry no karpenter label), and makes Karpenter launch on-demand for new pods.
+workerAffinity: {}
+
 workerLivenessProbe:
   enabled: true
   initialDelaySeconds: 60
