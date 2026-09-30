@@ -186,7 +186,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { LocalUploadProgressModal } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
+import {
+  LocalUploadProgressModal,
+  uploadAutoResume,
+} from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
 
 // This box runs several jest workers in parallel, so the async upload chain can
 // take far longer than RTL's 1s default to settle. Wait generously.
@@ -261,6 +264,8 @@ const renderModal = (overrides: Record<string, unknown> = {}) =>
   );
 
 beforeEach(() => {
+  // These specs cover a single upload attempt; automatic resume has its own spec.
+  uploadAutoResume.autoResumeDelaysMs = [];
   jest.clearAllMocks();
   mockUploads.length = 0;
   mockDone.impl = null;

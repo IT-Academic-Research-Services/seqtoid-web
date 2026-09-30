@@ -9,6 +9,10 @@
  *     into the CompleteMultipartUpload part list (and omitted when absent),
  *   - a paginated ListParts walk whose PartNumberMarker advances by parts seen.
  *
+ * The harness models S3: ListParts first serves the configured "prior session" pages (the resume
+ * listing), then reports every part S3 holds, including parts uploaded during the test, for the
+ * pre-completion reconcile pass that a resumed upload runs.
+ *
  * The AWS SDK is mocked exactly as in the sibling specs so this stays a pure
  * orchestration unit test.
  */
@@ -69,6 +73,10 @@ function makeClient(options: ClientOptions = {}) {
   const listPartsMarkers: (string | undefined)[] = [];
   let listPage = 0;
   let completeInput: $TSFixMe = null;
+  // What S3 holds for the upload: parts from the configured prior-session pages plus every part
+  // uploaded during the test.
+  const stored: Record<number, Record<string, unknown>> = {};
+  const pages = options.listPartsPages ?? [{ IsTruncated: false }];
   const send = jest.fn(async (command: $TSFixMe) => {
     if (command instanceof PutObjectCommand) return { ETag: '"put"' };
     if (command instanceof CreateMultipartUploadCommand) {
@@ -76,16 +84,31 @@ function makeClient(options: ClientOptions = {}) {
     }
     if (command instanceof ListPartsCommand) {
       listPartsMarkers.push(command.input.PartNumberMarker as string);
-      const pages = options.listPartsPages ?? [{ IsTruncated: false }];
-      const page = pages[Math.min(listPage, pages.length - 1)];
+      if (listPage < pages.length) {
+        const page = pages[listPage];
+        listPage += 1;
+        for (const part of (page.Parts as Record<string, unknown>[]) ?? []) {
+          if (part.ETag && part.PartNumber) {
+            stored[part.PartNumber as number] = part;
+          }
+        }
+        return page;
+      }
       listPage += 1;
-      return page;
+      return {
+        IsTruncated: false,
+        Parts: Object.values(stored).sort(
+          (a, b) => (a.PartNumber as number) - (b.PartNumber as number),
+        ),
+      };
     }
     if (command instanceof UploadPartCommand) {
       const partNumber = command.input.PartNumber as number;
-      return options.uploadPartResult
+      const result = options.uploadPartResult
         ? options.uploadPartResult(partNumber)
         : { ETag: `"etag-${partNumber}"` };
+      stored[partNumber] = { PartNumber: partNumber, ...result };
+      return result;
     }
     if (command instanceof CompleteMultipartUploadCommand) {
       completeInput = command.input;
@@ -181,7 +204,9 @@ describe("ResumableUpload ListParts bookkeeping", () => {
 
     await upload.done();
 
-    expect(harness.listPartsMarkers).toEqual(["0", "2"]);
+    // The resume listing pages "0" -> "2"; the pre-completion reconcile pass then lists from "0".
+    expect(harness.listPartsMarkers.slice(0, 2)).toEqual(["0", "2"]);
+    expect(harness.listPartsMarkers.slice(2)).toEqual(["0"]);
   });
 });
 

@@ -62,7 +62,9 @@ jest.mock(
       handlers: Record<string, $TSFixMe> = {};
       createdCallback: $TSFixMe = null;
       pause = jest.fn().mockResolvedValue(undefined);
+      opts: $TSFixMe;
       constructor(opts: $TSFixMe) {
+        this.opts = opts;
         this.params = opts.params;
         this.uploadId = opts.uploadId;
         mockUploads.push(this);
@@ -174,7 +176,10 @@ jest.mock("~ui/controls/buttons", () => ({
 import { S3Client } from "@aws-sdk/client-s3";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { formatFileSize } from "~/components/utils/format";
-import { LocalUploadProgressModal } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
+import {
+  LocalUploadProgressModal,
+  uploadAutoResume,
+} from "~/components/views/SampleUploadFlow/components/UploadProgressModal/components/LocalUploadProgressModal/LocalUploadProgressModal";
 
 const PROJECT = { id: 77, name: "Ocean" } as $TSFixMe;
 
@@ -230,6 +235,8 @@ const renderModal = (overrides: Record<string, unknown> = {}) =>
   );
 
 beforeEach(() => {
+  // These specs cover a single upload attempt; automatic resume has its own spec.
+  uploadAutoResume.autoResumeDelaysMs = [];
   jest.clearAllMocks();
   mockUploads.length = 0;
   mockDone.impl = null;
@@ -645,5 +652,71 @@ describe("LocalUploadProgressModal screen wake lock", () => {
     );
     // The upload still runs to completion without a wake lock.
     expect(await screen.findByText("Sent to pipeline")).toBeTruthy();
+  });
+});
+
+describe("automatic resume of a failed sample upload", () => {
+  beforeEach(() => {
+    uploadAutoResume.autoResumeDelaysMs = [0, 0];
+  });
+
+  it("resumes the same multipart upload after a failure and completes without prompting", async () => {
+    let attempt = 0;
+    mockDone.impl = async (instance: $TSFixMe) => {
+      attempt++;
+      if (attempt === 1) {
+        // The first attempt created the multipart upload, then a part failed.
+        instance.createdCallback?.("upload-xyz");
+        throw new Error("TimeoutError: S3 request exceeded 300000ms.");
+      }
+    };
+    mockInitiateBulkUpload.mockResolvedValue([createdSample("alpha", 5)]);
+
+    renderModal();
+
+    expect(await screen.findByText("Sent to pipeline")).toBeTruthy();
+    expect(screen.queryByText("Upload failed")).toBeNull();
+    expect(screen.queryByText("Retry failed upload")).toBeNull();
+    // Two attempts; the second resumed the upload the first one created (not a fresh upload).
+    expect(mockUploads).toHaveLength(2);
+    expect(mockUploads[1].uploadId).toBe("upload-xyz");
+    // Fresh credentials were fetched for the resume.
+    expect(mockGetUploadCredentials).toHaveBeenCalledTimes(2);
+    // An auto-resumed failure is not reported as an upload error.
+    expect(mockLogError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          "UploadProgressModal: Local sample upload error to S3 occurred",
+      }),
+    );
+  });
+
+  it("marks the sample failed and offers Retry once automatic resumes are exhausted", async () => {
+    mockDone.impl = async () => {
+      throw new Error("network down");
+    };
+    mockInitiateBulkUpload.mockResolvedValue([createdSample("alpha", 5)]);
+
+    renderModal();
+
+    expect(await screen.findByText("Retry failed upload")).toBeTruthy();
+    expect(screen.getByText("Upload failed")).toBeTruthy();
+    // 1 initial attempt + 2 automatic resumes.
+    expect(mockUploads).toHaveLength(3);
+  });
+
+  it("gives every file upload the long request timeout and one shared part limiter", async () => {
+    mockInitiateBulkUpload.mockResolvedValue([
+      createdSample("alpha", 5),
+      createdSample("beta", 6),
+    ]);
+
+    renderModal();
+
+    await waitFor(() => expect(mockUploads).toHaveLength(2));
+    expect(mockUploads[0].opts.requestTimeoutMs).toBe(300_000);
+    expect(mockUploads[0].opts.limiter).toBeDefined();
+    // The same limiter instance is shared across samples, so the cap is batch-wide.
+    expect(mockUploads[1].opts.limiter).toBe(mockUploads[0].opts.limiter);
   });
 });
