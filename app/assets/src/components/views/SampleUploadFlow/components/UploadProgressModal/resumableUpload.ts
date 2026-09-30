@@ -30,6 +30,7 @@ import {
   UploadPartCommand,
   UploadPartCommandOutput,
 } from "@aws-sdk/client-s3";
+import { ConcurrencyLimiter } from "./uploadConcurrencyLimiter";
 
 // S3 multipart minimum part size (5 MiB) and hard cap on parts.
 const MIN_PART_SIZE = 1024 * 1024 * 5;
@@ -41,7 +42,10 @@ const MAX_PARTS = 10000;
 // pending forever, which silently hangs the entire batch with no surfaced error (samples sit at
 // status=created and are swept to LOCAL_UPLOAD_STALLED; SMP-1747). The timeout converts a hung
 // request into a rejection so it can be retried and, if it keeps failing, surfaced.
-const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+// Sized for a 5 MiB part on a slow or shared uplink (~17 KiB/s floor): at the previous 60s, a batch
+// uploading many parts at once on an ordinary connection timed parts out that were still sending,
+// failing whole samples and prompting the user to retry.
+const DEFAULT_REQUEST_TIMEOUT_MS = 300_000;
 // Bounded retry for a single request. After this many attempts the error propagates so a genuine
 // failure surfaces (and, with leavePartsOnError, the multipart parts are left on S3 to resume)
 // rather than retrying forever.
@@ -72,6 +76,8 @@ export interface ResumableUploadOptions {
   requestTimeoutMs?: number;
   maxAttempts?: number;
   retryBaseDelayMs?: number;
+  // Optional limiter shared across uploads to cap total concurrent part uploads (see above).
+  limiter?: ConcurrencyLimiter;
 }
 
 interface DataPart {
@@ -132,7 +138,17 @@ export class ResumableUpload {
   private readonly requestTimeoutMs: number;
   private readonly maxAttempts: number;
   private readonly retryBaseDelayMs: number;
+  private readonly limiter?: ConcurrencyLimiter;
   private readonly abortController = new AbortController();
+  // Set when one worker hits an unrecoverable error (leavePartsOnError). The sibling workers stop
+  // taking parts and their in-flight requests are aborted, so a failed attempt stops using the
+  // uplink instead of competing with the retry that follows it.
+  private failure?: unknown;
+  private readonly inFlightRequests = new Set<AbortController>();
+  // True once an UploadPart request failed/timed out and was retried, or when resuming an existing
+  // upload. Only then can S3 hold a different copy (ETag) of a part than the one recorded here, so
+  // only then is the part list reconciled against ListParts before completing.
+  private partEtagsMayBeStale = false;
 
   private uploadId?: string;
   private paused = false;
@@ -162,6 +178,7 @@ export class ResumableUpload {
     this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     this.retryBaseDelayMs =
       options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+    this.limiter = options.limiter;
     if (this.partSize < MIN_PART_SIZE) {
       throw new Error(
         `EntityTooSmall: partSize ${this.partSize} is smaller than the 5MB minimum.`,
@@ -252,7 +269,12 @@ export class ResumableUpload {
       if (this.abortController.signal.aborted) {
         throw this.interruptError();
       }
+      // A sibling worker already failed this upload: don't start (or retry) another request.
+      if (this.failure !== undefined) {
+        throw this.failure;
+      }
       const timeoutController = new AbortController();
+      this.inFlightRequests.add(timeoutController);
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         return await new Promise<T>((resolve, reject) => {
@@ -276,6 +298,14 @@ export class ResumableUpload {
         if (this.abortController.signal.aborted) {
           throw this.interruptError();
         }
+        // Aborted because a sibling worker failed: surface that original failure, don't retry.
+        if (this.failure !== undefined) {
+          throw this.failure;
+        }
+        if (command instanceof UploadPartCommand) {
+          // The failed attempt may still land on S3 after its retry, replacing the part's ETag.
+          this.partEtagsMayBeStale = true;
+        }
         if (attempt >= this.maxAttempts) {
           throw error;
         }
@@ -284,6 +314,30 @@ export class ResumableUpload {
         if (timer) {
           clearTimeout(timer);
         }
+        this.inFlightRequests.delete(timeoutController);
+      }
+    }
+  }
+
+  // Run fn while holding a slot from the shared limiter (when one is configured).
+  private async withPartSlot<T>(fn: () => Promise<T>): Promise<T> {
+    if (!this.limiter) {
+      return fn();
+    }
+    const release = await this.limiter.acquire();
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  // First unrecoverable worker error: record it and abort every sibling's in-flight request.
+  private failFast(error: unknown): void {
+    if (this.failure === undefined) {
+      this.failure = error;
+      for (const controller of this.inFlightRequests) {
+        controller.abort();
       }
     }
   }
@@ -301,51 +355,66 @@ export class ResumableUpload {
     return rest;
   }
 
-  // Page through ListParts for a resumed upload, recording already-uploaded parts by number.
-  private async getUploadedParts(): Promise<void> {
+  // Page through ListParts, returning every part S3 currently holds for this upload by number.
+  // Pages with S3's own NextPartNumberMarker: the marker is a part NUMBER, not a count, so a count
+  // re-reads or skips parts when earlier parts are missing (common after a failed attempt).
+  private async listUploadedParts(): Promise<Record<number, CompletedPart>> {
+    const partsByNumber: Record<number, CompletedPart> = {};
     if (!this.uploadId) {
-      return;
+      return partsByNumber;
     }
     const { Bucket, Key } = this.params;
-    let moreResults = true;
-    let numPartsRetrieved = 0;
-    while (moreResults) {
-      moreResults = false;
+    let marker = "0";
+    for (;;) {
       const response = await this.sendWithRetry<ListPartsCommandOutput>(
         new ListPartsCommand({
           Bucket,
           Key,
           UploadId: this.uploadId,
-          PartNumberMarker: numPartsRetrieved.toString(),
+          PartNumberMarker: marker,
         }),
       );
-      moreResults = !!response.IsTruncated;
-      const parts = response.Parts;
-      if (parts) {
-        numPartsRetrieved += parts.length;
-        for (const part of parts) {
-          const { ETag, PartNumber } = part;
-          if (ETag && PartNumber) {
-            this.previouslyUploadedPartsMap[PartNumber] = {
-              PartNumber,
-              ETag,
-              ...(part.ChecksumSHA256 && {
-                ChecksumSHA256: part.ChecksumSHA256,
-              }),
-            };
-          }
+      const parts = response.Parts ?? [];
+      for (const part of parts) {
+        const { ETag, PartNumber } = part;
+        if (ETag && PartNumber) {
+          partsByNumber[PartNumber] = {
+            PartNumber,
+            ETag,
+            ...(part.ChecksumSHA256 && {
+              ChecksumSHA256: part.ChecksumSHA256,
+            }),
+          };
         }
       }
+      if (!response.IsTruncated) {
+        return partsByNumber;
+      }
+      const next =
+        response.NextPartNumberMarker ??
+        parts[parts.length - 1]?.PartNumber?.toString();
+      if (!next || next === marker) {
+        // Defensive: a truncated page with no usable marker would loop forever.
+        return partsByNumber;
+      }
+      marker = next;
     }
+  }
+
+  // Record already-uploaded parts for a resumed upload.
+  private async getUploadedParts(): Promise<void> {
+    this.previouslyUploadedPartsMap = await this.listUploadedParts();
   }
 
   private async uploadUsingPut(dataPart: DataPart): Promise<void> {
     this.isMultiPart = false;
-    this.putResponse = await this.sendWithRetry<PutObjectCommandOutput>(
-      new PutObjectCommand({
-        ...this.params,
-        Body: await toBytes(dataPart.data),
-      }),
+    this.putResponse = await this.withPartSlot(async () =>
+      this.sendWithRetry<PutObjectCommandOutput>(
+        new PutObjectCommand({
+          ...this.params,
+          Body: await toBytes(dataPart.data),
+        }),
+      ),
     );
     const totalSize = dataPart.data.size;
     this.notifyProgress({
@@ -360,12 +429,13 @@ export class ResumableUpload {
   // Guarded so concurrent workers create the multipart upload exactly once.
   private async createMultipartUpload(): Promise<void> {
     if (!this.createMultipartPromise) {
-      this.createMultipartPromise = this.sendWithRetry<CreateMultipartUploadCommandOutput>(
-        new CreateMultipartUploadCommand(this.paramsWithoutBody()),
-      ).then(result => {
-        this.uploadId = result.UploadId;
-        this.createdMultipartUploadListener?.(this.uploadId ?? null);
-      });
+      this.createMultipartPromise =
+        this.sendWithRetry<CreateMultipartUploadCommandOutput>(
+          new CreateMultipartUploadCommand(this.paramsWithoutBody()),
+        ).then(result => {
+          this.uploadId = result.UploadId;
+          this.createdMultipartUploadListener?.(this.uploadId ?? null);
+        });
     }
     await this.createMultipartPromise;
   }
@@ -386,8 +456,26 @@ export class ResumableUpload {
     }
   }
 
+  // Upload one part (bytes are read only once a limiter slot is held, bounding memory as well).
+  private uploadPart(dataPart: DataPart): Promise<UploadPartCommandOutput> {
+    return this.withPartSlot(async () =>
+      this.sendWithRetry<UploadPartCommandOutput>(
+        new UploadPartCommand({
+          ...this.params,
+          UploadId: this.uploadId,
+          Body: await toBytes(dataPart.data),
+          PartNumber: dataPart.partNumber,
+        }),
+      ),
+    );
+  }
+
   private async runWorker(feeder: AsyncGenerator<DataPart>): Promise<void> {
     for (;;) {
+      // A sibling worker already failed this upload: stop taking parts.
+      if (this.failure !== undefined) {
+        return;
+      }
       const { value: dataPart, done } = await feeder.next();
       if (done) {
         return;
@@ -432,14 +520,7 @@ export class ResumableUpload {
             }),
           });
         } else {
-          const partResult = await this.sendWithRetry<UploadPartCommandOutput>(
-            new UploadPartCommand({
-              ...this.params,
-              UploadId: this.uploadId,
-              Body: await toBytes(dataPart.data),
-              PartNumber: dataPart.partNumber,
-            }),
-          );
+          const partResult = await this.uploadPart(dataPart);
           if (this.abortController.signal.aborted) {
             return;
           }
@@ -465,7 +546,8 @@ export class ResumableUpload {
         // Before a multipart upload exists, any error is fatal. Once it exists, leavePartsOnError
         // decides whether to propagate (and leave parts on S3 for a later resume) or swallow.
         if (!this.uploadId || this.leavePartsOnError) {
-          throw error;
+          this.failFast(error);
+          throw this.failure;
         }
       }
     }
@@ -477,11 +559,13 @@ export class ResumableUpload {
     const feeder = chunkBlob(this.params.Body as Blob, this.partSize);
 
     if (this.uploadId) {
+      this.partEtagsMayBeStale = true;
       try {
         await this.getUploadedParts();
       } catch {
         // Couldn't enumerate prior parts — start a fresh upload and let the modal clear the stale id.
         this.uploadId = undefined;
+        this.partEtagsMayBeStale = false;
         this.createdMultipartUploadListener?.(null);
       }
     }
@@ -503,12 +587,66 @@ export class ResumableUpload {
     this.uploadedParts.sort(
       (a, b) => (a.PartNumber ?? 0) - (b.PartNumber ?? 0),
     );
+    let parts = this.uploadedParts;
+    if (this.partEtagsMayBeStale) {
+      try {
+        parts = await this.reconcileWithS3(this.uploadedParts);
+      } catch (error) {
+        // Reconciling is a safety check. If it cannot run (ListParts failing), complete with the
+        // recorded parts as before rather than failing an upload whose parts are all on S3.
+        if (this.abortController.signal.aborted) {
+          throw this.interruptError();
+        }
+        parts = this.uploadedParts;
+      }
+    }
     return this.sendWithRetry<CompleteMultipartUploadCommandOutput>(
       new CompleteMultipartUploadCommand({
         ...this.paramsWithoutBody(),
         UploadId: this.uploadId,
-        MultipartUpload: { Parts: this.uploadedParts },
+        MultipartUpload: { Parts: parts },
       }),
     );
+  }
+
+  // Build the CompleteMultipartUpload part list from what S3 actually holds, not from the ETags this
+  // browser recorded. The samples buckets use SSE-KMS, where a part's ETag is NOT an MD5 of its bytes
+  // and changes on every upload of that part. A request that times out here can still land on S3
+  // AFTER its retry succeeded, replacing the part with a new ETag; completing with the recorded ETag
+  // then fails with InvalidPart. The SHA256 checksum IS stable for identical bytes, so it proves S3's
+  // copy is our data. A part that is missing, or whose checksum differs, is uploaded again.
+  private async reconcileWithS3(
+    recordedParts: CompletedPart[],
+  ): Promise<CompletedPart[]> {
+    const onS3 = await this.listUploadedParts();
+    const reconciled: CompletedPart[] = [];
+    for (const recorded of recordedParts) {
+      const partNumber = recorded.PartNumber as number;
+      const current = onS3[partNumber];
+      const sameBytes =
+        current &&
+        (!recorded.ChecksumSHA256 ||
+          !current.ChecksumSHA256 ||
+          current.ChecksumSHA256 === recorded.ChecksumSHA256);
+      if (current && sameBytes) {
+        reconciled.push(current);
+        continue;
+      }
+      // Missing or not our bytes: upload this part again from the local file.
+      const start = (partNumber - 1) * this.partSize;
+      const body = this.params.Body as Blob;
+      const dataPart: DataPart = {
+        partNumber,
+        data: body.slice(start, Math.min(start + this.partSize, body.size)),
+        lastPart: start + this.partSize >= body.size,
+      };
+      const result = await this.uploadPart(dataPart);
+      reconciled.push({
+        PartNumber: partNumber,
+        ETag: result.ETag,
+        ...(result.ChecksumSHA256 && { ChecksumSHA256: result.ChecksumSHA256 }),
+      });
+    }
+    return reconciled;
   }
 }
