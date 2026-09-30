@@ -297,6 +297,12 @@ workerDrain:
 # `rake` / `shoryuken`); if the process tree is gone the kubelet restarts the pod.
 # Per-worker override/opt-out via workers.<name>.livenessProbe (set to null to disable).
 # initialDelaySeconds is generous because rake worker boot (chamber + Rails) is slow.
+# Scheduling affinity for every worker Deployment (per-worker `workers.<name>.affinity` wins). Empty by
+# default. envs set it to keep workers off spot capacity: a spot reclaim kills whatever job is in flight.
+# Use `karpenter.sh/capacity-type NotIn [spot]` -- it matches Karpenter on-demand nodes AND managed
+# node-group nodes (which carry no karpenter label), and makes Karpenter launch on-demand for new pods.
+workerAffinity: {}
+
 workerLivenessProbe:
   enabled: true
   initialDelaySeconds: 60
@@ -452,16 +458,49 @@ workers:
   # The four queues below replace what "*" was silently covering: enforce_data_retention,
   # provision_screened_account (must run on the WEB role -- it creates the Auth0 user), rerun and
   # support_enrichment. Verified against every `@queue =` declaration in app/ and lib/.
-  # ADDING A NEW JOB: add its queue here explicitly, or it will never be worked.
+  # ADDING A NEW JOB: add its queue to exactly ONE of resque / resque-deletion / resque-accounts below,
+  # or it will never be worked. spec/config/resque_queue_coverage_spec.rb fails CI if a queue is missed.
+  #
+  # The web-role queues are split across three workers so a slow or destructive job can never stall the
+  # rest (env-prod 2026-09-29: one user's bulk delete, 13 HardDeleteObjects batches of ~15 min each, sat
+  # on the single general worker and froze heatmap indexing, bulk downloads and S3 imports behind it):
+  #   resque           -- the general pool. Scale it with replicaCount, never COUNT: each pod runs exactly
+  #                       one worker (COUNT=1 in workers.yaml), so requests/liveness/SIGTERM stay per-worker
+  #                       and the pool can later be autoscaled on queue depth. envs raise it (env-prod: 10).
+  #   resque-deletion  -- destructive/slow jobs: hard deletes, retention purge, soft-delete sweep, old
+  #                       bulk-download purge, unclaimed-account deletion. ONE replica on purpose:
+  #                       HardDeleteObjects warns parallel deletes trip S3 503 SlowDown, and the destructive
+  #                       jobs stay serialized. hard_delete_objects is listed LAST so a large delete backlog
+  #                       cannot starve the daily sweeps (Resque checks queues in order between jobs).
+  #   resque-accounts  -- provision_screened_account (creates the Auth0 user after export-control
+  #                       clearance). Own process so an approved user is never queued behind other work.
   resque:
     args: ["rake", "resque:workers"]
     replicaCount: 1
-    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,check_soft_deleted_data,index_taxons,elasticsearch_index,hard_delete_objects,delete_unclaimed_user_accounts,delete_old_bulk_downloads,clear_resque_failure_queue,enforce_data_retention,provision_screened_account,rerun,support_enrichment"
+    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,index_taxons,elasticsearch_index,clear_resque_failure_queue,rerun,support_enrichment"
     samplesBucket: true
     resources:
       requests:
         cpu: 500m
         memory: 3Gi
+  resque-deletion:
+    args: ["rake", "resque:workers"]
+    replicaCount: 1
+    queue: "delete_unclaimed_user_accounts,enforce_data_retention,check_soft_deleted_data,delete_old_bulk_downloads,hard_delete_objects"
+    samplesBucket: true
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+  resque-accounts:
+    args: ["rake", "resque:workers"]
+    replicaCount: 1
+    queue: "provision_screened_account"
+    samplesBucket: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 768Mi
   resque-scheduler:
     args: ["rake", "resque:scheduler"]
     replicaCount: 1
