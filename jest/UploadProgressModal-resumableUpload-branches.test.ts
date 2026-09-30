@@ -64,15 +64,50 @@ beforeEach(() => {
 type SentCommand = { name: string; input: any };
 type Handler = (input: any, callIndex: number) => any;
 
+// Models S3 for ListParts: a ListParts handler describes what a PRIOR session left on S3 (the
+// resume listing). Once this session starts uploading parts, ListParts -- the pre-completion
+// reconcile pass a resumed upload runs -- reports those prior parts plus every part uploaded here.
 function makeClient(handlers: Record<string, Handler> = {}) {
   const sent: SentCommand[] = [];
   const counts: Record<string, number> = {};
+  const priorParts: Record<number, any> = {};
+  const uploadedParts: Record<number, any> = {};
+  let uploadsStarted = false;
   const send = jest.fn(async (command: any) => {
     const name = command.constructor.name;
     counts[name] = (counts[name] ?? 0) + 1;
     sent.push({ name, input: command.input });
     const handler = handlers[name];
-    if (handler) return handler(command.input, counts[name] - 1);
+    if (name === "UploadPartCommand") {
+      uploadsStarted = true;
+      const result = handler
+        ? handler(command.input, counts[name] - 1)
+        : { ETag: `"part-${command.input.PartNumber}"` };
+      uploadedParts[command.input.PartNumber] = {
+        PartNumber: command.input.PartNumber,
+        ...result,
+      };
+      return result;
+    }
+    if (name === "ListPartsCommand" && uploadsStarted) {
+      const onS3 = { ...priorParts, ...uploadedParts };
+      return {
+        IsTruncated: false,
+        Parts: Object.keys(onS3)
+          .map(Number)
+          .sort((a, b) => a - b)
+          .map(n => onS3[n]),
+      };
+    }
+    if (handler) {
+      const result = handler(command.input, counts[name] - 1);
+      if (name === "ListPartsCommand") {
+        for (const part of result?.Parts ?? []) {
+          if (part.ETag && part.PartNumber) priorParts[part.PartNumber] = part;
+        }
+      }
+      return result;
+    }
     switch (name) {
       case "PutObjectCommand":
         return { ETag: '"put-etag"' };
@@ -281,11 +316,13 @@ describe("ResumableUpload resume via ListParts", () => {
 
     await upload.done();
 
-    // Two pages were fetched, the second continuing from the first page's part count.
+    // The resume listing fetched two pages, the second continuing from the first page's last part
+    // number; the pre-completion reconcile pass then listed once more from the start.
     const listCalls = inputsFor("ListPartsCommand");
-    expect(listCalls).toHaveLength(2);
+    expect(listCalls).toHaveLength(3);
     expect(listCalls[0].PartNumberMarker).toBe("0");
     expect(listCalls[1].PartNumberMarker).toBe("2");
+    expect(listCalls[2].PartNumberMarker).toBe("0");
     // Resume never re-creates the multipart upload.
     expect(names()).not.toContain("CreateMultipartUploadCommand");
     // Part 1 matched its checksum and was skipped; parts 2 and 3 were re-sent.

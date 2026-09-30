@@ -34,6 +34,7 @@ import {
   clearCachedUploadFile,
   clearProjectByteCache,
 } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/uploadByteCache";
+import { ConcurrencyLimiter } from "~/components/views/SampleUploadFlow/components/UploadProgressModal/uploadConcurrencyLimiter";
 import {
   clearFileHandle,
   clearProjectFileHandles,
@@ -65,10 +66,24 @@ import { LocalUploadModalHeader } from "./components/LocalUploadModalHeader";
 import { UploadConfirmationModal } from "./components/UploadConfirmationModal";
 import { UploadProgressModalSampleList } from "./components/UploadProgressModalSampleList";
 
-// SMP-1747: per-request timeout for the S3 upload client so a stalled connection cannot hang
-// forever and wedge the per-sample upload loop. Sized generously against a 5 MiB part on
-// a slow link (~42 KiB/s floor); the SDK retries a timed-out request before it fails the sample.
-const UPLOAD_REQUEST_TIMEOUT_MS = 120_000;
+// SMP-1747: per-request timeout so a stalled connection cannot hang forever and wedge the upload
+// loop. Applied to BOTH the S3 client and ResumableUpload's own per-request timer (the uploader
+// previously ignored this value and aborted parts at its 60s default). 5 minutes covers a 5 MiB
+// part at ~17 KiB/s, so a slow or busy uplink is not mistaken for a stall.
+const UPLOAD_REQUEST_TIMEOUT_MS = 300_000;
+
+// Total part uploads in flight across the WHOLE batch (all samples x all files). Without a shared
+// cap, SAMPLE_UPLOAD_CONCURRENCY x files per sample x PART_UPLOAD_CONCURRENCY put ~48 x 5 MiB PUTs
+// on the user's uplink at once, each too slow to finish before the timeout.
+const MAX_PARTS_IN_FLIGHT = 12;
+
+// A sample whose upload fails is resumed automatically (same multipart uploadIds, so parts already
+// on S3 are skipped) up to autoResumeDelaysMs.length times, waiting autoResumeDelaysMs[i] before
+// attempt i+1, before it is marked failed and the user is offered Retry. Exported as a mutable
+// object only so tests can shorten the waits.
+export const uploadAutoResume = {
+  autoResumeDelaysMs: [15_000, 30_000, 60_000],
+};
 
 // Throughput: upload up to this many samples concurrently. Each sample's input files and parts
 // still upload in parallel within. Bounded (not a full Promise.all over every sample) because
@@ -139,6 +154,8 @@ export const LocalUploadProgressModal = ({
   const pausedRef = useRef(false);
   // Live ResumableUpload instances by s3Key, so Pause can soft-pause each in-flight upload.
   const activeUploadsRef = useRef<Record<string, ResumableUpload>>({});
+  // One limiter for the whole batch caps total concurrent part uploads (MAX_PARTS_IN_FLIGHT).
+  const partLimiterRef = useRef(new ConcurrencyLimiter(MAX_PARTS_IN_FLIGHT));
 
   // Seed resume state from a prior (paused / interrupted) session so a page reload can pick up:
   // the persisted uploadIds let ResumableUpload skip already-uploaded parts via ListParts.
@@ -158,6 +175,29 @@ export const LocalUploadProgressModal = ({
   const [sampleFileCompleted, setSampleFileCompleted] = useState<
     Record<string, boolean>
   >(persistedResumeState?.sampleFileCompleted ?? {});
+  // Refs mirroring the two resume maps above. Async upload loops close over the render they
+  // started in, so reading the state directly there sees stale values: an automatic resume would
+  // find no uploadId and no completed files and restart every file from scratch. Upload code reads
+  // these refs; the state copies still drive persistence (saveUploadResumeState).
+  const sampleFileUploadIdsRef = useRef<Record<string, string>>(
+    persistedResumeState?.sampleFileUploadIds ?? {},
+  );
+  const sampleFileCompletedRef = useRef<Record<string, boolean>>(
+    persistedResumeState?.sampleFileCompleted ?? {},
+  );
+  const updateSampleFileUploadIds = (
+    update: (prev: Record<string, string>) => Record<string, string>,
+  ) => {
+    sampleFileUploadIdsRef.current = update(sampleFileUploadIdsRef.current);
+    setSampleFileUploadIds(sampleFileUploadIdsRef.current);
+  };
+  const markSampleFileCompleted = (s3Key: string) => {
+    sampleFileCompletedRef.current = {
+      ...sampleFileCompletedRef.current,
+      [s3Key]: true,
+    };
+    setSampleFileCompleted(sampleFileCompletedRef.current);
+  };
 
   let sampleFilePercentages = {};
   let wakeLock: WakeLockSentinel | null = null;
@@ -313,21 +353,53 @@ export const LocalUploadProgressModal = ({
     );
   };
 
+  const wait = (ms: number) =>
+    new Promise<void>(resolve => setTimeout(resolve, ms));
+
+  // Upload a sample's files, automatically resuming a failed attempt autoResumeDelaysMs.length
+  // times before giving up. Each resume reuses the persisted multipart uploadIds (via the refs), so
+  // only parts not yet on S3 are sent. A user Pause is never retried.
+  // Returns false when the sample has no input files (nothing uploaded; caller must not complete it).
+  const uploadSampleFilesWithAutoResume = async (
+    sample: SampleForUpload,
+  ): Promise<boolean> => {
+    const delays = uploadAutoResume.autoResumeDelaysMs;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // Fresh credentials per attempt (cheap, and never stale after a long backoff).
+        const s3ClientForSample = await getS3Client(sample);
+        if (attempt === 0) {
+          updateSampleUploadPercentage(sample.name, 0);
+        }
+        if (!sample.input_files) return false;
+        await Promise.all(
+          sample.input_files.map(async inputFile => {
+            // Upload the input file to s3
+            // Also updates the upload percentage for the sample
+            await uploadInputFileToS3(sample, inputFile, s3ClientForSample);
+          }),
+        );
+        return true;
+      } catch (e) {
+        if (pausedRef.current || attempt >= delays.length) {
+          throw e;
+        }
+        console.warn(
+          `Upload of sample ${sample.name} failed (attempt ${
+            attempt + 1
+          }); resuming automatically`,
+          e,
+        );
+        await wait(delays[attempt]);
+        if (pausedRef.current) return true;
+      }
+    }
+  };
+
   const uploadSample = async (sample: SampleForUpload) => {
     try {
-      // Get the credentials for the sample
-      const s3ClientForSample = await getS3Client(sample);
-      // Set the upload percentage for the sample to 0
-      updateSampleUploadPercentage(sample.name, 0);
-
-      if (!sample.input_files) return;
-      await Promise.all(
-        sample.input_files.map(async inputFile => {
-          // Upload the input file to s3
-          // Also updates the upload percentage for the sample
-          await uploadInputFileToS3(sample, inputFile, s3ClientForSample);
-        }),
-      );
+      const hadFiles = await uploadSampleFilesWithAutoResume(sample);
+      if (!hadFiles) return;
 
       // If the user paused, the sample's files are not fully uploaded — leave the sample "in
       // progress" (uploadIds persisted) so Resume can finish it. Don't mark it complete.
@@ -397,7 +469,7 @@ export const LocalUploadProgressModal = ({
       s3_file_path: s3Key,
     } = inputFile;
 
-    if (sampleFileCompleted[s3Key]) {
+    if (sampleFileCompletedRef.current[s3Key]) {
       return;
     }
 
@@ -431,14 +503,15 @@ export const LocalUploadProgressModal = ({
       fileSize: body?.size,
     });
 
+    const existingUploadId = sampleFileUploadIdsRef.current[s3Key];
     const fileUpload = new ResumableUpload({
       client: s3Client,
       leavePartsOnError: true, // configures lib to propagate errors
       params: uploadParams,
       queueSize: PART_UPLOAD_CONCURRENCY, // parts uploaded in parallel per file (lib default is 4)
-      ...(sampleFileUploadIds[s3Key] && {
-        uploadId: sampleFileUploadIds[s3Key],
-      }),
+      requestTimeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+      limiter: partLimiterRef.current,
+      ...(existingUploadId && { uploadId: existingUploadId }),
     });
 
     // Track this live upload so a Pause can soft-pause it. If the user already hit Pause before
@@ -449,7 +522,7 @@ export const LocalUploadProgressModal = ({
     }
 
     const removeS3KeyFromUploadIds = (s3Key: string) => {
-      setSampleFileUploadIds(prevState => omit(s3Key, prevState));
+      updateSampleFileUploadIds(prevState => omit(s3Key, prevState));
     };
 
     fileUpload.on("httpUploadProgress", progress => {
@@ -465,7 +538,7 @@ export const LocalUploadProgressModal = ({
     });
 
     fileUpload.onCreatedMultipartUpload(uploadId => {
-      setSampleFileUploadIds(prevState =>
+      updateSampleFileUploadIds(prevState =>
         uploadId
           ? { ...prevState, [s3Key]: uploadId }
           : // when there is no valid upload ID we could not create a multipart upload
@@ -497,10 +570,7 @@ export const LocalUploadProgressModal = ({
     // ... and drop any persisted handle (Option C) -- nothing to recover for this file either.
     void clearFileHandle(project.id, s3Key);
 
-    setSampleFileCompleted(prevState => ({
-      ...prevState,
-      [s3Key]: true,
-    }));
+    markSampleFileCompleted(s3Key);
   };
 
   const isPauseError = (error: unknown): boolean =>
