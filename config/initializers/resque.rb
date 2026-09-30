@@ -36,4 +36,9 @@ RESQUE_SERVER.settings.show_exceptions = false
 #
 # Writing the schedule is not skipped anywhere it is needed -- the scheduler sets it on its own
 # boot. Unset by default, so dev/staging/prod are unchanged.
-Resque.schedule = YAML.load_file('config/resque_schedule.yml') unless ENV["ASSETS_PRECOMPILE"] || ENV["SKIP_RESQUE_SCHEDULE"]
+#
+# RESQUE_SCHEDULE_EXCLUDE (comma-separated schedule names) drops entries an env must not run -- e.g.
+# env-staging has no Descartes license and no screening-worker, so it excludes ResolveScreeningHolds.
+# Unset => full schedule. See lib/resque_schedule_loader.rb.
+require './lib/resque_schedule_loader'
+Resque.schedule = ResqueScheduleLoader.load('config/resque_schedule.yml') unless ENV["ASSETS_PRECOMPILE"] || ENV["SKIP_RESQUE_SCHEDULE"]
