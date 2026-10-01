@@ -19,33 +19,45 @@ spec:
       #serviceAccountName: czid-staging-seqtoid-web
       containers:
         - name: rails-app
-          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-659b1d50"
-          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
+          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-1ef145a2"
+          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
           command:
             - chamber
             - exec
             - seqtoid-env-prod-web
             - "--"
+            - bundle
+            - exec
             - rake
-#            - "--tasks"
-#            - "taxon_lineage_slice:remove_slice"
-#            - "taxon_lineage_slice:import_data_from_s3"
-#            - "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
+            #- "--tasks"
+            #- "taxon_lineage_slice:remove_slice"
+            #- "taxon_lineage_slice:import_data_from_s3"
+            #- "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
             - "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
+            #- "update_pathogen_list"
+            #
+            #- rails
+            #- "db:drop"
+            #- "db:create"
+            #- "db:schema:load"
+            #- "db:migrate:with_data"
+            #- "seed:migrate"
+            #- runner
+            # TODO: NOTE THE ADMIN!!!!!
+            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_ADMIN, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            #- joseph.sims@ucsf.edu
+            #- Joseph Sims
+            #- Thomas.Horvath@ucsf.edu
+            #- Thomas Horvath
+            #- Ikramuddin.Ahmed@ucsf.edu
+            #- Ikram Ahmed
 
-#
-#            - rake
+              #- rake
+            #- "--tasks"
 ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 
-            #            - "--"
-#            - rake
-#            - "--tasks"
-#            - "taxon_lineage_slice:remove_slice"
-#            - "taxon_lineage_slice:import_data_from_s3"
-#            - "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
-#            - "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
 #
 #            - "--"
 #            - rake

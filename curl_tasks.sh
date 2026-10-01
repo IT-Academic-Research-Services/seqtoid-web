@@ -24,18 +24,18 @@ run_curl() {
 
 	# curl -ivL --retry-connrefused
 	if [ -n "${curl_data}" ]; then
-		curl -ivL --retry-connrefused \
+		curl -L --retry-connrefused \
 				-X "$http_method" \
 				-H "Content-Type: ${content_type}" \
 				-H "Accept: ${accept}" \
 				"${ES_URL}/$curl_path" \
-				-d "${curl_data}"
+				-d "${curl_data}" | jq .
 	else
-		curl -ivL --retry-connrefused \
+		curl -L --retry-connrefused \
 				-X "$http_method" \
 				-H "Content-Type: ${content_type}" \
 				-H "Accept: ${accept}" \
-				"${ES_URL}/$curl_path"
+				"${ES_URL}/$curl_path" | jq .
 	fi
 }
 
@@ -45,7 +45,28 @@ DATA=""
 #CMD="_cat/indices?format=json&pretty"
 run_curl "${METHOD}" "${CMD}" "${DATA}"
 
+METHOD="GET"
+CMD="_cat/templates?v"
+DATA=""
+run_curl "${METHOD}" "${CMD}" "${DATA}"
+
+METHOD="GET"
+CMD="_cat/aliases?v"
+DATA=""
+run_curl "${METHOD}" "${CMD}" "${DATA}"
+
+METHOD="GET"
+CMD="_cluster/stats?human&filter_path=indices.store"
+DATA=""
+run_curl "${METHOD}" "${CMD}" "${DATA}"
+
+#
 # Create pipeline_runs Index
+#
+
+#METHOD="DELETE"
+#CMD="_index_template/pipeline_runs"
+#run_curl "${METHOD}" "${CMD}" "${DATA}"
 
 METHOD="POST"
 CMD="_index_template/pipeline_runs"
@@ -53,12 +74,18 @@ DATA="@./pipeline_runs_template.json"
 run_curl "${METHOD}" "${CMD}" "${DATA}"
 
 METHOD="PUT"
-# DELETE to delete the index
+#METHOD="DELETE"
 CMD="pipeline_runs-v1"
 DATA=""
 run_curl "${METHOD}" "${CMD}" "${DATA}"
 
+#
 # Create scored_taxon_counts Index
+#
+
+#METHOD="DELETE"
+#CMD="_index_template/scored_taxon_counts"
+#run_curl "${METHOD}" "${CMD}" "${DATA}"
 
 METHOD="POST"
 CMD="_index_template/scored_taxon_counts"
@@ -66,12 +93,22 @@ DATA="@./scored_taxon_counts_template.json"
 run_curl "${METHOD}" "${CMD}" "${DATA}"
 
 METHOD="PUT"
-# DELETE to delete the index
+#METHOD="DELETE"
 CMD="scored_taxon_counts-v1"
 DATA=""
 run_curl "${METHOD}" "${CMD}" "${DATA}"
 
+#
 # Create Aliases for Indexes
+#
+
+#METHOD=DELETE
+#CMD="_aliases/pipeline_runs"
+#CMD="_aliases/scored_taxon_counts"
+##DATA="@./alias_update.json"
+#DATA=""
+#taxon_lineages_alias
+#run_curl "${METHOD}" "${CMD}" "${DATA}"
 
 METHOD="POST"
 CMD="_aliases"
