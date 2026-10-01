@@ -50,7 +50,12 @@ Rails.application.configure do
   config.log_tags = [:request_id]
 
   config.action_mailer.raise_delivery_errors = false
-  config.action_mailer.default_url_options = { host: "env-prod.seqtoid.org" }
+  # Links in emails use the env's public host. Chamber SERVER_DOMAIN flips env-prod.seqtoid.org -> seqtoid.org
+  # at the prod domain cutover; the fallback keeps today's host if it is ever unset.
+  config.action_mailer.default_url_options = {
+    host: ENV["SERVER_DOMAIN"].presence&.sub(%r{\Ahttps?://}, "") || "env-prod.seqtoid.org",
+    protocol: "https",
+  }
 
   # Host authorization: allow this env's host. Chamber sets SERVER_DOMAIN; honor it too so the reachable
   # host is always allow-listed. (At go-live the apex is added when SERVER_DOMAIN flips to seqtoid.org.)
@@ -66,9 +71,15 @@ Rails.application.configure do
     "https://env-prod.seqtoid.org",
     "https://www.env-prod.seqtoid.org",
     "https://assets.env-prod.seqtoid.org",
+    # Prod domain cutover: the apex is the canonical public host; www redirects to it (below).
+    "https://seqtoid.org",
+    "https://www.seqtoid.org",
   ]
 
-  config.middleware.use Rack::HostRedirect, "www.env-prod.seqtoid.org" => "env-prod.seqtoid.org"
+  # www -> apex (canonical). env-prod.seqtoid.org keeps serving as-is: released CLI binaries default to it.
+  config.middleware.use Rack::HostRedirect,
+                        "www.env-prod.seqtoid.org" => "env-prod.seqtoid.org",
+                        "www.seqtoid.org" => "seqtoid.org"
 
   config.i18n.fallbacks = true
   config.active_support.deprecation = :log
