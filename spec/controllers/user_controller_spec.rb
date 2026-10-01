@@ -241,4 +241,38 @@ RSpec.describe UsersController, type: :request do
       assert_redirected_to root_url
     end
   end
+
+  # SMP-1709 -- the self-service registration/confirmation page (GET /users/register) is reachable
+  # only where self-service signup is enabled (dev). In the gated envs (beta/staging/prod) it
+  # redirects logged-out visitors back to the landing page to request access, so directly hitting
+  # the URL cannot bypass the gate. Controller spec (views are not rendered) so this asserts the
+  # gate's routing decision without touching the asset pipeline.
+  context "self-service signup gate (register)" do
+    it "does not redirect when self-service signup is enabled" do
+      AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "1")
+      # The register view mounts a React bundle whose compiled assets are not built in the fast
+      # local test image, so stub the render: this asserts the gate decision (no redirect) without
+      # exercising the asset pipeline.
+      allow_any_instance_of(UsersController).to receive(:render)
+
+      get "/users/register"
+
+      expect(response).not_to be_redirect
+    end
+
+    it "redirects to root_path with an alert when self-service signup is disabled" do
+      AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "0")
+
+      get "/users/register"
+
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to match(/request access/i)
+    end
+
+    it "redirects (fail-closed) when the flag row is absent" do
+      get "/users/register"
+
+      expect(response).to redirect_to(root_path)
+    end
+  end
 end

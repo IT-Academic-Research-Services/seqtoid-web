@@ -53,6 +53,39 @@ RSpec.describe AppConfigHelper, type: :helper do
       AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "0")
       expect(AppConfigHelper.configs_for_context[:autoAccountCreationEnabled]).to be(false)
     end
+
+    # SMP-1709 -- the landing page reads selfServiceSignupEnabled to swap the "Register Now" form
+    # for a request-access CTA.
+    it "reports selfServiceSignupEnabled true when set to '1'" do
+      AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "1")
+      expect(AppConfigHelper.configs_for_context[:selfServiceSignupEnabled]).to be(true)
+    end
+
+    it "reports selfServiceSignupEnabled false for a non-'1' value" do
+      AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "0")
+      expect(AppConfigHelper.configs_for_context[:selfServiceSignupEnabled]).to be(false)
+    end
+
+    it "reports selfServiceSignupEnabled false (fail-closed) when the row is absent" do
+      expect(AppConfigHelper.configs_for_context[:selfServiceSignupEnabled]).to be(false)
+    end
+  end
+
+  # SMP-1709 -- the authoritative predicate gating the self-service signup entry points.
+  describe "#self_service_signup_enabled?" do
+    it "is true only when the flag is exactly '1'" do
+      AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "1")
+      expect(AppConfigHelper.self_service_signup_enabled?).to be(true)
+    end
+
+    it "is false for a non-'1' value" do
+      AppConfigHelper.set_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED, "0")
+      expect(AppConfigHelper.self_service_signup_enabled?).to be(false)
+    end
+
+    it "is false (fail-closed) when the flag row is absent" do
+      expect(AppConfigHelper.self_service_signup_enabled?).to be(false)
+    end
   end
 
   describe "#create_workflow_version find-or-create arm" do
