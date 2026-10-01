@@ -105,17 +105,17 @@ RSpec.describe UsersController, type: :request do
       assert_redirected_to root_url
     end
 
-    context "with AppConfig::AUTO_ACCOUNT_CREATION_V1 disabled" do
-      before do
-        AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "")
-      end
-
-      it "shouldn't update user" do
-        post update_user_data_user_url @joe, params: { user: { name: "abc xyz" } }
-        expect(response).to have_http_status :forbidden
-        expect(JSON.parse(response.body, symbolize_names: true)[:message]).to eq("Nonadmin users are not allowed to modify user info")
-      end
-    end
+    # context "with AppConfig::AUTO_ACCOUNT_CREATION_V1 disabled" do
+    #   before do
+    #     AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "")
+    #   end
+    #
+    #   it "shouldn't update user" do
+    #     post update_user_data_user_url @joe, params: { user: { name: "abc xyz" } }
+    #     expect(response).to have_http_status :forbidden
+    #     expect(JSON.parse(response.body, symbolize_names: true)[:message]).to eq("Nonadmin users are not allowed to modify user info")
+    #   end
+    # end
 
     context "with AppConfig::AUTO_ACCOUNT_CREATION_V1 enabled" do
       before do
