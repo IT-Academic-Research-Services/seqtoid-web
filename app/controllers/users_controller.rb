@@ -66,15 +66,13 @@ class UsersController < ApplicationController
   # POST /user/1/update_user_data
   def update_user_data
     # Unless AppConfig::AUTO_ACCOUNT_CREATION_V1 is enabled, only admins can update users.
-    if !current_user.admin? && get_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1) != "1"
-      render json: { message: "Nonadmin users are not allowed to modify user info" }, status: :forbidden
-      return
-    end
+    # if !current_user.admin? && get_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1) != "1"
+    #   return render json: { message: "Nonadmin users are not allowed to modify user info" }, status: :forbidden
+    # end
 
     # Non-admins can only update their own user info.
     if !current_user.admin? && current_user.id != @user.id
-      render json: { message: "Users are not allowed to modify other users' info" }, status: :forbidden
-      return
+      return render json: { message: "Users are not allowed to modify other users' info" }, status: :forbidden
     end
 
     input_params = user_params_for_nonadmin.to_h.symbolize_keys
@@ -100,9 +98,9 @@ class UsersController < ApplicationController
       render json: { message: "User data successfully saved locally" }, status: :ok
     end
     if get_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1) != "1"
-      render json: { message: "AUTO_ACCOUNT_CREATION_V1 is not enabled" }, status: :forbidden
-      return
+      return render json: { message: "AUTO_ACCOUNT_CREATION_V1 is not enabled" }, status: :forbidden
     end
+
     profile_form_params = profile_params.to_h.symbolize_keys
     if profile_params[:profile_form_version].present?
       UsersHelper.send_profile_form_to_airtable(@user, profile_form_params)
