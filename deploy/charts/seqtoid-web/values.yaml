@@ -458,10 +458,11 @@ workers:
   # The four queues below replace what "*" was silently covering: enforce_data_retention,
   # provision_screened_account (must run on the WEB role -- it creates the Auth0 user), rerun and
   # support_enrichment. Verified against every `@queue =` declaration in app/ and lib/.
-  # ADDING A NEW JOB: add its queue to exactly ONE of resque / resque-deletion / resque-accounts below,
-  # or it will never be worked. spec/config/resque_queue_coverage_spec.rb fails CI if a queue is missed.
+  # ADDING A NEW JOB: add its queue to exactly ONE of resque / resque-deletion / resque-accounts /
+  # resque-indexing below, or it will never be worked. spec/config/resque_queue_coverage_spec.rb fails CI
+  # if a queue is missed.
   #
-  # The web-role queues are split across three workers so a slow or destructive job can never stall the
+  # The web-role queues are split across four workers so a slow or destructive job can never stall the
   # rest (env-prod 2026-09-29: one user's bulk delete, 13 HardDeleteObjects batches of ~15 min each, sat
   # on the single general worker and froze heatmap indexing, bulk downloads and S3 imports behind it):
   #   resque           -- the general pool. Scale it with replicaCount, never COUNT: each pod runs exactly
@@ -474,10 +475,16 @@ workers:
   #                       cannot starve the daily sweeps (Resque checks queues in order between jobs).
   #   resque-accounts  -- provision_screened_account (creates the Auth0 user after export-control
   #                       clearance). Own process so an approved user is never queued behind other work.
+  #   resque-indexing  -- index_taxons (heatmap indexing: each job is a synchronous taxon-indexing lambda call
+  #                       that writes to the heatmap OpenSearch domain). Own pool so replicaCount is the cap
+  #                       on concurrent indexing. On the general pool, env-prod's 10 workers ran heatmap
+  #                       duplicates 10 at a time (2026-09-30: OpenSearch CPU 91-98%, job time 2x) and
+  #                       indexing competed with result loading. Raise replicas only with the OpenSearch
+  #                       domain in mind (env-prod: 2).
   resque:
     args: ["rake", "resque:workers"]
     replicaCount: 1
-    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,index_taxons,elasticsearch_index,clear_resque_failure_queue,rerun,support_enrichment"
+    queue: "data_migration,q03_pipeline_run,result_monitor_loader,transfer_basespace_fastq_files,initiate_fastq_files_s3_cp,generate_bulk_download,precache_report_info,handle_sfn_notifications_timeout,elasticsearch_index,clear_resque_failure_queue,rerun,support_enrichment"
     samplesBucket: true
     resources:
       requests:
@@ -501,6 +508,15 @@ workers:
       requests:
         cpu: 100m
         memory: 768Mi
+  resque-indexing:
+    args: ["rake", "resque:workers"]
+    replicaCount: 1
+    queue: "index_taxons"
+    samplesBucket: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
   resque-scheduler:
     args: ["rake", "resque:scheduler"]
     replicaCount: 1
