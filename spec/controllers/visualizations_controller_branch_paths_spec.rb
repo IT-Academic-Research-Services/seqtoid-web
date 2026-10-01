@@ -138,6 +138,17 @@ RSpec.describe VisualizationsController, type: :controller do
       expect(response).to have_http_status(:ok)
     end
 
+    it "returns 202 instead of building a CSV while the heatmap data is still being indexed" do
+      @joe.add_allowed_feature("heatmap_elasticsearch")
+      allow(TopTaxonsElasticsearchService).to receive(:call).and_return(status: "indexing")
+      expect_any_instance_of(described_class).not_to receive(:generate_heatmap_csv)
+
+      get :download_heatmap, params: { sampleIds: [@sample.id] }
+
+      expect(response).to have_http_status(:accepted)
+      expect(JSON.parse(response.body)).to eq("status" => "indexing")
+    end
+
     it "falls back to the SQL heatmap helper when the feature is off" do
       expect(TopTaxonsElasticsearchService).not_to receive(:call)
       expect(HeatmapHelper).to receive(:sample_taxons_dict).and_return("sql" => "dict")

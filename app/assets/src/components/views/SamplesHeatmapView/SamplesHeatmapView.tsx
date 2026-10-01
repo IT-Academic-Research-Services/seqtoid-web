@@ -1,4 +1,4 @@
-import { Notification } from "@czi-sds/components";
+import { Button, Notification } from "@czi-sds/components";
 import { cx } from "@emotion/css";
 import axios from "axios";
 import DeepEqual from "fast-deep-equal";
@@ -140,6 +140,9 @@ interface SamplesHeatmapViewState {
   // show "Preparing your heatmap" and retry instead of a misleading "No data to render". (SMP-1795)
   heatmapIndexing: boolean;
   heatmapIndexingRetries: number;
+  // True once the automatic indexing polls are used up; we then stop polling and offer a manual
+  // "Check again" instead of promising the heatmap will appear on its own.
+  heatmapIndexingExhausted: boolean;
   selectedMetadata: string[];
   sampleIds: $TSFixMe[];
   invalidSampleNames: $TSFixMe[];
@@ -196,6 +199,13 @@ class SamplesHeatmapViewCC extends React.Component<
   SamplesHeatmapViewState
 > {
   heatmapVis: $TSFixMe;
+  // Pending "still indexing" poll. Only one polling chain may exist at a time: it is cleared on
+  // unmount and whenever a new non-poll fetch starts (initial load, options change, Check again).
+  heatmapIndexingTimer: ReturnType<typeof setTimeout> | null = null;
+  // Bumped on every non-poll fetch so an in-flight poll from an older chain can bail out instead of
+  // cancelling (via lastRequestToken) or overwriting the newer request.
+  heatmapFetchGeneration = 0;
+  isUnmounted = false;
   id: $TSFixMe;
   lastRequestToken: $TSFixMe;
   lastSavedParamValues: $TSFixMe;
@@ -245,6 +255,7 @@ class SamplesHeatmapViewCC extends React.Component<
       loadingFailed: false,
       heatmapIndexing: false,
       heatmapIndexingRetries: 0,
+      heatmapIndexingExhausted: false,
       selectedMetadata: this.urlParams.selectedMetadata || [
         "collection_location_v2",
       ],
@@ -371,6 +382,40 @@ class SamplesHeatmapViewCC extends React.Component<
     this.fetchViewData();
     updateDiscoveryProjectIds(uniq(projectIds));
   }
+
+  componentWillUnmount() {
+    this.isUnmounted = true;
+    this.clearHeatmapIndexingTimer();
+  }
+
+  clearHeatmapIndexingTimer() {
+    if (this.heatmapIndexingTimer !== null) {
+      clearTimeout(this.heatmapIndexingTimer);
+      this.heatmapIndexingTimer = null;
+    }
+  }
+
+  scheduleHeatmapIndexingPoll(delayMs: number) {
+    this.clearHeatmapIndexingTimer();
+    if (this.isUnmounted) return;
+    this.heatmapIndexingTimer = setTimeout(() => {
+      this.heatmapIndexingTimer = null;
+      this.fetchViewData({ indexingPoll: true });
+    }, delayMs);
+  }
+
+  handleHeatmapIndexingCheckAgain = () => {
+    // User-triggered retry: a fresh NON-poll request (lets the backend enqueue indexing again) with
+    // a new budget of automatic polls.
+    this.setState(
+      {
+        heatmapIndexing: false,
+        heatmapIndexingExhausted: false,
+        heatmapIndexingRetries: 0,
+      },
+      () => this.fetchViewData(),
+    );
+  };
 
   parseUrlParams = () => {
     const urlParams = queryString.parse(location.search, {
@@ -715,7 +760,10 @@ class SamplesHeatmapViewCC extends React.Component<
     return "highest_" + countType + "_" + metricName;
   }
 
-  async fetchHeatmapData(sampleIds: $TSFixMe) {
+  async fetchHeatmapData(
+    sampleIds: $TSFixMe,
+    { indexingPoll = false }: { indexingPoll?: boolean } = {},
+  ) {
     const { heatmapTs } = this.props;
     const {
       presets,
@@ -755,6 +803,9 @@ class SamplesHeatmapViewCC extends React.Component<
       heatmapTs: heatmapTs,
       addedTaxonIds: null,
       taxonTags: taxonTags,
+      // Automatic "still indexing" retries only check status; the backend must not enqueue another
+      // indexing job for them. Omitted entirely on the first request and on user-triggered retries.
+      ...(indexingPoll ? { indexingPoll: true } : {}),
     };
 
     // Made a copy of fetchHeatmapDataParams with values that are compliant with the
@@ -806,10 +857,21 @@ class SamplesHeatmapViewCC extends React.Component<
     return getSampleMetadataFields(sampleIds);
   }
 
-  async fetchViewData() {
+  async fetchViewData({
+    indexingPoll = false,
+  }: { indexingPoll?: boolean } = {}) {
     const { backgrounds } = this.props;
     const { sampleIds } = this.state;
     const selectedBackgroundId = this.state.selectedOptions.background;
+
+    if (!indexingPoll) {
+      // A new non-poll fetch supersedes any pending or in-flight indexing poll chain.
+      this.clearHeatmapIndexingTimer();
+      this.heatmapFetchGeneration += 1;
+    }
+    const fetchGeneration = this.heatmapFetchGeneration;
+    const isStalePoll = () =>
+      indexingPoll && fetchGeneration !== this.heatmapFetchGeneration;
 
     this.setState({ loading: true }); // Gets false from this.filterTaxaES
 
@@ -817,6 +879,7 @@ class SamplesHeatmapViewCC extends React.Component<
       sampleIds,
       workflow: WorkflowType.SHORT_READ_MNGS,
     });
+    if (isStalePoll()) return;
 
     this.setState(
       {
@@ -834,37 +897,62 @@ class SamplesHeatmapViewCC extends React.Component<
     let heatmapData, metadataFields;
     try {
       [heatmapData, metadataFields] = await Promise.all([
-        this.fetchHeatmapData(validIds),
+        this.fetchHeatmapData(validIds, { indexingPoll }),
         this.fetchMetadataFieldsBySampleIds(validIds),
       ]);
     } catch (err) {
+      if (isStalePoll()) return;
       this.handleLoadingFailure(err);
       return; // Return early so that loadingFailed is not set to false later
     }
+    if (isStalePoll()) return;
 
     // The backend returns { status: "indexing" } (HTTP 202) when these runs are not yet searchable in
     // the heatmap ES index -- e.g. right after new data is added, or after an ES domain rebuild. The
-    // data is being prepared, not absent, so show a "preparing" state and retry rather than an empty
+    // data is being prepared, not absent, so show a "preparing" state and poll rather than an empty
     // heatmap that reads as broken. (SMP-1795)
-    const MAX_HEATMAP_INDEXING_RETRIES = 6;
-    const HEATMAP_INDEXING_RETRY_MS = 5000;
+    // Automatic retries are status-only polls (indexingPoll) with backoff, so they never enqueue more
+    // indexing jobs; once they are used up we stop and let the user "Check again".
+    const HEATMAP_INDEXING_RETRY_DELAYS_MS = [
+      5000, 10000, 20000, 40000, 40000, 40000,
+    ];
+    const MAX_HEATMAP_INDEXING_RETRIES =
+      HEATMAP_INDEXING_RETRY_DELAYS_MS.length;
     if (heatmapData && (heatmapData as $TSFixMe).status === "indexing") {
       const retries = this.state.heatmapIndexingRetries;
       if (retries < MAX_HEATMAP_INDEXING_RETRIES) {
         this.setState({
           heatmapIndexing: true,
+          heatmapIndexingExhausted: false,
           heatmapIndexingRetries: retries + 1,
           loading: false,
         });
-        setTimeout(() => this.fetchViewData(), HEATMAP_INDEXING_RETRY_MS);
+        this.scheduleHeatmapIndexingPoll(
+          HEATMAP_INDEXING_RETRY_DELAYS_MS[retries],
+        );
       } else {
-        // Stop auto-retrying but keep the honest "still preparing" message; a refresh will re-check.
-        this.setState({ heatmapIndexing: true, loading: false });
+        // Out of automatic polls: stop, and render the "Check again" state instead of promising an
+        // automatic update that will not happen.
+        this.clearHeatmapIndexingTimer();
+        this.setState({
+          heatmapIndexing: true,
+          heatmapIndexingExhausted: true,
+          loading: false,
+        });
       }
       return;
     }
-    if (this.state.heatmapIndexing || this.state.heatmapIndexingRetries > 0) {
-      this.setState({ heatmapIndexing: false, heatmapIndexingRetries: 0 });
+    this.clearHeatmapIndexingTimer();
+    if (
+      this.state.heatmapIndexing ||
+      this.state.heatmapIndexingExhausted ||
+      this.state.heatmapIndexingRetries > 0
+    ) {
+      this.setState({
+        heatmapIndexing: false,
+        heatmapIndexingExhausted: false,
+        heatmapIndexingRetries: 0,
+      });
     }
 
     const pipelineVersions = compact(
@@ -1783,6 +1871,17 @@ class SamplesHeatmapViewCC extends React.Component<
       };
     }
 
+    if (shouldRefetchData) {
+      // A refetch for new options is a fresh (non-poll) request with a fresh budget of indexing
+      // polls; fetchViewData clears any pending poll timer from the previous options. Batched with
+      // the setState below, so it is committed before callbackFn runs.
+      this.setState({
+        heatmapIndexing: false,
+        heatmapIndexingExhausted: false,
+        heatmapIndexingRetries: 0,
+      });
+    }
+
     this.setState(
       {
         selectedOptions: assign(this.state.selectedOptions, newOptions),
@@ -1839,10 +1938,27 @@ class SamplesHeatmapViewCC extends React.Component<
         />
       );
     } else if (this.state.heatmapIndexing) {
+      if (this.state.heatmapIndexingExhausted) {
+        return (
+          <div className={cs.noDataMsg}>
+            <div>
+              Your heatmap is still being prepared. Indexing can take a few
+              minutes for newly added samples.
+            </div>
+            <Button
+              sdsType="secondary"
+              sdsStyle="rounded"
+              onClick={this.handleHeatmapIndexingCheckAgain}
+            >
+              Check again
+            </Button>
+          </div>
+        );
+      }
       return (
         <div className={cs.noDataMsg}>
           Preparing your heatmap&hellip; newly added data is still being
-          indexed. This can take a moment and will appear automatically.
+          indexed. This page will update when it is ready.
         </div>
       );
     } else if (this.state.loading) {

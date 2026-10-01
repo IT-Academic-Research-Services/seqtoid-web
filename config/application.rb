@@ -71,7 +71,10 @@ module Czid
     # over the in-cluster Service hostname (not a public host in config.hosts), so host authorization
     # would 403 them before the signature check runs. The signature is the real auth on these paths.
     config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path =~ /health_check/ || request.path.start_with?("/internal/") } }
-    config.x.constants.default_background = 26
+    # Default heatmap/report background. Background ids differ per environment (env-prod's 2026-10-01 rebuild
+    # has none of the old ids), so DEFAULT_BACKGROUND_ID overrides the historical 26. Where the id does not
+    # exist, heatmap code falls back to the first public background (HeatmapIndexing.default_background_id).
+    config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
   end
 end
 

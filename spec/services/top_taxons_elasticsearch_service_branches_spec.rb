@@ -175,126 +175,71 @@ RSpec.describe TopTaxonsElasticsearchService do
     end
   end
 
-  # SMP-1788: on-demand (re)indexing must be kicked off asynchronously so the heatmap
-  # first-load returns immediately instead of blocking on the synchronous indexing lambda,
-  # while still emitting the SMP-1795 "indexing" preparing-state so the client keeps polling.
-  describe "#generate on-demand indexing is async" do
-    let(:sample) { instance_double("Sample") }
+  # SMP-1788: on-demand (re)indexing is kicked off asynchronously so the heatmap request returns immediately
+  # instead of blocking on the synchronous indexing lambda. SMP-1795/SMP-1887: the heatmap is served only
+  # when every requested run is completely indexed; otherwise the service answers "indexing" and the client
+  # polls. Automatic polls (indexingPoll=true) only check status and never enqueue.
+  describe "#generate on-demand indexing" do
+    let(:sample_a) { instance_double("Sample") }
+    let(:sample_b) { instance_double("Sample") }
+    let(:params) { {} }
     let(:service) do
       TopTaxonsElasticsearchService.new(
-        params: ActionController::Parameters.new({}),
-        samples_for_heatmap: [sample],
+        params: ActionController::Parameters.new(params),
+        samples_for_heatmap: [sample_a, sample_b],
         background_for_heatmap: 26
       )
     end
-
-    before do
-      allow(HeatmapHelper).to receive(:get_latest_pipeline_runs_for_samples).and_return(101 => 201)
-      allow(ElasticsearchQueryHelper).to receive(:update_last_read_at)
-      allow(service).to receive(:fetch_top_taxons).and_return({})
-      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return([])
+    let(:dict) do
+      [
+        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
+        { sample_id: 202, taxons: [] },
+      ]
     end
 
-    it "requests indexing with async: true and never makes the blocking lambda invoke on the request" do
+    before do
+      # Two runs -> two samples. 103 is a third run still loading results: never indexable.
+      allow(HeatmapHelper).to receive(:get_latest_pipeline_runs_for_samples)
+        .and_return(101 => 201, 102 => 202, 103 => 203)
+      allow(HeatmapIndexing).to receive(:indexable_run_ids).with([101, 102, 103]).and_return([101, 102])
+      allow(ElasticsearchQueryHelper).to receive(:update_last_read_at)
+      allow(service).to receive(:fetch_top_taxons).and_return({})
+      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+    end
+
+    it "requests async indexing of the indexable runs only, never invoking the blocking lambda" do
       expect(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data)
-        .with(anything, [101], async: true)
-        .and_return([101])
+        .with(anything, [101, 102], async: true, enqueue: true)
+        .and_return([])
       expect(ElasticsearchQueryHelper).not_to receive(:call_taxon_indexing_lambda)
 
       service.generate
     end
 
-    it "still updates last_read_at for the requested runs" do
+    it "returns the indexing preparing-state while any requested run is not completely indexed" do
+      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
+      expect(service).not_to receive(:fetch_top_taxons)
+
+      expect(service.generate).to eq(status: "indexing")
+    end
+
+    it "serves the dict (including samples with no taxa) once every run is complete" do
       allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([])
-      expect(ElasticsearchQueryHelper).to receive(:update_last_read_at).with(anything, [101])
-
-      service.generate
-    end
-
-    it "returns the indexing preparing-state when indexing was kicked off and the query is still empty" do
-      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([101])
-
-      expect(service.generate).to eq(status: "indexing")
-    end
-
-    it "returns the heatmap dict once the freshly-indexed docs are searchable" do
-      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([101])
-      # Run 101 maps to sample 201 (see get_latest_pipeline_runs_for_samples stub); the enqueued run's
-      # sample now carries taxa, so the abundance is searchable and the dict is served.
-      dict = [{ sample_id: 201, taxons: [{ "tax_id" => 5 }] }]
-      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
-
-      expect(service.generate).to eq(dict)
-    end
-  end
-
-  # SMP-1887: after a re-login, opening a heatmap for freshly CLI-uploaded data showed missing abundance
-  # for most samples on the first render (a manual reload fixed it). The cause was server-side: when only
-  # SOME requested runs were cold, the query returned a PARTIAL dict -- taxa for the already-indexed
-  # samples, nothing for the freshly-enqueued ones -- and the old all-empty guard served it as final
-  # instead of signalling "indexing". The service must keep polling until every enqueued run is searchable.
-  describe "#generate partial-indexing preparing-state (SMP-1887)" do
-    let(:sample_a) { instance_double("Sample") }
-    let(:sample_b) { instance_double("Sample") }
-    let(:service) do
-      TopTaxonsElasticsearchService.new(
-        params: ActionController::Parameters.new({}),
-        samples_for_heatmap: [sample_a, sample_b],
-        background_for_heatmap: 26
-      )
-    end
-
-    before do
-      # Two runs -> two samples; run 101 is already indexed, run 102 was cold and just enqueued.
-      allow(HeatmapHelper).to receive(:get_latest_pipeline_runs_for_samples)
-        .and_return(101 => 201, 102 => 202)
-      allow(ElasticsearchQueryHelper).to receive(:update_last_read_at)
-      allow(service).to receive(:fetch_top_taxons).and_return({})
-    end
-
-    it "returns the indexing preparing-state when an enqueued run is missing abundance (absent entry)" do
-      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
-      # Only the already-indexed sample (201) came back with taxa; the freshly-enqueued run 102's sample
-      # (202) is absent from the partial result.
-      dict = [{ sample_id: 201, taxons: [{ "tax_id" => 5 }] }]
-      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
-
-      expect(service.generate).to eq(status: "indexing")
-    end
-
-    it "returns the indexing preparing-state when an enqueued run's entry has an empty taxons list" do
-      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
-      # Sample 202 present but with no taxa yet (metadata-only entry); still not searchable.
-      dict = [
-        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
-        { sample_id: 202, taxons: [] },
-      ]
-      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
-
-      expect(service.generate).to eq(status: "indexing")
-    end
-
-    it "serves the full dict once every enqueued run has searchable abundance" do
-      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([102])
-      dict = [
-        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
-        { sample_id: 202, taxons: [{ "tax_id" => 9 }] },
-      ]
-      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+      expect(ElasticsearchQueryHelper).to receive(:update_last_read_at).with(anything, [101, 102, 103])
 
       expect(service.generate).to eq(dict)
     end
 
-    it "serves the partial dict when nothing needed indexing (no cold runs to wait on)" do
-      # A sample legitimately having no taxa must NOT be mistaken for indexing when no run was enqueued.
-      allow(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data).and_return([])
-      dict = [
-        { sample_id: 201, taxons: [{ "tax_id" => 5 }] },
-        { sample_id: 202, taxons: [] },
-      ]
-      allow(ElasticsearchQueryHelper).to receive(:samples_taxons_details).and_return(dict)
+    context "when the request is an automatic status poll" do
+      let(:params) { { indexingPoll: "true" } }
 
-      expect(service.generate).to eq(dict)
+      it "checks completion without enqueueing" do
+        expect(ElasticsearchQueryHelper).to receive(:update_es_for_missing_data)
+          .with(anything, [101, 102], async: true, enqueue: false)
+          .and_return([102])
+
+        expect(service.generate).to eq(status: "indexing")
+      end
     end
   end
 end

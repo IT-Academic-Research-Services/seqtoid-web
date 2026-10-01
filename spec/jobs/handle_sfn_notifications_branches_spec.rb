@@ -119,8 +119,8 @@ RSpec.describe HandleSfnNotifications, type: :job do
       subject.handle_pipeline_run_update("pr-ont-arn", sqs_msg, details, "RUNNING")
     end
 
-    it "loads the completed stage's results for an Illumina run and enqueues taxon indexing" do
-      pr = create(
+    it "loads the completed stage's results for an Illumina run without enqueueing taxon indexing" do
+      create(
         :pipeline_run,
         sample: sample,
         sfn_execution_arn: "pr-stage-arn",
@@ -132,7 +132,8 @@ RSpec.describe HandleSfnNotifications, type: :job do
 
       expect_any_instance_of(PipelineRun).to receive(:load_stage_results).with("host_filter_out")
       expect_any_instance_of(PipelineRun).not_to receive(:monitor_results)
-      expect(Resque).to receive(:enqueue).with(IndexTaxons, anything, pr.id)
+      # Heatmap indexing happens once at finalize, not per stage (taxon_counts are not loaded yet here).
+      expect(Resque).not_to receive(:enqueue).with(IndexTaxons, any_args)
       expect(sqs_msg).to receive(:delete)
 
       subject.handle_pipeline_run_update("pr-stage-arn", sqs_msg, stage_details, "RUNNING")

@@ -228,6 +228,19 @@ task :import_user_data, [:input_dir, :mode, :target, :source_bucket, :dest_bucke
       puts "  ... and #{result[:warnings].count - 10} more" if result[:warnings].count > 10
       puts ""
     end
+
+    # Imported runs never go through PipelineRun#finalize_results, so nothing indexes them for the heatmap;
+    # every first heatmap view would cold-index them on demand. Queue each finished Illumina run once for the
+    # default heatmap background (deduplicated, worked by the index_taxons worker).
+    imported_user_id = result[:user_id] || target_user_id
+    if !result[:dry_run] && imported_user_id.present?
+      run_ids = PipelineRun.joins(:sample).where(samples: { user_id: imported_user_id }).pluck(:id)
+      indexable = HeatmapIndexing.indexable_run_ids(run_ids)
+      background_id = HeatmapIndexing.default_background_id
+      queued = background_id ? indexable.count { |run_id| HeatmapIndexing.enqueue(background_id, run_id) } : 0
+      puts "Heatmap indexing: queued #{queued} of #{indexable.size} indexable run(s) for background #{background_id.inspect}"
+      puts ""
+    end
   else
     puts "Error: #{result[:error]}"
     puts "Error class: #{result[:error_class]}"
