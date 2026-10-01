@@ -33,6 +33,15 @@ module AppConfigHelper
     end
   end
 
+  # SMP-1709 -- true only when self-service signup is explicitly enabled ("1"). Absent/blank/"0"
+  # => false (fail-closed), so any environment without an explicit row disables signup. The dev
+  # stage is seeded "1" (SeedResource::AppConfigs); beta/staging/prod are seeded "0". This gates
+  # ONLY the self-service signup entry points (landing "Register Now" -> Mutations::CreateUser and
+  # the /users/register page); the admin / invite / provisioned-user paths never consult it.
+  def self_service_signup_enabled?
+    get_app_config(AppConfig::SELF_SERVICE_SIGNUP_ENABLED) == "1"
+  end
+
   def get_json_app_config(key, default_value = nil, raise_error = false)
     value = get_app_config(key)
     begin
@@ -54,6 +63,7 @@ module AppConfigHelper
     app_configs = AppConfig
                   .where(key: [
                            AppConfig::AUTO_ACCOUNT_CREATION_V1,
+                           AppConfig::SELF_SERVICE_SIGNUP_ENABLED,
                            AppConfig::MAX_OBJECTS_BULK_DOWNLOAD,
                            AppConfig::MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES,
                          ])
@@ -61,6 +71,9 @@ module AppConfigHelper
                   .to_h
     {
       autoAccountCreationEnabled: app_configs[AppConfig::AUTO_ACCOUNT_CREATION_V1] == "1",
+      # SMP-1709 -- lets the landing page swap the "Register Now" form for a request-access CTA
+      # when self-service signup is disabled. Absent row => false (fail-closed).
+      selfServiceSignupEnabled: app_configs[AppConfig::SELF_SERVICE_SIGNUP_ENABLED] == "1",
       maxObjectsBulkDownload: app_configs[AppConfig::MAX_OBJECTS_BULK_DOWNLOAD].to_i,
       maxSamplesBulkDownloadOriginalFiles: app_configs[AppConfig::MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES].to_i,
     }
