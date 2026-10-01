@@ -2,13 +2,13 @@ require "rails_helper"
 
 # Every Resque queue declared in app/ must be worked by exactly one worker in the Helm chart.
 #
-# The web-role queues are split across resque / resque-deletion / resque-accounts, and the screening
-# queues live on screening-worker. A queue missing from all of them is silently never worked (jobs pile
+# The web-role queues are split across resque / resque-deletion / resque-accounts / resque-indexing, and
+# the screening queues live on screening-worker. A queue missing from all of them is silently never worked (jobs pile
 # up forever); a queue on two of them defeats the split (e.g. hard_delete_objects back on the general
 # pool re-creates the 2026-09-29 env-prod stall, and a screening queue on a web worker re-creates the
 # 2026-09-23 misrouting). Explicit lists only -- the "*" catch-all must never come back.
 RSpec.describe "deploy/charts/seqtoid-web resque worker queue coverage" do
-  let(:working_workers) { ["resque", "resque-deletion", "resque-accounts", "screening-worker"] }
+  let(:working_workers) { ["resque", "resque-deletion", "resque-accounts", "resque-indexing", "screening-worker"] }
   let(:workers) do
     YAML.safe_load(Rails.root.join("deploy", "charts", "seqtoid-web", "values.yaml").read)["workers"]
   end
@@ -44,6 +44,11 @@ RSpec.describe "deploy/charts/seqtoid-web resque worker queue coverage" do
     expect(queues_by_worker["resque-deletion"]).to include("hard_delete_objects", "enforce_data_retention")
     expect(queues_by_worker["resque-accounts"]).to eq(["provision_screened_account"])
     expect(queues_by_worker["resque"]).not_to include("hard_delete_objects", "enforce_data_retention", "provision_screened_account")
+  end
+
+  it "keeps heatmap indexing on its own capped pool" do
+    expect(queues_by_worker["resque-indexing"]).to eq(["index_taxons"])
+    expect(queues_by_worker["resque"]).not_to include("index_taxons")
   end
 
   it "runs the deletion worker as a single replica (parallel hard deletes trip S3 SlowDown)" do
