@@ -863,6 +863,7 @@ describe PipelineRun, type: :model do
       before do
         set_outputs!("taxon_counts" => PipelineRun::STATUS_LOADED, "ercc_counts" => PipelineRun::STATUS_LOADED)
         allow(pipeline_run).to receive(:ready_for_cache?).and_return(false)
+        allow(HeatmapIndexing).to receive(:enqueue)
       end
 
       it "finalizes success without consulting auto-heal" do
@@ -872,22 +873,31 @@ describe PipelineRun, type: :model do
       end
     end
 
-    context "D2: taxon re-index on a healed finalize (CZID-676)" do
+    context "heatmap indexing on a successful finalize" do
       before do
         set_outputs!("taxon_counts" => PipelineRun::STATUS_LOADED, "ercc_counts" => PipelineRun::STATUS_LOADED)
         allow(pipeline_run).to receive(:ready_for_cache?).and_return(false)
-        allow(Resque).to receive(:enqueue)
+        allow(HeatmapIndexing).to receive(:default_background_id).and_return(10_000)
+        allow(HeatmapIndexing).to receive(:enqueue)
       end
 
-      it "re-indexes taxa when the run was auto-healed (retry count > 0)" do
+      it "indexes an Illumina run once, forced, for the default heatmap background" do
+        pipeline_run.update_column(:technology, PipelineRun::TECHNOLOGY_INPUT[:illumina]) # rubocop:disable Rails/SkipsModelValidations
+        pipeline_run.finalize_results(nil)
+        expect(HeatmapIndexing).to have_received(:enqueue).with(10_000, pipeline_run.id, force: true).once
+      end
+
+      it "indexes auto-healed runs the same way (they no longer depend on per-stage indexing)" do
+        pipeline_run.update_column(:technology, PipelineRun::TECHNOLOGY_INPUT[:illumina]) # rubocop:disable Rails/SkipsModelValidations
         pipeline_run.update_column(:results_load_retry_count, 1) # rubocop:disable Rails/SkipsModelValidations
         pipeline_run.finalize_results(nil)
-        expect(Resque).to have_received(:enqueue).with(IndexTaxons, anything, pipeline_run.id)
+        expect(HeatmapIndexing).to have_received(:enqueue).with(10_000, pipeline_run.id, force: true).once
       end
 
-      it "does not re-index a normal (non-healed) success -- avoids double-indexing" do
+      it "does not index ONT runs (the heatmap is short-read only)" do
+        pipeline_run.update_column(:technology, PipelineRun::TECHNOLOGY_INPUT[:nanopore]) # rubocop:disable Rails/SkipsModelValidations
         pipeline_run.finalize_results(nil)
-        expect(Resque).not_to have_received(:enqueue).with(IndexTaxons, anything, anything)
+        expect(HeatmapIndexing).not_to have_received(:enqueue)
       end
     end
   end

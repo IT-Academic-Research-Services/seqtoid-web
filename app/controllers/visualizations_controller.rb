@@ -222,6 +222,12 @@ class VisualizationsController < ApplicationController
         samples_for_heatmap: samples_for_heatmap,
         background_for_heatmap: background_id
       )
+      # Still being indexed: there is no data to write yet. Answer like samples_taxons (202) instead of
+      # feeding the status hash into the CSV builder, which raised and 500'd the download.
+      if heatmap_es_dict.is_a?(Hash) && heatmap_es_dict[:status] == "indexing"
+        render json: heatmap_es_dict, status: :accepted
+        return
+      end
       output_csv = if params[:includePathogens] == "true"
                      generate_heatmap_csv(heatmap_es_dict, background_id, pathogen_flags_by_id())
                    else

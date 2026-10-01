@@ -95,14 +95,12 @@ class HandleSfnNotifications
       unless pr.results_finalized?
         # If a stage has completed in the Illumina mNGS pipeline, load in the outputs from that stage into the db.
         if stage_complete_event?(details) && pr.technology == PipelineRun::TECHNOLOGY_INPUT[:illumina]
+          # Heatmap indexing is NOT triggered per stage any more: it ran before taxon_counts were loaded (host
+          # filter / alignment stages), raced the result loader once workers ran in parallel, and indexed a
+          # background the heatmap did not read. PipelineRun#finalize_results indexes once, after every
+          # output is loaded.
           pr.load_stage_results(details["lastCompletedStage"])
           Rails.logger.info("Loading #{details['lastCompletedStage']} results for PipelineRun #{pr.id} #{arn} into the database")
-          # trigger lambda job that indexes the taxons in this pipeline run into ES for later heatmap generation
-          Resque.enqueue(
-            IndexTaxons,
-            Rails.configuration.x.constants.default_background,
-            pr.id
-          )
         # If the execution failed, try to load in any available results and mark the rest as failed.
         # Otherwise, if it's an ONT run, there are no separate pipeline stages to load intermediate outputs from,
         # so call monitor_results to load all available outputs.

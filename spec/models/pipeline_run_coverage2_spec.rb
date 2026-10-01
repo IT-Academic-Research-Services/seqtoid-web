@@ -508,6 +508,10 @@ describe PipelineRun, type: :model do
   # #finalize_results — success vs fail arm
   # ---------------------------------------------------------------------------
   describe "#finalize_results" do
+    # A successful Illumina finalize also queues heatmap indexing (HeatmapIndexing.enqueue, covered in
+    # pipeline_run_spec); stubbed here so these examples assert only the precache arm.
+    before { allow(HeatmapIndexing).to receive(:enqueue) }
+
     it "marks FINALIZED_SUCCESS and precaches when ready_for_cache?" do
       pr = create(:pipeline_run, sample: sample, executed_at: 1.hour.ago, job_status: PipelineRun::STATUS_CHECKED)
       pr.output_states.update_all(state: PipelineRun::STATUS_LOADED)
