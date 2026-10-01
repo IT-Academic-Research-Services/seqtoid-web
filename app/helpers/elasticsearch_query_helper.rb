@@ -57,7 +57,11 @@ module ElasticsearchQueryHelper
   # immediately, so the interactive heatmap first-load does not block on the ~synchronous lambda (SMP-1788).
   # Either way the returned missing-run list is identical, so callers' "indexing" preparing-state signal
   # (SMP-1795) fires the same and the client keeps polling until the docs are searchable.
-  def self.update_es_for_missing_data(background_id, pipeline_run_ids, async: false)
+  #
+  # enqueue: false (async only) checks without enqueueing anything -- the heatmap's automatic status polls use
+  # it, so a poll never queues more work. Enqueues go through HeatmapIndexing.enqueue, which queues a
+  # (background, run) pair at most once until its job finishes.
+  def self.update_es_for_missing_data(background_id, pipeline_run_ids, async: false, enqueue: true)
     missing_pipeline_run_ids = find_pipeline_runs_missing_from_es(
       background_id,
       pipeline_run_ids
@@ -65,11 +69,12 @@ module ElasticsearchQueryHelper
     if missing_pipeline_run_ids.present?
       if async
         # Fire-and-forget: hand the (re)indexing to Resque instead of invoking the lambda inline, so the
-        # request returns immediately. Enqueue one IndexTaxons job per run, mirroring the eager per-run
-        # enqueue done when a run finalizes (pipeline_run.rb) and reusing its retry + dead-letter so a
-        # failed index is retried and visible rather than silently dropped.
-        missing_pipeline_run_ids.each do |pipeline_run_id|
-          Resque.enqueue(IndexTaxons, background_id, pipeline_run_id)
+        # request returns immediately. One IndexTaxons job per run not already pending, reusing its retry +
+        # dead-letter so a failed index is retried and visible rather than silently dropped.
+        if enqueue
+          missing_pipeline_run_ids.each do |pipeline_run_id|
+            HeatmapIndexing.enqueue(background_id, pipeline_run_id)
+          end
         end
       else
         call_taxon_indexing_lambda(
@@ -833,7 +838,9 @@ module ElasticsearchQueryHelper
     end
   end
 
-  def self.call_lambda(function_name, payload)
+  # max_attempts: in-call retries (with a 3 s pause). IndexTaxons passes 1 because Resque retries the whole job
+  # with backoff; stacking both multiplied lambda invocations for a failing run.
+  def self.call_lambda(function_name, payload, max_attempts: 2)
     begin
       attempts ||= 1
       resp = invoke_lambda(function_name, payload)
@@ -842,7 +849,7 @@ module ElasticsearchQueryHelper
       end
     rescue StandardError => error
       LogUtil.log_error("#{function_name} invocation failure", exception: error)
-      if (attempts += 1) <= 2
+      if (attempts += 1) <= max_attempts
         sleep(3.seconds)
         retry
       end
@@ -851,7 +858,7 @@ module ElasticsearchQueryHelper
     return resp
   end
 
-  def self.call_taxon_indexing_lambda(background_id, pipeline_run_ids)
+  def self.call_taxon_indexing_lambda(background_id, pipeline_run_ids, max_attempts: 2)
     function_name = "taxon-indexing-concurrency-manager-#{LAMBDA_ENV}"
     payload = {
       background_id: background_id,
@@ -863,7 +870,7 @@ module ElasticsearchQueryHelper
       # its own configured host.
       es_host: ENV["HEATMAP_ES_ADDRESS"],
     }
-    resp = call_lambda(function_name, payload)
+    resp = call_lambda(function_name, payload, max_attempts: max_attempts)
 
     resp_body = resp&.payload&.string
     if resp_body.blank?

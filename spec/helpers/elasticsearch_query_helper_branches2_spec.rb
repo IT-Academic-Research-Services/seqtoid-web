@@ -47,12 +47,12 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
     end
 
     context "when async: true (heatmap first-load path, SMP-1788)" do
-      it "enqueues an IndexTaxons job per missing run instead of blocking on the synchronous lambda" do
+      it "queues each missing run through HeatmapIndexing instead of blocking on the synchronous lambda" do
         allow(described_class).to receive(:find_pipeline_runs_missing_from_es).and_return([7, 8])
         # the request path must NOT make the blocking RequestResponse invoke itself
         expect(described_class).not_to receive(:call_taxon_indexing_lambda)
-        expect(Resque).to receive(:enqueue).with(IndexTaxons, 3, 7).ordered
-        expect(Resque).to receive(:enqueue).with(IndexTaxons, 3, 8).ordered
+        expect(HeatmapIndexing).to receive(:enqueue).with(3, 7).ordered
+        expect(HeatmapIndexing).to receive(:enqueue).with(3, 8).ordered
 
         expect(described_class.update_es_for_missing_data(3, [7, 8, 9], async: true)).to eq([7, 8])
       end
@@ -60,9 +60,17 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
       it "enqueues nothing when no runs are missing" do
         allow(described_class).to receive(:find_pipeline_runs_missing_from_es).and_return([])
         expect(described_class).not_to receive(:call_taxon_indexing_lambda)
-        expect(Resque).not_to receive(:enqueue)
+        expect(HeatmapIndexing).not_to receive(:enqueue)
 
         expect(described_class.update_es_for_missing_data(3, [7, 8, 9], async: true)).to eq([])
+      end
+
+      it "only reports the missing runs on a status poll (enqueue: false)" do
+        allow(described_class).to receive(:find_pipeline_runs_missing_from_es).and_return([7, 8])
+        expect(described_class).not_to receive(:call_taxon_indexing_lambda)
+        expect(HeatmapIndexing).not_to receive(:enqueue)
+
+        expect(described_class.update_es_for_missing_data(3, [7, 8, 9], async: true, enqueue: false)).to eq([7, 8])
       end
     end
   end
