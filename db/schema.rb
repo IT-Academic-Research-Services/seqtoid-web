@@ -10,8 +10,8 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
-  create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+ActiveRecord::Schema[7.2].define(version: 2026_09_30_000001) do
+  create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000000", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
     t.text "accession_name", null: false, comment: "The NCBI GenBank name of the accession the coverage stats were created for"
@@ -39,7 +39,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.text "s3_nt_info_db_path"
-    t.string "s3_taxon_blacklist_path", default: "s3:///taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/taxon_blacklist.txt", null: false
+    t.string "s3_taxon_blacklist_path", default: "s3://#{S3_DATABASE_BUCKET}/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/taxon_blacklist.txt", null: false
     t.integer "lineage_version_old", limit: 2
     t.string "lineage_version", limit: 10, null: false
     t.string "minimap2_long_db_path", comment: "The S3 path prefix to the minimap2 index for short reads"
@@ -47,7 +47,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.string "diamond_db_path", comment: "The S3 path prefix to the diamond index"
   end
 
-  create_table "amr_counts", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "amr_counts", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.string "gene"
     t.string "allele"
     t.float "coverage"
@@ -64,7 +64,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["pipeline_run_id", "allele"], name: "index_amr_counts_on_pipeline_run_id_and_allele", unique: true
   end
 
-  create_table "annotations", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "annotations", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100000", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The pipeline run id associated with the annotated sample report."
     t.integer "tax_id", null: false, comment: "The id of the annotated taxon."
     t.integer "content", comment: "An enum describing the annotation content. Will be set to null if an existing annotation is cleared."
@@ -80,7 +80,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["key"], name: "index_app_configs_on_key", unique: true
   end
 
-  create_table "backgrounds", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "backgrounds", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000", force: :cascade do |t|
     t.string "name"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
@@ -99,7 +99,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["pipeline_run_id"], name: "backgrounds_pipeline_runs_pipeline_run_id_fk"
   end
 
-  create_table "bulk_downloads", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "bulk_downloads", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100000", force: :cascade do |t|
     t.text "params_json", comment: "JSON of the params for this bulk download"
     t.string "download_type", null: false, comment: "The type of bulk download"
     t.string "status", null: false, comment: "The current status of the download, e.g. waiting, running, error, success"
@@ -145,7 +145,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["pathogen_list_version_id"], name: "index_citation_pathogen_list_version_on_pathogen_list_version_id"
   end
 
-  create_table "contigs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "contigs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000000", force: :cascade do |t|
     t.bigint "pipeline_run_id"
     t.string "name"
     t.text "sequence", size: :long
@@ -211,7 +211,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["user_id"], name: "index_device_location_attestations_on_user_id"
   end
 
-  create_table "ercc_counts", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "ercc_counts", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100000000", force: :cascade do |t|
     t.bigint "pipeline_run_id"
     t.string "name"
     t.integer "count"
@@ -268,8 +268,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
 
   create_table "host_genomes", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
     t.string "name", null: false, comment: "Friendly name of host genome. May be common name or scientific name of species. Must be unique and start with a capital letter."
-    t.string "s3_star_index_path", default: "s3:///host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/STAR_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by star for host filtering."
-    t.string "s3_bowtie2_index_path", default: "s3:///host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/bowtie2_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by bowtie for host filtering."
+    t.string "s3_star_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/STAR_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by star for host filtering."
+    t.string "s3_bowtie2_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/2017-09-01-utc-1504224000-unixtime__2017-09-01-utc-1504224000-unixtime/bowtie2_genome.tar", null: false, comment: "The path to the index file to be used in the pipeline by bowtie for host filtering."
     t.bigint "default_background_id"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
@@ -279,9 +279,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.bigint "user_id", comment: "The user that created the host genome. Values previous to 2020-02 may be NULL."
     t.string "s3_minimap2_dna_index_path", comment: "The path to the index file to be used in the pipeline by minimap2 for host filtering DNA samples"
     t.string "s3_minimap2_rna_index_path", comment: "The path to the index file to be used in the pipeline by minimap2 for host filtering RNA samples"
-    t.string "s3_hisat2_index_path", default: "s3:///host_filter/ercc/20221031/hisat2_index_tar/ercc.hisat2.tar", comment: "The path to the index file to be used in the pipeline by hisat2 for host filtering."
-    t.string "s3_kallisto_index_path", default: "s3:///host_filter/ercc/20221031/kallisto_idx/ercc.kallisto.idx", comment: "The path to the index file to be used in the pipeline by kallisto for host filtering."
-    t.string "s3_bowtie2_index_path_v2", default: "s3:///host_filter/ercc/20221031/bowtie2_index_tar/ercc.bowtie2.tar", comment: "The path to the index file to be used in the pipeline by bowtie2 for host filtering."
+    t.string "s3_hisat2_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/20221031/hisat2_index_tar/ercc.hisat2.tar", comment: "The path to the index file to be used in the pipeline by hisat2 for host filtering."
+    t.string "s3_kallisto_index_path", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/20221031/kallisto_idx/ercc.kallisto.idx", comment: "The path to the index file to be used in the pipeline by kallisto for host filtering."
+    t.string "s3_bowtie2_index_path_v2", default: "s3://#{S3_DATABASE_BUCKET}/host_filter/ercc/20221031/bowtie2_index_tar/ercc.bowtie2.tar", comment: "The path to the index file to be used in the pipeline by bowtie2 for host filtering."
     t.string "s3_original_transcripts_gtf_index_path", comment: "The path to the index file to be used in the pipeline by kallisto for host filtering. Used to generate host gene counts"
     t.string "deprecation_status", comment: "Non-deprecated HostGenomes must be NULL. If deprecated, provide a brief message about deprecation, eg, 'deprecated on Nov 29 2023'."
     t.integer "version", default: 1, null: false, comment: "Version of this host's genome data, 1-indexed. Allows us to track multiple revisions of a certain host organism. Still, most hosts only have one version."
@@ -296,7 +296,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["metadata_field_id", "host_genome_id"], name: "index_metadata_fields_host_genomes", unique: true
   end
 
-  create_table "input_files", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "input_files", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.string "name"
     t.text "presigned_url"
     t.bigint "sample_id"
@@ -310,7 +310,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["sample_id"], name: "index_input_files_on_sample_id"
   end
 
-  create_table "insert_size_metric_sets", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "insert_size_metric_sets", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false
     t.integer "median", null: false
     t.integer "mode", null: false
@@ -326,7 +326,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["pipeline_run_id"], name: "index_insert_size_metric_sets_on_pipeline_run_id"
   end
 
-  create_table "job_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "job_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000000", force: :cascade do |t|
     t.string "task"
     t.integer "reads_after"
     t.datetime "created_at", precision: nil, null: false
@@ -363,7 +363,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["osm_type", "osm_id"], name: "index_locations_on_osm_type_and_osm_id"
   end
 
-  create_table "metadata", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "metadata", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.string "key", null: false, collation: "latin1_swedish_ci"
     t.string "raw_value"
     t.string "string_validated_value"
@@ -405,7 +405,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["project_id", "metadata_field_id"], name: "index_projects_metadata_fields", unique: true
   end
 
-  create_table "output_states", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "output_states", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.string "output"
     t.string "state"
     t.bigint "pipeline_run_id"
@@ -459,7 +459,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["subject_ref", "status"], name: "index_pending_signups_on_subject_ref_and_status"
   end
 
-  create_table "persisted_backgrounds", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "persisted_backgrounds", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100000", force: :cascade do |t|
     t.bigint "user_id", null: false, comment: "The id of the user that has the persisted_background"
     t.bigint "project_id", null: false, comment: "The id of the project that the persisted background is persisted for"
     t.bigint "background_id", comment: "The id of the background that is being persisted. Will be set to null if the user selects a background with an incompatible sample."
@@ -468,7 +468,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["user_id", "project_id"], name: "index_user_id_project_id", unique: true
   end
 
-  create_table "phylo_tree_ngs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "phylo_tree_ngs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000", force: :cascade do |t|
     t.json "inputs_json", comment: "Generic JSON field for recording execution inputs."
     t.string "status", default: "CREATED", null: false, comment: "A soft enum (string) describing the execution status."
     t.string "wdl_version", comment: "Version of the WDL used in execution."
@@ -497,7 +497,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["phylo_tree_ng_id", "pipeline_run_id"], name: "index_ptng_pr_id", unique: true
   end
 
-  create_table "phylo_trees", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "phylo_trees", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000", force: :cascade do |t|
     t.integer "taxid"
     t.integer "tax_level"
     t.string "tax_name"
@@ -534,7 +534,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["pipeline_run_id"], name: "phylo_trees_pipeline_runs_pipeline_run_id_fk"
   end
 
-  create_table "pipeline_run_stages", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "pipeline_run_stages", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.bigint "pipeline_run_id"
     t.integer "step_number"
     t.integer "job_type"
@@ -561,7 +561,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["pipeline_run_id", "step_number"], name: "index_pipeline_run_stages_on_pipeline_run_id_and_step_number"
   end
 
-  create_table "pipeline_runs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "pipeline_runs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.bigint "sample_id"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
@@ -621,14 +621,14 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["total_reads"], name: "index_pipeline_runs_on_total_reads"
   end
 
-  create_table "project_workflow_versions", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "project_workflow_versions", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000", force: :cascade do |t|
     t.integer "project_id", null: false, comment: "The project to which this workflow version applies"
     t.string "workflow", null: false, comment: "The workflow to which this version applies"
     t.string "version_prefix", null: false, comment: "The version prefix that will be used to run the workflow - can be major, patch, or minor"
     t.index ["project_id", "workflow"], name: "index_project_workflow_versions_on_project_id_and_workflow", unique: true
   end
 
-  create_table "projects", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "projects", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100000", force: :cascade do |t|
     t.string "name"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
@@ -660,7 +660,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["name"], name: "index_sample_types_on_name", unique: true
   end
 
-  create_table "samples", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "samples", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000", force: :cascade do |t|
     t.string "name"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
@@ -746,7 +746,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["url"], name: "index_shortened_urls_on_url", length: 254
   end
 
-  create_table "snapshot_links", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "snapshot_links", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100", force: :cascade do |t|
     t.bigint "project_id"
     t.text "content", null: false, comment: "Content stored as {samples: [<sample_id>: {pipeline_run_id: <pipeline_run_id>}]}"
     t.string "share_id", limit: 20, null: false, comment: "Used for accessing the SnapshotLink URL"
@@ -757,7 +757,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["share_id"], name: "index_snapshot_links_on_share_id", unique: true
   end
 
-  create_table "taxon_byteranges", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "taxon_byteranges", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000000", force: :cascade do |t|
     t.integer "taxid"
     t.bigint "first_byte"
     t.bigint "last_byte"
@@ -769,7 +769,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["taxid"], name: "index_taxon_byteranges_on_taxid"
   end
 
-  create_table "taxon_counts", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "taxon_counts", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000000000", force: :cascade do |t|
     t.integer "tax_id"
     t.integer "tax_level"
     t.integer "count"
@@ -853,7 +853,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["taxid", "version_start"], name: "index_taxon_lineages_on_taxid_and_version_start", unique: true
   end
 
-  create_table "taxon_summaries", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "taxon_summaries", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100000000000", force: :cascade do |t|
     t.bigint "background_id"
     t.integer "tax_id"
     t.string "count_type"
@@ -886,7 +886,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.datetime "updated_at", null: false
   end
 
-  create_table "user_settings", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "user_settings", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 100", force: :cascade do |t|
     t.bigint "user_id"
     t.string "key", comment: "The name of the user setting, e.g. receives_bulk_download_success_emails"
     t.string "serialized_value", comment: "The serialized value of the user setting. The schema of this value (e.g. boolean, number) is determined by the hard-coded data type associated with the key."
@@ -920,7 +920,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["email"], name: "index_users_on_email", unique: true
   end
 
-  create_table "visualizations", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "visualizations", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 10000", force: :cascade do |t|
     t.bigint "user_id"
     t.string "visualization_type"
     t.text "data"
@@ -934,7 +934,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_000001) do
     t.index ["user_id"], name: "index_visualizations_on_user_id"
   end
 
-  create_table "workflow_runs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
+  create_table "workflow_runs", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000", force: :cascade do |t|
     t.bigint "sample_id"
     t.string "status", default: "CREATED", null: false, comment: "A soft enum (string) describing the execution status."
     t.string "workflow", null: false, comment: "Name of the workflow to use, e.g. consensus-genome."
