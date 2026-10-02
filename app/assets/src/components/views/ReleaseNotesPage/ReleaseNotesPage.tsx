@@ -5,7 +5,10 @@ import { LandingHeader } from "~/components/common/LandingHeader";
 import cs from "./release_notes_page.scss";
 
 // Each COMPONENT is a repo. public = shown on the production (end-user) feed.
-// Kept in sync with RELEASE_NOTE_COMPONENTS in support_controller.rb.
+// Kept in sync with RELEASE_NOTE_COMPONENTS in support_controller.rb, which also
+// decides what the external feed says: only Alignment, Pipelines and CLI list
+// their changes there; every other public component is reduced server-side to
+// one high-level summary line.
 const COMPONENTS: Record<
   string,
   { label: string; repo: string; public: boolean }
@@ -118,9 +121,15 @@ const ReleaseNotesPage = ({
     );
   }, []);
 
+  // The external feed is filtered + summarized SERVER-SIDE. On an internal env the
+  // "Public preview" toggle asks the server for that same view (audience=public),
+  // so the preview shows exactly what production serves.
+  const fetchUrl =
+    !isPublic && aud === "public" ? `${dataUrl}?audience=public` : dataUrl;
+
   useEffect(() => {
     let cancelled = false;
-    get(dataUrl)
+    get(fetchUrl)
       .then((data: $TSFixMe) => {
         if (!cancelled) setReleases(Array.isArray(data) ? data : []);
       })
@@ -132,7 +141,7 @@ const ReleaseNotesPage = ({
     return () => {
       cancelled = true;
     };
-  }, [dataUrl]);
+  }, [fetchUrl]);
 
   const shown = (r: Release): boolean => {
     if (aud === "public" && !(COMPONENTS[r.component] || {}).public)
@@ -196,7 +205,7 @@ const ReleaseNotesPage = ({
 
   const audNote =
     aud === "public"
-      ? "Public preview -- production, end-user view: the infra repos drop out entirely (Platform infra, Pipeline infra). Only product repos remain."
+      ? "Public preview -- exactly what production serves: Alignment, Pipelines and CLI list their changes; Web app and Reference data show a general summary only; the infra repos drop out entirely."
       : "Internal view -- every repo incl. infrastructure. Only signed-in testers & team see this (dev/staging).";
   // Always reflect the REAL environment (dev / env-staging / env-prod), not the audience
   // toggle. The public production feed adds a "-- public" qualifier; the internal preview of

@@ -29,6 +29,9 @@ on:
       new_sha:        { required: true,  type: string }
       default_piece:  { required: false, type: string, default: "" }
       reason:         { required: false, type: string, default: "" }
+      # Optional diff base for the FIRST entry of a component in an env (backfill). Without it the
+      # collector diffs against that component's last ledger entry, and a first entry records no changes.
+      previous_sha:   { required: false, type: string, default: "" }
     secrets:
       # Optional GH App creds (GH_ACTIONS_HELPER) with contents:read on source_repo. Minted INSIDE this
       # job (a step output) -- a mint job in the caller can't hand the token over, GitHub strips a job
@@ -63,10 +66,14 @@ jobs:
           #   staging: seqtoid-staging-gha-deploy (ssot foundation grants the bucket; SCP-allowlisted).
           #   dev:     czid-dev-gh-actions-executor (legacy czid-dev; bucket + grant in cypherid-web-infra
           #            dev TF release-notes-bucket.tf). Dev has no SCP, so the executor sub is admitted.
+          #   env-prod: seqtoid-env-prod-gha-deploy (ssot foundation grants the bucket; ssot app stack
+          #            changelog.tf owns the bucket + web read). env_name must be "env-prod": the web app
+          #            reads seqtoid-<ENVIRONMENT>-release-notes/release-notes/<ENVIRONMENT>.json.
           # Add an env here once its bucket + writer grant exist.
           case "${{ inputs.env_name }}" in
             staging) ACCT=030998640247; ROLE=seqtoid-staging-gha-deploy ;;
             dev)     ACCT=491013321714; ROLE=czid-dev-gh-actions-executor ;;
+            env-prod) ACCT=283694049553; ROLE=seqtoid-env-prod-gha-deploy ;;
             *)
               echo "release-notes not enabled for ${{ inputs.env_name }} -- skipping."
               echo "run=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
@@ -106,6 +113,15 @@ jobs:
           # The app token (contents:read on source_repo) when running cross-repo under gha-deploy;
           # else github.token (only reads PRs when the caller IS source_repo).
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          # Inputs go through env, not inline ${{ }}, so a dispatch value can't inject shell.
+          IN_ENV: ${{ inputs.env_name }}
+          IN_COMPONENT: ${{ inputs.component }}
+          IN_REPO: ${{ inputs.source_repo }}
+          IN_SHA: ${{ inputs.new_sha }}
+          IN_S3_URI: ${{ steps.gate.outputs.s3_uri }}
+          IN_PIECE: ${{ inputs.default_piece }}
+          IN_REASON: ${{ inputs.reason }}
+          IN_PREV_SHA: ${{ inputs.previous_sha }}
         run: |
           base64 -d > "$RUNNER_TEMP/collect.py" <<'B64EOF'
           IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJSZWxlYXNlLW5vdGVzIGNvbGxlY3RvciAoT3B0aW9u
@@ -307,11 +323,12 @@ jobs:
           CgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIG1haW4oKQo=
           B64EOF
           python3 "$RUNNER_TEMP/collect.py" \
-            --env "${{ inputs.env_name }}" \
-            --component "${{ inputs.component }}" \
-            --repo "${{ inputs.source_repo }}" \
-            --new-sha "${{ inputs.new_sha }}" \
-            --s3-uri "${{ steps.gate.outputs.s3_uri }}" \
-            --default-piece "${{ inputs.default_piece }}" \
-            --reason "${{ inputs.reason }}" \
+            --env "$IN_ENV" \
+            --component "$IN_COMPONENT" \
+            --repo "$IN_REPO" \
+            --new-sha "$IN_SHA" \
+            --s3-uri "$IN_S3_URI" \
+            --default-piece "$IN_PIECE" \
+            --reason "$IN_REASON" \
+            --prev-sha "$IN_PREV_SHA" \
             --md

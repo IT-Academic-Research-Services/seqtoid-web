@@ -14,16 +14,27 @@ class SupportController < ApplicationController
     :releases_data,
   ].freeze
 
-  # component key -> { label, repo, public } mapping for the release-notes ledger.
-  # public=true components appear on the production (end-user) feed; the infra
-  # repos (public=false) are dropped from the public feed entirely. Kept in sync
-  # with the COMPONENTS map in ReleaseNotesPage.tsx.
+  # component key -> { label, repo, public, detail, summary } mapping for the release-notes ledger.
+  # public=true components appear on the external (production) feed; the infra repos (public=false)
+  # are dropped from it entirely. Kept in sync with the COMPONENTS map in ReleaseNotesPage.tsx.
+  #
+  # External content policy: only components with detail=true (the externally approved ones: the
+  # alignment engine, the analysis pipelines, and the CLI, whose releases are already public on
+  # GitHub) list their individual changes on the external feed.
+  # Every other public component is reduced to its one-line, high-level `summary` -- its change
+  # titles never leave the server.
   RELEASE_NOTE_COMPONENTS = {
-    "web" => { "label" => "Web app", "repo" => "seqtoid-web", "public" => true },
-    "workflows" => { "label" => "Pipelines", "repo" => "seqtoid-workflows", "public" => true },
-    "swipe" => { "label" => "Alignment", "repo" => "swipe", "public" => true },
-    "cli" => { "label" => "CLI", "repo" => "seqtoid-cli", "public" => true },
-    "reference" => { "label" => "Reference data", "repo" => "idseq-index-generation", "public" => true },
+    "web" => {
+      "label" => "Web app", "repo" => "seqtoid-web", "public" => true, "detail" => false,
+      "summary" => "General improvements to the web application, including usability, performance, and reliability updates.",
+    },
+    "workflows" => { "label" => "Pipelines", "repo" => "seqtoid-workflows", "public" => true, "detail" => true },
+    "swipe" => { "label" => "Alignment", "repo" => "swipe", "public" => true, "detail" => true },
+    "cli" => { "label" => "CLI", "repo" => "seqtoid-cli", "public" => true, "detail" => true },
+    "reference" => {
+      "label" => "Reference data", "repo" => "idseq-index-generation", "public" => true, "detail" => false,
+      "summary" => "Reference data maintenance updates.",
+    },
     "workflow-infra" => { "label" => "Pipeline infra", "repo" => "cypherid-workflow-infra", "public" => false },
     "ssot" => { "label" => "Platform infra", "repo" => "seqtoid-ssot-infra", "public" => false },
   }.freeze
@@ -31,6 +42,14 @@ class SupportController < ApplicationController
   # Public-feed record shape: only these top-level keys survive the strip; the
   # rest (source_repo, sha, reason) are internal-only.
   RELEASE_NOTE_PUBLIC_KEYS = %w[env version day n time component].freeze
+
+  # Deployments whose release-notes feed is external (end-user facing) no matter how the auth flag is
+  # set. Content filtering only ever removes detail, so inferring it from ENVIRONMENT is the safe
+  # direction -- unlike auth (see release_notes_public?), which stays explicit and default-closed.
+  RELEASE_NOTE_EXTERNAL_ENVS = %w[env-prod prod].freeze
+
+  # Leading ticket key on a PR title ("SMP-1908: ...") -- internal tracker ids, dropped externally.
+  RELEASE_NOTE_TICKET_PREFIX = /\A\s*\[?[A-Z][A-Z0-9]+-\d+\]?(?![\d-])\s*:?\s*/
 
   before_action :login_required, except: PUBLIC_ACTIONS
   skip_before_action :authenticate_user!, :verify_authenticity_token, only: PUBLIC_ACTIONS
@@ -79,16 +98,18 @@ class SupportController < ApplicationController
     # LandingHeader rendered by the ReleaseNotesPage component is the only header.
     @hide_header = true
     # Drives the audience default and toggle visibility in the React page, and is
-    # the client-side half of the internal-vs-public gating. The server-side half
+    # the client-side half of the internal-vs-external gating. The server-side half
     # (filter + strip) lives in releases_data, so this flag is presentation-only.
-    @release_notes_public = release_notes_public?
+    @release_notes_public = release_notes_external_feed?
     # The real deployment env, shown in the page's context label so it reflects where you are
     # (dev / env-staging / env-prod) instead of a hardcoded value.
     @environment = ENV["ENVIRONMENT"].presence || Rails.env.to_s
   end
 
   def releases_data
-    render json: release_notes_ledger
+    # audience=public lets an internal env preview exactly what the external feed serves. It can only
+    # ever remove detail, so it needs no extra gating.
+    render json: release_notes_ledger(external: release_notes_external_feed? || params[:audience] == "public")
   end
 
   private
@@ -110,12 +131,18 @@ class SupportController < ApplicationController
     ActiveModel::Type::Boolean.new.cast(ENV["RELEASE_NOTES_PUBLIC"])
   end
 
-  # The ledger served to the page. On the public feed the records are filtered to
+  # True when this deployment serves the external (end-user) feed: the explicit public flag, or a
+  # production deployment. Governs CONTENT only; auth is release_notes_public?.
+  def release_notes_external_feed?
+    release_notes_public? || RELEASE_NOTE_EXTERNAL_ENVS.include?(ENV["ENVIRONMENT"].to_s)
+  end
+
+  # The ledger served to the page. On the external feed the records are filtered to
   # public components and stripped of internal fields SERVER-SIDE (defense in
   # depth) so nothing internal is shipped even if the client is tampered with.
-  def release_notes_ledger
+  def release_notes_ledger(external:)
     records = fetch_release_notes_records
-    release_notes_public? ? filter_public_release_notes(records) : records
+    external ? filter_public_release_notes(records) : records
   end
 
   # Fetches and parses the JSON ledger from S3. Returns [] (never raises) when the
@@ -152,7 +179,9 @@ class SupportController < ApplicationController
   end
 
   # Keeps only public components and strips every internal field (source_repo, sha,
-  # reason) and per-change PR link (pr, url), leaving just type + title.
+  # reason) and per-change PR link (pr, url). Approved (detail) components keep each
+  # change as type + title, minus any leading ticket key; every other component's
+  # changes collapse into its single high-level summary line.
   def filter_public_release_notes(records)
     Array(records).each_with_object([]) do |record, out|
       record = record.stringify_keys
@@ -160,11 +189,18 @@ class SupportController < ApplicationController
       next unless meta && meta["public"]
 
       public_record = record.slice(*RELEASE_NOTE_PUBLIC_KEYS)
-      public_record["changes"] = Array(record["changes"]).map do |change|
-        change = change.stringify_keys
-        { "type" => change["type"], "title" => change["title"] }
-      end
+      public_record["changes"] = public_release_note_changes(meta, Array(record["changes"]))
       out << public_record
+    end
+  end
+
+  def public_release_note_changes(meta, changes)
+    return [] if changes.empty?
+    return [{ "type" => "changed", "title" => meta["summary"] }] unless meta["detail"]
+
+    changes.map do |change|
+      change = change.stringify_keys
+      { "type" => change["type"], "title" => change["title"].to_s.sub(RELEASE_NOTE_TICKET_PREFIX, "") }
     end
   end
 end
