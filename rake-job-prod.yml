@@ -28,13 +28,14 @@ spec:
             - "--"
             - bundle
             - exec
-            - rake
+            #- rake
             #- "--tasks"
             #- "taxon_lineage_slice:remove_slice"
             #- "taxon_lineage_slice:import_data_from_s3"
             #- "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
-            - "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
+            #- "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
             #- "update_pathogen_list"
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
             #- rails
             #- "db:drop"
@@ -43,25 +44,21 @@ spec:
             #- "db:migrate:with_data"
             #- "seed:migrate"
             #- runner
-            # TODO: NOTE THE ADMIN!!!!!
-            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_ADMIN, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
             #- joseph.sims@ucsf.edu
             #- Joseph Sims
             #- Thomas.Horvath@ucsf.edu
             #- Thomas Horvath
             #- Ikramuddin.Ahmed@ucsf.edu
             #- Ikram Ahmed
+            #- matt.jobin@ucsf.edu
+            #- Matt Jobin
 
-              #- rake
+            #- rake
             #- "--tasks"
 ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-
-#
-#            - "--"
-#            - rake
-#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+##           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #
 #            - "--"
 #            - bundle
