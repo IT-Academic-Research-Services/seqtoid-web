@@ -37,13 +37,13 @@ spec:
             #- "update_pathogen_list"
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
-            #- rails
+#            - rails
             #- "db:drop"
             #- "db:create"
             #- "db:schema:load"
             #- "db:migrate:with_data"
             #- "seed:migrate"
-            #- runner
+#            - runner
             #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
             #- joseph.sims@ucsf.edu
             #- Joseph Sims
@@ -53,14 +53,14 @@ spec:
             #- Ikram Ahmed
             #- matt.jobin@ucsf.edu
             #- Matt Jobin
-            #
-            #- rake
+
+            - rake
             #- "--tasks"
 ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 ##           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             # Karyna = 7
-            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #
 #            - "--"
 #            - bundle
