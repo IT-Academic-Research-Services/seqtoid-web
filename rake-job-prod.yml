@@ -53,12 +53,14 @@ spec:
             #- Ikram Ahmed
             #- matt.jobin@ucsf.edu
             #- Matt Jobin
-
+            #
             #- rake
             #- "--tasks"
 ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 ##           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            # Karyna = 7
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
 #
 #            - "--"
 #            - bundle
