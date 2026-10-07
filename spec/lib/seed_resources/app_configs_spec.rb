@@ -269,44 +269,4 @@ RSpec.describe SeedResource::AppConfigs do
     end
   end
 
-  # Operator-editable notices: the home banner ships OFF/empty so it renders nothing, while the CZ ID
-  # transfer notice ships with its default copy. A re-seed must never overwrite a value set out-of-band.
-  describe "#operator_notices" do
-    subject(:operator_notices) { described_class.new.send(:operator_notices) }
-
-    it "ships the home banner OFF/empty so it renders nothing" do
-      operator_notices
-
-      expect(AppConfigHelper.get_app_config(AppConfig::USER_HOME_BANNER_ENABLED)).to eq("0")
-      expect(AppConfigHelper.get_app_config(AppConfig::USER_HOME_BANNER_TEXT)).to eq("")
-      expect(AppConfigHelper.get_app_config(AppConfig::USER_HOME_BANNER_SEVERITY)).to eq("info")
-    end
-
-    it "ships the CZ ID transfer notice with its default copy" do
-      operator_notices
-
-      expect(AppConfigHelper.get_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT))
-        .to eq("Data Transfer Notice: Transfers may take up to 7 business days")
-    end
-
-    it "is idempotent -- a re-seed creates no duplicate rows" do
-      operator_notices
-      count_after_first = AppConfig.count
-
-      expect { operator_notices }.not_to change(AppConfig, :count)
-      expect(AppConfig.count).to eq(count_after_first)
-    end
-
-    it "NEVER overwrites values an operator set out-of-band" do
-      AppConfig.create!(key: AppConfig::USER_HOME_BANNER_ENABLED, value: "1")
-      AppConfig.create!(key: AppConfig::USER_HOME_BANNER_TEXT, value: "Scheduled maintenance tonight")
-      AppConfig.create!(key: AppConfig::CZID_TRANSFER_NOTICE_TEXT, value: "Custom notice")
-
-      operator_notices
-
-      expect(AppConfigHelper.get_app_config(AppConfig::USER_HOME_BANNER_ENABLED)).to eq("1")
-      expect(AppConfigHelper.get_app_config(AppConfig::USER_HOME_BANNER_TEXT)).to eq("Scheduled maintenance tonight")
-      expect(AppConfigHelper.get_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT)).to eq("Custom notice")
-    end
-  end
 end

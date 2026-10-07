@@ -187,4 +187,31 @@ RSpec.describe "ExportControlSignups", type: :request do
       expect(response.body).to include("&lt;img src=x onerror=")
     end
   end
+
+  # Regression guard for an ERB comment whose body contained an ERB tag (`<%= %>` in backticks): ERB
+  # comments do not nest, so the comment closed at the inner `%>` and dumped the rest of the comment as
+  # literal page text. The notice/escaping specs above could not catch it -- they only inspected the
+  # notice element and escaped values, not stray template text elsewhere on the page. A correctly
+  # rendered ERB page never emits raw `<%` or `%>`.
+  describe "GET /export_control_signup -- no stray template text leaks into the page" do
+    it "renders no raw ERB delimiters anywhere in the body (notice set)" do
+      AppConfigHelper.set_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT, "Some notice text")
+
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include("<%")
+      expect(response.body).not_to include("%>")
+    end
+
+    it "renders no raw ERB delimiters anywhere in the body (notice empty)" do
+      AppConfigHelper.set_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT, "")
+
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include("<%")
+      expect(response.body).not_to include("%>")
+    end
+  end
 end
