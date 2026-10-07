@@ -3,9 +3,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: rake-task-job
-  namespace: seqtoid-env-prod
+  namespace: seqtoid-staging
 spec:
-  backoffLimit: 2 # 3
+  backoffLimit: 0 # 2 3
   #completions: 1
   #parallelism: 1
   ttlSecondsAfterFinished: 36000
@@ -15,16 +15,15 @@ spec:
       nodeSelector:
         kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
       restartPolicy: Never
-      serviceAccountName: seqtoid-env-prod-seqtoid-web
-      #serviceAccountName: czid-staging-seqtoid-web
+      #      serviceAccountName: seqtoid-env-prod-seqtoid-web
+      serviceAccountName: czid-staging-seqtoid-web
       containers:
         - name: rails-app
-          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-1ef145a2"
-          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
+          image: "030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-f8415a2f"
           command:
             - chamber
             - exec
-            - seqtoid-env-prod-web
+            - seqtoid-staging-web
             - "--"
             - bundle
             - exec
@@ -37,13 +36,14 @@ spec:
             #- "update_pathogen_list"
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
-#            - rails
+            #- rails
             #- "db:drop"
             #- "db:create"
             #- "db:schema:load"
             #- "db:migrate:with_data"
             #- "seed:migrate"
-#            - runner
+            #
+            # - runner
             #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
             #- joseph.sims@ucsf.edu
             #- Joseph Sims
@@ -54,43 +54,43 @@ spec:
             #- matt.jobin@ucsf.edu
             #- Matt Jobin
 
-            - rake
+            #- rake
             #- "--tasks"
-##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-##           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            ##           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             # Karyna = 7
-            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-#
-#            - "--"
-#            - bundle
-#            - exec
-#            - rails
-#            - runner
-#            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
-##            - genay.pilarowski@czbiohub.org
-##            - Genay Pilarowski
-#            - gowtham.thakku@czbiohub.org
-#            - Gowtham Thakku
-#
-#            - rake
-#            - "taxon_lineage_slice:remove_slice"
-#            - taxon_lineage_slice:import_data_from_s3
-#          "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
-#          "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
-#          # TODO: Not sure if loading Taxon Descriptions is required or not
-#          "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
-#          )
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #
+            #            - "--"
+            #            - bundle
+            #            - exec
+            #            - rails
+            #            - runner
+            #            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            ##            - genay.pilarowski@czbiohub.org
+            ##            - Genay Pilarowski
+            #            - gowtham.thakku@czbiohub.org
+            #            - Gowtham Thakku
+            #
+            #            - rake
+            #            - "taxon_lineage_slice:remove_slice"
+            #            - taxon_lineage_slice:import_data_from_s3
+            #          "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
+            #          "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
+            #          # TODO: Not sure if loading Taxon Descriptions is required or not
+            #          "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
+            #          )
 
-          #            - "update_pathogen_list"
-#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,live,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-#            - bundle
-#            - exec
-#            - rails
-#            - runner
-#            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
-#            - tcarvalho@chanzuckerberg.com
-#            - Tiago Carvalho
+            #            - "update_pathogen_list"
+            #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,live,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #            - bundle
+            #            - exec
+            #            - rails
+            #            - runner
+            #            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            #            - tcarvalho@chanzuckerberg.com
+            #            - Tiago Carvalho
             #- krosariocora@contractor.chanzuckerberg.com
             #- Karyna Rosario Cora
             #- "jsims@slower.ai"
@@ -120,16 +120,16 @@ spec:
 
 
 
-#
-#          command:
-#            - chamber
-#            - exec
-#            - seqtoid-env-prod-web
-#            - "--"
-#            - bundle
-#            - exec
-#            - rails
-#            - runner
+          #
+          #          command:
+          #            - chamber
+          #            - exec
+          #            - seqtoid-env-prod-web
+          #            - "--"
+          #            - bundle
+          #            - exec
+          #            - rails
+          #            - runner
           #            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
           #            - matt.jobin@ucsf.edu
           #            - Matt Jobin
