@@ -136,6 +136,14 @@
             below — it may differ from the email you are registering with.
           </span>
         </label>
+        <%#
+          Operator-editable CZ ID data-transfer notice (AppConfig::CZID_TRANSFER_NOTICE_TEXT, read into
+          @czid_transfer_notice_text in the controller). Rendered as PLAIN TEXT — `<%= %>` HTML-escapes it,
+          so a value containing markup is shown literally, never interpreted. Blank/unset renders nothing.
+        %>
+        <% if @czid_transfer_notice_text.present? %>
+          <p class="ec-czid-notice" role="note"><%= @czid_transfer_notice_text %></p>
+        <% end %>
         <div class="ec-czid-reveal">
           <label class="ec-label" for="czid_account_email">
             CZ ID account email <span class="ec-req" aria-hidden="true">*</span>

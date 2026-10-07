@@ -125,6 +125,23 @@ class AppConfig < ApplicationRecord
   # When this is not "", the emergency announcement banner on the top of the site header will be enabled.
   # The emergency announcement banner with display the specified message.
   SHOW_EMERGENCY_BANNER_MESSAGE = 'show_emergency_banner_message'.freeze
+  # Operator-editable notice banner shown above the content of the logged-in home (My Data) page. Driven
+  # entirely by AppConfig so the text/severity can be changed WITHOUT a deploy (get_app_config reads
+  # through Rails.cache and AppConfig#after_save invalidates the key, so a change is picked up within the
+  # cache TTL -- no pod restart). Ships OFF/empty so merging renders nothing.
+  #   * ENABLED  -- "1" shows the banner; anything else ("0"/unset) hides it.
+  #   * TEXT     -- the plain-text message. Empty/unset renders NOTHING (never a blank banner), regardless
+  #                 of ENABLED. Rendered as PLAIN TEXT only -- never as HTML/markdown.
+  #   * SEVERITY -- "info" or "warning"; maps to the SDS Callout `intent`. Any other/blank value is
+  #                 treated as "info".
+  USER_HOME_BANNER_ENABLED = 'user_home_banner_enabled'.freeze
+  USER_HOME_BANNER_TEXT = 'user_home_banner_text'.freeze
+  USER_HOME_BANNER_SEVERITY = 'user_home_banner_severity'.freeze
+  # Operator-editable plain-text notice rendered next to the CZ ID data-transfer fields on the public
+  # export-control signup form (SMP-1901). Driven by AppConfig so the wording can change WITHOUT a deploy
+  # (same caching/no-restart behavior as the home banner above). Empty/unset renders NOTHING. Rendered as
+  # PLAIN TEXT only -- never as HTML/markdown.
+  CZID_TRANSFER_NOTICE_TEXT = 'czid_transfer_notice_text'.freeze
   # The ARN of the mNGS pipeline's Step Function
   SFN_MNGS_ARN = 'sfn_mngs_arn'.freeze
   SFN_ARN = 'sfn_arn'.freeze

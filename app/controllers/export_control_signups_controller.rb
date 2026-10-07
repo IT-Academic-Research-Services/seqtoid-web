@@ -185,6 +185,11 @@ class ExportControlSignupsController < ApplicationController
     # the gate. The pending page is likewise left non-navigable.
     @blank_header_logo_href = "/"
     @countries = COUNTRIES
+    # Operator-editable CZ ID data-transfer notice, read server-side so this unauthenticated no-JS page
+    # needs no client fetch and exposes ONLY this one key (never the whole app_configs table). Driven by
+    # AppConfig so the wording can change without a deploy. Blank/unset => the view renders nothing.
+    # Rendered as PLAIN TEXT in the ERB (ERB `<%= %>` auto-escapes) -- never as HTML.
+    @czid_transfer_notice_text = get_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT).to_s
   end
 
   def czid_transfer_requested?

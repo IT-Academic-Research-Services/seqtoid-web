@@ -169,4 +169,32 @@ RSpec.describe AppConfigHelper, type: :helper do
       expect(AppConfigHelper.version_older?("custom-tag", "8.3.15")).to be(false)
     end
   end
+
+  # The home-banner fields exposed to the front-end via UserContext. Severity is normalized to a valid SDS
+  # Callout intent here, and an empty text is passed through verbatim (the client renders nothing for it).
+  describe "#configs_for_context -- home banner fields" do
+    it "exposes enabled/text/severity from the app_config rows" do
+      AppConfigHelper.set_app_config(AppConfig::USER_HOME_BANNER_ENABLED, "1")
+      AppConfigHelper.set_app_config(AppConfig::USER_HOME_BANNER_TEXT, "Scheduled maintenance tonight")
+      AppConfigHelper.set_app_config(AppConfig::USER_HOME_BANNER_SEVERITY, "warning")
+
+      context = AppConfigHelper.configs_for_context
+
+      expect(context[:userHomeBannerEnabled]).to be(true)
+      expect(context[:userHomeBannerText]).to eq("Scheduled maintenance tonight")
+      expect(context[:userHomeBannerSeverity]).to eq("warning")
+    end
+
+    it "defaults enabled to false and normalizes an unknown/blank severity to 'info'" do
+      AppConfigHelper.set_app_config(AppConfig::USER_HOME_BANNER_ENABLED, "0")
+      AppConfigHelper.set_app_config(AppConfig::USER_HOME_BANNER_TEXT, "")
+      AppConfigHelper.set_app_config(AppConfig::USER_HOME_BANNER_SEVERITY, "critical")
+
+      context = AppConfigHelper.configs_for_context
+
+      expect(context[:userHomeBannerEnabled]).to be(false)
+      expect(context[:userHomeBannerText]).to eq("")
+      expect(context[:userHomeBannerSeverity]).to eq("info")
+    end
+  end
 end

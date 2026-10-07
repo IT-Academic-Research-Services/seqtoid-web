@@ -18,6 +18,7 @@ module SeedResource
       export_control_flags
       email_blocklist_flags
       self_service_signup_flag
+      operator_notices
     end
 
     private
@@ -87,6 +88,26 @@ module SeedResource
     def email_blocklist_flags
       find_or_create(:app_config, key: AppConfig::BLOCK_FREE_EMAIL_DOMAINS, value: "0")
       find_or_create(:app_config, key: AppConfig::BLOCK_DISPOSABLE_EMAIL_DOMAINS, value: "0")
+    end
+
+    # Operator-editable notices (driven by AppConfig so the text can change without a deploy). Seeded
+    # EXPLICITLY so their state is never implicit. As with the rows above, find_or_create matches AppConfig
+    # on `key` and returns the existing row untouched, so a re-seed NEVER overwrites a value an operator set
+    # out-of-band -- safe to run on every deploy.
+    #
+    #   * The home banner ships OFF/empty (ENABLED "0", TEXT "", SEVERITY "info"), so it renders NOTHING
+    #     until an operator turns it on.
+    #   * CZID_TRANSFER_NOTICE_TEXT ships WITH its default copy, so the notice is visible next to the CZ ID
+    #     transfer fields on the signup form immediately -- operators edit this row to change the wording.
+    def operator_notices
+      find_or_create(:app_config, key: AppConfig::USER_HOME_BANNER_ENABLED, value: "0")
+      find_or_create(:app_config, key: AppConfig::USER_HOME_BANNER_TEXT, value: "")
+      find_or_create(:app_config, key: AppConfig::USER_HOME_BANNER_SEVERITY, value: "info")
+      find_or_create(
+        :app_config,
+        key: AppConfig::CZID_TRANSFER_NOTICE_TEXT,
+        value: "Data Transfer Notice: Transfers may take up to 7 business days"
+      )
     end
 
     def sfn_configs
