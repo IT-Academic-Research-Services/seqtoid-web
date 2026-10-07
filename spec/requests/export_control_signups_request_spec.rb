@@ -156,14 +156,17 @@ RSpec.describe "ExportControlSignups", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Data Transfer Notice: Transfers may take up to 7 business days")
-      expect(response.body).to include("ec-czid-notice")
+      # Match the rendered element, not the bare class name -- `.ec-czid-notice` also appears in the
+      # page's always-present inline <style> block, so asserting on the class name alone is a false pass.
+      expect(response.body).to include('<p class="ec-czid-notice"')
     end
 
     it "renders nothing (no notice element) when the key is empty" do
       get new_export_control_signup_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).not_to include("ec-czid-notice")
+      # The <style> rule for .ec-czid-notice is always present; assert the ELEMENT is absent instead.
+      expect(response.body).not_to include('<p class="ec-czid-notice"')
     end
 
     # STEP 4 security assertion: a value containing <script> / <img onerror=...> must be HTML-escaped in
