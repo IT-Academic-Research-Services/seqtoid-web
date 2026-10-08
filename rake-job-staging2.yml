@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: rake-task-job
+  name: rake-task-job2
   namespace: seqtoid-staging
 spec:
   backoffLimit: 0 # 2 3
@@ -26,10 +26,10 @@ spec:
             - "--"
             - bundle
             - exec
-            - rake
+            #- rake
             #- "--tasks"
-            - "taxon_lineage_slice:remove_slice"
-            - "taxon_lineage_slice:import_data_from_s3"
+            #- "taxon_lineage_slice:remove_slice"
+            #- "taxon_lineage_slice:import_data_from_s3"
             #- "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
             #- "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
             #- "update_pathogen_list"
@@ -37,24 +37,35 @@ spec:
             #- "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
-            #- rails
+            - rails
             #- "db:drop"
             #- "db:create"
             #- "db:schema:load" DO NOT USE !!!
             #- "db:migrate:with_data"
             #- "seed:migrate"
             #
-            # - runner
-            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
-            #- joseph.sims@ucsf.edu
-            #- Joseph Sims
+            - runner
+            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            - joseph.sims@ucsf.edu
+            - Joseph Sims
             #- Thomas.Horvath@ucsf.edu
             #- Thomas Horvath
             #- Ikramuddin.Ahmed@ucsf.edu
             #- Ikram Ahmed
             #- matt.jobin@ucsf.edu
             #- Matt Jobin
-            #
+            #- genay.pilarowski@czbiohub.org
+            #- Genay Pilarowski
+            #- krosariocora@contractor.chanzuckerberg.com
+            #- Karyna Rosario Cora
+            #- "jsims@slower.ai"
+            #- "Jay"
+            #### NOT IN YET?
+            #- gowtham.thakku@czbiohub.org
+            #- Gowtham Thakku
+            #- tcarvalho@chanzuckerberg.com
+            #- Tiago Carvalho
+
             #- rake
             #- "--tasks"
             #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
@@ -69,17 +80,6 @@ spec:
             #            - exec
             #            - rails
             #            - runner
-            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
-            #- genay.pilarowski@czbiohub.org
-            #- Genay Pilarowski
-            #- gowtham.thakku@czbiohub.org
-            #- Gowtham Thakku
-            #- tcarvalho@chanzuckerberg.com
-            #- Tiago Carvalho
-            #- krosariocora@contractor.chanzuckerberg.com
-            #- Karyna Rosario Cora
-            #- "jsims@slower.ai"
-            #- "Jay"
           env:
             - name: DRY_RUN
               value: "false"
