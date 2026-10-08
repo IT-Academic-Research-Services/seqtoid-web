@@ -173,6 +173,25 @@ smoke:
     backoffLimit: 1              # one retry absorbs a transient boot blip
     activeDeadlineSeconds: 300   # bound a stuck boot so it fails cleanly, not forever
 
+# Web warm-up before Ready. OFF by default (opt in per env from its values file; env-prod takes this
+# chart from main, so defaults must not change behaviour).
+#
+# Rails compiles a page's templates the first time it renders, and the readiness probe only touches
+# /health_check. So the first real visitor to every new web pod paid the compile: on staging
+# 2026-10-08 the first GET / on each new pod took 6.5s and 7.7s, every later one 10-17ms. Every release
+# replaces every pod, so after every release the first visitors to each pod waited ~7s.
+#
+# When enabled, a startupProbe curls each path inside the pod (Host = smoke.host or ingress.host, so host
+# authorization passes) and must get a 2xx/3xx before readiness/liveness start -- the compile happens
+# before the pod can receive traffic. Boot time is covered by periodSeconds x failureThreshold (5 min).
+warmup:
+  enabled: false
+  paths:
+    - /
+  requestTimeoutSeconds: 30
+  periodSeconds: 5
+  failureThreshold: 60
+
 # High availability for the web app -- two replicas only protect you if they can't BOTH
 # be lost at once. Without these, replicaCount:2 still bin-packs onto one node, so a single
 # node/spot loss or a Karpenter consolidation takes the whole app down.

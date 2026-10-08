@@ -176,6 +176,27 @@ spec:
               exec:
                 # Let the Service deregister this pod before it stops accepting conns.
                 command: ["sh", "-c", "sleep {{ .Values.gracefulDrain.preStopSleepSeconds }}"]
+          {{- if .Values.warmup.enabled }}
+          {{- $warmHost := .Values.smoke.host | default (.Values.ingress).host }}
+          # Warm-up (values.yaml `warmup`): render the listed pages once inside the pod before it can turn
+          # Ready, so Rails compiles their templates before any user is routed here. Readiness and liveness
+          # only start once this succeeds. Retries every periodSeconds while Puma is still booting.
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  for p in {{ join " " .Values.warmup.paths }}; do
+                  c=$(curl -s -o /dev/null -m {{ .Values.warmup.requestTimeoutSeconds }}
+                  -H "Host: {{ $warmHost }}" -H "X-Forwarded-Proto: https"
+                  -w '%{http_code}' "http://127.0.0.1:{{ .Values.containerPort }}$p") || exit 1;
+                  case "$c" in 2*|3*) ;; *) exit 1;; esac;
+                  done
+            periodSeconds: {{ .Values.warmup.periodSeconds }}
+            timeoutSeconds: {{ add (mul (len .Values.warmup.paths) .Values.warmup.requestTimeoutSeconds) 5 }}
+            failureThreshold: {{ .Values.warmup.failureThreshold }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: {{ .Values.ingress.healthCheckPath }}
