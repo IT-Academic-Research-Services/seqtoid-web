@@ -45,6 +45,17 @@ spec:
         # NotReady until their ALB target is healthy, then weight shifts 0 -> 100. No
         # atomic flip, so no zero-target window; and because the build was validated at
         # zero user traffic, no user is ever served an unvalidated build.
+        {{- if .Values.pingpong.manualPromotion }}
+        # Manual promotion gate (env-prod): bring the new color up at FULL size with 0% of the
+        # traffic -- its pods only turn Ready once their ALB target is healthy (readiness gates) --
+        # then pause until a human promotes. Promote with the same status patch as blueGreen:
+        #   kubectl patch rollout <name> --type=merge --subresource=status \
+        #     -p '{"status":{"pauseConditions":null}}'
+        # Aborting instead leaves the old color serving 100% throughout.
+        - setCanaryScale:
+            weight: 100
+        - pause: {}
+        {{- end }}
         - setWeight: 100
     {{- else }}
     blueGreen:

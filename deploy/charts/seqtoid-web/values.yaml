@@ -119,6 +119,13 @@ service:
 # and the elbv2.k8s.aws/pod-readiness-gate-inject=enabled label on the namespace.
 rolloutStrategy: blueGreen
 
+# pingpong-only knobs (ignored under blueGreen).
+pingpong:
+  # false (dev/staging): the smoke-gated build cuts over as soon as its pods are healthy.
+  # true (env-prod): hold the new color at full size and 0% traffic until a human promotes, the
+  # pingpong equivalent of blueGreen.autoPromotionEnabled: false. See rollout.yaml.
+  manualPromotion: false
+
 # Blue/green strategy knobs (consumed by the Rollout when rolloutStrategy == blueGreen).
 blueGreen:
   autoPromotionEnabled: false     # dev/staging true; prod false (manual gate)
@@ -278,14 +285,16 @@ gracefulDrain:
   terminationGracePeriodSeconds: 60
 
 # Resilience (#467a): worker drain hardening. Web pods drain via a preStop sleep +
-# a 60s grace period, but workers are different — resque/shoryuken already trap
-# SIGTERM to stop pulling new jobs and finish the in-flight one, but an in-flight
-# job (e.g. a pipeline dispatch) can outlast the web-sized 60s grace period and get
-# SIGKILLed mid-flight. Give workers their own, longer grace period so the running
-# job completes before the pod dies. The kubelet sends SIGTERM directly to PID 1
-# (no preStop needed for the signal), so this is purely about the grace window.
+# a 60s grace period; workers get their own, longer grace period.
 # Per-worker override via workers.<name>.terminationGracePeriodSeconds; a long-job
 # worker (pipeline-monitor/result-monitor) may want a larger value than the default.
+#
+# NOTE: on its own this grace period does NOT let a Resque job finish. With the default
+# `rake resque:workers` args the kubelet's SIGTERM reaches only PID 1 (the resque:workers
+# supervisor), which exits; the real worker is its system() child, never sees the signal,
+# and is SIGKILLed with the container, taking the in-flight job with it. Even when the
+# worker does get SIGTERM, Resque's default (no TERM_CHILD) is to KILL the forked job
+# immediately. workerShutdown.graceful below fixes both.
 workerDrain:
   # 120s: double the web grace so a mid-flight dispatch/monitor tick finishes. Bump
   # per-worker (or globally) if a worker's unit of work legitimately runs longer.
@@ -302,6 +311,25 @@ workerDrain:
 # Use `karpenter.sh/capacity-type NotIn [spot]` -- it matches Karpenter on-demand nodes AND managed
 # node-group nodes (which carry no karpenter label), and makes Karpenter launch on-demand for new pods.
 workerAffinity: {}
+
+# Graceful Resque worker shutdown. OFF by default so this chart change is a no-op until an env opts in
+# from its values file (env-prod's chart is sourced from main, so defaults must not change behaviour).
+#
+# When enabled, for every worker whose args are ["rake", "resque:workers"]:
+#   - args become ["rake", "resque:work"] -- the worker process itself is PID 1, so the kubelet's SIGTERM
+#     reaches it. COUNT is always 1 per pod (scale by replicaCount), so resque:workers added nothing but
+#     the signal-swallowing extra process.
+#   - TERM_CHILD=1: on SIGTERM the worker stops taking new jobs and gives the running job
+#     preShutdownTimeoutSeconds to finish (RESQUE_PRE_SHUTDOWN_TIMEOUT), then sends the job TERM
+#     (Resque::TermException, recorded as a failure) and waits termTimeoutSeconds (RESQUE_TERM_TIMEOUT)
+#     before KILL.
+#   - terminationGracePeriodSeconds is raised, if needed, to cover both windows plus 30s.
+# A job that outlives the window still stops, but it now fails visibly in the Resque failed list instead
+# of vanishing. Scheduler, monitors and shoryuken are not touched.
+workerShutdown:
+  graceful: false
+  preShutdownTimeoutSeconds: 300
+  termTimeoutSeconds: 30
 
 workerLivenessProbe:
   enabled: true
@@ -481,6 +509,11 @@ workers:
   #                       duplicates 10 at a time (2026-09-30: OpenSearch CPU 91-98%, job time 2x) and
   #                       indexing competed with result loading. Raise replicas only with the OpenSearch
   #                       domain in mind (env-prod: 2).
+  # Optional per worker (any worker):
+  #   strategy:            Deployment strategy; default Recreate. Only for pools where old and new pods
+  #                        may overlap (e.g. the general pool) -- never the singletons or the scheduler.
+  #   podDisruptionBudget: {maxUnavailable: N} caps how many of this worker's pods a node drain or Karpenter
+  #                        consolidation may evict at once. Unset = no PDB.
   resque:
     args: ["rake", "resque:workers"]
     replicaCount: 1
