@@ -119,6 +119,13 @@ service:
 # and the elbv2.k8s.aws/pod-readiness-gate-inject=enabled label on the namespace.
 rolloutStrategy: blueGreen
 
+# pingpong-only knobs (ignored under blueGreen).
+pingpong:
+  # false (dev/staging): the smoke-gated build cuts over as soon as its pods are healthy.
+  # true (env-prod): hold the new color at full size and 0% traffic until a human promotes, the
+  # pingpong equivalent of blueGreen.autoPromotionEnabled: false. See rollout.yaml.
+  manualPromotion: false
+
 # Blue/green strategy knobs (consumed by the Rollout when rolloutStrategy == blueGreen).
 blueGreen:
   autoPromotionEnabled: false     # dev/staging true; prod false (manual gate)
