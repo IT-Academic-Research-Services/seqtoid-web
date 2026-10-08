@@ -1,0 +1,30 @@
+{{- /*
+  Per-worker PodDisruptionBudget (opt-in: workers.<name>.podDisruptionBudget.maxUnavailable).
+  Caps how many of one worker's pods a VOLUNTARY disruption (node drain, Karpenter consolidation or
+  expiry, API eviction) can take at once, so a node recycle never empties a pool. Each evicted pod
+  still gets its full termination grace period (see workerShutdown in values.yaml).
+*/}}
+{{- if not .Values.suspend }}
+{{- $root := . -}}
+{{- range $name, $w := .Values.workers }}
+{{- if and (ne $w.enabled false) $w.podDisruptionBudget }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "seqtoid-web.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "seqtoid-web.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: worker
+    seqtoid.io/worker: {{ $name }}
+spec:
+  maxUnavailable: {{ $w.podDisruptionBudget.maxUnavailable | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "seqtoid-web.name" $root }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: worker
+      seqtoid.io/worker: {{ $name }}
+{{- end }}
+{{- end }}
+{{- end }}
