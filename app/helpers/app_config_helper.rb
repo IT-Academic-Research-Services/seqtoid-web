@@ -57,6 +57,11 @@ module AppConfigHelper
     AppConfigHelper.set_app_config(key, JSON.dump(value))
   end
 
+  # The only severities the home banner may carry; they map 1:1 onto the SDS Callout `intent`. Anything
+  # else (including a blank/unset row) is normalized to "info" so the front-end always receives a valid
+  # intent and never has to guess.
+  USER_HOME_BANNER_SEVERITIES = %w[info warning].freeze
+
   # Return all app configs that should be sent to the front-end React application.
   def configs_for_context
     # Fetch all app configs in one query.
@@ -66,9 +71,13 @@ module AppConfigHelper
                            AppConfig::SELF_SERVICE_SIGNUP_ENABLED,
                            AppConfig::MAX_OBJECTS_BULK_DOWNLOAD,
                            AppConfig::MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES,
+                           AppConfig::USER_HOME_BANNER_ENABLED,
+                           AppConfig::USER_HOME_BANNER_TEXT,
+                           AppConfig::USER_HOME_BANNER_SEVERITY,
                          ])
                   .map { |app_config| [app_config.key, app_config.value] }
                   .to_h
+    banner_severity = app_configs[AppConfig::USER_HOME_BANNER_SEVERITY].to_s
     {
       autoAccountCreationEnabled: app_configs[AppConfig::AUTO_ACCOUNT_CREATION_V1] == "1",
       # SMP-1709 -- lets the landing page swap the "Register Now" form for a request-access CTA
@@ -76,6 +85,12 @@ module AppConfigHelper
       selfServiceSignupEnabled: app_configs[AppConfig::SELF_SERVICE_SIGNUP_ENABLED] == "1",
       maxObjectsBulkDownload: app_configs[AppConfig::MAX_OBJECTS_BULK_DOWNLOAD].to_i,
       maxSamplesBulkDownloadOriginalFiles: app_configs[AppConfig::MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES].to_i,
+      # Operator-editable logged-in home banner. The text is sent verbatim and rendered as PLAIN TEXT on
+      # the client (React escapes it) -- never as HTML. An empty/missing text renders nothing even when
+      # enabled; severity is normalized to a valid SDS intent here.
+      userHomeBannerEnabled: app_configs[AppConfig::USER_HOME_BANNER_ENABLED] == "1",
+      userHomeBannerText: app_configs[AppConfig::USER_HOME_BANNER_TEXT].to_s,
+      userHomeBannerSeverity: USER_HOME_BANNER_SEVERITIES.include?(banner_severity) ? banner_severity : "info",
     }
   end
 

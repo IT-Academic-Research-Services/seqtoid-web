@@ -141,6 +141,9 @@
   .ec-czid-label { display: block; overflow: hidden; line-height: 1.45; }
   .ec-czid-reveal { display: none; clear: both; margin: 12px 0 0; }
   .ec-czid-toggle:checked ~ .ec-czid-reveal { display: block; }
+  /* Operator-editable CZ ID transfer notice (AppConfig::CZID_TRANSFER_NOTICE_TEXT). Always visible next to
+     the transfer fields when set; clears the floated checkbox so it sits below the label. */
+  .ec-czid-notice { clear: both; margin: 10px 0 0; font-size: 13px; color: var(--ec-text-muted); }
   .ec-error { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--ec-danger-strong); }
   .ec-formerror {
     margin: 0 0 24px;

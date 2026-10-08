@@ -268,4 +268,5 @@ RSpec.describe SeedResource::AppConfigs do
       expect(AppConfigHelper.get_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS)).to eq("1")
     end
   end
+
 end

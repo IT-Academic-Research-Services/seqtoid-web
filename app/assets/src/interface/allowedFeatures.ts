@@ -6,6 +6,11 @@ export default interface UserContextType {
     autoAccountCreationEnabled?: boolean;
     maxObjectsBulkDownload?: number;
     maxSamplesBulkDownloadOriginalFiles?: number;
+    // Operator-editable logged-in home banner (driven by AppConfig; see configs_for_context).
+    // Text is plain text only. Severity is normalized server-side to an SDS Callout intent.
+    userHomeBannerEnabled?: boolean;
+    userHomeBannerText?: string;
+    userHomeBannerSeverity?: "info" | "warning";
   };
   userSignedIn: boolean;
   userId?: number | null;

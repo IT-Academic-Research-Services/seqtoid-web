@@ -10,6 +10,7 @@ import React, { Suspense, useContext } from "react";
 import { Route, Switch, useHistory, useLocation } from "react-router-dom";
 import { LoadingPage } from "~/components/common/LoadingPage";
 import { UserContext } from "~/components/common/UserContext";
+import { UserHomeBanner } from "~/components/common/UserHomeBanner";
 import UserProfileForm from "~/components/views/UserProfileForm";
 import { AdminPage } from "../AdminPage";
 import { AdminProject } from "../AdminProject";
@@ -125,19 +126,24 @@ const DiscoveryViewRouter = ({
         {userSignedIn ? (
           <Route
             render={({ match }) => (
-              <DiscoveryViewFC
-                admin={admin}
-                domain={domain}
-                mapTilerKey={mapTilerKey}
-                mapStyleId={mapStyleId}
-                projectId={projectId}
-                snapshotProjectDescription={snapshotProjectDescription}
-                snapshotProjectName={snapshotProjectName}
-                snapshotShareId={snapshotShareId}
-                history={history}
-                location={location}
-                match={match}
-              />
+              <>
+                {/* Operator-editable notice above the logged-in home content. Reads its state from
+                    UserContext.appConfig and renders nothing unless an operator has enabled it. */}
+                <UserHomeBanner />
+                <DiscoveryViewFC
+                  admin={admin}
+                  domain={domain}
+                  mapTilerKey={mapTilerKey}
+                  mapStyleId={mapStyleId}
+                  projectId={projectId}
+                  snapshotProjectDescription={snapshotProjectDescription}
+                  snapshotProjectName={snapshotProjectName}
+                  snapshotShareId={snapshotShareId}
+                  history={history}
+                  location={location}
+                  match={match}
+                />
+              </>
             )}
           />
         ) : (
