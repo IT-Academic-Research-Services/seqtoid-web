@@ -5,7 +5,7 @@ metadata:
   name: rake-task-job2
   namespace: seqtoid-env-prod
 spec:
-  backoffLimit: 1 # 3
+  backoffLimit: 0 # 3
   #completions: 1
   #parallelism: 1
   ttlSecondsAfterFinished: 36000
@@ -19,8 +19,8 @@ spec:
       #serviceAccountName: czid-staging-seqtoid-web
       containers:
         - name: rails-app
-          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-659b1d50"
-          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
+          image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-f8415a2f"
+          #image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web@sha256:fd065cf7983e010ae67fea07d6cb56f3451b717ba1f7e7803dce41fb5e97ab07"
           command:
             - chamber
             - exec

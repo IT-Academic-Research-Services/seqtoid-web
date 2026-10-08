@@ -15,7 +15,6 @@ spec:
       nodeSelector:
         kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
       restartPolicy: Never
-      #      serviceAccountName: seqtoid-env-prod-seqtoid-web
       serviceAccountName: czid-staging-seqtoid-web
       containers:
         - name: rails-app
@@ -27,19 +26,21 @@ spec:
             - "--"
             - bundle
             - exec
-            #- rake
+            - rake
             #- "--tasks"
-            #- "taxon_lineage_slice:remove_slice"
-            #- "taxon_lineage_slice:import_data_from_s3"
+            - "taxon_lineage_slice:remove_slice"
+            - "taxon_lineage_slice:import_data_from_s3"
             #- "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
             #- "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
             #- "update_pathogen_list"
+            # TODO: Not sure if loading Taxon Descriptions is required or not
+            #- "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
             #- rails
             #- "db:drop"
             #- "db:create"
-            #- "db:schema:load"
+            #- "db:schema:load" DO NOT USE !!!
             #- "db:migrate:with_data"
             #- "seed:migrate"
             #
@@ -53,12 +54,13 @@ spec:
             #- Ikram Ahmed
             #- matt.jobin@ucsf.edu
             #- Matt Jobin
-
+            #
             #- rake
             #- "--tasks"
-            ##            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            ##           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,live,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             # Karyna = 7
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
@@ -67,43 +69,24 @@ spec:
             #            - exec
             #            - rails
             #            - runner
-            #            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
-            ##            - genay.pilarowski@czbiohub.org
-            ##            - Genay Pilarowski
-            #            - gowtham.thakku@czbiohub.org
-            #            - Gowtham Thakku
-            #
-            #            - rake
-            #            - "taxon_lineage_slice:remove_slice"
-            #            - taxon_lineage_slice:import_data_from_s3
-            #          "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
-            #          "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
-            #          # TODO: Not sure if loading Taxon Descriptions is required or not
-            #          "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
-            #          )
-
-            #            - "update_pathogen_list"
-            #            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,live,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            #            - bundle
-            #            - exec
-            #            - rails
-            #            - runner
-            #            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
-            #            - tcarvalho@chanzuckerberg.com
-            #            - Tiago Carvalho
+            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            #- genay.pilarowski@czbiohub.org
+            #- Genay Pilarowski
+            #- gowtham.thakku@czbiohub.org
+            #- Gowtham Thakku
+            #- tcarvalho@chanzuckerberg.com
+            #- Tiago Carvalho
             #- krosariocora@contractor.chanzuckerberg.com
             #- Karyna Rosario Cora
             #- "jsims@slower.ai"
             #- "Jay"
-            #- "seed:migrate"
-            #- "--tasks"
           env:
             - name: DRY_RUN
               value: "false"
             - name: RAILS_ENV
-              value: "env-prod"
+              value: "staging"
             - name: ENVIRONMENT
-              value: "env-prod"
+              value: "staging"
             - name: RAILS_LOG_TO_STDOUT
               value: "yes"
             - name: AWS_REGION
@@ -111,7 +94,7 @@ spec:
             - name: AWS_DEFAULT_REGION
               value: "us-west-2"
             - name: AWS_ACCOUNT_ID
-              value: "283694049553"
+              value: "030998640247"
             - name: SKIP_RESQUE_SCHEDULE
               value: "1"
             #- name: S3_DATABASE_BUCKET
