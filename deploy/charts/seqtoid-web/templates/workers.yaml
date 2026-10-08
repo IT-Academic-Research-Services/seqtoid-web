@@ -4,6 +4,16 @@
 {{- $root := . -}}
 {{- range $name, $w := .Values.workers }}
 {{- if ne $w.enabled false }}
+{{- /*
+  Graceful Resque shutdown (values.yaml workerShutdown): only for workers launched as
+  `rake resque:workers`. They run `rake resque:work` directly so the SIGTERM reaches the worker,
+  with TERM_CHILD so the in-flight job gets a window to finish.
+*/}}
+{{- $graceful := and $root.Values.workerShutdown.graceful (eq (join " " $w.args) "rake resque:workers") }}
+{{- $grace := $w.terminationGracePeriodSeconds | default $root.Values.workerDrain.terminationGracePeriodSeconds | default $root.Values.gracefulDrain.terminationGracePeriodSeconds | int }}
+{{- if $graceful }}
+{{- $grace = max $grace (add $root.Values.workerShutdown.preShutdownTimeoutSeconds $root.Values.workerShutdown.termTimeoutSeconds 30) | int }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -16,9 +26,14 @@ metadata:
 spec:
   # `suspend` (cost spin-down) forces every worker to 0 replicas.
   replicas: {{ if $root.Values.suspend }}0{{ else }}{{ default 1 $w.replicaCount }}{{ end }}
-  # Workers are singletons per queue-set; don't run two old+new during a roll.
+  # Default Recreate: most workers are singletons per queue-set, so never run old+new during a roll.
+  # A pool that may overlap (the general pool) can opt into a rolling strategy per worker.
   strategy:
+    {{- if $w.strategy }}
+    {{- toYaml $w.strategy | nindent 4 }}
+    {{- else }}
     type: Recreate
+    {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "seqtoid-web.name" $root }}
@@ -37,7 +52,8 @@ spec:
       # Resilience (#467a): worker drain. Prefer a per-worker override, then the
       # worker-wide workerDrain default (longer than web's, so a long-running in-flight
       # job finishes on SIGTERM before SIGKILL), falling back to the web grace period.
-      terminationGracePeriodSeconds: {{ $w.terminationGracePeriodSeconds | default $root.Values.workerDrain.terminationGracePeriodSeconds | default $root.Values.gracefulDrain.terminationGracePeriodSeconds }}
+      # Raised to cover the graceful Resque shutdown window when workerShutdown.graceful is on.
+      terminationGracePeriodSeconds: {{ $grace }}
       {{- with $root.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -52,11 +68,24 @@ spec:
           image: {{ include "seqtoid-web.image" $root | quote }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           args:
+            {{- if $graceful }}
+            - rake
+            - resque:work
+            {{- else }}
             {{- toYaml $w.args | nindent 12 }}
+            {{- end }}
           env:
             {{- include "seqtoid-web.commonEnv" $root | nindent 12 }}
             - name: COUNT
               value: "1"
+            {{- if $graceful }}
+            - name: TERM_CHILD
+              value: "1"
+            - name: RESQUE_PRE_SHUTDOWN_TIMEOUT
+              value: {{ $root.Values.workerShutdown.preShutdownTimeoutSeconds | quote }}
+            - name: RESQUE_TERM_TIMEOUT
+              value: {{ $root.Values.workerShutdown.termTimeoutSeconds | quote }}
+            {{- end }}
             {{- with $w.queue }}
             - name: QUEUE
               value: {{ . | quote }}
