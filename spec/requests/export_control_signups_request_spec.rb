@@ -138,4 +138,80 @@ RSpec.describe "ExportControlSignups", type: :request do
       end
     end
   end
+
+  # The operator-editable CZ ID transfer notice (AppConfig::CZID_TRANSFER_NOTICE_TEXT) rendered on the
+  # public signup form. It is driven by AppConfig so the wording can change without a deploy, and it is
+  # rendered as PLAIN TEXT -- a value containing markup must be escaped, never interpreted.
+  describe "GET /export_control_signup -- CZ ID transfer notice" do
+    # Reset the cached value regardless of run order (get_app_config caches).
+    before { AppConfigHelper.set_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT, "") }
+
+    it "renders the notice text when the key is set" do
+      AppConfigHelper.set_app_config(
+        AppConfig::CZID_TRANSFER_NOTICE_TEXT,
+        "Data Transfer Notice: Transfers may take up to 7 business days"
+      )
+
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Data Transfer Notice: Transfers may take up to 7 business days")
+      # Match the rendered element, not the bare class name -- `.ec-czid-notice` also appears in the
+      # page's always-present inline <style> block, so asserting on the class name alone is a false pass.
+      expect(response.body).to include('<p class="ec-czid-notice"')
+    end
+
+    it "renders nothing (no notice element) when the key is empty" do
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      # The <style> rule for .ec-czid-notice is always present; assert the ELEMENT is absent instead.
+      expect(response.body).not_to include('<p class="ec-czid-notice"')
+    end
+
+    # STEP 4 security assertion: a value containing <script> / <img onerror=...> must be HTML-escaped in
+    # the output, so it is shown literally and never executes.
+    it "escapes HTML/script in the notice value (plain text only, no injection)" do
+      AppConfigHelper.set_app_config(
+        AppConfig::CZID_TRANSFER_NOTICE_TEXT,
+        '<script>alert(1)</script><img src=x onerror="alert(2)">'
+      )
+
+      get new_export_control_signup_path
+
+      # The raw, executable markup must NOT appear in the response...
+      expect(response.body).not_to include("<script>alert(1)</script>")
+      expect(response.body).not_to include('<img src=x onerror="alert(2)">')
+      # ...it must appear HTML-escaped instead.
+      expect(response.body).to include("&lt;script&gt;alert(1)&lt;/script&gt;")
+      expect(response.body).to include("&lt;img src=x onerror=")
+    end
+  end
+
+  # Regression guard for an ERB comment whose body contained an ERB tag (`<%= %>` in backticks): ERB
+  # comments do not nest, so the comment closed at the inner `%>` and dumped the rest of the comment as
+  # literal page text. The notice/escaping specs above could not catch it -- they only inspected the
+  # notice element and escaped values, not stray template text elsewhere on the page. A correctly
+  # rendered ERB page never emits raw `<%` or `%>`.
+  describe "GET /export_control_signup -- no stray template text leaks into the page" do
+    it "renders no raw ERB delimiters anywhere in the body (notice set)" do
+      AppConfigHelper.set_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT, "Some notice text")
+
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include("<%")
+      expect(response.body).not_to include("%>")
+    end
+
+    it "renders no raw ERB delimiters anywhere in the body (notice empty)" do
+      AppConfigHelper.set_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT, "")
+
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include("<%")
+      expect(response.body).not_to include("%>")
+    end
+  end
 end

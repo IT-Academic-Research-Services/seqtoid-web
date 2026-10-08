@@ -1,0 +1,11 @@
+.userHomeBanner {
+  // Space the banner off the top of the page content it sits above.
+  margin: 16px 24px 0;
+
+  // The SDS Callout ships as a fixed 360px box; stretch it to the content width so the notice reads as a
+  // full-width banner on a single line rather than a narrow box on the left.
+  :global(.MuiAlert-root) {
+    width: 100%;
+    max-width: none;
+  }
+}
