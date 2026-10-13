@@ -437,6 +437,44 @@ RSpec.describe SamplesHelper, type: :helper do
           expect(created_workflow_run.inputs&.[]("medaka_model")).to eq(ConsensusGenomeWorkflowRun::DEFAULT_MEDAKA_MODEL)
         end
 
+        # CLI --reference-accession (no reference FASTA): the accession must become the run's reference, not be
+        # silently replaced by the SARS-CoV-2 defaults.
+        it "routes an Illumina CG upload with a reference accession and no FASTA to the viral reference-accession path" do
+          additional_attributes = {
+            technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina],
+            accession_id: "MK468620.1",
+            workflows: [WorkflowRun::WORKFLOW[:consensus_genome]],
+          }
+          sample_attributes = [local_cg_sample_attributes.merge(additional_attributes)]
+
+          response = helper.upload_samples_with_metadata(sample_attributes, metadata_attributes, @joe)
+
+          expect(response["errors"].length).to eq(0)
+          inputs = response["samples"][0].workflow_runs.first.inputs
+          expect(inputs["reference_accession"]).to eq("MK468620.1")
+          expect(inputs["accession_id"]).to eq("MK468620.1")
+          expect(inputs["technology"]).to eq(ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina])
+          expect(inputs["taxon_id"]).not_to eq(2_697_049)
+          expect(inputs).not_to have_key("wetlab_protocol")
+        end
+
+        it "keeps the SARS-CoV-2 path when the CLI passes the SARS-CoV-2 accession with no FASTA" do
+          additional_attributes = {
+            technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina],
+            accession_id: ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_ID,
+            wetlab_protocol: ConsensusGenomeWorkflowRun::WETLAB_PROTOCOL[:artic],
+            workflows: [WorkflowRun::WORKFLOW[:consensus_genome]],
+          }
+          sample_attributes = [local_cg_sample_attributes.merge(additional_attributes)]
+
+          response = helper.upload_samples_with_metadata(sample_attributes, metadata_attributes, @joe)
+
+          inputs = response["samples"][0].workflow_runs.first.inputs
+          expect(inputs).not_to have_key("reference_accession")
+          expect(inputs["taxon_id"]).to eq(2_697_049)
+          expect(inputs["wetlab_protocol"]).to eq(ConsensusGenomeWorkflowRun::WETLAB_PROTOCOL[:artic])
+        end
+
         it "fails if technology is not provided with consensus genome workflow runs" do
           expect(LogUtil).to receive(:log_error).and_call_original
 

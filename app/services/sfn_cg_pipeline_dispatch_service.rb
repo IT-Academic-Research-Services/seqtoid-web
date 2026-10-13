@@ -282,16 +282,20 @@ class SfnCgPipelineDispatchService
                           }
                         elsif creation_source == ConsensusGenomeWorkflowRun::CREATION_SOURCE[:viral_cg_upload] && technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina]
                           {
-                            ref_fasta: File.join(@sample.sample_input_s3_path, ref_fasta_name),
-                            ref_accession_id: @workflow_run.inputs&.[]("reference_accession"),
+                            # Reference: an uploaded FASTA wins. Without one (CLI --reference-accession), the WDL
+                            # fetches the accession from the NT/NR index (FetchSequenceByAccessionId; nt/nr paths
+                            # are added below for >= 3.4.13). The WDL ignores ref_accession_id when ref_fasta is set.
+                            ref_fasta: ref_fasta_name ? File.join(@sample.sample_input_s3_path, ref_fasta_name) : nil,
+                            ref_accession_id: sanitize_accession_id(@workflow_run.inputs&.[]("reference_accession")),
                             # Default to empty primer file if the user does not provide a primer bed file (optional input)
                             primer_bed: primer_bed_name ? File.join(@sample.sample_input_s3_path, primer_bed_name) : "s3://#{S3_DATABASE_BUCKET}/consensus-genome/#{NA_PRIMER_FILE}",
                             # This option filters all except SARS-CoV-2 at the moment:
                             filter_reads: false,
-                            # signal to workflow that we want to include the refseq and bedfile in zipoutputs
-                            output_refseq: true,
+                            # Include the uploaded refseq and bedfile in zipoutputs. Only for an uploaded FASTA: the WDL
+                            # zips "~{ref_fasta}", which is empty when the reference was fetched by accession.
+                            output_refseq: ref_fasta_name.present?,
                             output_bed: primer_bed_name.present?,
-                          }
+                          }.compact
                         elsif creation_source == ConsensusGenomeWorkflowRun::CREATION_SOURCE[:sars_cov_2_upload] && technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina]
                           {
                             ref_fasta: "s3://#{S3_DATABASE_BUCKET}/consensus-genome/#{ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_ID}.fa",

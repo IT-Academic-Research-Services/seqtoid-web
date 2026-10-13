@@ -857,9 +857,22 @@ module SamplesHelper
         inputs_json_wgs[:ref_fasta] = ref_fasta
         inputs_json_wgs[:primer_bed] = primer_bed
 
+        # General viral CG by reference accession, no reference FASTA: the CLI's --reference-accession. The web
+        # upload flow always sends ref_fasta (its accession is parsed from the FASTA header), so this only
+        # catches CLI uploads. Previously such an upload fell through to the SARS-CoV-2 branch below, which
+        # hardcodes the SC2 accession -- the user's accession was silently dropped and the sample ran as SC2.
+        # reference_accession routes it to the viral-upload dispatch, where the WDL fetches the reference from
+        # the NT/NR index. Illumina only (Nanopore CG is SC2/ARTIC); an explicit SC2 accession keeps the SC2 path.
+        reference_accession_cg = ref_fasta.nil? && accession_id.present? &&
+                                 accession_id != ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_ID &&
+                                 technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina]
+        inputs_json_accession = base_inputs_json.merge(reference_accession: accession_id, primer_bed: primer_bed)
+
         workflows&.each do |workflow|
           inputs_json = if workflow == WorkflowRun::WORKFLOW[:consensus_genome]
-                          if ref_fasta.nil?
+                          if reference_accession_cg
+                            inputs_json_accession
+                          elsif ref_fasta.nil?
                             # signals SC2 (WGS - general viral case requires ref_file)
                             # TODO: replace this with the creation_source parameter once it's passed in from the FE
                             inputs_json_cg_sc2
