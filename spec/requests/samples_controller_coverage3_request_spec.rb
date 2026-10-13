@@ -612,6 +612,28 @@ RSpec.describe "Samples (coverage3) request", type: :request do
   describe "GET /search_suggestions (elasticsearch path)" do
     before { sign_in @joe }
 
+    it "returns no taxa (and does not search) for a project the user cannot view" do
+      other = create(:user)
+      private_project = create(:project, users: [other], name: "Someone else's project", public_access: 0)
+      AppConfigHelper.set_app_config(AppConfig::BYPASS_ES_TAXON_SEARCH, "0")
+      expect_any_instance_of(SamplesController).not_to receive(:taxon_search)
+
+      get "/search_suggestions", params: { query: "Klebsiella", categories: ["taxon"], projectId: private_project.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)).not_to have_key("Taxon")
+    end
+
+    it "caps sample suggestions at SEARCH_SUGGESTIONS_LIMIT" do
+      project = create(:project, users: [@joe], name: "Many Samples")
+      (SamplesController::SEARCH_SUGGESTIONS_LIMIT + 3).times { |i| create(:sample, project: project, user: @joe, name: "bulk sample #{i}") }
+
+      get "/search_suggestions", params: { query: "bulk sample", domain: "my_data", categories: ["sample"] }
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("Sample", "results").size).to eq(SamplesController::SEARCH_SUGGESTIONS_LIMIT)
+    end
+
     it "runs the ES taxon search with superkingdom/project filters (non-bypass else arm)" do
       project = create(:project, users: [@joe], name: "ES Project")
       create(:sample, project: project, user: @joe, name: "ES Sample")
