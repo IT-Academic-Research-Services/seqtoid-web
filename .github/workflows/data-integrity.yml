@@ -78,6 +78,9 @@ jobs:
 
       # (1) Unit-level: the integrity checker's logic, driven by factories (green today).
       - name: Integrity spec (check logic)
+        # A targeted spec run cannot meet the suite-wide 90% SimpleCov floor (.simplecov).
+        env:
+          SKIP_COVERAGE_MINIMUM: "1"
         run: bundle exec rspec spec/lib/tasks/reference_data_integrity_spec.rb
 
       # (2) End-to-end of the rake GATE itself: seed a known-good reference dataset, then
