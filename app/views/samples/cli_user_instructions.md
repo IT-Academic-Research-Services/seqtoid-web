@@ -187,6 +187,122 @@ seqtoid amr upload-sample `
   your_sample.fastq.gz
 ```
 
+**Consensus Genome**
+
+Consensus genome uploads need `--sequencing-platform` (`Illumina` or `Nanopore`). There are two kinds of run:
+
+- **SARS-CoV-2:** set `--wetlab-protocol` to the protocol you used. Illumina options: `ARTIC v4/ARTIC v4.1`, `ARTIC v3`, `ARTIC v3 - Short Amplicons (275 bp)`, `AmpliSeq`, `COVIDseq`, `Combined MSSPE & ARTIC v3`, `MSSPE`, `SNAP`, `Midnight`, `Varskip`. Nanopore options: `ARTIC v4/ARTIC v4.1`, `ARTIC v3`, `Midnight`, `Varskip`. For Nanopore, `--wetlab-protocol` defaults to `ARTIC v3` and `--medaka-model` is optional. Add `--clearlabs` if your data came from Clear Labs; it requires `ARTIC v3` and the default medaka model.
+- **Any other virus (Illumina only):** give the reference genome either as a local FASTA file with `--reference-fasta`, or as an NCBI nucleotide accession ID with `--reference-accession` (the sequence is looked up in SeqtoID's NT reference database, so the accession must be in it). You can add a primer file with `--primer-bed`. Don't combine these with `--wetlab-protocol`, and use only one of `--reference-fasta` or `--reference-accession`.
+
+SARS-CoV-2, Illumina:
+
+Linux + MacOS:
+
+```bash
+seqtoid consensus-genome upload-sample \
+  --project 'Your Project ID' \
+  --sample-name 'Your Sample Name' \
+  --metadata-csv 'Your_metadata_file.csv' \
+  --sequencing-platform 'Illumina' \
+  --wetlab-protocol 'ARTIC v4/ARTIC v4.1' \
+  your_sample_R1.fastq.gz your_sample_R2.fastq.gz
+```
+
+Windows:
+
+```Powershell
+seqtoid consensus-genome upload-sample `
+  --project "Your Project ID" `
+  --sample-name "Your Sample Name" `
+  --metadata-csv "Your_metadata_file.csv" `
+  --sequencing-platform "Illumina" `
+  --wetlab-protocol "ARTIC v4/ARTIC v4.1" `
+  your_sample_R1.fastq.gz your_sample_R2.fastq.gz
+```
+
+SARS-CoV-2, Nanopore:
+
+Linux + MacOS:
+
+```bash
+seqtoid consensus-genome upload-sample \
+  --project 'Your Project ID' \
+  --sample-name 'Your Sample Name' \
+  --metadata-csv 'Your_metadata_file.csv' \
+  --sequencing-platform 'Nanopore' \
+  --wetlab-protocol 'ARTIC v3' \
+  --medaka-model 'r941_min_high_g351' \
+  your_sample.fastq.gz
+```
+
+Windows:
+
+```Powershell
+seqtoid consensus-genome upload-sample `
+  --project "Your Project ID" `
+  --sample-name "Your Sample Name" `
+  --metadata-csv "Your_metadata_file.csv" `
+  --sequencing-platform "Nanopore" `
+  --wetlab-protocol "ARTIC v3" `
+  --medaka-model "r941_min_high_g351" `
+  your_sample.fastq.gz
+```
+
+Other virus, reference FASTA (Illumina):
+
+Linux + MacOS:
+
+```bash
+seqtoid consensus-genome upload-sample \
+  --project 'Your Project ID' \
+  --sample-name 'Your Sample Name' \
+  --metadata-csv 'Your_metadata_file.csv' \
+  --sequencing-platform 'Illumina' \
+  --reference-fasta 'your_reference.fasta' \
+  --primer-bed 'your_primers.bed' \
+  your_sample_R1.fastq.gz your_sample_R2.fastq.gz
+```
+
+Windows:
+
+```Powershell
+seqtoid consensus-genome upload-sample `
+  --project "Your Project ID" `
+  --sample-name "Your Sample Name" `
+  --metadata-csv "Your_metadata_file.csv" `
+  --sequencing-platform "Illumina" `
+  --reference-fasta "your_reference.fasta" `
+  --primer-bed "your_primers.bed" `
+  your_sample_R1.fastq.gz your_sample_R2.fastq.gz
+```
+
+Other virus, reference accession (Illumina):
+
+Linux + MacOS:
+
+```bash
+seqtoid consensus-genome upload-sample \
+  --project 'Your Project ID' \
+  --sample-name 'Your Sample Name' \
+  --metadata-csv 'Your_metadata_file.csv' \
+  --sequencing-platform 'Illumina' \
+  --reference-accession 'MK468620.1' \
+  your_sample_R1.fastq.gz your_sample_R2.fastq.gz
+```
+
+Windows:
+
+```Powershell
+seqtoid consensus-genome upload-sample `
+  --project "Your Project ID" `
+  --sample-name "Your Sample Name" `
+  --metadata-csv "Your_metadata_file.csv" `
+  --sequencing-platform "Illumina" `
+  --reference-accession "MK468620.1" `
+  your_sample_R1.fastq.gz your_sample_R2.fastq.gz
+```
+
+
 #### Upload Multiple Samples
 
 The SeqtoID CLI can search a directory for read files and upload supported files as samples. Supported file types are: `.fastq`/`.fq`/`.fasta`/`.fa`/`.fastq.gz`/`.fq.gz`/`.fasta.gz`/`.fa.gz`. Sample names are computed based on the names of the files. Sample names the base name of the file with the extension, `_R1`, `_R2`, `_R1_001`, and `_R2_001` removed. If two files have the same sample name and one has `R1` and the other has `R2` the files will be uploaded to the same sample as paired reads. Since only the base name of the file and no parent directories are taken into account file names must be globally unique (except for the same sample's `R1` and `R2` files). Here are a few examples of sample names for various paths:
@@ -281,6 +397,33 @@ seqtoid amr upload-samples `
 ## Configuration
 
 seqtoid-cli can be configured with environment variables or files. By default configurations are saved in your system's default configuration directory under a directory called `seqtoid-cli` in a yml file called `config.yml`. You can specify a custom configuration file with the `--config` flag for any command. Some commands modify your configuration like `accept-user-agreement`. These will modify whatever configuration file you specify, or the default if none are specified. Every configuration can be set as an environment variable with the prefix `SEQTOID_CLI_`. For example, the `secret` config can be set with the environment variable: `SEQTOID_CLI_SECRET`.
+
+**Consensus Genome**
+
+The same consensus genome options apply to every sample in the directory. For example, SARS-CoV-2 Illumina samples:
+
+Linux + MacOS:
+
+```bash
+seqtoid consensus-genome upload-samples \
+  --project 'Your Project ID' \
+  --metadata-csv 'Your_metadata_file.csv' \
+  --sequencing-platform 'Illumina' \
+  --wetlab-protocol 'ARTIC v4/ARTIC v4.1' \
+  your_directory_of_samples
+```
+
+Windows:
+
+```Powershell
+seqtoid consensus-genome upload-samples `
+  --project "Your Project ID" `
+  --metadata-csv "Your_metadata_file.csv" `
+  --sequencing-platform "Illumina" `
+  --wetlab-protocol "ARTIC v4/ARTIC v4.1" `
+  your_directory_of_samples
+```
+
 
 ### Configuration Options
 
