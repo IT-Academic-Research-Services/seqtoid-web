@@ -40,6 +40,7 @@ import {
 } from "~/components/views/UserProfileForm/components/InstitutionFormField/InstitutionFormField";
 
 const STANFORD_ID = "https://ror.org/00f54p054";
+const ILVO_ID = "https://ror.org/05cjt1n05";
 
 // A ROR v2 search result: names[] (ror_display / label / acronym ...), no top-level name.
 const v2Item = (displayName: string, id = STANFORD_ID, extra: any[] = []) => ({
@@ -190,6 +191,23 @@ describe("InstitutionFormField", () => {
     expect(mockAuto.props.options).toEqual(["Stanford University"]);
     expect(setInstitution).toHaveBeenLastCalledWith("Stanford University");
     expect(setRORId).toHaveBeenLastCalledWith(STANFORD_ID);
+  });
+
+  it("shows every ROR match, including ones found by acronym", async () => {
+    (axios.get as jest.Mock).mockResolvedValue(
+      rorResponse(
+        v2Item("Instituut voor Landbouw en Visserijonderzoek", ILVO_ID, [
+          { types: ["acronym"], value: "ILVO" },
+        ]),
+      ),
+    );
+    renderComp();
+    await type("ILVO");
+    const { options, filterOptions } = mockAuto.props;
+    expect(options).toEqual(["Instituut voor Landbouw en Visserijonderzoek"]);
+    // MUI calls filterOptions(options, { inputValue }) before rendering the list; the default would
+    // drop this option because its name does not contain "ILVO".
+    expect(filterOptions(options, { inputValue: "ILVO" })).toEqual(options);
   });
 
   it("reports the typed institution with an empty ROR id when nothing matches", async () => {
