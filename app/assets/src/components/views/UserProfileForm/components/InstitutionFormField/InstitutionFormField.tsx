@@ -151,6 +151,10 @@ export function InstitutionFormField({
           freeSolo={true}
           disablePortal
           options={Object.keys(nameToRORId)}
+          // ROR has already matched these (names, acronyms, aliases). MUI's default client-side filter
+          // would then hide any result whose display name does not contain the typed text, e.g. "ILVO"
+          // finds "Instituut voor Landbouw en Visserijonderzoek" by acronym but the list showed nothing.
+          filterOptions={options => options}
           onInputChange={handleInputChange}
           onSelect={handleSelectChange}
           renderInput={params => (
