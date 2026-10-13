@@ -3,8 +3,8 @@
 # tags matter here. Cache and compose are noise.
 #
 # SMP-1464: images are identified by SemVer, not by the experiment/branch name -- the `branch-<name>`
-# tag was dropped. This legacy push path (reachable only via build-and-test.yml -> reusable-build-
-# docker-image.yml, a workflow_dispatch-only job) does NOT re-push the SemVer tag: that tag carries
+# tag was dropped. This legacy push path (no workflow calls it anymore; build-and-test.yml and
+# reusable-build-docker-image.yml were retired) does NOT re-push the SemVer tag: that tag carries
 # per-build metadata (timestamp/run-id) from bin/compute-version.sh, so only the build step that
 # computed it can pin it -- and bin/build-docker already `--push`es it directly. So push only the
 # deterministic sha-<commit> tag (+ latest on main); build-docker owns the SemVer tag.

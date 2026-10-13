@@ -13,15 +13,12 @@ run-name: Promote ${{ inputs.source }} to env-staging by ${{ github.actor }}
 #   - It does not rebuild. It promotes an EXISTING, already-tested artifact by immutable digest.
 #   - It does not cherry-pick a single file. It promotes a whole BUILD (the app at one main commit).
 #     To isolate one PR, promote the build produced right after that PR reached main (see the runbook).
-#   - It does not run the stricter gauntlet/attestation contract. For that, use the
-#     staging-gauntlet -> gitops-promote chain instead (this is the fast lane).
 #
 # Relationship to the other CD workflows:
 #   - build-docker-image.yml       builds + scans + cosign-signs + pushes on push to main.
 #   - gitops-advance-dev.yml       auto-advances DEV on a green main build (so dev.yaml == "on dev now").
 #   - THIS workflow                promotes dev's exact digest (or a chosen one) to env-staging.
 #   - promote-image.yml            the full dev -> staging -> prod digest promotion with per-tier tests.
-#   - staging-gauntlet + gitops-promote  the stricter attested contract (isolated candidate + cosign).
 #
 # One-time prerequisites (set once by an admin; promote-to-env.yml fails closed with a clear message
 # if they are missing):
