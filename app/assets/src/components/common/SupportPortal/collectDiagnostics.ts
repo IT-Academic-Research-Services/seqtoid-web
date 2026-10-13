@@ -94,7 +94,10 @@ const TASK_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /\/samples/i, label: "Samples" },
   { pattern: /\/projects\/\d+/i, label: "Project" },
   { pattern: /\/projects/i, label: "Projects" },
-  { pattern: /\/visualizations|\/heatmap|\/phylo_tree/i, label: "Visualization" },
+  {
+    pattern: /\/visualizations|\/heatmap|\/phylo_tree/i,
+    label: "Visualization",
+  },
   { pattern: /\/pipeline_viz/i, label: "Pipeline visualization" },
   { pattern: /\/user_settings|\/users/i, label: "Account settings" },
   { pattern: /\/(login|auth|sign_in|callback)/i, label: "Sign in" },
@@ -108,9 +111,7 @@ export const deriveTask = (route: string): string => {
   // Best-effort: humanise the first path segment (e.g. "/foo_bar" -> "Foo Bar").
   const segment = path.split("/").filter(Boolean)[0];
   if (!segment) return "Home";
-  return segment
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase());
+  return segment.replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 };
 
 // Best-effort resolution of the project the user is currently working in. There
@@ -135,12 +136,16 @@ export const deriveProject = (route: string): string => {
 
 // The account/display name for the current user, preferring a human name over an
 // email, falling back to a friendly placeholder.
-export const deriveAccountName = (userContext: UserContextType): string =>
-  userContext.userName || userContext.userEmail || "Unknown account";
+// Null-safe: a page root mounted without a user context (e.g. the profile-setup header) passes
+// undefined, and a report must never crash because of it.
+export const deriveAccountName = (
+  userContext: UserContextType | undefined,
+): string =>
+  userContext?.userName || userContext?.userEmail || "Unknown account";
 
 // Builds the minimal, user-facing quick report shown in the popup (#440).
 export const collectQuickReport = (
-  userContext: UserContextType,
+  userContext: UserContextType | undefined,
 ): QuickReport => {
   const route =
     typeof window !== "undefined"
@@ -163,7 +168,9 @@ export const collectQuickReport = (
 // session, app build, and browser. This is the fuller set: it is NOT shown to
 // the user by default (only behind "More details") and is primarily consumed by
 // the support-side payload builder in support_requests_controller (#440).
-export const collectDiagnostics = (userContext: UserContextType): Diagnostics => {
+export const collectDiagnostics = (
+  userContext: UserContextType | undefined,
+): Diagnostics => {
   const viewport =
     typeof window !== "undefined"
       ? `${window.innerWidth}x${window.innerHeight}`
@@ -183,9 +190,10 @@ export const collectDiagnostics = (userContext: UserContextType): Diagnostics =>
   return {
     release: window.GIT_RELEASE_SHA || "unknown",
     environment: window.ENVIRONMENT || "unknown",
-    userId: userContext.userId != null ? String(userContext.userId) : "unknown",
-    userEmail: userContext.userEmail || "unknown",
-    userRole: userContext.admin ? "admin" : "user",
+    userId:
+      userContext?.userId != null ? String(userContext.userId) : "unknown",
+    userEmail: userContext?.userEmail || "unknown",
+    userRole: userContext?.admin ? "admin" : "user",
     url: window.location.href,
     route: window.location.pathname + window.location.search,
     userAgent: navigator.userAgent,
