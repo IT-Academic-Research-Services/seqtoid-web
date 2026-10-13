@@ -1,0 +1,50 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rake-task-job4
+  namespace: seqtoid-staging
+spec:
+  backoffLimit: 2 # 2 3
+  #completions: 1
+  #parallelism: 1
+  #ttlSecondsAfterFinished: 36000
+  #ttlSecondsAfterFinished: 86400
+  ttlSecondsAfterFinished: 864000 # 10 days
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
+      restartPolicy: Never
+      serviceAccountName: czid-staging-seqtoid-web
+      containers:
+        - name: rails-app
+          image: "030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-f8415a2f"
+          command:
+            - chamber
+            - exec
+            - seqtoid-staging-web
+            - "--"
+            - bundle
+            - exec
+            - rake
+            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+          env:
+            - name: DRY_RUN
+              value: "false"
+            - name: RAILS_ENV
+              value: "staging"
+            - name: ENVIRONMENT
+              value: "staging"
+            - name: RAILS_LOG_TO_STDOUT
+              value: "yes"
+            - name: AWS_REGION
+              value: "us-west-2"
+            - name: AWS_DEFAULT_REGION
+              value: "us-west-2"
+            - name: AWS_ACCOUNT_ID
+              value: "030998640247"
+            - name: SKIP_RESQUE_SCHEDULE
+              value: "1"
+            #- name: S3_DATABASE_BUCKET
+            #  value: "seqtoid-public-references"

@@ -5,11 +5,12 @@ metadata:
   name: rake-task-job
   namespace: seqtoid-staging
 spec:
-  backoffLimit: 0 # 2 3
+  backoffLimit: 2 # 2 3
   #completions: 1
   #parallelism: 1
-  ttlSecondsAfterFinished: 36000
+  #ttlSecondsAfterFinished: 36000
   #ttlSecondsAfterFinished: 86400
+  ttlSecondsAfterFinished: 864000 # 10 days
   template:
     spec:
       nodeSelector:
@@ -28,14 +29,22 @@ spec:
             - exec
             - rake
             #- "--tasks"
-            - "taxon_lineage_slice:remove_slice"
-            - "taxon_lineage_slice:import_data_from_s3"
+            #- "taxon_lineage_slice:remove_slice"
+            #- "taxon_lineage_slice:import_data_from_s3"
             #- "taxon_lineage_slice:remove_taxon_lineage_slice_es_index"
             #- "taxon_lineage_slice:create_taxon_lineage_slice_es_index"
             #- "update_pathogen_list"
             # TODO: Not sure if loading Taxon Descriptions is required or not
             #- "load_taxon_descriptions[s3://seqtoid-public-references/phase1/taxonomy/2018-04-01-utc-1522569777-unixtime__2018-04-04-utc-1522862260-unixtime/2.9/taxid2description.json]"
-            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            # 7 is Karyna - 2533
+            # 6 is Genay - 2557
+            # 8 is Gowtham - 2572
+            # 5 is Matt - 8564
+            # Matt =
+#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,dry_run,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,skip_existing,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,dry_run,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,dry_run,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
             #- rails
             #- "db:drop"
@@ -56,12 +65,6 @@ spec:
             #- Matt Jobin
             #
             #- rake
-            #- "--tasks"
-            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,live,11,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,skip_existing,9,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,live,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            #           - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,live,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            # Karyna = 7
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
             #            - "--"

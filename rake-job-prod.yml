@@ -13,10 +13,9 @@ spec:
   template:
     spec:
       nodeSelector:
-        kubernetes.io/arch: amd64 # arm64 # Or amd64, depending on your built image
+        kubernetes.io/arch: amd64
       restartPolicy: Never
       serviceAccountName: seqtoid-env-prod-seqtoid-web
-      #serviceAccountName: czid-staging-seqtoid-web
       containers:
         - name: rails-app
           image: "283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web:sha-f8415a2f"
