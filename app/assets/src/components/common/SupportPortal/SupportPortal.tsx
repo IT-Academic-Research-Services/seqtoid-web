@@ -1,5 +1,5 @@
 import { Button, Icon } from "@czi-sds/components";
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createSupportRequest } from "~/api/support";
 import { UserContext } from "~/components/common/UserContext";
 import { logError } from "~/components/utils/logUtil";
@@ -77,6 +77,9 @@ const installErrorListener = () => {
 // Submitting packages the minimal quick report + the full diagnostics; the Rails
 // controller enriches that into a rich support-side payload (correlation id,
 // runbook match, log deep-links) that the user never sees.
+// Open requests already answered by a portal on this page (see the listener below).
+const claimedOpenRequests = new WeakSet<object>();
+
 const SupportPortal = () => {
   const userContext = useContext(UserContext);
   const [open, setOpen] = useState(false);
@@ -91,8 +94,19 @@ const SupportPortal = () => {
   // Allow any part of the app -- notably the error-boundary fallback (#466) --
   // to open this portal via `openSupportPortal()`. We pre-fill the optional
   // description with the note the caller passed so the user has context.
+  // Every React root on a page mounts its own portal, and they all hear the same window event.
+  // Only a portal with a signed-in context answers, and only the first one does: a root mounted
+  // without a user context (the profile-setup header) used to open too and crash building its
+  // report, and two signed-in roots used to open two dialogs. The latest context is read through a
+  // ref because the listener is registered once.
+  const signedIn = !!userContext?.userSignedIn;
+  const signedInRef = useRef(signedIn);
+  signedInRef.current = signedIn;
   useEffect(() => {
-    return onOpenSupportPortal(({ note }) => {
+    return onOpenSupportPortal(detail => {
+      if (!signedInRef.current || claimedOpenRequests.has(detail)) return;
+      claimedOpenRequests.add(detail);
+      const { note } = detail;
       setStatus("idle");
       setShowDetails(false);
       setDescription(note ? `${note}. ` : "");
@@ -103,12 +117,12 @@ const SupportPortal = () => {
   // Recompute both the minimal quick report and the full diagnostics each time
   // the panel opens so route/project/errors reflect the state at report time.
   const quickReport = useMemo(
-    () => (open ? collectQuickReport(userContext) : null),
-    [open, userContext],
+    () => (open && signedIn ? collectQuickReport(userContext) : null),
+    [open, signedIn, userContext],
   );
   const diagnostics = useMemo(
-    () => (open ? collectDiagnostics(userContext) : null),
-    [open, userContext],
+    () => (open && signedIn ? collectDiagnostics(userContext) : null),
+    [open, signedIn, userContext],
   );
 
   const handleOpen = () => {

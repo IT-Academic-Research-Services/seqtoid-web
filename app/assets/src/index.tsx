@@ -140,7 +140,13 @@ const ReactComponentWithGlobalContext = ({
     // the retry.
     <Sentry.ErrorBoundary
       fallback={({ error, resetError }) => (
-        <ErrorFallback error={error} onRetry={resetError} />
+        // The crash unmounted this root's SupportPortal along with the view, so the fallback brings
+        // its own (with the real user context); otherwise "Report a problem" on this screen had no
+        // portal able to answer it.
+        <UserContext.Provider value={userContext}>
+          <ErrorFallback error={error} onRetry={resetError} />
+          <SupportPortal />
+        </UserContext.Provider>
       )}
     >
       <BrowserRouter>
