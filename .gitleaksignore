@@ -1,0 +1,23 @@
+# Historical gitleaks findings reviewed 2026-10-13 and confirmed NOT live secrets. Fingerprint
+# format: <commit>:<file>:<rule>:<line> -- each entry silences that exact historical hit only; a new
+# secret in the same file still fails. None of these files carries the value on main today.
+#   config/secrets.yml           -- Rails development/test secret_key_base scaffold (no production key)
+#   config/initializers/devise.rb -- commented-out example secret_key (2017)
+#   db/seeds.rb                  -- AWS access key IDs inside expired 2022 S3 presigned URLs
+2ac2a7712e06aa9675d8a85028c4744a294903ef:config/initializers/devise.rb:generic-api-key:9
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:175
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:176
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:179
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:180
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:181
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:185
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:186
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:196
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:197
+62f6089e8acaec8c09740e4691cbba8f0bb5aae3:db/seeds.rb:aws-access-token:198
+6c16a340a2bb75c1c420d5b4c169cfdda3283a44:config/secrets.yml:generic-api-key:16
+6c16a340a2bb75c1c420d5b4c169cfdda3283a44:config/secrets.yml:generic-api-key:21
+6c16a340a2bb75c1c420d5b4c169cfdda3283a44:config/secrets.yml:generic-api-key:24
+f2b6121ab10cad85da423a566a7ef2c99616e84a:config/secrets.yml:generic-api-key:16
+f2b6121ab10cad85da423a566a7ef2c99616e84a:config/secrets.yml:generic-api-key:21
+f2b6121ab10cad85da423a566a7ef2c99616e84a:config/secrets.yml:generic-api-key:24
