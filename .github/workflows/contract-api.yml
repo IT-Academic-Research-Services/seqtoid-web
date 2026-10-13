@@ -20,6 +20,11 @@ jobs:
   run:
     runs-on: ubuntu-latest
     container: ruby:3.3.6
+    # Steps in a job container default to `sh` (dash), which rejects `set -o pipefail`; the run
+    # blocks below are bash.
+    defaults:
+      run:
+        shell: bash
     env:
       AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
       DB_USERNAME: root
