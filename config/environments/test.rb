@@ -85,7 +85,6 @@ Rails.application.configure do
   ENV["AUTH0_CONNECTION"] = "Username-Password-Authentication"
 
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "warn").to_sym # TODO: Change to debug as needed for specific tests.
-
   config.active_record.verbose_query_logs = true
   ActiveRecord::Base.logger.level = :warn # TODO: Change to debug as needed for specific tests.
 end

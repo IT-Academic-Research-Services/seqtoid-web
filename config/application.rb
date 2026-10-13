@@ -79,29 +79,28 @@ module Czid
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
   end
 
-    # Include generic and useful information about system operation, but avoid logging too much
-    # information to avoid inadvertent exposure of personally identifiable information (PII).
-    config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
-    config.log_formatter = JsonLogFormatter.new
-    logger = ActiveSupport::Logger.new($stdout)
-    logger.formatter = config.log_formatter
-    config.logger = ActiveSupport::TaggedLogging.new(logger)
-    config.active_record.verbose_query_logs = false
-    config.colorize_logging = false
+  # Include generic and useful information about system operation, but avoid logging too much
+  # information to avoid inadvertent exposure of personally identifiable information (PII).
+  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
+  config.log_formatter = JsonLogFormatter.new
+  logger = ActiveSupport::Logger.new($stdout)
+  logger.formatter = config.log_formatter
+  config.logger = ActiveSupport::TaggedLogging.new(logger)
+  config.active_record.verbose_query_logs = false
+  config.colorize_logging = false
 
-    ActiveRecord::Base.logger = Logger.new($stdout)
-    ActiveRecord::Base.logger.formatter = config.log_formatter
+  ActiveRecord::Base.logger = Logger.new($stdout)
+  ActiveRecord::Base.logger.formatter = config.log_formatter
 
-    config.after_initialize do
-      if Rails.logger
-        # Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
-        core_logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
-        core_logger.formatter = config.log_formatter
-        # Also update ActiveRecord's dedicated logger just to be completely safe
-        ActiveRecord::Base.logger.formatter = config.log_formatter
-        # As well as OmniAuth
-        OmniAuth.config.logger = Rails.logger
-      end
+  config.after_initialize do
+    if Rails.logger
+      # Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
+      core_logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
+      core_logger.formatter = config.log_formatter
+      # Also update ActiveRecord's dedicated logger just to be completely safe
+      ActiveRecord::Base.logger.formatter = config.log_formatter
+      # As well as OmniAuth
+      OmniAuth.config.logger = Rails.logger
     end
   end
 end
