@@ -19,6 +19,11 @@ jobs:
   run:
     runs-on: ubuntu-latest
     container: ruby:3.3.6
+    # Steps in a job container default to `sh` (dash), which rejects `set -o pipefail`; the run
+    # blocks below are bash.
+    defaults:
+      run:
+        shell: bash
     env:
       AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
       DB_USERNAME: root
@@ -73,6 +78,9 @@ jobs:
 
       # (1) Unit-level: the integrity checker's logic, driven by factories (green today).
       - name: Integrity spec (check logic)
+        # A targeted spec run cannot meet the suite-wide 90% SimpleCov floor (.simplecov).
+        env:
+          SKIP_COVERAGE_MINIMUM: "1"
         run: bundle exec rspec spec/lib/tasks/reference_data_integrity_spec.rb
 
       # (2) End-to-end of the rake GATE itself: seed a known-good reference dataset, then
