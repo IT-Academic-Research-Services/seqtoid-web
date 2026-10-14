@@ -42,8 +42,6 @@ Rails.application.configure do
   # redirect loop.
   config.force_ssl = false
 
-  config.log_tags = [:request_id]
-
   config.action_mailer.raise_delivery_errors = false
   config.action_mailer.default_url_options = { host: "env-staging.seqtoid.org" }
 
@@ -72,20 +70,6 @@ Rails.application.configure do
   # Railtie::Configuration#method_missing and raises "Cannot assign to `session_store`, it is a
   # configuration method"). Use the supported method-call form (same as prod.rb/sandbox.rb).
   config.session_store :cookie_store, key: "_czid_session"
-
-  # Deployed logging: JSON lograge to stdout.
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
 
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
