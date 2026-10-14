@@ -220,6 +220,7 @@ Rails.application.configure do
   # that sample sequence content is written verbatim into a log stream that ships to
   # an aggregator (and, if enabled, to a third-party log vendor).
   #
+  init_logging(config)
   # Only `development` had this: sandbox/staging/prod already run :info.
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
   # ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger

@@ -112,6 +112,7 @@ Rails.application.configure do
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
 
+  init_logging(config)
   ActiveRecord::Base.logger.level = 1 if ActiveRecord::Base.logger
 
   # Do not dump schema after migrations.
