@@ -105,9 +105,6 @@ Rails.application.configure do
   # information to avoid inadvertent exposure of personally identifiable information (PII).
   config.log_level = :debug
 
-  # Prepend all log lines with the following tags.
-  config.log_tags = [:request_id]
-
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque
   # config.active_job.queue_name_prefix = "idseq-dev"
@@ -225,18 +222,6 @@ Rails.application.configure do
   #
   # Only `development` had this: sandbox/staging/prod already run :info.
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
   ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
 
   # Do not dump schema after migrations.

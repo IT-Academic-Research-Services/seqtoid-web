@@ -75,9 +75,6 @@ Rails.application.configure do
   config.force_ssl = true
   config.ssl_options = { redirect: { exclude: ->(request) { request.path =~ /health_check/ } } }
 
-  # Prepend all log lines with the following tags.
-  config.log_tags = [:request_id]
-
   config.serve_static_assets = true
 
   # Use a different cache store in production.
@@ -115,19 +112,6 @@ Rails.application.configure do
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
 
-  # Deployed logging configuration
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
   ActiveRecord::Base.logger.level = 1 if ActiveRecord::Base.logger
 
   # Do not dump schema after migrations.

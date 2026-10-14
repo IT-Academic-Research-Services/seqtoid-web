@@ -88,6 +88,36 @@ module Czid
     config.active_record.verbose_query_logs = false
     config.colorize_logging = false
 
+    # Add the following tags to the main Rails JSON logger
+    config.log_tags = [
+      :request_id,
+      { env: Rails.env },
+      ->(_) { { user_id: CurrentContext.user_id } },
+      ->(_) { { foo: "bar", baz: "zippy" } },
+    ]
+
+    # This is the _other_ JSON log Formatter that logs _after_ a REST call is made, containing request and response info.
+    # {"method":"GET","path":"/up","format":"*/*","controller":"Rails::HealthController","action":"show","status":200,"allocations":239,"duration":5.07,"view":4.68,"db":0.0,"time":12509.095359829,"ddsource":["ruby"],"remote_ip":null,"user_id":null,"params":{}}
+    # {"method":"GET","path":"/samples/dimensions.json","format":"json","controller":"SamplesController","action":"dimensions","status":200,"allocations":104589,"duration":350.85,"view":0.22,"db":91.61,"time":12508.690497849,"ddsource":["ruby"],"remote_ip":"1.2.3.4","user_id":789,"params":{"domain":"my_data","format":"json"}}
+    config.lograge.enabled = true
+    config.lograge.formatter = Lograge::Formatters::Json.new
+    config.lograge.logger = logger
+    param_filtered = [] # %w[controller action] # TODO: Reset this if too spammy
+    config.lograge.custom_options = lambda do |event|
+      {
+        time: event.time, # TODO: Transform to ISO8601
+        ddsource: ["ruby"], # TODO: necessary?
+        remote_ip: event.payload[:remote_ip],
+        user_id: event.payload[:user_id],
+        params: event.payload[:params].reject { |k| param_filtered.include? k },
+      }
+    end
+    config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
+    # Rails.application.configure do
+    #   config.lograge.enabled = true
+    #   config.lograge.formatter = Lograge::Formatters::Json.new # or Lines.new
+    # end
+
     ActiveRecord::Base.logger = Logger.new($stdout)
     ActiveRecord::Base.logger.formatter = config.log_formatter
 
