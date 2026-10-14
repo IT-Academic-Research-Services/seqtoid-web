@@ -101,7 +101,7 @@ module Czid
     # {"method":"GET","path":"/up","format":"*/*","controller":"Rails::HealthController","action":"show","status":200,"allocations":239,"duration":5.07,"view":4.68,"db":0.0,"time":12509.095359829,"ddsource":["ruby"],"remote_ip":null,"user_id":null,"params":{}}
     # {"method":"GET","path":"/samples/dimensions.json","format":"json","controller":"SamplesController","action":"dimensions","status":200,"allocations":104589,"duration":350.85,"view":0.22,"db":91.61,"time":12508.690497849,"ddsource":["ruby"],"remote_ip":"1.2.3.4","user_id":789,"params":{"domain":"my_data","format":"json"}}
     config.lograge.enabled = true
-    config.lograge.formatter = Lograge::Formatters::Json.new
+    config.lograge.formatter = Lograge::Formatters::Raw.new
     config.lograge.logger = ougai_logger
     param_filtered = [] # %w[controller action] # TODO: Reset this if too spammy
     config.lograge.custom_options = lambda do |event|
