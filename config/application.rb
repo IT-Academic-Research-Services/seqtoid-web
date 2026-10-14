@@ -10,7 +10,6 @@ Bundler.require(*Rails.groups)
 module Czid
   class OugaiLogger < Ougai::Logger
     include ActiveSupport::LoggerThreadSafeLevel
-    include ActiveSupport::TaggedLogging
   end
 
   class Application < Rails::Application
