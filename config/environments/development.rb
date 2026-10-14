@@ -222,7 +222,8 @@ Rails.application.configure do
   #
   # Only `development` had this: sandbox/staging/prod already run :info.
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
-  ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
+  # ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
+  ActiveRecord::Base.logger.level = :info if ActiveRecord::Base.logger # TODO: For testing PROD configuration
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
