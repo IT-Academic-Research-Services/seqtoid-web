@@ -383,18 +383,33 @@ RSpec.describe UserDataImportService do
       end
     end
 
-    context "transaction isolation" do
-      let(:service) { described_class.new(input_dir: write_bundle, create_user: true) }
-
-      it "uses READ COMMITTED when no transaction is open" do
-        allow(ActiveRecord::Base.connection).to receive(:transaction_open?).and_return(false)
-
-        expect(service.send(:transaction_options)).to eq(isolation: :read_committed)
+    context "foreign key checks" do
+      def fk_checks
+        ActiveRecord::Base.connection.select_value("SELECT @@SESSION.foreign_key_checks").to_i
       end
 
-      # Spec fixtures keep a transaction open; a savepoint keeps dry_run/rollback specs meaningful.
-      it "falls back to a savepoint inside an open transaction" do
-        expect(service.send(:transaction_options)).to eq(requires_new: true)
+      it "disables them while importing and restores them afterwards" do
+        during = nil
+        service = described_class.new(input_dir: write_bundle, create_user: true)
+        allow(service).to receive(:stream_samples).and_wrap_original do |m|
+          during = fk_checks
+          m.call
+        end
+
+        expect(service.call[:success]).to be(true)
+        expect(during).to eq(0)
+        expect(fk_checks).to eq(1)
+      end
+
+      it "restores them when the import fails" do
+        dir = write_bundle
+        manifest_path = File.join(dir, "manifest.json")
+        manifest = JSON.parse(File.read(manifest_path))
+        manifest["table_counts"]["samples"] = 99
+        File.write(manifest_path, JSON.generate(manifest))
+
+        expect(described_class.call(input_dir: dir, create_user: true)[:success]).to be(false)
+        expect(fk_checks).to eq(1)
       end
     end
 
@@ -425,18 +440,52 @@ RSpec.describe UserDataImportService do
     end
 
     context "when the manifest declares more rows than the bundle contains" do
-      it "rolls back and fails when counts don't reconcile" do
+      def write_short_bundle(samples_declared:)
         dir = write_bundle
         manifest_path = File.join(dir, "manifest.json")
         manifest = JSON.parse(File.read(manifest_path))
-        manifest["table_counts"]["samples"] = 99 # bundle actually has 1
+        manifest["table_counts"]["samples"] = samples_declared
         File.write(manifest_path, JSON.generate(manifest))
+        dir
+      end
 
-        result = described_class.call(input_dir: dir, create_user: true)
+      it "fails and reports a partial import that a skip_existing re-run completes" do
+        result = described_class.call(input_dir: write_short_bundle(samples_declared: 99), create_user: true)
 
         expect(result[:success]).to be(false)
         expect(result[:error_class]).to eq("UserDataImportService::ImportError")
-        expect(Sample.exists?(SAMPLE_ID)).to be(false) # transaction rolled back
+        expect(result[:partial]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true) # batches already committed
+
+        resumed = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(resumed[:success]).to be(true)
+        expect(resumed[:user_id]).to eq(result[:user_id])
+        expect(Sample.where(id: SAMPLE_ID).count).to eq(1)
+      end
+
+      it "rolls everything back with single_transaction" do
+        result = described_class.call(input_dir: write_short_bundle(samples_declared: 99), create_user: true,
+                                      single_transaction: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:partial]).to be(false)
+        expect(Sample.exists?(SAMPLE_ID)).to be(false)
+        expect(User.find_by(email: "migrated@example.com")).to be_nil
+      end
+    end
+
+    context "when setup fails before any batch commits" do
+      it "rolls back the user and reports no partial import" do
+        t = bundle_tables
+        t[:host_genomes] = [{ id: 9_990_003, name: "Venusian genome", created_at: now, updated_at: now }]
+        t[:samples][0][:host_genome_id] = 9_990_003
+
+        result = described_class.call(input_dir: write_bundle(tables: t), create_user: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:partial]).to be(false)
+        expect(User.find_by(email: "migrated@example.com")).to be_nil
       end
     end
 

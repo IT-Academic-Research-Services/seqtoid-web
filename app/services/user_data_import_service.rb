@@ -59,6 +59,10 @@ require "zlib"
 #   create_user:    create a new user from the export instead.
 #   skip_existing:  skip rows whose primary key already exists (idempotent re-run).
 #   dry_run:        roll back the transaction at the end (no changes persisted).
+#   single_transaction: run the whole import in one transaction (old behavior; forced by
+#                   dry_run). Default off: high-volume tables commit per INSERT_BATCH so a
+#                   large user never holds locks for hours. A failed run leaves a partial
+#                   import; re-run with skip_existing: true to finish it.
 #
 # USAGE:
 #   result = UserDataImportService.call(input_dir: "/mnt/.../user_123_export_...", target_user_id: 42)
@@ -81,9 +85,10 @@ class UserDataImportService
   INSERT_BATCH = 1_000
 
   def initialize(input_dir:, dry_run: false, target_user_id: nil, skip_existing: false, create_user: false,
-                 source_bucket: nil, dest_bucket: nil)
+                 source_bucket: nil, dest_bucket: nil, single_transaction: false)
     @input_dir = input_dir.to_s
     @dry_run = dry_run
+    @single_transaction = single_transaction || dry_run
     @target_user_id = target_user_id
     @skip_existing = skip_existing
     @create_user = create_user
@@ -116,36 +121,18 @@ class UserDataImportService
   def call
     validate_bundle!
 
-    ActiveRecord::Base.transaction(**transaction_options) do
-      import_user
-      import_user_profile
-      stream_user_settings
-      import_projects
-      import_reference_tables
-      import_metadata_field_associations
-      stream_samples
-      stream_input_files
-      stream_metadata
-      stream_pipeline_runs
-      stream_pipeline_run_children
-      stream_workflow_runs
-      import_visualizations
-      import_phylo_trees
-      import_phylo_tree_ngs
-      import_backgrounds
-      stream_taxon_summaries
-      import_bulk_downloads
-      stream_persisted_backgrounds
-      stream_snapshot_links
+    without_foreign_key_checks do
+      if @single_transaction
+        ActiveRecord::Base.transaction(requires_new: true) do
+          import_all
 
-      # Guard against a truncated/partial bundle: every row the manifest declares
-      # must have been inserted or skipped. Raising here (still inside the
-      # transaction) rolls the whole import back rather than committing a partial.
-      reconcile_counts!
-
-      if @dry_run
-        Rails.logger.info("UserDataImport: DRY RUN - Rolling back transaction")
-        raise ActiveRecord::Rollback
+          if @dry_run
+            Rails.logger.info("UserDataImport: DRY RUN - Rolling back transaction")
+            raise ActiveRecord::Rollback
+          end
+        end
+      else
+        import_all
       end
     end
 
@@ -169,6 +156,8 @@ class UserDataImportService
       success: false,
       error: e.message,
       error_class: e.class.name,
+      partial: partial_import?,
+      user_id: @new_user_id,
       stats: @stats,
       warnings: @warnings,
     }
@@ -176,12 +165,71 @@ class UserDataImportService
 
   private
 
-  # READ COMMITTED for the import's own transaction. Isolation can only be set on an
-  # outermost transaction; inside an open one (spec fixtures, a caller's block) run as a savepoint.
-  def transaction_options
-    return { requires_new: true } if ActiveRecord::Base.connection.transaction_open?
+  # Low-volume setup and comparative tables run in short transactions; high-volume
+  # streams commit per INSERT_BATCH (each insert_all! is one atomic statement), so a
+  # large user holds row locks for milliseconds, not for the whole import.
+  def import_all
+    in_step_transaction do
+      import_user
+      import_user_profile
+      stream_user_settings
+      import_projects
+      import_reference_tables
+      import_metadata_field_associations
+    end
+    @setup_committed = !@single_transaction
 
-    { isolation: :read_committed }
+    stream_samples
+    stream_input_files
+    stream_metadata
+    stream_pipeline_runs
+    stream_pipeline_run_children
+    stream_workflow_runs
+
+    in_step_transaction do
+      import_visualizations
+      import_phylo_trees
+      import_phylo_tree_ngs
+      import_backgrounds
+    end
+
+    stream_taxon_summaries
+    in_step_transaction { import_bulk_downloads }
+    stream_persisted_backgrounds
+    stream_snapshot_links
+
+    # Every row the manifest declares must have been inserted or skipped. In
+    # single-transaction mode this rolls everything back; otherwise the run is
+    # partial and a skip_existing re-run completes it.
+    reconcile_counts!
+  end
+
+  def in_step_transaction(&block)
+    return yield if @single_transaction
+
+    ActiveRecord::Base.transaction(requires_new: true, &block)
+  end
+
+  # FK checks put shared locks on parent rows (host_genomes, projects, ...) until
+  # commit, blocking e.g. the samples_count bump on every new upload. Parents are
+  # resolved by the import itself and counts are reconciled, so skip them here.
+  def without_foreign_key_checks
+    conn = ActiveRecord::Base.connection
+    return yield unless conn.adapter_name.match?(/mysql/i)
+
+    previous = conn.select_value("SELECT @@SESSION.foreign_key_checks").to_i
+    conn.execute("SET SESSION foreign_key_checks = 0")
+    begin
+      yield
+    ensure
+      conn.execute("SET SESSION foreign_key_checks = #{previous}")
+    end
+  end
+
+  # True when a batch-mode run failed after setup committed: rows are on the target
+  # and a skip_existing re-run is needed to finish.
+  def partial_import?
+    @setup_committed == true
   end
 
   # Validates the shape of the import request, NOT the correctness of the record
@@ -234,8 +282,7 @@ class UserDataImportService
   end
 
   # Verifies every table imported (inserted + skipped) as many rows as the
-  # manifest declared. A shortfall means a table file was missing or truncated;
-  # we raise so the transaction rolls back instead of committing a partial import.
+  # manifest declared. A shortfall means a table file was missing or truncated.
   def reconcile_counts!
     mismatches = @expected_counts.filter_map do |table, expected|
       actual = @stats[table.to_sym] + @stats[:"#{table}_skipped"]

@@ -245,6 +245,13 @@ task :import_user_data, [:input_dir, :mode, :target, :source_bucket, :dest_bucke
     puts "Error: #{result[:error]}"
     puts "Error class: #{result[:error_class]}"
     puts ""
+    if result[:partial]
+      # Batch mode commits as it goes; finish with an idempotent re-run into the same user.
+      puts "PARTIAL IMPORT: rows were committed for user #{result[:user_id]}. Fix the cause, then re-run:"
+      resume_args = [args[:input_dir], "skip_existing", result[:user_id], args[:source_bucket], args[:dest_bucket]]
+      puts "  rake \"import_user_data[#{resume_args.compact.join(',')}]\""
+      puts ""
+    end
 
     if result[:warnings].any?
       puts "Warnings before failure:"
