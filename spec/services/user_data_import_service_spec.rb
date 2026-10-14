@@ -383,6 +383,21 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    context "transaction isolation" do
+      let(:service) { described_class.new(input_dir: write_bundle, create_user: true) }
+
+      it "uses READ COMMITTED when no transaction is open" do
+        allow(ActiveRecord::Base.connection).to receive(:transaction_open?).and_return(false)
+
+        expect(service.send(:transaction_options)).to eq(isolation: :read_committed)
+      end
+
+      # Spec fixtures keep a transaction open; a savepoint keeps dry_run/rollback specs meaningful.
+      it "falls back to a savepoint inside an open transaction" do
+        expect(service.send(:transaction_options)).to eq(requires_new: true)
+      end
+    end
+
     context "with dry_run" do
       it "rolls back all changes" do
         result = described_class.call(input_dir: write_bundle, create_user: true, dry_run: true)

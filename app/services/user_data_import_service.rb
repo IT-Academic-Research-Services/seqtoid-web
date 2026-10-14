@@ -116,7 +116,7 @@ class UserDataImportService
   def call
     validate_bundle!
 
-    ActiveRecord::Base.transaction do
+    ActiveRecord::Base.transaction(**transaction_options) do
       import_user
       import_user_profile
       stream_user_settings
@@ -175,6 +175,14 @@ class UserDataImportService
   end
 
   private
+
+  # READ COMMITTED for the import's own transaction. Isolation can only be set on an
+  # outermost transaction; inside an open one (spec fixtures, a caller's block) run as a savepoint.
+  def transaction_options
+    return { requires_new: true } if ActiveRecord::Base.connection.transaction_open?
+
+    { isolation: :read_committed }
+  end
 
   # Validates the shape of the import request, NOT the correctness of the record
   # data itself. We check: the bundle exists with a manifest + user.json, the
