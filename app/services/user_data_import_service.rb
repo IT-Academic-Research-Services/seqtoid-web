@@ -116,7 +116,9 @@ class UserDataImportService
   def call
     validate_bundle!
 
-    ActiveRecord::Base.transaction do
+    # READ COMMITTED to prevent global DB Locking during migration.
+    # Ignore this inner transaction if there is an outer Transaction already (during RSpec tests)
+    ActiveRecord::Base.transaction(isolation: ActiveRecord::Base.connection.transaction_open? ? nil : :read_committed) do
       import_user
       import_user_profile
       stream_user_settings
