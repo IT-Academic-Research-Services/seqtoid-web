@@ -1,0 +1,109 @@
+name: release
+
+# The single release lane: promote one immutable image digest to an environment.
+#
+# The release logic lives in IT-Academic-Research-Services/seqtoid-gitops (the environment
+# registry + bin/release). This workflow is the thin caller, and it runs HERE because an org SCP
+# only lets a fixed list of GitHub OIDC identities into the staging and prod AWS accounts, and this
+# repo's `staging`/`prod` GitHub Environments are on it (seqtoid-gitops docs/DESIGN.md, option A).
+#
+#   plan  -- `bin/release resolve`: the candidate is what the environment below the target runs
+#            (dev for staging). Writes exactly what would ship -- commits, migrations -- to the run
+#            summary. Read-only; also runs on PRs that touch this file.
+#   ship  -- the existing promote-to-env.yml: the target's GitHub Environment approval gate, then
+#            `skopeo copy` by digest into the target account, then one values PR on
+#            cypherid-web-infra main. Argo syncs it.
+#
+# Targets: staging only for now. env-prod is added after the prod lockdown (second approver,
+# Terraform-managed push role, immutable tags, digest pin).
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to release to
+        type: choice
+        options: [staging]
+        required: true
+      reason:
+        description: Why this release (recorded on the values PR)
+        required: true
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.target || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan (resolve what would ship)
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.resolve.outputs.digest }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      shippable: ${{ steps.resolve.outputs.shippable }}
+    env:
+      TARGET: ${{ inputs.target || 'staging' }}
+    steps:
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve
+        id: resolve
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pip install -q -r _gitops/requirements.txt
+          _gitops/bin/release resolve --to "$TARGET" --json > plan.json
+          _gitops/bin/release resolve --to "$TARGET" > plan.txt
+          {
+            echo "### Release plan: ${TARGET}"
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "digest=$(jq -r .candidate.digest plan.json)"
+            echo "tag=$(jq -r .candidate.tag plan.json)"
+            echo "shippable=$(jq -r .shippable plan.json)"
+          } >> "$GITHUB_OUTPUT"
+          cat plan.txt
+
+  ship:
+    name: Ship to ${{ inputs.target }}
+    needs: plan
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.plan.outputs.shippable == 'true' }}
+    # promote-to-env assumes AWS roles over OIDC; a called workflow cannot exceed its caller's grant.
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/promote-to-env.yml
+    with:
+      env_name: ${{ inputs.target }}
+      digest: ${{ needs.plan.outputs.digest }}
+      sha_tag: ${{ needs.plan.outputs.tag }}
+      deployment_reason: ${{ inputs.reason }}
+    secrets: inherit
