@@ -27,6 +27,12 @@ class WorkflowVersionsController < ApplicationController
                      :check_browser,
                      only: [:create, :set_default]
 
+  # The CLI (`seqtoid workflow-versions`, `--workflow-version`) reads the catalog with an Auth0 bearer
+  # token, not a session. Same pattern as LocationsController: a GET, so no CSRF skip is needed, and
+  # authenticate_user! still runs after the token logs the user in.
+  TOKEN_AUTH_ACTIONS = [:index].freeze
+  prepend_before_action :token_based_login_support, only: TOKEN_AUTH_ACTIONS
+
   before_action :authenticate_publisher!, only: [:create]
   before_action :authenticate_promoter!, only: [:set_default]
 
