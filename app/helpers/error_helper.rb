@@ -121,6 +121,18 @@ module ErrorHelper
       "Could not save sample in project #{project_id}. Missing required technology parameter."
     end
 
+    def self.invalid_cg_reference_accession(sample_name, accession_id)
+      "Could not save sample #{sample_name}. '#{accession_id}' is not a valid reference accession (expected an NCBI accession such as OA990225.1)."
+    end
+
+    def self.cg_reference_requires_illumina(sample_name, reference)
+      "Could not save sample #{sample_name}. Consensus genome with #{reference} requires Illumina; Nanopore consensus genome supports SARS-CoV-2 only."
+    end
+
+    def self.sc2_reference_accession_needs_wetlab_protocol(sample_name, accession_id)
+      "Could not save sample #{sample_name}. #{accession_id} is SARS-CoV-2: upload it as a SARS-CoV-2 consensus genome with a wetlab protocol (CLI: --wetlab-protocol) instead of a reference accession."
+    end
+
     def self.missing_required_metadata(sample, missing_metadata_fields)
       "Could not save sample '#{sample['name']}'. Missing required metadata: #{missing_metadata_fields.join(', ')}"
     end
