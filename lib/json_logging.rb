@@ -3,7 +3,7 @@
 require 'ougai'
 
 module JsonLogging
-  def init_logging(config)
+  def self.init_logging(config)
     ougai_logger = Ougai::Logger.new($stdout)
     ougai_logger.level = Ougai::Logger::TRACE
     ougai_logger.before_log = lambda do |data|
