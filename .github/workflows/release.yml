@@ -44,7 +44,7 @@ concurrency:
 jobs:
   plan:
     name: Plan (resolve what would ship + preflight)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       digest: ${{ steps.resolve.outputs.digest }}
       tag: ${{ steps.resolve.outputs.tag }}
@@ -56,7 +56,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
           owner: ${{ github.repository_owner }}
 
@@ -114,7 +114,7 @@ jobs:
     name: Ship to ${{ inputs.target }}
     needs: plan
     if: ${{ github.event_name == 'workflow_dispatch' && needs.plan.outputs.shippable == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The approval gate, and the OIDC identity the org allowlists for this account.
     environment: ${{ inputs.target }}
     permissions:
@@ -134,7 +134,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
           owner: ${{ github.repository_owner }}
 

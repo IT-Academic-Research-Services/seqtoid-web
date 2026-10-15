@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   refresh_build_cache:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: # must be set for AWS OIDC auth
       id-token: write
       contents: read
@@ -49,7 +49,7 @@ jobs:
       # buildx for bin/build-docker's registry cache. (QEMU removed with the arm64 revert —
       # the refreshed cache is amd64-only until arm64 is redone on native runners; #482.)
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: configure aws credentials
         id: configure_aws_credentials
         uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
