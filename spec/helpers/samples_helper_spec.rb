@@ -475,6 +475,100 @@ RSpec.describe SamplesHelper, type: :helper do
           expect(inputs["wetlab_protocol"]).to eq(ConsensusGenomeWorkflowRun::WETLAB_PROTOCOL[:artic])
         end
 
+        it "upcases a lowercase reference accession instead of letting sanitizing strip its letters" do
+          additional_attributes = {
+            technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina],
+            accession_id: " mk468620.1 ",
+            workflows: [WorkflowRun::WORKFLOW[:consensus_genome]],
+          }
+          sample_attributes = [local_cg_sample_attributes.merge(additional_attributes)]
+
+          response = helper.upload_samples_with_metadata(sample_attributes, metadata_attributes, @joe)
+
+          expect(response["errors"]).to eq([])
+          expect(response["samples"][0].workflow_runs.first.inputs["reference_accession"]).to eq("MK468620.1")
+        end
+
+        # NC_045512.2 is the RefSeq ID of the same Wuhan-Hu-1 genome. It is not in the NT index, so the viral
+        # accession path could only fail with AccessionIdNotFound; with a wetlab protocol it is an SC2 run.
+        it "keeps the SARS-CoV-2 path for the RefSeq SARS-CoV-2 accession with a wetlab protocol" do
+          additional_attributes = {
+            technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina],
+            accession_id: "NC_045512.2",
+            wetlab_protocol: ConsensusGenomeWorkflowRun::WETLAB_PROTOCOL[:artic],
+            workflows: [WorkflowRun::WORKFLOW[:consensus_genome]],
+          }
+          sample_attributes = [local_cg_sample_attributes.merge(additional_attributes)]
+
+          response = helper.upload_samples_with_metadata(sample_attributes, metadata_attributes, @joe)
+
+          expect(response["errors"]).to eq([])
+          inputs = response["samples"][0].workflow_runs.first.inputs
+          expect(inputs).not_to have_key("reference_accession")
+          expect(inputs["taxon_id"]).to eq(2_697_049)
+        end
+
+        context "refusing a reference the pipeline cannot run as asked" do
+          def upload_cg(attributes)
+            sample_attributes = [local_cg_sample_attributes.merge(workflows: [WorkflowRun::WORKFLOW[:consensus_genome]]).merge(attributes)]
+            helper.upload_samples_with_metadata(sample_attributes, metadata_attributes, @joe)
+          end
+
+          before { allow(LogUtil).to receive(:log_error) }
+
+          it "refuses a Nanopore upload with a non-SARS-CoV-2 accession instead of running it as SARS-CoV-2" do
+            response = upload_cg(technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:nanopore], accession_id: "MK468620.1")
+
+            expect(response["samples"]).to eq([])
+            expect(response["errors"]).to eq([
+                                               ErrorHelper::SampleUploadErrors.cg_reference_requires_illumina(fake_sample_name, "reference accession MK468620.1"),
+                                             ])
+          end
+
+          it "refuses a Nanopore upload with a reference FASTA" do
+            response = upload_cg(technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:nanopore], ref_fasta: "ref.fasta")
+
+            expect(response["samples"]).to eq([])
+            expect(response["errors"]).to eq([
+                                               ErrorHelper::SampleUploadErrors.cg_reference_requires_illumina(fake_sample_name, "a reference FASTA"),
+                                             ])
+          end
+
+          it "still accepts a Nanopore upload naming the SARS-CoV-2 accession" do
+            response = upload_cg(technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:nanopore], accession_id: "NC_045512.2")
+
+            expect(response["errors"]).to eq([])
+            expect(response["samples"][0].workflow_runs.first.inputs["taxon_id"]).to eq(2_697_049)
+          end
+
+          it "refuses a malformed accession rather than sanitizing it into a different one" do
+            response = upload_cg(technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina], accession_id: "MK468620.1;x")
+
+            expect(response["samples"]).to eq([])
+            expect(response["errors"]).to eq([
+                                               ErrorHelper::SampleUploadErrors.invalid_cg_reference_accession(fake_sample_name, "MK468620.1;X"),
+                                             ])
+          end
+
+          ["MN908947.3", "NC_045512.2"].each do |sc2_accession|
+            it "refuses the SARS-CoV-2 accession #{sc2_accession} on Illumina without a wetlab protocol" do
+              response = upload_cg(technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina], accession_id: sc2_accession)
+
+              expect(response["samples"]).to eq([])
+              expect(response["errors"]).to eq([
+                                                 ErrorHelper::SampleUploadErrors.sc2_reference_accession_needs_wetlab_protocol(fake_sample_name, sc2_accession),
+                                               ])
+            end
+          end
+
+          it "leaves a web viral upload with a reference FASTA alone, whatever accession its header carries" do
+            response = upload_cg(technology: ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina], ref_fasta: "ref.fasta", accession_id: "NC_045512.2")
+
+            expect(response["errors"]).to eq([])
+            expect(response["samples"][0].workflow_runs.first.inputs["ref_fasta"]).to eq("ref.fasta")
+          end
+        end
+
         it "fails if technology is not provided with consensus genome workflow runs" do
           expect(LogUtil).to receive(:log_error).and_call_original
 
