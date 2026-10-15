@@ -80,6 +80,9 @@ class UserDataImportService
   # per-round-trip overhead negligible.
   INSERT_BATCH = 1_000
 
+  # Prefix for a migrated project whose name is already taken on the target.
+  MIGRATED_NAME_PREFIX = "[M] "
+
   def initialize(input_dir:, dry_run: false, target_user_id: nil, skip_existing: false, create_user: false,
                  source_bucket: nil, dest_bucket: nil)
     @input_dir = input_dir.to_s
@@ -436,21 +439,36 @@ class UserDataImportService
         next
       end
 
-      project = insert_one(Project, :projects, {
-                             id: row[:id],
-                             # Strip latent trailing/leading whitespace from source data (also version_prefix below).
-                             name: row[:name]&.strip,
-                             description: row[:description],
-                             # Owner only; a member creates it owner-less (see above).
-                             creator_id: row[:is_owner] ? @new_user_id : nil,
-                             public_access: row[:public_access],
-                             days_to_keep_sample_private: row[:days_to_keep_sample_private],
-                             background_flag: row[:background_flag],
-                             subsample_default: row[:subsample_default],
-                             max_input_fragments_default: row[:max_input_fragments_default],
-                             created_at: ts(row[:created_at]),
-                             updated_at: ts(row[:updated_at]),
-                           })
+      # Strip latent trailing/leading whitespace from source data (also version_prefix below).
+      source_name = row[:name]&.strip
+      attempts = 0
+      begin
+        name = available_project_name(source_name)
+        project = insert_one(Project, :projects, {
+                               id: row[:id],
+                               name: name,
+                               description: row[:description],
+                               # Owner only; a member creates it owner-less (see above).
+                               creator_id: row[:is_owner] ? @new_user_id : nil,
+                               public_access: row[:public_access],
+                               days_to_keep_sample_private: row[:days_to_keep_sample_private],
+                               background_flag: row[:background_flag],
+                               subsample_default: row[:subsample_default],
+                               max_input_fragments_default: row[:max_input_fragments_default],
+                               created_at: ts(row[:created_at]),
+                               updated_at: ts(row[:updated_at]),
+                             })
+      rescue ActiveRecord::RecordNotUnique
+        # The name was taken between the check and the insert; pick the next free one.
+        raise if Project.exists?(row[:id]) || (attempts += 1) > 3
+
+        retry
+      end
+
+      if name != source_name
+        @stats[:projects_renamed] += 1
+        @warnings << "Project '#{source_name}' (id: #{row[:id]}) renamed to '#{name}': name already taken on target"
+      end
 
       add_user_as_member(project) if grant_membership
 
@@ -465,6 +483,21 @@ class UserDataImportService
 
       Rails.logger.info("UserDataImport: Imported project '#{project.name}' (id: #{project.id})")
     end
+  end
+
+  # Project names are unique on the target (index collation ignores case/accents), and a
+  # target user may already have taken one: use "[M] name", then "[M] name (2)", ...
+  # Only the display name changes; the id (and every S3 key) is preserved.
+  def available_project_name(name)
+    return name unless Project.exists?(name: name)
+
+    candidate = "#{MIGRATED_NAME_PREFIX}#{name}"
+    suffix = 1
+    while Project.exists?(name: candidate)
+      suffix += 1
+      candidate = "#{MIGRATED_NAME_PREFIX}#{name} (#{suffix})"
+    end
+    candidate
   end
 
   def add_user_as_member(project)

@@ -325,6 +325,61 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    context "when a project name is already taken on the target" do
+      it "imports the project as '[M] name' and warns" do
+        create(:project, name: "Migrated Project")
+
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).name).to eq("[M] Migrated Project")
+        expect(result[:stats][:projects_renamed]).to eq(1)
+        expect(result[:warnings]).to include(a_string_including("renamed to '[M] Migrated Project'"))
+      end
+
+      it "adds a counter when the prefixed name is taken too" do
+        create(:project, name: "Migrated Project")
+        create(:project, name: "[M] Migrated Project")
+
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("[M] Migrated Project (2)")
+      end
+
+      it "treats names that differ only in case as taken" do
+        create(:project, name: "MIGRATED project")
+
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("[M] Migrated Project")
+      end
+
+      it "never renames a project that is already present by id" do
+        create(:project, id: PROJECT_ID, name: "Migrated Project")
+
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project")
+        expect(result[:stats][:projects_renamed]).to eq(0)
+      end
+
+      it "retries with the next free name if the name is taken between check and insert" do
+        create(:project, name: "Taken meanwhile")
+        service = described_class.new(input_dir: write_bundle, create_user: true)
+        allow(service).to receive(:available_project_name).and_return("Taken meanwhile", "[M] Migrated Project")
+
+        expect(service.call[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).name).to eq("[M] Migrated Project")
+      end
+
+      it "keeps the original name when there is no collision" do
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project")
+        expect(result[:stats][:projects_renamed]).to eq(0)
+      end
+    end
+
     context "with a referenced-only project (membership: false)" do
       # A project the user merely FK-references (e.g. a sample uploaded into a
       # project the user left). Created owner-less to satisfy the FK, but the user
