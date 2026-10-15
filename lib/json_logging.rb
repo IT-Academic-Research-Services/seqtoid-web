@@ -3,12 +3,16 @@
 require 'ougai'
 
 module JsonLogging
+  class CurrentContext < ActiveSupport::CurrentAttributes
+    attribute :user_id
+  end
+
   def self.init_logging(config)
     ougai_logger = Ougai::Logger.new($stdout)
     ougai_logger.level = Ougai::Logger::TRACE
     ougai_logger.before_log = lambda do |data|
       # :request_id,
-      data[:user_id] = CurrentContext.user_id
+      data[:user_id] = JsonLogging.CurrentContext.user_id
       data[:environment] = Rails.env
     end
     config.logger = ougai_logger
