@@ -277,17 +277,20 @@ jobs:
           sentry-cli releases deploys "$RELEASE" new -e "$ENV_NAME"
 
           # A token missing project:releases 403s here (non-zero, loud) -- it does NOT silently no-op.
-          sentry-cli sourcemaps upload --release "$RELEASE" ./dist-maps
+          upload_log="$(mktemp)"
+          sentry-cli sourcemaps upload --release "$RELEASE" ./dist-maps 2>&1 | tee "$upload_log"
 
-          # Verify the artifacts actually landed on the release rather than trusting exit 0. Zero .map
-          # artifacts on the release == effective failure.
-          filecount="$(sentry-cli releases files "$RELEASE" list 2>/dev/null | grep -c '\.map' || true)"
-          echo "Sentry release ${RELEASE} (${ENV_NAME}) now lists ${filecount} .map artifact(s)."
-          if [ "${filecount}" = "0" ]; then
-            echo "::error title=Sentry source-map upload::Upload exited 0 but release ${RELEASE} lists 0 .map artifacts (token scope? org/project mismatch?)."
+          # Verify the upload rather than trusting exit 0 (SMP-1826 item 2). sentry-cli 2.x uploads an
+          # ARTIFACT BUNDLE (debug-ID based); bundles never appear in the legacy `releases files` list,
+          # which is why counting that list reported 0 on every run. Instead require a non-empty bundle
+          # and sentry-cli's own confirmation that it is on the server.
+          bundled="$(sed -n 's/.*Bundled \([0-9][0-9]*\) files for upload.*/\1/p' "$upload_log" | tail -n1)"
+          if [ -z "${bundled}" ] || [ "${bundled}" = "0" ] \
+            || ! grep -qE "File upload complete|Nothing to upload, all files are on the server" "$upload_log"; then
+            echo "::error title=Sentry source-map upload::sentry-cli did not confirm a source-map bundle for release ${RELEASE} for ${ENV_NAME} (bundled='${bundled:-none}'). See the upload output above."
             exit 1
           fi
-          echo "Uploaded ${mapcount} .map file(s) to release ${RELEASE} for ${ENV_NAME}; ${filecount} confirmed on the release."
+          echo "Uploaded ${mapcount} .map file(s) to release ${RELEASE} for ${ENV_NAME}: a bundle of ${bundled} file(s) is on the server."
 
       - name: Surface source-map upload result
         if: ${{ always() && steps.ship.outcome == 'success' }}
