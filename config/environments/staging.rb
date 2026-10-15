@@ -10,6 +10,7 @@
 # secret_key_base + host come from ENV/Chamber, logs go to stdout, no force_ssl, forgiving errors. The
 # local-only dev gems (Bullet, web-console) are omitted (they are not loaded when RAILS_ENV=staging).
 require "active_support/core_ext/integer/time"
+require '../../lib/json_logging'
 
 Rails.application.configure do
   # Settings specified here take precedence over config/application.rb.
