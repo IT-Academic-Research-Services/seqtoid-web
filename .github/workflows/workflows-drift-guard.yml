@@ -44,10 +44,14 @@ jobs:
           drift=0
           summary=""
           # Only consider files that actually DIFFER between the two branches; for each, integration is
-          # "behind" iff main has >=1 commit touching it that integration lacks (git log int..base -- file).
+          # "behind" iff main has >=1 NON-MERGE commit touching it that integration lacks. Merge commits are
+          # excluded: every integration -> main roll-up lands a merge commit on main that integration never
+          # receives (the back-sync is a no-op when the trees match), and that merge "touches" every file the
+          # roll-up carried. Counting it flagged integration as behind exactly when it was AHEAD on a file
+          # (2026-10-15, PR 681). A real fix made on main still shows up through its own non-merge commit.
           while IFS= read -r f; do
             [ -n "$f" ] || continue
-            missing="$(git log --oneline "$int".."$base" -- "$f" 2>/dev/null || true)"
+            missing="$(git log --oneline --no-merges "$int".."$base" -- "$f" 2>/dev/null || true)"
             if [ -n "$missing" ]; then
               drift=1
               summary="${summary}"$'\n'"### \`$f\` — integration is behind main"$'\n'
