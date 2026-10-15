@@ -71,7 +71,7 @@ Rails.application.configure do
   # configuration method"). Use the supported method-call form (same as prod.rb/sandbox.rb).
   config.session_store :cookie_store, key: "_czid_session"
 
-  init_logging(config)
+  JsonLogging.init_logging(config)
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
   config.log_to = %w[stdout]
