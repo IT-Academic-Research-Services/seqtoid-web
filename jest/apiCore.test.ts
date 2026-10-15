@@ -6,6 +6,7 @@ import {
   MAX_SAMPLES_FOR_GET_REQUEST,
   postWithCSRF,
   putWithCSRF,
+  railsParamsSerializer,
 } from "../app/assets/src/api/core";
 import { getCsrfToken } from "../app/assets/src/api/utils";
 
@@ -87,11 +88,17 @@ describe("api/core.ts", () => {
   });
 
   describe("get", () => {
-    it("passes through the config and returns data", async () => {
+    it("passes through the config and returns data with railsParamsSerializer", async () => {
       mockedAxios.get.mockResolvedValueOnce({ data: [1, 2, 3] });
       const config = { params: { q: "x" } };
       const result = await get("/baz", config);
-      expect(mockedAxios.get).toHaveBeenCalledWith("/baz", config);
+      expect(mockedAxios.get).toHaveBeenCalledWith("/baz", {
+        ...config,
+        paramsSerializer: {
+          indexes: false,
+          serialize: railsParamsSerializer,
+        },
+      });
       expect(result).toEqual([1, 2, 3]);
     });
     it("rejects with the response data on error", async () => {
@@ -282,6 +289,76 @@ describe("api/core.ts", () => {
         statusText: "Invalid",
       });
       expect(window.location.href).toBe("");
+    });
+  });
+
+  describe("railsParamsSerializer", () => {
+    it("serializes primitive parameters correctly", () => {
+      const serialized = railsParamsSerializer(
+        {
+          search: "covid",
+          page: 1,
+          active: true,
+        },
+        {},
+      );
+      expect(serialized).toBe("search=covid&page=1&active=true");
+    });
+
+    it("serializes arrays of primitives with [] syntax", () => {
+      const serialized = railsParamsSerializer(
+        {
+          ids: [10, 20, 30],
+        },
+        {},
+      );
+      expect(serialized).toBe("ids%5B%5D=10&ids%5B%5D=20&ids%5B%5D=30");
+    });
+
+    it("serializes arrays of objects by JSON stringifying them", () => {
+      const serialized = railsParamsSerializer(
+        {
+          annotations: [{ name: "Hit" }, { name: "Not a Hit" }],
+        },
+        {},
+      );
+      expect(serialized).toBe(
+        "annotations%5B%5D=%7B%22name%22%3A%22Hit%22%7D&annotations%5B%5D=%7B%22name%22%3A%22Not+a+Hit%22%7D",
+      );
+    });
+
+    it("trims keys, ignores empty keys, null, and undefined values", () => {
+      const serialized = railsParamsSerializer(
+        {
+          "  key1  ": "value1",
+          "": "emptyKey",
+          "   ": "whitespaceKey",
+          key2: null,
+          key3: undefined,
+          key4: "value4",
+        },
+        {},
+      );
+      expect(serialized).toBe("key1=value1&key4=value4");
+    });
+  });
+
+  describe("get with railsParamsSerializer", () => {
+    it("configures axios.get with railsParamsSerializer automatically", async () => {
+      mockedAxios.get.mockResolvedValueOnce({ data: { results: [] } });
+      const params = {
+        ids: [1, 2],
+        annotations: [{ name: "Hit" }],
+      };
+      const result = await get("/api/query", { params });
+      expect(mockedAxios.get).toHaveBeenCalledWith("/api/query", {
+        params,
+        paramsSerializer: {
+          indexes: false,
+          serialize: railsParamsSerializer,
+        },
+      });
+      expect(result).toEqual({ results: [] });
     });
   });
 });
