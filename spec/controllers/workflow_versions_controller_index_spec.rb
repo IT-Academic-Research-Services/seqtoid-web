@@ -105,6 +105,34 @@ RSpec.describe WorkflowVersionsController, type: :controller do
     end
   end
 
+  # The CLI has no session; it sends the Auth0 ID token from `seqtoid login`. Before index took the
+  # token, `seqtoid workflow-versions` got a 401 and printed "not authenticated".
+  context "as the CLI with a bearer token" do
+    it "logs the user in from the token and returns the catalog" do
+      create(:workflow_version, workflow: workflow, version: "8.3.15")
+      allow(controller).to receive(:auth0_authenticate_with_bearer_token) do
+        sign_in @joe
+        true
+      end
+      request.headers["Authorization"] = "Bearer cli.id.token"
+
+      get :index, params: { workflow: workflow }
+
+      expect(controller).to have_received(:auth0_authenticate_with_bearer_token).with({ "id_token" => "cli.id.token" })
+      expect(response).to have_http_status(:ok)
+      expect(listed_versions.pluck("version")).to eq(["8.3.15"])
+    end
+
+    it "still refuses a request whose token does not authenticate" do
+      allow(controller).to receive(:auth0_authenticate_with_bearer_token).and_return(false)
+      request.headers["Authorization"] = "Bearer bad.token"
+
+      get :index, params: { workflow: workflow }
+
+      expect(response).not_to have_http_status(:ok)
+    end
+  end
+
   # CZID-994 -- with the feature dark the endpoint stays well-formed but offers nothing, so the
   # dropdown (opt-in on availableVersions.length > 0) renders exactly as it did before the feature.
   context "with the feature flag off" do
