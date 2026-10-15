@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
     # Steps in a job container default to `sh` (dash), which rejects `set -o pipefail`; the run
     # blocks below are bash.

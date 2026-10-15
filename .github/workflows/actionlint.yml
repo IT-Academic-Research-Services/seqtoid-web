@@ -16,9 +16,9 @@ permissions:
 
 jobs:
   actionlint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: actionlint
         # Enforces workflow STRUCTURE (bad uses:/needs:/outputs, unknown labels,
         # input typing) AND shellcheck on run: scripts. Image pinned by digest

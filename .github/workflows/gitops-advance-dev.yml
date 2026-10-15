@@ -29,7 +29,7 @@ jobs:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # The digest resolution below assumes the dev-account ECR-read role via GitHub OIDC.
@@ -58,7 +58,7 @@ jobs:
         if: ${{ vars.CI_APP_ENABLED == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
           owner: ${{ github.repository_owner }}
       - name: Checkout infra (the GitOps values repo)
@@ -279,7 +279,7 @@ jobs:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # SMP-1855: bind this job to the dev GitHub Environment so vars.SENTRY_PROJECT resolves to the
     # environment-scoped value (the dev frontend project) rather than the repo-level default. Staging
     # and prod uploads run from promote-to-env.yml, which is already environment-scoped per tier, and

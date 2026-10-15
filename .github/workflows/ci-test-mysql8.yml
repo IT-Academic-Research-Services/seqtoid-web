@@ -63,7 +63,7 @@ jobs:
   # "skipped" leg) adds a conclusion that branch protection treats as passing -- never a failure.
   preflight:
     name: Preflight (skip duplicate same-SHA suite)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       skip: ${{ steps.decide.outputs.skip }}
     steps:
@@ -121,7 +121,7 @@ jobs:
     # `!cancelled()` keeps this fail-closed -- an errored/empty preflight output still runs.
     needs: preflight
     if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # SMP-1579: run each shard in the PREBAKED CI base image instead of bare ruby:3.3.6, so the apt+pip
     # deps (~162s of cold install re-paid by every shard) are already present. The image is FROM
     # ruby:3.3.6 (same Debian/ruby ABI) and sets CI_TEST_PREBAKED=1, which makes bin/ci-test skip the
@@ -236,7 +236,7 @@ jobs:
           cp tmp/parallel_runtime_rspec.log shard-out/runtime.log 2>/dev/null || true
       - name: Upload shard results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shard-results-${{ matrix.shard }}
           path: shard-out/
@@ -256,7 +256,7 @@ jobs:
     # reason to migrate twice for one commit.
     needs: preflight
     if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
     env:
       AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ='
@@ -333,7 +333,7 @@ jobs:
     # SMP-1582: also stand down when preflight proved a prior green suite on this exact SHA
     # (skip=true) -- the push-to-main run's collate success already covers this commit.
     if: ${{ !cancelled() && needs.preflight.outputs.skip != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
     steps:
       - name: Check out code
@@ -343,7 +343,7 @@ jobs:
         shell: bash
         run: gem install simplecov -v 0.22.0 --no-document
       - name: Download shard results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: shard-artifacts
           pattern: shard-results-*

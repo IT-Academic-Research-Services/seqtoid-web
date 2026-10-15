@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   cherry-pick:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # IT-ARS authenticates the push with a GitHub App (CI_APP_ENABLED=true); a fork falls back to
       # the GITOPS_TOKEN PAT. The default GITHUB_TOKEN is not used to push (branch-protection friendly).
@@ -50,7 +50,7 @@ jobs:
         if: ${{ vars.CI_APP_ENABLED == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
           owner: ${{ github.repository_owner }}
 

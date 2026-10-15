@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Cross-repo target for the CI-native viral benchmark + the AUPR floor we expect it to enforce.
       WORKFLOWS_REPO: IT-Academic-Research-Services/seqtoid-workflows

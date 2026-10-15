@@ -49,7 +49,7 @@ permissions:
 jobs:
   record:
     name: Record ${{ inputs.component }} -> ${{ inputs.env_name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # Every step is continue-on-error: recording release notes is best-effort and must NEVER fail a
       # deploy that already succeeded. The ledger bucket + writer role are DERIVED from env_name below.
@@ -102,7 +102,7 @@ jobs:
         continue-on-error: true
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.app_id }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.app_private_key }}
           owner: ${{ github.repository_owner }}
 
