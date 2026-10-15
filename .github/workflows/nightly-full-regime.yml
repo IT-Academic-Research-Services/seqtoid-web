@@ -62,7 +62,7 @@ jobs:
   guard:
     name: Canonical-repo gate
     if: ${{ vars.NIGHTLY_REGIME_ENABLED == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Enabled
         run: echo "NIGHTLY_REGIME_ENABLED=true -- running the overnight regime on this repo."
@@ -125,7 +125,7 @@ jobs:
   integration_suite:
     name: Cross-component integration (#736) [STUB]
     needs: guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: TODO
         run: |
@@ -170,7 +170,7 @@ jobs:
   load_soak:
     name: Load / performance / soak (#739) [STUB]
     needs: guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: TODO
         run: |
@@ -180,7 +180,7 @@ jobs:
   dast_zap:
     name: DAST (OWASP ZAP, dev) (#740) [STUB]
     needs: guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: TODO
         run: |
@@ -201,7 +201,7 @@ jobs:
   chaos_resilience:
     name: Chaos / resilience (#743) [STUB]
     needs: guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: TODO
         run: |
@@ -212,7 +212,7 @@ jobs:
   observability_alerting:
     name: Observability / alerting validation (#744) [STUB]
     needs: guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: TODO
         run: |
@@ -239,7 +239,7 @@ jobs:
       - contract_api
       - chaos_resilience
       - observability_alerting
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Summarize
         env:

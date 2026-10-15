@@ -15,7 +15,7 @@ jobs:
   ruby_test:
     name: Ruby Test
     if: ${{ github.event_name == 'workflow_dispatch' }}   # covered on PRs by ci-test-mysql8.yml
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
     env:
       # This is a dummy secret, do not use it for anything
@@ -108,7 +108,7 @@ jobs:
   ruby_code_analysis:
     name: Ruby Code Analysis
     if: ${{ github.event_name == 'workflow_dispatch' }}   # covered on PRs by pull-request-only.yml (rubocop)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - name: Check out code
       uses: actions/checkout@v6
@@ -141,7 +141,7 @@ jobs:
 
   javascript:
     name: Javascript
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
     - uses: actions/setup-node@v6
@@ -209,7 +209,7 @@ jobs:
 
   python:
     name: Python
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
     - uses: actions/setup-python@v6

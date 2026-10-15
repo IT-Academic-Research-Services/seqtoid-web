@@ -32,7 +32,7 @@ jobs:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'staging' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       digest: ${{ steps.pick.outputs.digest }}
       sha_tag: ${{ steps.pick.outputs.sha_tag }}

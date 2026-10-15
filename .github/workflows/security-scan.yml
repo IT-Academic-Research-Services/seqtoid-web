@@ -27,7 +27,7 @@ permissions:
 jobs:
   gitleaks:
     name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
         uses: actions/checkout@v6
@@ -47,7 +47,7 @@ jobs:
 
   trivy_fs:
     name: Dependency CVE scan (trivy fs, advisory -- notes new CVEs, does not block)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
         uses: actions/checkout@v6
@@ -87,7 +87,7 @@ jobs:
 
   brakeman:
     name: Rails security scan (brakeman, hard-fail on new)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
     steps:
       - name: Check out code
