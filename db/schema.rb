@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_30_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_16_000001) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000000", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -193,6 +193,27 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_30_000001) do
     t.string "metadata_json", limit: 1024, comment: "Generic JSON-string format for recording additional information about the object"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "denied_signups", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.string "subject_ref", null: false
+    t.string "screening_id"
+    t.text "callback_url"
+    t.text "account_email"
+    t.text "account_name"
+    t.text "account_institution"
+    t.string "reason", null: false
+    t.string "decided_by", null: false
+    t.string "resolution_status"
+    t.bigint "screening_result_id"
+    t.bigint "hold_id"
+    t.bigint "pending_signup_id"
+    t.datetime "denied_at", null: false
+    t.datetime "reinstated_at"
+    t.string "reinstated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["subject_ref"], name: "index_denied_signups_on_subject_ref"
   end
 
   create_table "device_location_attestations", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
