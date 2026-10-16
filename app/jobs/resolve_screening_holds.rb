@@ -175,7 +175,10 @@ class ResolveScreeningHolds
   #     the denied applicant is retained as a compliance record.
   def drive_signup_callback(subject_ref, decision:, screening_result: nil, holds: [], verdict: nil)
     signup = PendingSignup.pending_for(subject_ref)
-    return if signup.nil?
+    if signup.nil?
+      reconcile_auto_denial(subject_ref, decision: decision, verdict: verdict)
+      return
+    end
 
     url = signup.callback_url.presence
     return if url.blank?
@@ -210,6 +213,42 @@ class ResolveScreeningHolds
     # Leave the signup pending (retried next poll); never break the hold resolution.
     LogUtil.log_error('[ResolveScreeningHolds] signup callback failed; left pending for retry',
                       exception: e)
+  end
+
+  # No pending signup: the applicant may have been AUTO-DENIED (sanctioned jurisdiction) and archived in
+  # denied_signups. An officer CLEAR reverses that auto-denial -- post the approved callback from the archived
+  # account and stamp the reinstatement (the row is kept as history). An officer True Hit confirms it -- record
+  # the officer's resolution on the archive; the applicant was already sent the denial, so nothing is re-posted.
+  # Same posture as the pending path: the callback is posted BEFORE the stamp, so a transport failure leaves
+  # the row un-reinstated and the next poll retries; provisioning is idempotent on the web side.
+  def reconcile_auto_denial(subject_ref, decision:, verdict:)
+    denied = DeniedSignup.for_subject(subject_ref).not_reinstated
+                         .where(decided_by: DeniedSignup::DECIDED_BY_AUTO).order(id: :desc).first
+    return if denied.nil?
+
+    if decision == PendingSignup::DECISION_DENIED
+      denied.update!(resolution_status: verdict&.shstatus)
+      return
+    end
+
+    url = denied.callback_url.presence
+    return if url.blank?
+
+    body = JSON.dump(
+      {
+        screening_id: denied.screening_id,
+        correlation_id: subject_ref,
+        decision: PendingSignup::DECISION_APPROVED,
+        path: 'manual',
+        account: denied.account_payload,
+      }.compact
+    )
+    ExportControl::ScreeningServiceClient.post_signed(url, body)
+    denied.update!(reinstated_at: Time.current, reinstated_by: "officer:#{verdict&.shstatus}",
+                   resolution_status: verdict&.shstatus)
+    Rails.logger.info("[ResolveScreeningHolds] auto-denial REINSTATED subject=#{subject_ref} status=#{verdict&.shstatus}")
+  rescue StandardError => e
+    LogUtil.log_error('[ResolveScreeningHolds] auto-denial reinstatement failed; left for retry', exception: e)
   end
 
   # Stamp the IM audit-record id on the screen (evidence). Idempotent: written only when absent so a

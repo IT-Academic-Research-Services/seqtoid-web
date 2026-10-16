@@ -34,6 +34,10 @@ class ProcessScreeningJob
       # hard denial -- the same list the edge WAF geo-block enforces. Auto-DENY immediately (no 48h manual
       # queue, no held signup to resolve): a party who must not be admitted is denied at once. The account
       # is still forwarded so the callback receiver can email the applicant (UserMailer.account_creation_denied).
+      # Persist the denied applicant FIRST (denied_signups): if a compliance officer later CLEARS this case in
+      # Descartes, the resolution poller reinstates from this row and provisions the account. Without it the
+      # applicant was unrecoverable -- 24 officer-cleared applicants got no account (2026-10-16).
+      archive_auto_denial(payload, outcome) if payload['account'].present?
       post_callback(payload, decision: 'denied', path: 'auto', account: payload['account'])
       Rails.logger.warn("[ProcessScreeningJob] #{payload['correlation_id']} auto-denied: sanctioned jurisdiction")
     elsif outcome
@@ -88,6 +92,27 @@ class ProcessScreeningJob
     # never be created. The applicant just sat on "under review" forever. It must never be silent again.
     ExportControl::ScreeningAudit.report_failure(
       "signup.hold_lost", error: e, correlation_id: payload["correlation_id"], screening_id: payload["screening_id"]
+    )
+  end
+
+  # Archive the auto-denied applicant (account data + evidence links) so the denial is a durable record and
+  # can be reversed by an officer. Same failure posture as hold_pending_signup: never re-raise into the
+  # screen path (a Resque retry would re-bill the vendor), but ALERT -- a lost archive strands the applicant.
+  def archive_auto_denial(payload, outcome)
+    DeniedSignup.archive!(
+      subject_ref: payload['correlation_id'],
+      reason: Hold::REASON_SANCTIONED_JURISDICTION,
+      decided_by: DeniedSignup::DECIDED_BY_AUTO,
+      account: payload['account'],
+      screening_id: payload['screening_id'],
+      callback_url: payload['callback_url'],
+      screening_result_id: outcome&.screening_result&.id,
+      hold_id: outcome&.hold&.id
+    )
+  rescue StandardError => e
+    Rails.logger.error("[ProcessScreeningJob] #{payload['correlation_id']} denial archive failed: #{e.class}")
+    ExportControl::ScreeningAudit.report_failure(
+      "signup.denial_archive_lost", error: e, correlation_id: payload["correlation_id"], screening_id: payload["screening_id"]
     )
   end
 

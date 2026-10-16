@@ -73,6 +73,31 @@ RSpec.describe ProcessScreeningJob do
     expect(captured['account']['email']).to eq('jane@ucsf.edu')
   end
 
+  it 'ARCHIVES the auto-denied applicant in denied_signups so an officer clearance can reinstate them' do
+    allow(svc).to receive(:screen_if_enabled).and_return(sanctioned_outcome)
+    allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+    expect { described_class.new.run(payload) }.to change(DeniedSignup, :count).by(1)
+
+    denied = DeniedSignup.for_subject('User:42').sole
+    expect(denied.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
+    expect(denied.decided_by).to eq(DeniedSignup::DECIDED_BY_AUTO)
+    expect(denied.account_email).to eq('jane@ucsf.edu')
+    expect(denied.callback_url).to eq('http://web/internal/v1/screening_result')
+    expect(denied.screening_id).to eq('scr-1')
+  end
+
+  it 'still posts the auto-deny callback (and alerts) if archiving the denial fails' do
+    allow(svc).to receive(:screen_if_enabled).and_return(sanctioned_outcome)
+    allow(DeniedSignup).to receive(:archive!).and_raise(StandardError.new('db down'))
+    allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+    expect(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+    expect { described_class.new.run(payload) }.not_to raise_error
+    expect(ExportControl::ScreeningAudit).to have_received(:report_failure)
+      .with('signup.denial_archive_lost', hash_including(correlation_id: 'User:42'))
+  end
+
   it 'does NOT hold a signup on the disabled bypass (nil outcome)' do
     allow(svc).to receive(:screen_if_enabled).and_return(nil)
     expect { described_class.new.run(payload) }.not_to change(PendingSignup, :count)
