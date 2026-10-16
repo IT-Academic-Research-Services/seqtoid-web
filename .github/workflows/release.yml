@@ -21,6 +21,12 @@ name: release
 # the release, and preflight fails the plan if that rule is ever switched off.
 # env-prod ships the image STAGING ran and vetted, copied from staging's registry: the job signs in to
 # the prod account only, and the prod push role reads staging's repo (registry `source_read: target-role`).
+#
+# Specific build (optional `digest` + `tag`): ship that build from the source environment's registry
+# instead of what the source environment runs -- e.g. a curated release/* branch build. `allow_older`
+# permits a candidate that is behind or diverged from the target (a deliberate rollback, or a curated
+# build replacing a fuller one); without it such a plan is not shippable. The soak rule is unchanged:
+# env-prod still only takes images from staging's registry.
 
 on:
   workflow_dispatch:
@@ -33,6 +39,18 @@ on:
       reason:
         description: Why this release (recorded on the values PR)
         required: true
+      digest:
+        description: "Optional: ship this build (sha256:...) from the source env's registry instead of what the source env runs"
+        required: false
+        default: ""
+      tag:
+        description: "With digest: its sha-<commit> tag"
+        required: false
+        default: ""
+      allow_older:
+        description: "Allow a build that is behind or diverged from the target (rollback / curated release branch)"
+        type: boolean
+        default: false
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -55,6 +73,9 @@ jobs:
       gh_environment: ${{ steps.resolve.outputs.gh_environment }}
     env:
       TARGET: ${{ inputs.target || 'staging' }}
+      IN_DIGEST: ${{ inputs.digest }}
+      IN_TAG: ${{ inputs.tag }}
+      IN_ALLOW_OLDER: ${{ inputs.allow_older }}
     steps:
       - name: Generate app token
         id: app_token
@@ -83,8 +104,18 @@ jobs:
         run: |
           set -euo pipefail
           pip install -q -r _gitops/requirements.txt
-          _gitops/bin/release resolve --to "$TARGET" --json > plan.json
-          _gitops/bin/release resolve --to "$TARGET" > plan.txt
+          # Optional specific build. Validated strictly: these go onto a command line.
+          sel=()
+          if [ -n "${IN_DIGEST}" ] || [ -n "${IN_TAG}" ]; then
+            [[ "${IN_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::digest must be sha256:<64 hex>"; exit 1; }
+            [[ "${IN_TAG}" =~ ^sha-[0-9a-f]{7,40}$ ]] || { echo "::error::tag must be sha-<commit>"; exit 1; }
+            sel+=(--digest "${IN_DIGEST}" --tag "${IN_TAG}")
+          fi
+          if [ "${IN_ALLOW_OLDER}" = "true" ]; then sel+=(--allow-older); fi
+          : > select.args
+          if [ "${#sel[@]}" -gt 0 ]; then printf '%s\n' "${sel[@]}" > select.args; fi
+          _gitops/bin/release resolve --to "$TARGET" "${sel[@]+"${sel[@]}"}" --json > plan.json
+          _gitops/bin/release resolve --to "$TARGET" "${sel[@]+"${sel[@]}"}" > plan.txt
           {
             echo "### Release plan: ${TARGET}"
             echo '```'
@@ -105,7 +136,8 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          _gitops/bin/release preflight --to "$TARGET" --checks ci > preflight.txt || status=$?
+          mapfile -t sel < select.args
+          _gitops/bin/release preflight --to "$TARGET" "${sel[@]+"${sel[@]}"}" --checks ci > preflight.txt || status=$?
           cat preflight.txt
           {
             echo "### Preflight"
@@ -129,6 +161,7 @@ jobs:
     env:
       AWS_REGION: us-west-2
       TARGET: ${{ inputs.target }}
+      ALLOW_OLDER: ${{ inputs.allow_older }}
       DIGEST: ${{ needs.plan.outputs.digest }}
       SHA_TAG: ${{ needs.plan.outputs.tag }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -226,7 +259,9 @@ jobs:
         run: |
           set -euo pipefail
           command -v skopeo >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y skopeo; }
-          _gitops/bin/release ship --to "$TARGET" --digest "$DIGEST" --tag "$SHA_TAG" --reason "$REASON" --json > ship.json
+          older=()
+          if [ "${ALLOW_OLDER}" = "true" ]; then older=(--allow-older); fi
+          _gitops/bin/release ship --to "$TARGET" --digest "$DIGEST" --tag "$SHA_TAG" "${older[@]+"${older[@]}"}" --reason "$REASON" --json > ship.json
           pr="$(jq -r '.pr.url // empty' ship.json)"
           {
             echo "### Shipped ${SHA_TAG} to ${TARGET}"
