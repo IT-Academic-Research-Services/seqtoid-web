@@ -398,6 +398,9 @@ class SamplesController < ApplicationController
                end
   end
 
+  # Cap on project / sample suggestions per category; the taxon search is capped by MAX_SEARCH_RESULTS.
+  SEARCH_SUGGESTIONS_LIMIT = 50
+
   def search_suggestions
     query = params[:query]
     # TODO: move into a search_controller or into separate controllers/models
@@ -411,7 +414,7 @@ class SamplesController < ApplicationController
     results = {}
 
     if !categories || categories.include?("project")
-      projects = current_power.projects_by_domain(domain).search_by_name(query)
+      projects = current_power.projects_by_domain(domain).search_by_name(query).limit(SEARCH_SUGGESTIONS_LIMIT)
       unless projects.empty?
         results["Project"] = {
           "name" => "Project",
@@ -429,7 +432,9 @@ class SamplesController < ApplicationController
     end
 
     if !categories || categories.include?("sample")
-      samples = constrained_samples.search_by_name(query)
+      # Bounded, and the project preloaded for the "Project: ..." description (it was one query per sample,
+      # over every matching sample in the domain).
+      samples = constrained_samples.search_by_name(query).includes(:project).limit(SEARCH_SUGGESTIONS_LIMIT)
       unless samples.empty?
         results["Sample"] = {
           "name" => "Sample",
@@ -530,15 +535,19 @@ class SamplesController < ApplicationController
         if superkingdom.present?
           filters[:superkingdom] = superkingdom
         end
-        if project_id.present?
+        # Only filter by a project the user can view, as choose_taxon does; otherwise the filtered taxa would
+        # reveal what an inaccessible project contains.
+        project_ok = project_id.blank? || current_power.projects.exists?(id: project_id)
+        if project_id.present? && project_ok
           filters[:project_id] = project_id
         end
-        if constrained_samples.present? && domain.present?
+        # exists? instead of present?: present? loaded every sample in the domain just to test for one.
+        if domain.present? && constrained_samples.exists?
           # If no domain is specified, do not filter by constrained_samples
           filters[:samples] = constrained_samples
         end
         # If no domain is specified, do not filter by constrained_samples
-        taxon_list = taxon_search(query, ["species", "genus"], filters)
+        taxon_list = project_ok ? taxon_search(query, ["species", "genus"], filters) : []
 
         unless taxon_list.empty?
           results["Taxon"] = {
