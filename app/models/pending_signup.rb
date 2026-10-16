@@ -11,8 +11,9 @@
 # encryption, because a pending signup is unverified third-party PII with a short life.
 #
 # Lifecycle: ProcessScreeningJob writes a PENDING row when a screen does NOT auto-approve (held/error).
-# ResolveScreeningHolds (the IM resolution poller) resolves it -- posting an approved/denied callback to
-# the web app and marking it RESOLVED -- when the officer's verdict arrives. Auto-approved signups never
+# ResolveScreeningHolds (the IM resolution poller) posts the approved/denied callback to the web app when
+# the officer's verdict arrives: an approval marks the row RESOLVED; a denial MOVES it to denied_signups
+# (DeniedSignup) so the denied applicant is retained as a compliance record. Auto-approved signups never
 # create a row (the callback fires inline). Nothing here is exercised until the screening feature is
 # enabled behind its OFF-by-default flags.
 class PendingSignup < ScreeningRecord
@@ -28,6 +29,9 @@ class PendingSignup < ScreeningRecord
   encrypts :account_email
   encrypts :account_name
   encrypts :account_institution
+  # The screened party (name/address/country) as JSON, kept only so a screen that ERRORED can be retried
+  # (ExportControl::ScreeningRetry). Same app-layer encryption as the account fields.
+  encrypts :subject_payload
 
   validates :subject_ref, presence: true
   validates :status, inclusion: { in: STATUSES }
@@ -42,7 +46,9 @@ class PendingSignup < ScreeningRecord
 
   # Idempotently hold a signup for a subject. A replayed screen for the same subject updates the existing
   # pending row rather than stacking duplicates (one applicant, one pending signup).
-  def self.hold!(subject_ref:, screening_id:, callback_url:, account:)
+  # subject/soptionalid are optional: when given they are kept so an errored screen can be retried; a
+  # replay without them keeps what is already stored. The retry counter is never reset here.
+  def self.hold!(subject_ref:, screening_id:, callback_url:, account:, subject: nil, soptionalid: nil)
     account ||= {}
     row = pending_for(subject_ref) || new(subject_ref: subject_ref)
     row.assign_attributes(
@@ -53,13 +59,56 @@ class PendingSignup < ScreeningRecord
       account_name: account["name"] || account[:name],
       account_institution: account["institution"] || account[:institution]
     )
+    row.subject_payload = JSON.dump(subject) if subject.present?
+    row.soptionalid = soptionalid if soptionalid.present?
     row.save!
     row
+  end
+
+  # The stored screened-party hash ({} when none was kept, e.g. a row written before retries existed).
+  def subject_hash
+    subject_payload.present? ? JSON.parse(subject_payload) : {}
+  rescue JSON::ParserError
+    {}
+  end
+
+  # The ProcessScreeningJob payload that re-runs this signup's screen exactly as the original request did.
+  def retry_payload
+    {
+      "screening_id" => screening_id,
+      "correlation_id" => subject_ref,
+      "soptionalid" => soptionalid,
+      "subject" => subject_hash,
+      "account" => account_payload,
+      "callback_url" => callback_url,
+    }
   end
 
   # The account payload to hand back on the approval callback (only the fields the web app seeds from).
   def account_payload
     { "email" => account_email, "name" => account_name, "institution" => account_institution }.compact
+  end
+
+  # Move a DENIED signup out of pending_signups into the denied_signups archive, in one transaction, so the
+  # applicant identity is kept (as a compliance record) rather than lingering as a resolved row here or
+  # being lost. Returns the DeniedSignup.
+  def archive_denied!(reason:, decided_by:, resolution_status: nil, screening_result_id: nil, hold_id: nil)
+    self.class.transaction do
+      denied = DeniedSignup.archive!(
+        subject_ref: subject_ref,
+        reason: reason,
+        decided_by: decided_by,
+        account: account_payload,
+        screening_id: screening_id,
+        callback_url: callback_url,
+        resolution_status: resolution_status,
+        screening_result_id: screening_result_id,
+        hold_id: hold_id,
+        pending_signup_id: id
+      )
+      destroy!
+      denied
+    end
   end
 
   # Mark this signup resolved once its decision callback has been posted. Idempotent -- keeps the first

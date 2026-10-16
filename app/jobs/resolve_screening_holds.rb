@@ -19,6 +19,11 @@
 # force. Any transport/parse/credential error raises out of the client and is logged; the watermark is
 # NOT advanced, so the same window is re-polled next run. No verdict is ever inferred from an error.
 #
+# ============================ ERROR-HOLD RETRY ============================
+# Each run first calls ExportControl::ScreeningRetry, which re-screens signups held on a fail-closed
+# vendor ERROR (with backoff), so every applicant reaches Visual Compliance. It shares this schedule entry
+# and queue (and the same per-env schedule exclusion) on purpose.
+#
 # ============================ IDEMPOTENT ============================
 # Re-processing the same verdict is a no-op: Hold#release! keeps the first release timestamp, and
 # incident_id is written only when absent. Safe to re-run over an overlapping window.
@@ -51,6 +56,10 @@ class ResolveScreeningHolds
       Rails.logger.info('[ResolveScreeningHolds] skipped: Descartes RPS resolution endpoint not configured')
       return
     end
+
+    # Re-screen signups whose screen errored (Visual Compliance never saw them). Never raises, so a retry
+    # problem cannot stop the verdict poll below.
+    ExportControl::ScreeningRetry.run
 
     time_from = poll_from
     time_to = Time.now.utc
@@ -142,7 +151,8 @@ class ResolveScreeningHolds
         "status=#{verdict.shstatus} incident=#{verdict.shresult_id}"
       )
       # Piece 5b: a cleared hold approves the held signup -- drive the account-provisioning callback.
-      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_APPROVED)
+      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_APPROVED,
+                                                          screening_result: screening_result, holds: holds, verdict: verdict)
     when :deny
       # Terminal deny -- keep the hold in force and record the adjudication durably on
       # the hold (reviewed-and-denied), not just in the log. No release, ever.
@@ -152,7 +162,8 @@ class ResolveScreeningHolds
         "incident=#{verdict.shresult_id}"
       )
       # Piece 5b: a True Hit denies the held signup -- drive the denied callback (no account is created).
-      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_DENIED)
+      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_DENIED,
+                                                          screening_result: screening_result, holds: holds, verdict: verdict)
     else
       # Non-terminal (DS New / Actioned / Escalated / Closed / unknown) -- leave held, no-op.
       Rails.logger.info(
@@ -169,9 +180,14 @@ class ResolveScreeningHolds
   #   - The callback is posted BEFORE resolve!, so a transport failure leaves the signup PENDING and it is
   #     retried on the next poll; the web provisioning is itself idempotent (User.exists?), so a replay is
   #     safe. A callback failure NEVER breaks the hold resolution (its own rescue).
-  def drive_signup_callback(subject_ref, decision:)
+  #   - A DENIED signup is moved to denied_signups (archive_denied!) rather than kept as a resolved row, so
+  #     the denied applicant is retained as a compliance record.
+  def drive_signup_callback(subject_ref, decision:, screening_result: nil, holds: [], verdict: nil)
     signup = PendingSignup.pending_for(subject_ref)
-    return if signup.nil?
+    if signup.nil?
+      reconcile_auto_denial(subject_ref, decision: decision, verdict: verdict)
+      return
+    end
 
     url = signup.callback_url.presence
     return if url.blank?
@@ -189,12 +205,79 @@ class ResolveScreeningHolds
       }.compact
     )
     ExportControl::ScreeningServiceClient.post_signed(url, body)
-    signup.resolve!(decision: decision)
+    if decision == PendingSignup::DECISION_DENIED
+      hold = Array(holds).first
+      signup.archive_denied!(
+        reason: hold&.reason || Hold::REASON_SCREENING_HIT,
+        decided_by: DeniedSignup::DECIDED_BY_OFFICER,
+        resolution_status: verdict&.shstatus,
+        screening_result_id: screening_result&.id,
+        hold_id: hold&.id
+      )
+    else
+      signup.resolve!(decision: decision)
+    end
     Rails.logger.info("[ResolveScreeningHolds] signup callback posted subject=#{subject_ref} decision=#{decision}")
   rescue StandardError => e
     # Leave the signup pending (retried next poll); never break the hold resolution.
     LogUtil.log_error('[ResolveScreeningHolds] signup callback failed; left pending for retry',
                       exception: e)
+  end
+
+  # No pending signup: the applicant may have been AUTO-DENIED (sanctioned jurisdiction) and archived in
+  # denied_signups. New screens are never auto-denied (Visual Compliance decides everything), so this only
+  # reconciles legacy auto-denials archived before that change. An officer CLEAR reverses that auto-denial -- post the approved callback from the archived
+  # account and stamp the reinstatement (the row is kept as history). An officer True Hit confirms it -- record
+  # the officer's resolution on the archive; the applicant was already sent the denial, so nothing is re-posted.
+  # Same posture as the pending path: the callback is posted BEFORE the stamp, so a transport failure leaves
+  # the row un-reinstated and the next poll retries; provisioning is idempotent on the web side.
+  def reconcile_auto_denial(subject_ref, decision:, verdict:)
+    denied = DeniedSignup.for_subject(subject_ref).not_reinstated
+                         .where(decided_by: DeniedSignup::DECIDED_BY_AUTO).order(id: :desc).first
+    if denied.nil?
+      alert_unmatched_verdict(subject_ref, decision: decision, verdict: verdict)
+      return
+    end
+
+    if decision == PendingSignup::DECISION_DENIED
+      denied.update!(resolution_status: verdict&.shstatus)
+      return
+    end
+
+    url = denied.callback_url.presence
+    return if url.blank?
+
+    body = JSON.dump(
+      {
+        screening_id: denied.screening_id,
+        correlation_id: subject_ref,
+        decision: PendingSignup::DECISION_APPROVED,
+        path: 'manual',
+        account: denied.account_payload,
+      }.compact
+    )
+    ExportControl::ScreeningServiceClient.post_signed(url, body)
+    denied.update!(reinstated_at: Time.current, reinstated_by: "officer:#{verdict&.shstatus}",
+                   resolution_status: verdict&.shstatus)
+    Rails.logger.info("[ResolveScreeningHolds] auto-denial REINSTATED subject=#{subject_ref} status=#{verdict&.shstatus}")
+  rescue StandardError => e
+    LogUtil.log_error('[ResolveScreeningHolds] auto-denial reinstatement failed; left for retry', exception: e)
+  end
+
+  # A terminal officer verdict for a SIGNUP that has nothing on our side to act on -- no pending signup and no
+  # archived denial, in any state -- means an applicant fell through: the officer decided, and no account
+  # will be created or denial recorded. That used to be a silent `return`. Alert (identifiers only) so it is
+  # followed up. Re-polls of an already-handled verdict find the resolved/archived row and stay quiet, and
+  # non-signup screens (User:<id> backstop re-screens) never had a signup to begin with.
+  def alert_unmatched_verdict(subject_ref, decision:, verdict:)
+    return unless subject_ref.to_s.start_with?('Signup:')
+    return if PendingSignup.for_subject(subject_ref).exists? || DeniedSignup.for_subject(subject_ref).exists?
+
+    ExportControl::ScreeningAudit.report_failure(
+      'signup.verdict_unmatched',
+      subject_ref: subject_ref, decision: decision, resolution_status: verdict&.shstatus,
+      incident_id: verdict&.shresult_id
+    )
   end
 
   # Stamp the IM audit-record id on the screen (evidence). Idempotent: written only when absent so a

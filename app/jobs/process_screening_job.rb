@@ -4,13 +4,14 @@
 # Internal::ScreeningsController, runs the REAL in-process screen (Descartes) exactly as the old
 # in-web-app path did, and posts the decision back to the web app via a signed callback.
 #
-# ============================ AUTO-APPROVE ONLY ON A SOLID PASS ============================
-# outcome.allowed? is true only for a clean, definitive pass (transstatus "Passed", no denied-party
-# match, no sanctioned-jurisdiction hit) -- ScreeningService already encodes that fail-closed. Only then
-# do we post an "approved" callback (carrying the account payload to seed). A HELD or ERROR outcome, or a
-# disabled/bypassed screen (nil), posts NO approval: the account is not created, and the resolution
-# poller sends the eventual approve/deny callback after a human adjudicates. That persistence + the
-# poller->callback hook is the next piece (it lands with the dedicated screening DB).
+# ============================ VISUAL COMPLIANCE DECIDES ============================
+# This job never makes a screening decision of its own. outcome.allowed? is true only when Descartes
+# returned a clean verdict (ScreeningService relays it, fail-closed); then we post an "approved" callback
+# carrying the account payload to seed. Anything else -- a Descartes match, or a fail-closed error --
+# holds the applicant (PendingSignup) and posts nothing. The approve/deny callback is sent later by the
+# resolution poller, driven by the compliance officer's verdict in the Descartes Incident Manager.
+# There is no auto-deny: every denial is an officer's True Hit. A disabled/bypassed screen (nil) is a
+# no-op.
 class ProcessScreeningJob
   extend InstrumentedJob
 
@@ -28,18 +29,12 @@ class ProcessScreeningJob
     outcome = ExportControl::ScreeningService.new.screen_if_enabled(subject_from(payload))
     if outcome&.allowed?
       post_callback(payload, decision: 'approved', path: 'auto', account: payload['account'])
-    elsif sanctioned_jurisdiction?(outcome)
-      # Zero-tolerance geo rule (CZID-321): an association with a SANCTIONED JURISDICTION (the applicant's
-      # declared country is on the embargo list, or the vendor flagged risk_country) is an UNAMBIGUOUS,
-      # hard denial -- the same list the edge WAF geo-block enforces. Auto-DENY immediately (no 48h manual
-      # queue, no held signup to resolve): a party who must not be admitted is denied at once. The account
-      # is still forwarded so the callback receiver can email the applicant (UserMailer.account_creation_denied).
-      post_callback(payload, decision: 'denied', path: 'auto', account: payload['account'])
-      Rails.logger.warn("[ProcessScreeningJob] #{payload['correlation_id']} auto-denied: sanctioned jurisdiction")
+      # A retried screen (ExportControl::ScreeningRetry) that now passes closes out the signup it held.
+      PendingSignup.pending_for(payload['correlation_id'])&.resolve!(decision: PendingSignup::DECISION_APPROVED)
     elsif outcome
-      # A NAME-MATCH hit or a fail-closed error -- genuine ambiguity that needs a human. HOLD the applicant
-      # account data (piece 5b) so the resolution poller can drive the approved/denied callback once a
-      # compliance officer adjudicates. A screen with no account payload (a non-signup screen) holds
+      # A Descartes match or a fail-closed error. HOLD the applicant account data (piece 5b) so the
+      # resolution poller can drive the approved/denied callback once a compliance officer adjudicates the
+      # case in the Descartes Incident Manager. A screen with no account payload (a non-signup screen) holds
       # nothing to provision, so skip persisting one.
       hold_pending_signup(payload) if payload['account'].present?
       Rails.logger.info(
@@ -63,12 +58,6 @@ class ProcessScreeningJob
 
   private
 
-  # A hold placed specifically for a sanctioned-jurisdiction association (vs a name-match hit or a
-  # fail-closed error). Only this reason auto-denies; everything else routes to manual review.
-  def sanctioned_jurisdiction?(outcome)
-    outcome&.hold&.reason == Hold::REASON_SANCTIONED_JURISDICTION
-  end
-
   # Durably hold the applicant's account data so the resolution poller can approve/deny it later. Its own
   # rescue: a persistence failure must not re-raise into the screen path (that would re-bill the vendor on
   # a Resque retry). The hold itself is already recorded by ScreeningService; the officer sees it in
@@ -78,7 +67,9 @@ class ProcessScreeningJob
       subject_ref: payload['correlation_id'],
       screening_id: payload['screening_id'],
       callback_url: payload['callback_url'],
-      account: payload['account']
+      account: payload['account'],
+      subject: payload['subject'],
+      soptionalid: payload['soptionalid']
     )
   rescue StandardError => e
     Rails.logger.error("[ProcessScreeningJob] #{payload['correlation_id']} pending-signup hold failed: #{e.class}")

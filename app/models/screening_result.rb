@@ -57,17 +57,18 @@ class ScreeningResult < ScreeningRecord
   # held them). So:
   #   - transstatus == "On Hold-RPS" -> HOLD (explicit vendor on-hold wins, even over a clean alert)
   #   - transstatus == "Passed"      -> PASS (explicit vendor pass)
-  #   - transstatus blank (the norm) -> the SEVERITY is the verdict: a clean/allow-listed level with no
-  #     adverse jurisdiction (effective_alert_level in ALLOWED_LEVELS = nomatch/wl/al) passes; a match
-  #     (yellow/red/double_red/triple_red), an unknown level, or a sanctioned-jurisdiction association
-  #     (effective_alert_level forced RED) all HOLD.
+  #   - transstatus blank (the norm) -> the Descartes alert_level is the verdict: a clean/allow-listed
+  #     level (nomatch/wl/al) passes; a match (yellow/red/double_red/triple_red) or an unknown level HOLDs.
+  # The verdict is Descartes' alone. Our embargo list and the vendor risk_country flag are recorded on the
+  # row (country / risk_country / jurisdiction_risk) as evidence but do NOT change the decision: any
+  # country-based screening rule belongs in the Visual Compliance profile, where an officer adjudicates it.
   # Still fail-closed: a pass requires an affirmative clean signal (explicit "Passed" OR an explicit
   # allow-listed no-match severity) -- never uncertainty.
   def passed?
     return false if transstatus == TRANSSTATUS_ON_HOLD
     return true if transstatus == TRANSSTATUS_PASSED
 
-    ALLOWED_LEVELS.include?(effective_alert_level)
+    ALLOWED_LEVELS.include?(alert_level)
   end
 
   # Hold decision -- the inverse of the release decision above. Fail-closed: anything that is not an
@@ -76,16 +77,15 @@ class ScreeningResult < ScreeningRecord
     !passed?
   end
 
-  # Severity-side helper: true for the explicitly allow-listed alert levels (raw, pre-jurisdiction). The
-  # authoritative release decision is passed?/hold_required? (which uses effective_alert_level so the
-  # sanctioned-jurisdiction backstop applies); this stays a plain severity view.
+  # Severity-side helper: true for the explicitly allow-listed alert levels. The authoritative release
+  # decision is passed?/hold_required?.
   def alert_allowed?
     ALLOWED_LEVELS.include?(alert_level)
   end
 
-  # Effective severity for triage/display. A sanctioned-jurisdiction association (jurisdiction_risk,
-  # stamped at screen time from our embargo list or the vendor's risk_country) is RED regardless of the
-  # vendor's name-match severity -- the zero-tolerance geo rule. Otherwise the vendor alert_level.
+  # Severity for triage/DISPLAY only (never the decision -- see passed?). A row stamped with
+  # jurisdiction_risk (our embargo list or the vendor's risk_country) shows as RED so it stands out to a
+  # reviewer. Otherwise the vendor alert_level.
   def effective_alert_level
     jurisdiction_risk? ? ALERT_RED : alert_level
   end
