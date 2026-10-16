@@ -127,13 +127,13 @@ RSpec.describe ProvisionScreenedAccountJob do
       expect(user.czid_account_email).to be_nil
     end
 
-    it 'deletes any stored request when the applicant is denied' do
+    it 'KEEPS the stored request when the applicant is denied (a denial can be reversed; the record stays)' do
       CzidTransferRequest.create!(email: 'jane@ucsf.edu', wants_czid_data_transferred: true,
                                   czid_account_email: 'jane@czid.org')
 
       described_class.new.run('decision' => 'denied', 'correlation_id' => 'Signup:x', 'account' => account)
 
-      expect(CzidTransferRequest.find_by(email: 'jane@ucsf.edu')).to be_nil
+      expect(CzidTransferRequest.find_by(email: 'jane@ucsf.edu')).to be_present
     end
   end
 
