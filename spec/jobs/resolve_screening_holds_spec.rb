@@ -230,6 +230,19 @@ RSpec.describe ResolveScreeningHolds, type: :job do
     end
   end
 
+  describe '#run -- error-hold retry' do
+    it 're-screens errored signups (ScreeningRetry) on every enabled run' do
+      enable!
+      expect(ExportControl::ScreeningRetry).to receive(:run)
+      run_with([])
+    end
+
+    it 'does not retry when the flag is OFF' do
+      expect(ExportControl::ScreeningRetry).not_to receive(:run)
+      described_class.new.run
+    end
+  end
+
   describe '#run -- OFF-by-default self-skip (full no-op)' do
     it 'when the flag is OFF: polls NOTHING, writes NOTHING, does not build a client' do
       # Flag defaults off; do not set it.

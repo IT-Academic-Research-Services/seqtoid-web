@@ -32,8 +32,8 @@
 # ============================ ERROR-HOLD RELEASE (SMP-1692) ============================
 # A fail-closed ERROR hold (screening_result_id NULL) cannot be adjudicated by the Incident-Manager
 # poller -- there is no incident. It is released by RE-SCREEN: when a subsequent screen for the subject
-# comes back CLEAN (or the subject is whitelisted), screen() releases that subject's active error holds
-# (the transient vendor failure has resolved). An operator backstop exists for stuck holds:
+# reaches Visual Compliance (clean, or a match that then goes to an officer), screen() releases that
+# subject's active error holds. Signups are re-screened automatically by ExportControl::ScreeningRetry. An operator backstop exists for stuck holds:
 # `rake export_control:release_error_holds[<subject_ref>]` (lib/tasks/export_control_holds.rake).
 #
 # ============================ FAIL-CLOSED (only when ON) ============================
@@ -170,6 +170,9 @@ module ExportControl
         # SMP-1684: record counsel's hit-handling policy; never downgrade a hit to an allow.
         policy = ExportControl::ScreeningPolicy.hit_handling
         hold = create_hold(subject, Hold::REASON_SCREENING_HIT, screening_result)
+        # Visual Compliance has now actually screened the subject: its match (and the officer's verdict on
+        # it) governs, so a stale fail-closed error hold is superseded.
+        release_error_holds(subject, resolution_status: 'superseded-by-screen')
         # SMP-1253 audit: identifiers only -- never the screened party's name/address.
         ExportControl::ScreeningAudit.record(
           "screen.held",
@@ -228,7 +231,10 @@ module ExportControl
     # alert. Without one, a total Descartes failure looks identical to a run of genuinely-flagged
     # applicants, and nobody notices for days.
     def hold_on_error(subject, error: nil)
-      hold = create_hold(subject, Hold::REASON_SCREENING_ERROR, nil)
+      # One active error hold per subject: a repeated failure (a retry during a vendor outage) reuses it
+      # rather than stacking a new row per attempt.
+      hold = Hold.active.find_by(subject_ref: subject.subject_ref, reason: Hold::REASON_SCREENING_ERROR) ||
+             create_hold(subject, Hold::REASON_SCREENING_ERROR, nil)
       ExportControl::ScreeningAudit.report_failure(
         "screen.error",
         error: error,

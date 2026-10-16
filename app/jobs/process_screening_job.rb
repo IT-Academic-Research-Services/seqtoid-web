@@ -29,6 +29,8 @@ class ProcessScreeningJob
     outcome = ExportControl::ScreeningService.new.screen_if_enabled(subject_from(payload))
     if outcome&.allowed?
       post_callback(payload, decision: 'approved', path: 'auto', account: payload['account'])
+      # A retried screen (ExportControl::ScreeningRetry) that now passes closes out the signup it held.
+      PendingSignup.pending_for(payload['correlation_id'])&.resolve!(decision: PendingSignup::DECISION_APPROVED)
     elsif outcome
       # A Descartes match or a fail-closed error. HOLD the applicant account data (piece 5b) so the
       # resolution poller can drive the approved/denied callback once a compliance officer adjudicates the
@@ -65,7 +67,9 @@ class ProcessScreeningJob
       subject_ref: payload['correlation_id'],
       screening_id: payload['screening_id'],
       callback_url: payload['callback_url'],
-      account: payload['account']
+      account: payload['account'],
+      subject: payload['subject'],
+      soptionalid: payload['soptionalid']
     )
   rescue StandardError => e
     Rails.logger.error("[ProcessScreeningJob] #{payload['correlation_id']} pending-signup hold failed: #{e.class}")
