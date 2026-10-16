@@ -45,10 +45,11 @@ RSpec.describe ScreeningResult, type: :model do
       expect(build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_TRIPLE_RED)).to be_hold_required
     end
 
-    it "holds a clean no-match when a sanctioned-jurisdiction association forces effective RED" do
+    it "passes a clean Descartes no-match even when jurisdiction evidence is stamped (VC decides)" do
       res = build(:screening_result, transstatus: nil, alert_level: ScreeningResult::ALERT_NOMATCH,
                                       jurisdiction_risk: true)
-      expect(res).to be_hold_required
+      expect(res).to be_passed
+      expect(res.effective_alert_level).to eq(ScreeningResult::ALERT_RED) # still flagged for display
     end
   end
 
