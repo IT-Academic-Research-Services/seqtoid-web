@@ -1,3 +1,5 @@
+require './lib/json_logging'
+
 class ApplicationController < ActionController::Base
   before_action :authenticate_user!
   before_action :check_for_maintenance
@@ -177,7 +179,7 @@ class ApplicationController < ActionController::Base
   # Set current user and request to global for use in logging in ActiveRecord.
   # See https://stackoverflow.com/a/11670283/200312
   def set_current_context_for_logging!
-    JsonLogging.CurrentContext.user_id = current_user&.id
+    JsonLogging::CurrentContext.user_id = current_user&.id
     ApplicationRecord._current_user = current_user if current_user
     ApplicationRecord._current_request = request if request
   rescue StandardError => e
