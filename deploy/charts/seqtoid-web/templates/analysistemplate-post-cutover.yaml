@@ -1,0 +1,66 @@
+{{- if and (eq .Values.rolloutStrategy "pingpong") .Values.pingpong.postCutoverCheck.enabled -}}
+# Post-cutover check for pingpong auto-promotion (rollout.yaml runs it right after setWeight: 100).
+#
+# By the time this runs, 100% of traffic is on the new color, but the previous color is still up:
+# Argo only scales it down once every step has passed. So this is the last word on the release.
+# Each measurement is a short Job that GETs every check path on the LIVE site, through the public
+# host and the ALB -- the exact path a user takes -- and fails on anything outside the accepted
+# statuses. If more than failureLimit measurements fail, the analysis fails, the rollout ABORTS and
+# Argo moves the ALB weight straight back to the previous color. No human, no kubectl.
+#
+# count x interval sets how long the new build must stay healthy under real traffic before it is
+# final (default 10 x 30s = 5 minutes). failureLimit tolerates a single transient blip; two
+# failed measurements roll back. Statuses match the PreSync smoke gate: 200 or a clean redirect.
+{{- $host := .Values.pingpong.postCutoverCheck.host | default .Values.smoke.host | default (.Values.ingress).host }}
+{{- $paths := .Values.pingpong.postCutoverCheck.paths | default .Values.smoke.paths }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-post-cutover
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+spec:
+  metrics:
+    - name: live-site
+      count: {{ .Values.pingpong.postCutoverCheck.count }}
+      interval: {{ .Values.pingpong.postCutoverCheck.interval | quote }}
+      failureLimit: {{ .Values.pingpong.postCutoverCheck.failureLimit }}
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 120
+            ttlSecondsAfterFinished: 600
+            template:
+              metadata:
+                labels:
+                  {{- include "seqtoid-web.labels" . | nindent 18 }}
+                  app.kubernetes.io/component: post-cutover-check
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: live-site
+                    image: {{ .Values.smoke.image | quote }}
+                    env:
+                      - name: BASE_URL
+                        value: {{ printf "https://%s" (required "pingpong.postCutoverCheck needs a host (postCutoverCheck.host, smoke.host or ingress.host)" $host) | quote }}
+                      - name: PATHS
+                        value: {{ $paths | join " " | quote }}
+                      - name: ACCEPT
+                        value: {{ .Values.smoke.gate.acceptStatuses | quote }}
+                      - name: TIMEOUT
+                        value: {{ .Values.smoke.timeoutSeconds | quote }}
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        set -eu
+                        for p in $PATHS; do
+                          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "$BASE_URL$p" || true)
+                          case " $ACCEPT " in
+                            *" $code "*) echo "ok $BASE_URL$p -> $code" ;;
+                            *) echo "FAIL $BASE_URL$p -> $code"; exit 1 ;;
+                          esac
+                        done
+                        echo "live site OK"
+{{- end }}
