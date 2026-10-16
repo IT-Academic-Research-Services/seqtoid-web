@@ -165,6 +165,25 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
   end
 
   describe '#screen -- fail-closed error paths (HOLD, no screening row, never allow)' do
+    it 'reuses the active error hold on a repeated failure instead of stacking rows' do
+      existing = create(:hold, :error, subject_ref: 'User:42')
+      stub_request(:post, search_url).to_timeout
+
+      expect { @outcome = service.screen(party) }.not_to change(Hold, :count)
+      expect(@outcome.hold).to eq(existing)
+    end
+
+    it 'a match on re-screen supersedes the error hold (the officer now decides)' do
+      error_hold = create(:hold, :error, subject_ref: 'User:42')
+      stub_request(:post, search_url)
+        .to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-sup'), headers: json_headers)
+
+      outcome = service.screen(party)
+      expect(outcome.hold.reason).to eq(Hold::REASON_SCREENING_HIT)
+      expect(error_hold.reload).not_to be_active
+      expect(error_hold.resolution_status).to eq('superseded-by-screen')
+    end
+
     it 'HOLDs on a per-search error (nomatch == E)' do
       body = JSON.dump('transstatus' => 'On Hold-RPS', 'smaxalert' => '',
                        'searches' => [{ 'nomatch' => 'E',

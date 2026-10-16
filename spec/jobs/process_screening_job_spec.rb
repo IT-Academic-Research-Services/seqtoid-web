@@ -54,6 +54,25 @@ RSpec.describe ProcessScreeningJob do
     expect(signup.account_payload['email']).to eq('jane@ucsf.edu')
   end
 
+  it 'keeps the screened party on the held signup so an errored screen can be retried' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
+    described_class.new.run(payload)
+
+    signup = PendingSignup.pending_for('User:42')
+    expect(signup.subject_hash['country']).to eq('US')
+    expect(signup.soptionalid).to eq('42')
+  end
+
+  it 'resolves a previously held signup when its re-screen now passes' do
+    PendingSignup.hold!(subject_ref: 'User:42', screening_id: 'scr-1', callback_url: 'http://cb', account: {})
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:allowed))
+    allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+    described_class.new.run(payload)
+    expect(PendingSignup.pending_for('User:42')).to be_nil
+    expect(PendingSignup.for_subject('User:42').sole.decision).to eq(PendingSignup::DECISION_APPROVED)
+  end
+
   it 'also holds a signup on an error outcome (fail-closed but recoverable by the poller)' do
     allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
     expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)

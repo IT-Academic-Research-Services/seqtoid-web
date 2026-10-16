@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_16_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_16_000002) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000000", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -477,6 +477,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_000001) do
     t.datetime "resolved_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "subject_payload"
+    t.string "soptionalid"
+    t.integer "screen_attempts", default: 0, null: false
+    t.datetime "last_screen_attempt_at"
     t.index ["subject_ref", "status"], name: "index_pending_signups_on_subject_ref_and_status"
   end
 

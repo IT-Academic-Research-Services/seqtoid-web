@@ -32,6 +32,37 @@ RSpec.describe PendingSignup, type: :model do
     end
   end
 
+  describe 'retry data (screened party for an errored screen)' do
+    let(:subject_hash) { { 'name' => 'Jane Doe', 'country' => 'KE' } }
+
+    it 'keeps the screened party (encrypted) and soptionalid, and builds the original screen payload' do
+      row = described_class.hold!(subject_ref: 'Signup:1', screening_id: 'scr-1', callback_url: 'http://cb',
+                                  account: { 'email' => 'jane@example.edu' }, subject: subject_hash,
+                                  soptionalid: '0')
+      raw = described_class.connection.select_value(
+        described_class.sanitize_sql(["SELECT subject_payload FROM pending_signups WHERE id = ?", row.id])
+      )
+      expect(raw).not_to include('Jane Doe')
+      expect(row.reload.retry_payload).to eq(
+        'screening_id' => 'scr-1', 'correlation_id' => 'Signup:1', 'soptionalid' => '0',
+        'subject' => subject_hash, 'account' => { 'email' => 'jane@example.edu' }, 'callback_url' => 'http://cb'
+      )
+    end
+
+    it 'a replay without subject keeps the stored one and never resets the attempt counter' do
+      row = described_class.hold!(subject_ref: 'Signup:1', screening_id: 'scr-1', callback_url: 'http://cb',
+                                  account: {}, subject: subject_hash)
+      row.update!(screen_attempts: 3)
+      described_class.hold!(subject_ref: 'Signup:1', screening_id: 'scr-1', callback_url: 'http://cb', account: {})
+      expect(row.reload.subject_hash).to eq(subject_hash)
+      expect(row.screen_attempts).to eq(3)
+    end
+
+    it 'returns {} for a row with no stored subject' do
+      expect(create(:pending_signup).subject_hash).to eq({})
+    end
+  end
+
   describe '.hold!' do
     it 'creates a pending signup for the subject' do
       expect do
