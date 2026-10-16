@@ -69,7 +69,7 @@
     "babel-plugin-transform-imports": "^2.0.0",
     "babel-plugin-transform-replace-object-assign": "^2.0.0",
     "browserslist": "^4.28.7",
-    "css-loader": "^3.4.2",
+    "css-loader": "^7.1.5",
     "cssnano": "^8.0.2",
     "depcheck": "^1.4.3",
     "eslint": "^7.1.0",
