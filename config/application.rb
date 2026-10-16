@@ -75,6 +75,10 @@ module Czid
     # has none of the old ids), so DEFAULT_BACKGROUND_ID overrides the historical 26. Where the id does not
     # exist, heatmap code falls back to the first public background (HeatmapIndexing.default_background_id).
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
+
+    # Include generic and useful information about system operation, but avoid logging too much
+    # information to avoid inadvertent exposure of personally identifiable information (PII).
+    config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
   end
 end
 

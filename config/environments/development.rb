@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require './lib/json_logging'
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
@@ -104,9 +105,6 @@ Rails.application.configure do
   # Include generic and useful information about system operation, but avoid logging too much
   # information to avoid inadvertent exposure of personally identifiable information (PII).
   config.log_level = :debug
-
-  # Prepend all log lines with the following tags.
-  config.log_tags = [:request_id]
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque
@@ -223,31 +221,15 @@ Rails.application.configure do
   # that sample sequence content is written verbatim into a log stream that ships to
   # an aggregator (and, if enabled, to a third-party log vendor).
   #
+  JsonLogging.init_logging(config)
   # Only `development` had this: sandbox/staging/prod already run :info.
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.colorize_logging = false
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-  ActiveRecord::Base.logger = Logger.new(STDOUT)
-  ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
+  # ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
+  ActiveRecord::Base.logger.level = :info if ActiveRecord::Base.logger # TODO: For testing PROD configuration
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
 
-  # Development logging configuration
-  logger           = ActiveSupport::Logger.new(STDOUT)
-  logger.formatter = config.log_formatter
-  config.logger    = ActiveSupport::TaggedLogging.new(logger)
   config.log_to = %w[stdout file]
   config.active_record.verbose_query_logs = true
 

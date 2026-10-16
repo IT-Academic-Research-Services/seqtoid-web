@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require './lib/json_logging'
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
@@ -27,16 +28,16 @@ Rails.application.configure do
   # load, which ABORTS boot before the app can serve anything. When the var is set the
   # behavior is unchanged; when it is unset we fall back to :null_store, matching how
   # development.rb degrades when caching is disabled. (#594)
-  if ENV['REDISCLOUD_URL'].present?
-    config.cache_store = :redis_cache_store,
-                         {
-                           url: ENV['REDISCLOUD_URL'] + '/0/cache',
-                           # Needed for redis to evict keys in volatile-lru mode
-                           expires_in: 30.days,
-                         }
-  else
-    config.cache_store = :null_store
-  end
+  config.cache_store = if ENV['REDISCLOUD_URL'].present?
+                         [:redis_cache_store,
+                          {
+                            url: ENV['REDISCLOUD_URL'] + '/0/cache',
+                            # Needed for redis to evict keys in volatile-lru mode
+                            expires_in: 30.days,
+                          },]
+                       else
+                         :null_store
+                       end
   # Rails 7.1 removed the `config.session_store = ...` assignment form: it routes through
   # Railtie::Configuration#method_missing and raises NoMethodError ("Cannot assign to
   # `session_store`, it is a configuration method"), aborting boot. Use the supported
@@ -75,13 +76,6 @@ Rails.application.configure do
   config.force_ssl = true
   config.ssl_options = { redirect: { exclude: ->(request) { request.path =~ /health_check/ } } }
 
-  # Include generic and useful information about system operation, but avoid logging too much
-  # information to avoid inadvertent exposure of personally identifiable information (PII).
-  config.log_level = :info
-
-  # Prepend all log lines with the following tags.
-  config.log_tags = [:request_id]
-
   config.serve_static_assets = true
 
   # Use a different cache store in production.
@@ -119,29 +113,12 @@ Rails.application.configure do
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
 
-  # Deployed logging configuration
-  config.log_level = :info
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.colorize_logging = false
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
+  JsonLogging.init_logging(config)
   ActiveRecord::Base.logger.level = 1 if ActiveRecord::Base.logger
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = false
 
   # Set the logging destination(s)
-  logger           = ActiveSupport::Logger.new(STDOUT)
-  logger.formatter = config.log_formatter
-  config.logger    = ActiveSupport::TaggedLogging.new(logger)
   config.log_to = %w[stdout]
 end
