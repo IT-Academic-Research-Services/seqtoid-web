@@ -19,6 +19,11 @@
 # force. Any transport/parse/credential error raises out of the client and is logged; the watermark is
 # NOT advanced, so the same window is re-polled next run. No verdict is ever inferred from an error.
 #
+# ============================ ERROR-HOLD RETRY ============================
+# Each run first calls ExportControl::ScreeningRetry, which re-screens signups held on a fail-closed
+# vendor ERROR (with backoff), so every applicant reaches Visual Compliance. It shares this schedule entry
+# and queue (and the same per-env schedule exclusion) on purpose.
+#
 # ============================ IDEMPOTENT ============================
 # Re-processing the same verdict is a no-op: Hold#release! keeps the first release timestamp, and
 # incident_id is written only when absent. Safe to re-run over an overlapping window.
@@ -51,6 +56,10 @@ class ResolveScreeningHolds
       Rails.logger.info('[ResolveScreeningHolds] skipped: Descartes RPS resolution endpoint not configured')
       return
     end
+
+    # Re-screen signups whose screen errored (Visual Compliance never saw them). Never raises, so a retry
+    # problem cannot stop the verdict poll below.
+    ExportControl::ScreeningRetry.run
 
     time_from = poll_from
     time_to = Time.now.utc
