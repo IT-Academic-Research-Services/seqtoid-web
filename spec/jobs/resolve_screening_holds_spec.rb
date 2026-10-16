@@ -361,6 +361,37 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(denied.reload).not_to be_reinstated
     end
 
+    it 'ALERTS when an officer clears a signup that has no pending or archived record (applicant fell through)' do
+      sr = create(:screening_result, :red, subject_ref: 'Signup:lost1', sdistributedid: '930001')
+      create(:hold, subject_ref: 'Signup:lost1', screening_result: sr, reason: Hold::REASON_SANCTIONED_JURISDICTION)
+      allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '930001')])
+
+      expect(ExportControl::ScreeningAudit).to have_received(:report_failure)
+        .with('signup.verdict_unmatched', hash_including(subject_ref: 'Signup:lost1', decision: 'approved',
+                                                         resolution_status: 'Cleared', incident_id: '930001'))
+    end
+
+    it 'stays quiet on a re-poll of an already-resolved signup verdict' do
+      held_subject(sdistributedid: '930002', subject_ref: 'Signup:done1')
+      create(:pending_signup, :resolved, subject_ref: 'Signup:done1')
+      allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '930002')])
+
+      expect(ExportControl::ScreeningAudit).not_to have_received(:report_failure).with('signup.verdict_unmatched', anything)
+    end
+
+    it 'stays quiet for a non-signup (User:<id>) screen' do
+      held_subject(sdistributedid: '930003', subject_ref: 'User:930003')
+      allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '930003')])
+
+      expect(ExportControl::ScreeningAudit).not_to have_received(:report_failure).with('signup.verdict_unmatched', anything)
+    end
+
     it 'does nothing when there is no held signup for the subject' do
       held_subject(sdistributedid: '900003', subject_ref: 'User:902')
       expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)
