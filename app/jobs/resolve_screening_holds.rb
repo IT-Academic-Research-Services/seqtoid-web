@@ -216,7 +216,8 @@ class ResolveScreeningHolds
   end
 
   # No pending signup: the applicant may have been AUTO-DENIED (sanctioned jurisdiction) and archived in
-  # denied_signups. An officer CLEAR reverses that auto-denial -- post the approved callback from the archived
+  # denied_signups. New screens are never auto-denied (Visual Compliance decides everything), so this only
+  # reconciles legacy auto-denials archived before that change. An officer CLEAR reverses that auto-denial -- post the approved callback from the archived
   # account and stamp the reinstatement (the row is kept as history). An officer True Hit confirms it -- record
   # the officer's resolution on the archive; the applicant was already sent the denial, so nothing is re-posted.
   # Same posture as the pending path: the callback is posted BEFORE the stamp, so a transport failure leaves

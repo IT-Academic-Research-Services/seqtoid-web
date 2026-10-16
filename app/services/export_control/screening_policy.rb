@@ -43,9 +43,9 @@ module ExportControl
     }.freeze
 
     # ---------------------------------------------------------------------------------------------
-    # Sanctioned-jurisdiction backstop (Layer B: account/access screening). An association with a
-    # sanctioned jurisdiction is a hard HOLD (Hold::REASON_SANCTIONED_JURISDICTION) and RED severity,
-    # regardless of name-match or transstatus.
+    # Sanctioned-jurisdiction list. For account screening this is EVIDENCE ONLY: it is stamped onto
+    # screening_results (jurisdiction_risk) for reviewers but never changes the decision, which is Visual
+    # Compliance's. Layers 1/2 (WAF geo rule + edge Lambda) still enforce it on network access.
     #
     # SINGLE SOURCE OF TRUTH: the enforced list is NOT edited here. It is read from the SAME
     # blocked-jurisdictions.json that the Layer-1 WAF geo rule + the Layer-2 edge Lambda consume
@@ -67,8 +67,8 @@ module ExportControl
       %w[CU IR KP RU SY UA].freeze
     end
 
-    # True when the screened party's country is on the in-house embargo list. Blank => false (the
-    # vendor's risk_country flag is the other half of the jurisdiction signal; see ScreeningService).
+    # True when the screened party's country is on the in-house embargo list. Blank => false. Evidence only
+    # for account screening (see ScreeningService).
     def sanctioned_country?(country)
       code = country.to_s.strip.upcase
       return false if code.empty?
@@ -95,8 +95,8 @@ module ExportControl
     end
 
     # ---------------------------------------------------------------------------------------------
-    # Whitelist / allow-table (the WL/AL known-good mechanism). Institutional users counsel has cleared,
-    # to suppress recurring false positives. Empty => nobody (fail-closed).
+    # Whitelist / allow-table. NOT consulted by ScreeningService any more: allow-listing is done in Visual
+    # Compliance itself (alert levels wl/al), so the vendor sees every subject. Empty => nobody.
     # ---------------------------------------------------------------------------------------------
     def whitelist
       list = AppConfigHelper.get_json_app_config(AppConfig::EXPORT_CONTROL_SCREENING_WHITELIST, [])

@@ -6,8 +6,9 @@ class Hold < ScreeningRecord
   # Why a hold was placed. Kept explicit so the record is self-describing.
   REASON_SCREENING_HIT = "screening_hit".freeze # a real alert-level match
   REASON_SCREENING_ERROR = "screening_error".freeze # fail-closed: vendor error/timeout/misconfig
-  # Zero-tolerance geo rule: the screened party is associated with a sanctioned jurisdiction (our
-  # in-house embargo list or the vendor's risk_country flag). A hard HOLD regardless of name-match.
+  # LEGACY (no longer created): the app-side jurisdiction rule that held/auto-denied on our embargo list or
+  # the vendor's risk_country flag. Screening decisions are now Visual Compliance's alone; kept so existing
+  # rows stay valid.
   REASON_SANCTIONED_JURISDICTION = "sanctioned_jurisdiction".freeze
   REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR, REASON_SANCTIONED_JURISDICTION].freeze
 
