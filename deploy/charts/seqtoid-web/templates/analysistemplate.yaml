@@ -1,5 +1,6 @@
-{{- if .Values.blueGreen.analysis.enabled -}}
-# Smoke gate for the blueGreen promotion. Job-based first cut (Prometheus-backed
+{{- if and (ne .Values.rolloutStrategy "pingpong") .Values.blueGreen.analysis.enabled -}}
+# Smoke gate for the blueGreen promotion (blueGreen only: under pingpong there is no -preview
+# Service, so rendering it there only left an unused template behind). Job-based first cut (Prometheus-backed
 # metrics later, #326): curl the PREVIEW color's /health_check (+ any smoke.paths)
 # and require an accepted status. A failure aborts the rollout -> the active color is untouched.
 # The preview Service name is known at render time, so we target it directly rather
