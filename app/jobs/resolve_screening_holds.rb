@@ -224,7 +224,10 @@ class ResolveScreeningHolds
   def reconcile_auto_denial(subject_ref, decision:, verdict:)
     denied = DeniedSignup.for_subject(subject_ref).not_reinstated
                          .where(decided_by: DeniedSignup::DECIDED_BY_AUTO).order(id: :desc).first
-    return if denied.nil?
+    if denied.nil?
+      alert_unmatched_verdict(subject_ref, decision: decision, verdict: verdict)
+      return
+    end
 
     if decision == PendingSignup::DECISION_DENIED
       denied.update!(resolution_status: verdict&.shstatus)
@@ -249,6 +252,22 @@ class ResolveScreeningHolds
     Rails.logger.info("[ResolveScreeningHolds] auto-denial REINSTATED subject=#{subject_ref} status=#{verdict&.shstatus}")
   rescue StandardError => e
     LogUtil.log_error('[ResolveScreeningHolds] auto-denial reinstatement failed; left for retry', exception: e)
+  end
+
+  # A terminal officer verdict for a SIGNUP that has nothing on our side to act on -- no pending signup and no
+  # archived denial, in any state -- means an applicant fell through: the officer decided, and no account
+  # will be created or denial recorded. That used to be a silent `return`. Alert (identifiers only) so it is
+  # followed up. Re-polls of an already-handled verdict find the resolved/archived row and stay quiet, and
+  # non-signup screens (User:<id> backstop re-screens) never had a signup to begin with.
+  def alert_unmatched_verdict(subject_ref, decision:, verdict:)
+    return unless subject_ref.to_s.start_with?('Signup:')
+    return if PendingSignup.for_subject(subject_ref).exists? || DeniedSignup.for_subject(subject_ref).exists?
+
+    ExportControl::ScreeningAudit.report_failure(
+      'signup.verdict_unmatched',
+      subject_ref: subject_ref, decision: decision, resolution_status: verdict&.shstatus,
+      incident_id: verdict&.shresult_id
+    )
   end
 
   # Stamp the IM audit-record id on the screen (evidence). Idempotent: written only when absent so a
