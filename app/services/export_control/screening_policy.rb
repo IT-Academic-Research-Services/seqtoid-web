@@ -76,6 +76,14 @@ module ExportControl
       SANCTIONED_COUNTRIES.include?(code)
     end
 
+    # True when the vendor's risk_country flag on its own (no match on our embargo list) should take the
+    # sanctioned-jurisdiction auto-deny path. Defaults to true (unchanged behaviour) unless counsel sets
+    # AppConfig::EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY to exactly "0", which routes those screens
+    # to manual review instead. Never affects our own list: sanctioned_country? always auto-denies.
+    def vendor_risk_country_auto_deny?
+      AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY).to_s.strip != '0'
+    end
+
     # The srpsgroupbypass string, e.g. "12" for Export+Munitions. "" => Descartes profile default.
     def rps_groups
       raw = AppConfigHelper.get_app_config(AppConfig::EXPORT_CONTROL_RPS_GROUPS).presence ||

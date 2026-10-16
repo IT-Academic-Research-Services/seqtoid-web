@@ -9,7 +9,13 @@ class Hold < ScreeningRecord
   # Zero-tolerance geo rule: the screened party is associated with a sanctioned jurisdiction (our
   # in-house embargo list or the vendor's risk_country flag). A hard HOLD regardless of name-match.
   REASON_SANCTIONED_JURISDICTION = "sanctioned_jurisdiction".freeze
-  REASONS = [REASON_SCREENING_HIT, REASON_SCREENING_ERROR, REASON_SANCTIONED_JURISDICTION].freeze
+  # The vendor's risk_country flag fired but the declared country is NOT on our embargo list, and
+  # counsel has switched that flag from auto-deny to manual review
+  # (AppConfig::EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY = "0"). Adjudicated like a screening_hit.
+  REASON_VENDOR_COUNTRY_RISK = "vendor_country_risk".freeze
+  REASONS = [
+    REASON_SCREENING_HIT, REASON_SCREENING_ERROR, REASON_SANCTIONED_JURISDICTION, REASON_VENDOR_COUNTRY_RISK,
+  ].freeze
 
   # Terminal IM adjudication outcomes recorded on the hold (SMP-1253 audit trail).
   DISPOSITION_RELEASED = "released".freeze

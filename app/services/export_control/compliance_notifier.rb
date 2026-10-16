@@ -58,7 +58,7 @@ module ExportControl
     # for an unrecognized reason so notify_hold sends nothing rather than guessing.
     def build_mail(hold, recipients)
       case hold.reason
-      when Hold::REASON_SCREENING_HIT
+      when Hold::REASON_SCREENING_HIT, Hold::REASON_VENDOR_COUNTRY_RISK
         ComplianceMailer.screening_hold_placed(
           recipients: recipients,
           hold_id: hold.id,

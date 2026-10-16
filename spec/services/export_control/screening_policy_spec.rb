@@ -150,4 +150,20 @@ RSpec.describe ExportControl::ScreeningPolicy do
       expect(described_class::SANCTIONED_COUNTRIES).not_to be_empty
     end
   end
+
+  describe '.vendor_risk_country_auto_deny?' do
+    it 'defaults to true (auto-deny, the go-live behaviour) when unset' do
+      expect(described_class.vendor_risk_country_auto_deny?).to be(true)
+    end
+
+    it 'is false only for exactly "0"' do
+      AppConfigHelper.set_app_config(AppConfig::EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY, '0')
+      expect(described_class.vendor_risk_country_auto_deny?).to be(false)
+    end
+
+    it 'stays true for any other value (no accidental opt-out)' do
+      AppConfigHelper.set_app_config(AppConfig::EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY, 'off')
+      expect(described_class.vendor_risk_country_auto_deny?).to be(true)
+    end
+  end
 end

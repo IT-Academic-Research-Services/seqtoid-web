@@ -148,6 +148,38 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
       expect(@outcome.screening_result.jurisdiction_risk).to be(true)
       expect(@outcome.hold.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
     end
+
+    context 'when counsel routes the vendor risk_country flag to manual review' do
+      before { AppConfigHelper.set_app_config(AppConfig::EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY, '0') }
+
+      let(:risky_clean) do
+        JSON.dump(
+          'transstatus' => 'Passed', 'smaxalert' => '', 'sguid' => 'g-rc',
+          'searches' => [{ 'soptionalid' => '42', 'riskcountry' => '1', 'nomatch' => '1', 'results' => [] }]
+        )
+      end
+
+      it 'holds a vendor-only flag for an officer instead of the sanctioned (auto-deny) reason' do
+        stub_request(:post, search_url).to_return(status: 200, body: risky_clean, headers: json_headers)
+
+        expect { @outcome = service.screen(party) }.to change(Hold, :count).by(1) # party.country == 'US'
+        expect(@outcome.decision).to eq(:held)
+        expect(@outcome.hold.reason).to eq(Hold::REASON_VENDOR_COUNTRY_RISK)
+        # The vendor signal is still recorded as durable evidence.
+        expect(@outcome.screening_result.jurisdiction_risk).to be(true)
+        expect(@outcome.screening_result.risk_country).to eq(1)
+      end
+
+      it 'still takes the sanctioned path when the declared country is on our embargo list' do
+        embargoed = ExportControl::ScreeningService::Subject.new(
+          subject_ref: 'User:99', subject_type: 'User', name: 'Jane Clean', country: 'IR', soptionalid: '99'
+        )
+        stub_request(:post, search_url).to_return(status: 200, body: risky_clean, headers: json_headers)
+
+        outcome = service.screen(embargoed)
+        expect(outcome.hold.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
+      end
+    end
   end
 
   describe '#screen -- fail-closed error paths (HOLD, no screening row, never allow)' do

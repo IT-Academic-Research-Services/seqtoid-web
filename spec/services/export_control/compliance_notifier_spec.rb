@@ -57,6 +57,17 @@ RSpec.describe ExportControl::ComplianceNotifier do
         expect(mail).to have_received(:deliver_later)
       end
 
+      it 'routes a vendor_country_risk hold to screening_hold_placed (it needs adjudication)' do
+        hold = build_stubbed(:hold, reason: Hold::REASON_VENDOR_COUNTRY_RISK)
+        allow(ComplianceMailer).to receive(:screening_hold_placed).and_return(mail)
+
+        described_class.notify_hold(hold)
+
+        expect(ComplianceMailer).to have_received(:screening_hold_placed)
+          .with(hash_including(hold_id: hold.id, subject_ref: hold.subject_ref))
+        expect(mail).to have_received(:deliver_later)
+      end
+
       it 'routes a screening_error to screening_error_alert' do
         hold = build_stubbed(:hold, :error)
         allow(ComplianceMailer).to receive(:screening_error_alert).and_return(mail)

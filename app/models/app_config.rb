@@ -63,6 +63,12 @@ class AppConfig < ApplicationRecord
   # Unknown/blank => "hold" (fail-closed; the policy is NEVER "allow" on a hit). Counsel owns the
   # legally-correct response to a hit.
   EXPORT_CONTROL_HIT_HANDLING = 'export_control_hit_handling'.freeze
+  # Whether the Descartes risk_country flag ALONE (declared country not on our in-house embargo list)
+  # auto-denies a sign-up. Unset/blank/anything but "0" => auto-deny (the behaviour since go-live). "0" =>
+  # the screen is held for compliance-officer review instead (Hold::REASON_VENDOR_COUNTRY_RISK), so an
+  # officer clearance provisions the account. Our own embargo list ALWAYS auto-denies regardless of this
+  # setting. Counsel owns this decision; it is a config row, not a code deploy.
+  EXPORT_CONTROL_VENDOR_RISK_COUNTRY_AUTO_DENY = 'export_control_vendor_risk_country_auto_deny'.freeze
   # CZID-599 -- per-gate-point toggles for the LIVE export-control screening gate (ExportControlScreeningGate).
   # Each turns the ScreeningService caller ON at ONE point, and ONLY when the master
   # AppConfig::ENABLE_EXPORT_CONTROL_LAYER3 is also "1". Both default OFF, so the gate hooks are a full

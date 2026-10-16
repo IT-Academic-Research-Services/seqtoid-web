@@ -145,9 +145,9 @@ module ExportControl
       # regardless of name-match or transstatus. Two independent sources: our in-house embargo list
       # (subject.country) and the vendor's own risk_country flag. Stamped onto the row so the decision
       # is durable evidence even if the embargo list later changes.
-      jurisdiction_risk =
-        ExportControl::ScreeningPolicy.sanctioned_country?(subject.country) ||
-        response.risk_country.to_i >= 1
+      on_embargo_list = ExportControl::ScreeningPolicy.sanctioned_country?(subject.country)
+      vendor_country_flag = response.risk_country.to_i >= 1
+      jurisdiction_risk = on_embargo_list || vendor_country_flag
       screening_result = ScreeningResult.create!(
         subject_ref: subject.subject_ref,
         subject_type: subject.subject_type,
@@ -167,13 +167,21 @@ module ExportControl
       )
 
       # Jurisdiction rule takes precedence over the transstatus/name-match path: a sanctioned-jurisdiction
-      # association HOLDs (RED) even if the name screen returned "Passed"/nomatch.
+      # association HOLDs (RED) even if the name screen returned "Passed"/nomatch. Our own embargo list
+      # always takes the sanctioned path (auto-deny for sign-ups); the vendor flag alone does too unless
+      # counsel has switched it to manual review, in which case it is held for an officer like a hit.
       if jurisdiction_risk
-        hold = create_hold(subject, Hold::REASON_SANCTIONED_JURISDICTION, screening_result)
+        reason =
+          if on_embargo_list || ExportControl::ScreeningPolicy.vendor_risk_country_auto_deny?
+            Hold::REASON_SANCTIONED_JURISDICTION
+          else
+            Hold::REASON_VENDOR_COUNTRY_RISK
+          end
+        hold = create_hold(subject, reason, screening_result)
         ExportControl::ScreeningAudit.record(
           "screen.held",
           subject_ref: subject.subject_ref, decision: "held",
-          alert_level: screening_result.effective_alert_level, reason: Hold::REASON_SANCTIONED_JURISDICTION,
+          alert_level: screening_result.effective_alert_level, reason: reason,
           screening_result_id: screening_result.id, hold_id: hold.id,
           provider: PROVIDER, trace_id: trace_id
         )

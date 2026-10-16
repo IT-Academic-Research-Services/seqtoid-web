@@ -54,6 +54,15 @@ RSpec.describe ProcessScreeningJob do
     expect(signup.account_payload['email']).to eq('jane@ucsf.edu')
   end
 
+  it 'holds (does NOT auto-deny) a signup whose vendor-only country flag was routed to manual review' do
+    hold = Hold.new(subject_ref: 'User:42', reason: Hold::REASON_VENDOR_COUNTRY_RISK)
+    held = ExportControl::ScreeningService::Outcome.new(decision: :held, screening_result: nil, hold: hold)
+    allow(svc).to receive(:screen_if_enabled).and_return(held)
+    expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)
+
+    expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
+  end
+
   it 'also holds a signup on an error outcome (fail-closed but recoverable by the poller)' do
     allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
     expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
