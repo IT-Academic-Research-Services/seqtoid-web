@@ -12,7 +12,7 @@ module JsonLogging
     ougai_logger.level = Ougai::Logger::TRACE
     ougai_logger.before_log = lambda do |data|
       # :request_id,
-      data[:user_id] = JsonLogging.CurrentContext.user_id
+      data[:user_id] = CurrentContext.user_id
       data[:environment] = Rails.env
     end
     config.logger = ougai_logger
