@@ -142,7 +142,8 @@ class ResolveScreeningHolds
         "status=#{verdict.shstatus} incident=#{verdict.shresult_id}"
       )
       # Piece 5b: a cleared hold approves the held signup -- drive the account-provisioning callback.
-      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_APPROVED)
+      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_APPROVED,
+                                                          screening_result: screening_result, holds: holds, verdict: verdict)
     when :deny
       # Terminal deny -- keep the hold in force and record the adjudication durably on
       # the hold (reviewed-and-denied), not just in the log. No release, ever.
@@ -152,7 +153,8 @@ class ResolveScreeningHolds
         "incident=#{verdict.shresult_id}"
       )
       # Piece 5b: a True Hit denies the held signup -- drive the denied callback (no account is created).
-      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_DENIED)
+      drive_signup_callback(screening_result.subject_ref, decision: PendingSignup::DECISION_DENIED,
+                                                          screening_result: screening_result, holds: holds, verdict: verdict)
     else
       # Non-terminal (DS New / Actioned / Escalated / Closed / unknown) -- leave held, no-op.
       Rails.logger.info(
@@ -169,7 +171,9 @@ class ResolveScreeningHolds
   #   - The callback is posted BEFORE resolve!, so a transport failure leaves the signup PENDING and it is
   #     retried on the next poll; the web provisioning is itself idempotent (User.exists?), so a replay is
   #     safe. A callback failure NEVER breaks the hold resolution (its own rescue).
-  def drive_signup_callback(subject_ref, decision:)
+  #   - A DENIED signup is moved to denied_signups (archive_denied!) rather than kept as a resolved row, so
+  #     the denied applicant is retained as a compliance record.
+  def drive_signup_callback(subject_ref, decision:, screening_result: nil, holds: [], verdict: nil)
     signup = PendingSignup.pending_for(subject_ref)
     return if signup.nil?
 
@@ -189,7 +193,18 @@ class ResolveScreeningHolds
       }.compact
     )
     ExportControl::ScreeningServiceClient.post_signed(url, body)
-    signup.resolve!(decision: decision)
+    if decision == PendingSignup::DECISION_DENIED
+      hold = Array(holds).first
+      signup.archive_denied!(
+        reason: hold&.reason || Hold::REASON_SCREENING_HIT,
+        decided_by: DeniedSignup::DECIDED_BY_OFFICER,
+        resolution_status: verdict&.shstatus,
+        screening_result_id: screening_result&.id,
+        hold_id: hold&.id
+      )
+    else
+      signup.resolve!(decision: decision)
+    end
     Rails.logger.info("[ResolveScreeningHolds] signup callback posted subject=#{subject_ref} decision=#{decision}")
   rescue StandardError => e
     # Leave the signup pending (retried next poll); never break the hold resolution.

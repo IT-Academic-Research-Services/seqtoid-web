@@ -294,6 +294,21 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       expect(captured['account']['email']).to eq('applicant@ucsf.edu')
     end
 
+    it 'MOVES the denied signup into denied_signups (kept as a compliance record, not left pending)' do
+      sr, hold = held_subject(sdistributedid: '900005', subject_ref: 'User:904')
+      create(:pending_signup, subject_ref: 'User:904', callback_url: 'http://web/internal/v1/screening_result')
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+      run_with([verdict(status: 'True Hit', shresult_id: '900005')])
+
+      expect(PendingSignup.for_subject('User:904')).to be_empty
+      denied = DeniedSignup.for_subject('User:904').sole
+      expect(denied.decided_by).to eq(DeniedSignup::DECIDED_BY_OFFICER)
+      expect(denied.resolution_status).to eq('True Hit')
+      expect([denied.screening_result_id, denied.hold_id]).to eq([sr.id, hold.id])
+      expect(denied.account_email).to eq('applicant@ucsf.edu')
+    end
+
     it 'does nothing when there is no held signup for the subject' do
       held_subject(sdistributedid: '900003', subject_ref: 'User:902')
       expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)

@@ -81,4 +81,29 @@ RSpec.describe PendingSignup, type: :model do
       expect(described_class.pending_for('User:5')).to eq(live)
     end
   end
+
+  describe '#archive_denied!' do
+    it 'MOVES the signup into denied_signups with its identity and evidence links' do
+      signup = create(:pending_signup, subject_ref: 'Signup:mv', screening_id: 'scr-mv', account_email: 'mv@ucsf.edu')
+
+      denied = signup.archive_denied!(reason: Hold::REASON_SCREENING_HIT, decided_by: 'officer',
+                                      resolution_status: 'True Hit', screening_result_id: 11, hold_id: 22)
+
+      expect(described_class.where(id: signup.id)).to be_empty
+      expect(denied).to be_persisted
+      expect(denied.account_email).to eq('mv@ucsf.edu')
+      expect(denied.pending_signup_id).to eq(signup.id)
+      expect([denied.reason, denied.decided_by, denied.resolution_status])
+        .to eq([Hold::REASON_SCREENING_HIT, 'officer', 'True Hit'])
+      expect([denied.screening_result_id, denied.hold_id]).to eq([11, 22])
+    end
+
+    it 'leaves the pending signup in place if the archive write fails (single transaction)' do
+      signup = create(:pending_signup, subject_ref: 'Signup:tx')
+      allow(DeniedSignup).to receive(:archive!).and_raise(ActiveRecord::RecordInvalid.new(DeniedSignup.new))
+
+      expect { signup.archive_denied!(reason: 'screening_hit', decided_by: 'officer') }.to raise_error(ActiveRecord::RecordInvalid)
+      expect(described_class.where(id: signup.id)).to exist
+    end
+  end
 end
