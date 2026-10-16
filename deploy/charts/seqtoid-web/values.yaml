@@ -125,6 +125,27 @@ pingpong:
   # true (env-prod): hold the new color at full size and 0% traffic until a human promotes, the
   # pingpong equivalent of blueGreen.autoPromotionEnabled: false. See rollout.yaml.
   manualPromotion: false
+  # Auto-promotion with automatic rollback. When enabled, the Rollout cuts over to the new build and
+  # then checks the LIVE site (through the public host + ALB) for count x interval. The previous build
+  # keeps running until the check passes; if it fails, Argo aborts and moves traffic straight back.
+  # Leave manualPromotion false to promote with no human step; set it true as a break-glass hold for a
+  # risky release (the pause comes BEFORE the cutover, the check still runs after). OFF by default, so
+  # every env renders exactly as before until its values opt in.
+  postCutoverCheck:
+    enabled: false
+    # Host to probe over https. Empty -> smoke.host, then ingress.host.
+    host: ""
+    # Paths to probe. Empty -> smoke.paths.
+    paths: []
+    count: 10          # measurements
+    interval: 30s      # between measurements -> 5 minutes in total by default
+    failureLimit: 1    # one transient blip tolerated; two failed measurements roll back
+    # Abort (and roll back) a rollout that has not finished within this many seconds.
+    progressDeadlineSeconds: 900
+
+# Extra annotations on the web pods. A change here rolls the pods through the normal Rollout steps,
+# which is how a release-mechanics change (e.g. the post-cutover check) can be exercised on purpose.
+podAnnotations: {}
 
 # Blue/green strategy knobs (consumed by the Rollout when rolloutStrategy == blueGreen).
 blueGreen:

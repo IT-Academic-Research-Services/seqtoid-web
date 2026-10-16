@@ -20,6 +20,13 @@ spec:
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   revisionHistoryLimit: 3
+  {{- if and (eq .Values.rolloutStrategy "pingpong") .Values.pingpong.postCutoverCheck.enabled }}
+  # Auto-promotion safety net: a rollout that cannot finish (new pods never become healthy, or the
+  # post-cutover check never completes) is ABORTED after this long instead of waiting forever. An
+  # abort sends traffic back to the previous color, which is still running until the rollout finishes.
+  progressDeadlineSeconds: {{ .Values.pingpong.postCutoverCheck.progressDeadlineSeconds }}
+  progressDeadlineAbort: true
+  {{- end }}
   selector:
     matchLabels:
       {{- include "seqtoid-web.selectorLabels" . | nindent 6 }}
@@ -57,6 +64,17 @@ spec:
         - pause: {}
         {{- end }}
         - setWeight: 100
+        {{- if .Values.pingpong.postCutoverCheck.enabled }}
+        # Post-cutover check (auto-promotion without a human): with 100% of traffic on the new color,
+        # probe the LIVE site through the ALB for a few minutes (see analysistemplate-post-cutover.yaml).
+        # The previous color keeps running until this step passes, so a failure ABORTS the rollout and
+        # Argo moves the ALB weight straight back to it -- automatic rollback, no kubectl. Pair with the
+        # controller's --aws-verify-target-group so the cutover only counts once AWS reports the new
+        # targets healthy.
+        - analysis:
+            templates:
+              - templateName: {{ include "seqtoid-web.fullname" . }}-post-cutover
+        {{- end }}
     {{- else }}
     blueGreen:
       activeService: {{ include "seqtoid-web.fullname" . }}-active
@@ -85,6 +103,10 @@ spec:
     metadata:
       labels:
         {{- include "seqtoid-web.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       serviceAccountName: {{ include "seqtoid-web.serviceAccountName" . }}
       terminationGracePeriodSeconds: {{ .Values.gracefulDrain.terminationGracePeriodSeconds }}
