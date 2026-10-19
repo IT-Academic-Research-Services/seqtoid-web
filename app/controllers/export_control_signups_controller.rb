@@ -6,7 +6,9 @@
 # work with JS off:
 #
 #   GET  export_control_signup          -> new      (the registration form)
-#   POST export_control_signup          -> create   (validate terms, hand to the async screen, -> pending)
+#   POST export_control_signup          -> create   (validate terms, hand to the async screen, -> pending;
+#                                                     an email that already has an account gets the
+#                                                     set-password email instead and is not re-screened)
 #   GET  export_control_signup/pending  -> pending  (submitted, under review -- the ONLY page an applicant
 #                                                     lands on; approved/denied outcomes both arrive by email)
 #
@@ -140,6 +142,17 @@ class ExportControlSignupsController < ApplicationController
       return render :new, status: :unprocessable_entity
     end
 
+    # An email that ALREADY has an account is not a new applicant: screening it again bills a Descartes
+    # transaction and ends in a provisioning no-op, leaving the person on "under review" while nothing
+    # happens (3 of the first 30 approvals after 2026-10-16 were existing users re-applying, one of whom had
+    # never managed to sign in). Send them the Auth0 set-password email instead and land them on the same
+    # pending page every applicant sees -- the response never reveals whether an account exists (the same
+    # no-enumeration rule as auth0#request_password_reset).
+    if (existing = existing_account)
+      send_existing_account_password_email(existing)
+      return redirect_to export_control_signup_pending_path
+    end
+
     # Persist the CZ ID transfer request to the LOCAL sidecar (czid_transfer_requests) before screening,
     # keyed by the normalized signup email; it is copied onto the User at provisioning. This deliberately
     # does NOT touch signup_fields -- the screening payload is byte-for-byte unchanged.
@@ -190,6 +203,26 @@ class ExportControlSignupsController < ApplicationController
     # AppConfig so the wording can change without a deploy. Blank/unset => the view renders nothing.
     # The view renders this as plain text and HTML-escapes it on output -- never as HTML.
     @czid_transfer_notice_text = get_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT).to_s
+  end
+
+  # The account this signup email already belongs to, or nil. Normalized like provisioning
+  # (ProvisionScreenedAccountJob), so a re-submit in different case/whitespace still matches.
+  def existing_account
+    email = params[:email].to_s.strip.downcase
+    return nil if email.blank?
+
+    User.find_by(email: email)
+  end
+
+  # Never raise into the request and never log the address: a failed email still lands the person on the
+  # same pending page, and the alert (user id only) tells us to follow up. They can also use "Forgot
+  # password" on the sign-in page.
+  def send_existing_account_password_email(user)
+    Auth0UserManagementHelper.send_auth0_password_reset_email(user.email)
+    Rails.logger.info("[ExportControlSignups] existing account (user #{user.id}) -- sent set-password email, not screened")
+  rescue StandardError => e
+    LogUtil.log_error("[ExportControlSignups] set-password email for an existing account failed",
+                      exception: e, user_id: user.id)
   end
 
   def czid_transfer_requested?

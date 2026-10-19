@@ -142,6 +142,54 @@ RSpec.describe "ExportControlSignups", type: :request do
   # The operator-editable CZ ID transfer notice (AppConfig::CZID_TRANSFER_NOTICE_TEXT) rendered on the
   # public signup form. It is driven by AppConfig so the wording can change without a deploy, and it is
   # rendered as PLAIN TEXT -- a value containing markup must be escaped, never interpreted.
+  # An email that already has an account: send the Auth0 set-password email instead of screening again, and
+  # respond exactly like any other submit (no account enumeration).
+  describe "an email that already has an account" do
+    let!(:existing) { create(:user, email: "ada@example.org") }
+
+    before { allow(Auth0UserManagementHelper).to receive(:send_auth0_password_reset_email) }
+
+    it "sends the set-password email, does not screen, and lands on the same pending page" do
+      post export_control_signups_path, params: base_params
+
+      expect(Auth0UserManagementHelper).to have_received(:send_auth0_password_reset_email).with("ada@example.org")
+      expect(ExportControl::SignupScreeningProducer).not_to have_received(:submit)
+      expect(response).to redirect_to(export_control_signup_pending_path)
+    end
+
+    it "matches the existing account case- and whitespace-insensitively" do
+      post export_control_signups_path, params: base_params.merge(email: "  ADA@example.ORG ")
+      expect(Auth0UserManagementHelper).to have_received(:send_auth0_password_reset_email)
+      expect(ExportControl::SignupScreeningProducer).not_to have_received(:submit)
+    end
+
+    it "still lands on pending (and alerts) when the email cannot be sent" do
+      allow(Auth0UserManagementHelper).to receive(:send_auth0_password_reset_email).and_raise(StandardError, "auth0 down")
+      expect(LogUtil).to receive(:log_error).with(a_string_including("set-password email"), hash_including(user_id: existing.id))
+
+      post export_control_signups_path, params: base_params
+      expect(response).to redirect_to(export_control_signup_pending_path)
+    end
+
+    it "writes no CZ ID transfer sidecar row (nothing will be provisioned)" do
+      expect { post export_control_signups_path, params: base_params }.not_to change(CzidTransferRequest, :count)
+    end
+
+    it "a new email is still screened as before" do
+      post export_control_signups_path, params: base_params.merge(email: "someone.new@example.org")
+      expect(ExportControl::SignupScreeningProducer).to have_received(:submit)
+      expect(Auth0UserManagementHelper).not_to have_received(:send_auth0_password_reset_email)
+    end
+  end
+
+  describe "GET /export_control_signup/pending" do
+    it "tells existing account holders how to sign in, without saying whether this email has an account" do
+      get export_control_signup_pending_path
+      expect(response.body).to include("Already have a SeqtoID account?")
+      expect(response.body).to include(auth0_login_path)
+    end
+  end
+
   describe "GET /export_control_signup -- CZ ID transfer notice" do
     # Reset the cached value regardless of run order (get_app_config caches).
     before { AppConfigHelper.set_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT, "") }
