@@ -131,6 +131,7 @@ describe("getWorkflowRunStatusCategory", () => {
     // waiting
     ["CREATED", "waiting"],
     ["PENDING", "waiting"],
+    ["QUEUED", "waiting"],
     // failed
     ["FAILED", "failed"],
     ["TIMED_OUT", "failed"],
