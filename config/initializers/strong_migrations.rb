@@ -4,7 +4,10 @@ StrongMigrations.start_after = 20220513205413
 # rubocop:enable Style/NumericLiterals
 
 # Set timeouts for migrations
-StrongMigrations.lock_timeout = 10.seconds
+# 5s (was 10s): while an ALTER waits for its metadata lock, MySQL queues the app's new queries on that table
+# behind it, so the wait IS app stall time. MigrationLongTransactionGuard refuses to start at all when a long
+# transaction is open; this bounds the wait for shorter ones.
+StrongMigrations.lock_timeout = 5.seconds
 StrongMigrations.statement_timeout = 5.hours
 
 # Analyze tables after indexes are added
