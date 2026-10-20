@@ -164,6 +164,9 @@ class PipelineRun < ApplicationRecord
   # no longer needs to check on or update the pipeline_run's job_status.
 
   STATUS_CHECKED = 'CHECKED'.freeze
+  # Shown for a run held by the per-user concurrent-run cap (PipelineDispatchThrottle) until it is dispatched.
+  QUEUED_STATUS_DISPLAY = "QUEUED".freeze
+  QUEUED_JOB_STATUS_DISPLAY = "Queued: this run starts automatically as your earlier runs finish".freeze
   STATUS_FAILED = 'FAILED'.freeze
   STATUS_RUNNING = 'RUNNING'.freeze
   STATUS_READY = 'READY'.freeze
@@ -307,6 +310,39 @@ class PipelineRun < ApplicationRecord
   def self.in_progress
     where("job_status != '#{STATUS_FAILED}' OR job_status IS NULL")
       .where(finalized: 0)
+  end
+
+  # Runs held back by the per-user concurrent-run cap (PipelineDispatchThrottle), not yet dispatched.
+  def self.dispatch_deferred
+    where.not(dispatch_deferred_at: nil).where(sfn_execution_arn: nil, finalized: 0)
+  end
+
+  def dispatch_deferred?
+    dispatch_deferred_at.present? && sfn_execution_arn.blank? && finalized.to_i.zero?
+  end
+
+  # Hold this run until its uploader is under the concurrent-run cap. ReleaseDeferredPipelineRuns starts it.
+  def defer_dispatch!
+    update!(dispatch_deferred_at: Time.current)
+    Rails.logger.info("PipelineRun: id=#{id} sample=#{sample_id} dispatch deferred (uploader at the concurrent-run cap)")
+  end
+
+  # Start a deferred run exactly as the upload kickoff would have: dispatch the SFN, and for a short-read run
+  # mark stage 1 started (Sample#kickoff_pipeline). Returns false if it is no longer deferred.
+  def release_deferred_dispatch!
+    return false unless dispatch_deferred?
+
+    update!(dispatch_deferred_at: nil)
+    if technology == TECHNOLOGY_INPUT[:nanopore]
+      dispatch
+    else
+      prs = active_stage
+      if prs && !prs.started? && prs.step_number == 1
+        dispatch
+        prs.run_job
+      end
+    end
+    true
   end
 
   def self.results_in_progress
@@ -1120,6 +1156,7 @@ class PipelineRun < ApplicationRecord
   end
 
   def status_display(output_states_by_pipeline_run_id)
+    return QUEUED_STATUS_DISPLAY if dispatch_deferred?
     return "COMPLETE - ISSUE" if known_user_error
 
     status_display_helper(output_state_hash(output_states_by_pipeline_run_id), results_finalized, technology)
@@ -1433,6 +1470,9 @@ class PipelineRun < ApplicationRecord
         self.known_user_error, self.error_message = check_for_user_error(prs)
         automatic_restart = automatic_restart_allowed? unless known_user_error
         report_failed_pipeline_run_stage(prs, known_user_error, automatic_restart)
+      elsif !prs.started? && dispatch_deferred?
+        # Held by the per-user concurrent-run cap: ReleaseDeferredPipelineRuns starts it, not this poller.
+        return
       elsif !prs.started?
         # Note: this is not ideally place to initialize an SFN pipeline but
         # in order to preserve most of the logic of the old pipeline we decided
@@ -1551,6 +1591,7 @@ class PipelineRun < ApplicationRecord
   end
 
   def job_status_display
+    return QUEUED_JOB_STATUS_DISPLAY if dispatch_deferred?
     return "Pipeline Initializing" unless job_status
 
     stage = job_status.to_s.split("-")[0].split(".")[1]

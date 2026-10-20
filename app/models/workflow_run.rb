@@ -122,6 +122,8 @@ class WorkflowRun < ApplicationRecord
     aborted: "ABORTED",
   }.freeze
 
+  QUEUED_STATUS_DISPLAY = "QUEUED".freeze
+
   # Maps SFN execution statuses to classic frontend statuses
   SFN_STATUS_MAPPING = {
     STATUS[:created] => "CREATED",
@@ -282,7 +284,18 @@ class WorkflowRun < ApplicationRecord
     end
   end
 
+  # Workflows subject to the per-user concurrent-run cap (PipelineDispatchThrottle).
+  CAPPED_WORKFLOWS = [WORKFLOW[:consensus_genome], WORKFLOW[:amr]].freeze
+
+  # Dispatch, unless the user is at the per-user concurrent-run cap: then the run is held (shown as
+  # "Queued") and ReleaseDeferredPipelineRuns starts it as the user's earlier runs finish.
   def dispatch
+    return defer_dispatch! if CAPPED_WORKFLOWS.include?(workflow) && PipelineDispatchThrottle.defer?(self)
+
+    dispatch_now
+  end
+
+  def dispatch_now
     if workflow == WORKFLOW[:consensus_genome]
       SfnCgPipelineDispatchService.call(self)
     elsif workflow == WORKFLOW[:amr]
@@ -446,6 +459,34 @@ class WorkflowRun < ApplicationRecord
                           .or(where(samples: { upload_error: Sample::FINALIZED_UPLOAD_ERRORS }))
     scope = scope.where(samples: { user_id: user.id })
     scope
+  end
+
+  def self.dispatch_deferred
+    where.not(dispatch_deferred_at: nil).where(status: STATUS[:created], sfn_execution_arn: nil)
+  end
+
+  def dispatch_deferred?
+    dispatch_deferred_at.present? && status == STATUS[:created] && sfn_execution_arn.blank?
+  end
+
+  def defer_dispatch!
+    update!(dispatch_deferred_at: Time.current)
+    Rails.logger.info("WorkflowRun: id=#{id} sample=#{sample_id} dispatch deferred (user at the concurrent-run cap)")
+    nil
+  end
+
+  # Start a deferred run. Returns false if it is no longer deferred.
+  def release_deferred_dispatch!
+    return false unless dispatch_deferred?
+
+    update!(dispatch_deferred_at: nil)
+    dispatch_now
+    true
+  end
+
+  # The status the UI shows: QUEUED while held by the concurrent-run cap, otherwise the mapped SFN status.
+  def display_status
+    dispatch_deferred? ? QUEUED_STATUS_DISPLAY : SFN_STATUS_MAPPING[status]
   end
 
   def self.in_progress(workflow_name = nil)

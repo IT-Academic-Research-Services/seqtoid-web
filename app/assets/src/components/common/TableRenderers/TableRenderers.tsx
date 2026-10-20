@@ -27,6 +27,8 @@ export const STATUS_TYPE = {
   alignment: "default",
   running: "default",
   waiting: "default",
+  // Held by the per-user concurrent-run cap; starts automatically as the user's earlier runs finish.
+  queued: "default",
   skipped: "info",
 } as const;
 
