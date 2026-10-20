@@ -462,4 +462,8 @@ describe("STATUS_TYPE", () => {
     expect(STATUS_TYPE["skipped"]).toBe("info");
     expect(STATUS_TYPE["running"]).toBe("default");
   });
+
+  it("styles a run held by the per-user concurrent-run cap as neutral, not an error", () => {
+    expect(STATUS_TYPE["queued"]).toBe("default");
+  });
 });

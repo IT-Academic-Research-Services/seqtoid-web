@@ -68,6 +68,20 @@ RSpec.describe ReleaseDeferredPipelineRuns, type: :job do
     expect(described_class.new.run).to eq(1)
   end
 
+  it "releases deferred CG/AMR workflow runs too, oldest first across both run types" do
+    configure_cap("2")
+    wr = create(:workflow_run, sample: create(:sample, project: project, user: @joe), user: @joe,
+                               status: WorkflowRun::STATUS[:created], dispatch_deferred_at: 3.hours.ago)
+    pr = deferred_run(@joe, 2.hours.ago)
+    deferred_run(@joe, 1.hour.ago)
+    released = []
+    allow_any_instance_of(PipelineRun).to receive(:release_deferred_dispatch!) { |r| released << [:pr, r.id] }
+    allow_any_instance_of(WorkflowRun).to receive(:release_deferred_dispatch!) { |r| released << [:wr, r.id] }
+
+    described_class.new.run
+    expect(released).to eq([[:wr, wr.id], [:pr, pr.id]])
+  end
+
   describe "PipelineRun#release_deferred_dispatch!" do
     it "clears the deferral and dispatches a long-read run" do
       pr = deferred_run(@joe, 1.hour.ago)

@@ -401,6 +401,8 @@ export const WORKFLOW_RUN_STATUS_CATEGORY: Record<
   // waiting -- queued, not yet started
   CREATED: "waiting",
   PENDING: "waiting",
+  // held by the per-user concurrent-run cap; starts automatically as the user's earlier runs finish
+  QUEUED: "waiting",
   // failed -- terminal failure
   FAILED: "failed",
   TIMED_OUT: "failed",
