@@ -395,6 +395,90 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    # 2026-10-20: imports must never hold long locks. Every bundle-detectable failure is caught read-only
+    # before anything is written; the dry run is exactly that validation pass.
+    context "pre-write validation and dry run (read-only)" do
+      it "a dry run reports what is in the bundle and writes nothing" do
+        result = nil
+        expect { result = described_class.call(input_dir: write_bundle, create_user: true, dry_run: true) }
+          .not_to(change { [User.count, Project.count, Sample.count, PipelineRun.count] })
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats][:samples_in_bundle]).to eq(1)
+      end
+
+      it "a dry run still fails a bundle whose files do not match the manifest" do
+        dir = write_bundle
+        manifest_path = File.join(dir, "manifest.json")
+        manifest = JSON.parse(File.read(manifest_path))
+        manifest["table_counts"]["samples"] = 99
+        File.write(manifest_path, JSON.generate(manifest))
+
+        result = described_class.call(input_dir: dir, create_user: true, dry_run: true)
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("samples: manifest=99 file=1")
+      end
+
+      it "refuses (before writing) when imported primary keys already exist and skip_existing is off" do
+        create(:sample, id: SAMPLE_ID, project: create(:project))
+        result = nil
+        expect { result = described_class.call(input_dir: write_bundle, create_user: true) }
+          .not_to(change { User.count })
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("Primary keys already exist").and(include("samples: 1"))
+      end
+    end
+
+    context "short transactions and yielding to the app" do
+      it "a live import still imports everything (batched commits are the default)" do
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+        expect(result[:success]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true)
+      end
+
+      it "the legacy single-transaction mode still works" do
+        result = described_class.call(input_dir: write_bundle, create_user: true, single_transaction: true)
+        expect(result[:success]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true)
+      end
+
+      it "fails fast when another import holds the import lock" do
+        conn = ActiveRecord::Base.connection
+        allow(conn).to receive(:select_value).and_call_original
+        allow(conn).to receive(:select_value).with(/GET_LOCK/).and_return(0)
+
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("Another user-data import is already running")
+        expect(Sample.exists?(SAMPLE_ID)).to be(false)
+      end
+
+      it "makes the import's session give up row locks quickly (5s) so the app wins conflicts" do
+        conn = ActiveRecord::Base.connection
+        allow(conn).to receive(:execute).and_call_original
+        expect(conn).to receive(:execute).with("SET SESSION innodb_lock_wait_timeout = 5").and_call_original
+        described_class.call(input_dir: write_bundle, create_user: true)
+      end
+
+      it "retries a batch that lost a lock conflict, backing off, then succeeds" do
+        service = described_class.new(input_dir: write_bundle, create_user: true)
+        allow(ActiveRecord::Base.connection).to receive(:transaction_open?).and_return(false)
+        allow(service).to receive(:sleep)
+        calls = 0
+        result = service.send(:with_lock_retry) do
+          calls += 1
+          raise ActiveRecord::LockWaitTimeout, "Lock wait timeout exceeded" if calls < 3
+
+          :ok
+        end
+        expect(result).to eq(:ok)
+        expect(calls).to eq(3)
+        expect(service).to have_received(:sleep).with(2).ordered
+        expect(service).to have_received(:sleep).with(4).ordered
+      end
+    end
+
     context "when a table file declared in the manifest is missing" do
       it "fails validation instead of importing a partial bundle" do
         dir = write_bundle
