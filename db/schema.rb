@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_16_000002) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_20_000001) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", options: "AUTO_INCREMENT = 1000000000", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -630,9 +630,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_000002) do
     t.datetime "deleted_at", precision: nil, comment: "When the user triggered deletion of the pipeline run"
     t.bigint "mapped_reads"
     t.integer "results_load_retry_count", default: 0, null: false, comment: "Times results-loading has been auto-retried after the SFN succeeded but outputs failed to load. Bounds the finalize_results cheap-retry auto-heal."
+    t.datetime "dispatch_deferred_at", comment: "Set while the run waits for its uploader's concurrent-run cap; cleared when dispatched."
     t.index ["adjusted_remaining_reads"], name: "index_pipeline_runs_on_adjusted_remaining_reads"
     t.index ["alignment_config_id"], name: "pipeline_runs_alignment_config_id_fk"
     t.index ["compression_ratio"], name: "index_pipeline_runs_on_compression_ratio"
+    t.index ["dispatch_deferred_at"], name: "index_pipeline_runs_on_dispatch_deferred_at"
     t.index ["fraction_subsampled"], name: "index_pipeline_runs_on_fraction_subsampled"
     t.index ["fraction_subsampled_bases"], name: "index_pipeline_runs_on_fraction_subsampled_bases"
     t.index ["job_status"], name: "index_pipeline_runs_on_job_status"

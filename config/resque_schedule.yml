@@ -7,6 +7,14 @@ HandleSfnNotificationsTimeout:
   queue: handle_sfn_notifications_timeout
   description: "This job checks for SFN executions that fail to update (get notified) after a maximum timeout period."
 
+# Per-user concurrent-run cap (AppConfig max_active_pipeline_runs_per_user): starts runs held back because their
+# uploader was at the cap, oldest first, as earlier runs finish. Inert (one indexed query) when nothing is deferred.
+ReleaseDeferredPipelineRuns:
+  every: 2m
+  class: ReleaseDeferredPipelineRuns
+  queue: q03_pipeline_run
+  description: "Dispatches pipeline runs deferred by the per-user concurrent-run cap as the user's earlier runs finish."
+
 CheckSoftDeletedData:
   every: 1d
   class: CheckSoftDeletedData
