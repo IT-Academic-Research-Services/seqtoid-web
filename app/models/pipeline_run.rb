@@ -164,6 +164,9 @@ class PipelineRun < ApplicationRecord
   # no longer needs to check on or update the pipeline_run's job_status.
 
   STATUS_CHECKED = 'CHECKED'.freeze
+  # Shown for a run held by the per-user concurrent-run cap (PipelineDispatchThrottle) until it is dispatched.
+  QUEUED_STATUS_DISPLAY = "QUEUED".freeze
+  QUEUED_JOB_STATUS_DISPLAY = "Queued: this run starts automatically as your earlier runs finish".freeze
   STATUS_FAILED = 'FAILED'.freeze
   STATUS_RUNNING = 'RUNNING'.freeze
   STATUS_READY = 'READY'.freeze
@@ -1153,6 +1156,7 @@ class PipelineRun < ApplicationRecord
   end
 
   def status_display(output_states_by_pipeline_run_id)
+    return QUEUED_STATUS_DISPLAY if dispatch_deferred?
     return "COMPLETE - ISSUE" if known_user_error
 
     status_display_helper(output_state_hash(output_states_by_pipeline_run_id), results_finalized, technology)
@@ -1587,6 +1591,7 @@ class PipelineRun < ApplicationRecord
   end
 
   def job_status_display
+    return QUEUED_JOB_STATUS_DISPLAY if dispatch_deferred?
     return "Pipeline Initializing" unless job_status
 
     stage = job_status.to_s.split("-")[0].split(".")[1]

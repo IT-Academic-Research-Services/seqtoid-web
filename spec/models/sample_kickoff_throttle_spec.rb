@@ -41,4 +41,13 @@ RSpec.describe Sample, type: :model do
     sample.kickoff_pipeline
     expect { sample.kickoff_pipeline }.not_to(change { sample.pipeline_runs.reload.count })
   end
+
+  describe "PipelineRun queued display" do
+    it "shows a held mNGS run as QUEUED in the table and explains it on the sample page" do
+      pr = create(:pipeline_run, sample: create(:sample, project: project, user: @joe), finalized: 0,
+                                 sfn_execution_arn: nil, dispatch_deferred_at: Time.current)
+      expect(pr.status_display({})).to eq("QUEUED")
+      expect(pr.job_status_display).to eq(PipelineRun::QUEUED_JOB_STATUS_DISPLAY)
+    end
+  end
 end

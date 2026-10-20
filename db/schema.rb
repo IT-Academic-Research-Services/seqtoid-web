@@ -980,7 +980,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_20_000001) do
     t.datetime "deleted_at", precision: nil, comment: "When the user triggered deletion of the workflow run"
     t.bigint "user_id", comment: "The ID of the user who kicked off the workflow run"
     t.json "temp_cg_coverage_viz", comment: "Temporary column to store coverage viz data for consensus-genome workflow runs"
+    t.datetime "dispatch_deferred_at", comment: "Set while the run waits for its uploader's concurrent-run cap; cleared when dispatched."
     t.index ["created_at"], name: "index_workflow_runs_on_created_at"
+    t.index ["dispatch_deferred_at"], name: "index_workflow_runs_on_dispatch_deferred_at"
     t.index ["sample_id"], name: "index_workflow_runs_on_sample_id"
   end
 

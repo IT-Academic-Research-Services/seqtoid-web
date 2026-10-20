@@ -114,8 +114,9 @@ class AppConfig < ApplicationRecord
   # The server accepts the token from either the header or the legacy path segment regardless of this
   # flag, so in-flight callbacks are never broken.
   BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER = 'bulk_download_callback_token_in_header'.freeze
-  # Per-user cap on concurrently RUNNING mNGS pipeline runs (PipelineDispatchThrottle). When a user already has
-  # this many dispatched, unfinished runs, their next runs are held in SeqtoID (pipeline_runs.dispatch_deferred_at)
+  # Per-user cap on concurrently RUNNING pipeline runs (PipelineDispatchThrottle): mNGS pipeline runs plus
+  # consensus-genome and AMR workflow runs, counted together. When a user already has this many dispatched,
+  # unfinished runs, their next runs are held in SeqtoID (dispatch_deferred_at; shown as "Queued")
   # and ReleaseDeferredPipelineRuns starts them oldest-first as earlier runs finish, so one bulk upload cannot
   # fill the shared AWS Batch queues (2026-10-19: one 2,208-sample batch held ~95% of the spot queue for a day).
   # Blank / 0 / non-integer => no cap (the behaviour before this existed). Admins are exempt.
