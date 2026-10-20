@@ -712,10 +712,10 @@ class Sample < ApplicationRecord
           alignment_config: AlignmentConfig.find_by(name: alignment_config_name)
         )
         mark_older_pipeline_runs_as_deprecated if new_pr.save!
-        new_pr.dispatch
+        PipelineDispatchThrottle.defer?(new_pr) ? new_pr.defer_dispatch! : new_pr.dispatch
       else
         # If this a new sample, just dispatch the pipeline run that was created on upload in SamplesHelper#upload_samples_with_metadata.
-        pr.dispatch
+        PipelineDispatchThrottle.defer?(pr) ? pr.defer_dispatch! : pr.dispatch
       end
     end
   rescue ErrorHelper::VersionControlErrors::WorkflowVersionLockedError => err
@@ -963,8 +963,12 @@ class Sample < ApplicationRecord
     if AppConfigHelper.get_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS) == "1"
       prs = pr.active_stage
       if prs && !prs.started? && prs.step_number == 1
-        pr.dispatch
-        prs.run_job
+        if PipelineDispatchThrottle.defer?(pr)
+          pr.defer_dispatch! # the uploader is at the concurrent-run cap; ReleaseDeferredPipelineRuns starts it
+        else
+          pr.dispatch
+          prs.run_job
+        end
       end
     end
   rescue StandardError => err
