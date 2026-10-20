@@ -62,6 +62,16 @@ class UserMailer < ApplicationMailer
     )
   end
 
+  # Sent instead of screening when the sign-up form is submitted with an email that already has an account.
+  # The form shows every applicant the same pending page, so only the inbox owner learns that an account
+  # exists. See: app/views/user_mailer/existing_account_signup.html.erb.
+  def existing_account_signup(email)
+    mail(
+      to: email,
+      subject: "You already have a SeqtoID account"
+    )
+  end
+
   # See: app/views/user_mailer/no_account_found.html.erb.
   def no_account_found(email)
     mail(

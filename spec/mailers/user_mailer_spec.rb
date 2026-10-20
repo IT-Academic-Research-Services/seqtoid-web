@@ -92,6 +92,19 @@ RSpec.describe UserMailer, type: :mailer do
     end
   end
 
+  describe "#existing_account_signup" do
+    it "tells the inbox owner they already have an account, with reset and sign-in links" do
+      mail = described_class.existing_account_signup("ada@example.org")
+      body = mail.body.encoded
+
+      expect(mail.to).to eq(["ada@example.org"])
+      expect(mail.subject).to eq("You already have a SeqtoID account")
+      expect(body).to include("You already have a")
+      expect(body).to include("/users/password/new")
+      expect(body).to include("/auth0/login")
+    end
+  end
+
   describe "#no_account_found" do
     it "notifies the email that no account was found" do
       mail = described_class.no_account_found("unknown@example.com")
