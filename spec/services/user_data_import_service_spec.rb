@@ -575,6 +575,28 @@ RSpec.describe UserDataImportService do
         expect(result[:stats][:samples_skipped]).to eq(1)
       end
 
+      it "with skip_existing, checks file row counts without parsing rows into batches" do
+        service = described_class.new(input_dir: write_bundle, create_user: true, skip_existing: true)
+        allow(service).to receive(:each_row_batch).and_call_original
+        service.send(:validate_bundle!)
+        service.send(:validate_before_write!)
+
+        expect(service).not_to have_received(:each_row_batch)
+        expect(service.instance_variable_get(:@stats)[:samples_in_bundle]).to eq(1)
+      end
+
+      it "with skip_existing, still fails a bundle whose files do not match the manifest" do
+        dir = write_bundle
+        manifest_path = File.join(dir, "manifest.json")
+        manifest = JSON.parse(File.read(manifest_path))
+        manifest["table_counts"]["samples"] = 99
+        File.write(manifest_path, JSON.generate(manifest))
+
+        result = described_class.call(input_dir: dir, create_user: true, skip_existing: true)
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("samples: manifest=99 file=1")
+      end
+
       it "refuses (before writing) when imported primary keys already exist and skip_existing is off" do
         create(:sample, id: SAMPLE_ID, project: create(:project))
         result = nil

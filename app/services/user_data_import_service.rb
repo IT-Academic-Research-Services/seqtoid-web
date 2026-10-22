@@ -321,6 +321,16 @@ class UserDataImportService
     end
   end
 
+  # Number of rows (non-blank lines) in a table file, without parsing them. 0 if the file is absent.
+  def count_rows(name)
+    path = File.join(@input_dir, "#{name}.ndjson.gz")
+    return 0 unless File.exist?(path)
+
+    count = 0
+    Zlib::GzipReader.open(path) { |gz| gz.each_line { |line| count += 1 if line.match?(/\S/) } }
+    count
+  end
+
   # Streams a gzipped NDJSON file and inserts it in INSERT_BATCH-sized batches.
   # The block maps a parsed row Hash to the DB attribute Hash for `model`.
   def stream_insert(name, model, stat_key = nil)
@@ -1349,16 +1359,18 @@ class UserDataImportService
     @expected_counts.each do |table, expected|
       rows = 0
       model = model_for_table(table)
-      check_ids = model && collision_checked?(table)
-      each_row_batch(table) do |batch|
-        rows += batch.size
-        next unless check_ids
+      if model && collision_checked?(table)
+        each_row_batch(table) do |batch|
+          rows += batch.size
+          ids = batch.filter_map { |r| r[:id] }
+          next if ids.empty?
 
-        ids = batch.filter_map { |r| r[:id] }
-        next if ids.empty?
-
-        existing_ids = model.where(id: ids).count
-        raise_primary_keys_exist!(table, existing_ids) if existing_ids.positive?
+          existing_ids = model.where(id: ids).count
+          raise_primary_keys_exist!(table, existing_ids) if existing_ids.positive?
+        end
+      else
+        # No ids needed: count lines without JSON-parsing them (a 75M-row bundle parses for a long time).
+        rows = count_rows(table)
       end
       file_mismatches << "#{table}: manifest=#{expected} file=#{rows}" if rows != expected.to_i
       @stats[:"#{table}_in_bundle"] = rows
