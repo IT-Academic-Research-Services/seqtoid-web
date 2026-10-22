@@ -851,9 +851,13 @@ class Sample < ApplicationRecord
 
   # Delay determined based on query of historical upload times, where 80%
   # of successful uploads took less than 3 hours by updated time.
+  # Measured from updated_at (not created_at) so a failed upload that the uploader REOPENED to resume
+  # (reopen_failed_local_upload!, via the CLI's --resume) gets a fresh window instead of being failed
+  # again by the next sweep. For a normal upload the two are the same: nothing else touches a created
+  # sample (the stall flag is written with update_all, which does not bump updated_at).
   def self.current_stalled_local_uploads(delay = STALLED_UPLOAD_FINALIZATION_DELAY)
     where(status: STATUS_CREATED)
-      .where("samples.created_at < ?", Time.now.utc - delay)
+      .where("samples.updated_at < ?", Time.now.utc - delay)
       .joins(:input_files)
       .where(input_files: { source_type: InputFile::SOURCE_TYPE_LOCAL })
       .distinct
@@ -866,6 +870,37 @@ class Sample < ApplicationRecord
   def self.orphaned_created_uploads(delay = STALLED_UPLOAD_FINALIZATION_DELAY)
     where(status: STATUS_CREATED)
       .where("samples.created_at < ?", Time.now.utc - delay)
+  end
+
+  # CLI resume (seqtoid-cli upload-samples --resume): why this sample's local upload cannot be resumed
+  # by its uploader, or nil when it can. Resumable = still awaiting its files (created), or failed by the
+  # stalled-upload sweep before any processing started.
+  def upload_resume_blocker
+    files = input_files.to_a
+    return "not a local upload" if files.empty? || files.any? { |f| f.source_type != InputFile::SOURCE_TYPE_LOCAL }
+    return nil if status == STATUS_CREATED || failed_local_upload_before_processing?
+    return "upload failed after processing started; delete the sample and upload it again" if upload_error.present?
+
+    "already uploaded"
+  end
+
+  # Put a sample the stalled-upload sweep failed back into the awaiting-upload state so its uploader can
+  # resume it (fresh credentials, the same S3 paths, any in-progress multipart upload). Only before any
+  # processing: no pipeline run. A failed workflow run (CG/AMR) is reset, as an S3-import retry does.
+  def reopen_failed_local_upload!
+    return false unless failed_local_upload_before_processing?
+
+    transaction do
+      update!(status: STATUS_CREATED, upload_error: nil)
+      WorkflowRun.handle_sample_upload_restart(self)
+    end
+    true
+  end
+
+  def failed_local_upload_before_processing?
+    status == STATUS_CHECKED &&
+      [UPLOAD_ERROR_LOCAL_UPLOAD_FAILED, UPLOAD_ERROR_LOCAL_UPLOAD_STALLED].include?(upload_error) &&
+      pipeline_runs.none?
   end
 
   def cleanup_relations

@@ -85,7 +85,9 @@ desc "Import user data from a streaming NDJSON export bundle. " \
      "Usage: rake import_user_data[<dir-or-s3-uri>,<mode>,<target>]. " \
      "<dir-or-s3-uri> is a local bundle dir, an s3:// bundle folder, or an s3:// parent " \
      "(e.g. .../user_data_exports/<id>) whose newest bundle is auto-selected. " \
-     "<mode> is one of: dry_run, skip_existing, or live (default). " \
+     "<mode> is one of: dry_run (read-only validation, writes nothing), skip_existing (resume / idempotent re-run), " \
+     "or live (default). Live imports commit in short batches so they never block the app or a deploy; " \
+     "set IMPORT_SINGLE_TRANSACTION=1 for the legacy all-or-nothing transaction. " \
      "<target> is the id of an existing user to import into (default), or 'new' to create a new user from the export. " \
      "Reference tables (host_genomes, alignment_configs, metadata_fields, locations) are remapped by natural key " \
      "automatically -- do NOT load reference_tables.sql.gz (its REPLACE INTO would clobber the target's own reference rows)."
@@ -146,13 +148,15 @@ task :import_user_data, [:input_dir, :mode, :target, :source_bucket, :dest_bucke
   puts "USER DATA IMPORT"
   puts "=" * 60
   puts ""
+  single_transaction = ENV["IMPORT_SINGLE_TRANSACTION"] == "1"
   mode_label = if dry_run
-                 "DRY RUN (no changes will be saved)"
+                 "DRY RUN (read-only validation; writes nothing, takes no locks)"
                elsif skip_existing
-                 "SKIP EXISTING (re-runnable; skips records whose id already exists)"
+                 "SKIP EXISTING (resume / re-runnable; skips records whose id already exists)"
                else
                  "LIVE"
                end
+  mode_label += single_transaction ? " -- legacy single transaction" : " -- committed in short batches" unless dry_run
   puts "Bundle: #{input_dir}"
   puts "Mode: #{mode_label}"
   puts "Target: #{create_user ? '(create new user from export)' : "existing user ##{target_user_id}"}"
@@ -198,7 +202,8 @@ task :import_user_data, [:input_dir, :mode, :target, :source_bucket, :dest_bucke
       target_user_id: target_user_id,
       create_user: create_user,
       source_bucket: source_bucket,
-      dest_bucket: dest_bucket
+      dest_bucket: dest_bucket,
+      single_transaction: single_transaction
     )
   end
 

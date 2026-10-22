@@ -1,0 +1,240 @@
+# frozen_string_literal: true
+
+require "csv"
+require "fileutils"
+require "tmpdir"
+
+# Works through a queue of CZI user-data export bundles, importing each with UserDataImportService.
+# Built for the next-prod backfill (CZI-BACKFILL-NEXT-PROD-DESIGN-AND-RUNBOOK-2026-10-21.md, item W3): run N
+# copies at once (a Kubernetes Indexed Job), each against the replica cluster.
+#
+# Layout under the queue prefix (s3://bucket/prefix/):
+#   queue.csv                 export_id,target_user_id[,priority] -- higher priority first, then file order
+#   results/<export_id>.json  written after every attempt (status, mode, timings, stats, warnings, error)
+#   PAUSE                     while present, workers finish their current export and pick up no new one
+#                             (e.g. while a deploy migration on a table the imports write replicates)
+#
+# Per export:
+#   1. skip it if results/<id>.json already says success;
+#   2. read its manifest (small) and CLAIM it with the importer's per-export named lock -- so two workers
+#      never download or import the same bundle (the lock is re-entrant for the importer's own call);
+#   3. download the newest bundle under <export_root><id>/ into a scratch dir, files in parallel;
+#   4. import (mode live); if the target already holds some of its rows (an earlier partial run), retry once
+#      with skip_existing, which resumes;
+#   5. write the result and delete the scratch copy.
+# A failed export is recorded and the worker moves on; re-running the Job retries only what has not succeeded.
+class UserDataImportQueue
+  class ConfigError < StandardError; end
+
+  RESULTS_PREFIX = "results/"
+  PAUSE_KEY = "PAUSE"
+  QUEUE_KEY = "queue.csv"
+  DOWNLOAD_THREADS = 4
+  PRIMARY_KEYS_EXIST = "Primary keys already exist"
+
+  def initialize(queue_uri:, export_root:, source_bucket: nil, dest_bucket: nil, worker: "w0", worker_index: 0,
+                 worker_count: 1, s3: AwsClient[:s3], importer: nil, scratch_dir: ENV.fetch("IMPORT_SCRATCH_DIR", Dir.tmpdir))
+    raise ConfigError, "#{UserDataImportService::REQUIRE_DB_HOST_ENV} must be set (the queue only runs against an explicit target database)" if ENV[UserDataImportService::REQUIRE_DB_HOST_ENV].to_s.strip.empty?
+
+    @queue_bucket, @queue_prefix = split_uri(queue_uri)
+    @export_bucket, @export_prefix = split_uri(export_root)
+    @source_bucket = source_bucket.presence
+    @dest_bucket = dest_bucket.presence
+    @worker = worker
+    @worker_index = worker_index
+    @worker_count = [worker_count, 1].max
+    @s3 = s3
+    @importer = importer || method(:default_import)
+    @scratch_dir = scratch_dir
+  end
+
+  # One pass over the queue. Returns a summary hash.
+  def run
+    summary = Hash.new(0)
+    ordered_entries.each do |entry|
+      if paused?
+        summary[:paused] = true
+        break
+      end
+      outcome = process(entry)
+      summary[outcome] += 1
+    end
+    summary.to_h
+  end
+
+  private
+
+  def process(entry)
+    export_id = entry[:export_id]
+    return :already_done if succeeded?(export_id)
+
+    bundle = newest_bundle_prefix(export_id)
+    unless bundle
+      record(entry, status: "failed", error: "no bundle with manifest.json under #{@export_prefix}#{export_id}/")
+      return :failed
+    end
+
+    old_user_id = JSON.parse(read_object(@export_bucket, "#{bundle}/manifest.json"))["user_id"]
+    claimed = with_claim(old_user_id) do
+      import_bundle(entry, bundle)
+    end
+    claimed.nil? ? :claimed_by_other : claimed
+  end
+
+  def import_bundle(entry, bundle)
+    dir = Dir.mktmpdir("user_data_import", @scratch_dir)
+    started = Time.current
+    begin
+      download_bundle(bundle, dir)
+      attempts = []
+      result = run_import(entry, dir, "live")
+      attempts << "live"
+      if !result[:success] && result[:error].to_s.include?(PRIMARY_KEYS_EXIST)
+        result = run_import(entry, dir, "skip_existing")
+        attempts << "skip_existing"
+      end
+      record(entry, status: result[:success] ? "success" : "failed", attempts: attempts, started_at: started,
+                    stats: result[:stats], timings: result[:timings], warnings: result[:warnings], error: result[:error])
+      result[:success] ? :succeeded : :failed
+    rescue StandardError => e
+      record(entry, status: "failed", started_at: started, error: "#{e.class}: #{e.message}")
+      :failed
+    ensure
+      FileUtils.remove_entry(dir) if Dir.exist?(dir)
+    end
+  end
+
+  def run_import(entry, dir, mode)
+    @importer.call(dir: dir, mode: mode, target_user_id: entry[:target_user_id],
+                   source_bucket: @source_bucket, dest_bucket: @dest_bucket)
+  end
+
+  def default_import(dir:, mode:, target_user_id:, source_bucket:, dest_bucket:)
+    UserDataImportService.call(input_dir: dir, target_user_id: target_user_id, skip_existing: mode == "skip_existing",
+                               source_bucket: source_bucket, dest_bucket: dest_bucket)
+  end
+
+  # Claims the export with the importer's per-export named lock (same session, so the importer's own
+  # GET_LOCK on that name re-enters it). Returns nil without yielding when another worker holds it.
+  def with_claim(old_user_id)
+    conn = ActiveRecord::Base.connection
+    name = conn.quote("#{UserDataImportService::IMPORT_LOCK_NAME}:u#{old_user_id}")
+    return nil unless conn.select_value("SELECT GET_LOCK(#{name}, 0)").to_i == 1
+
+    begin
+      yield
+    ensure
+      conn.select_value("SELECT RELEASE_LOCK(#{name})")
+    end
+  end
+
+  # Higher priority first, then file order; each worker starts at its own offset so N workers spread over
+  # the queue instead of all racing for the first entry.
+  def ordered_entries
+    entries = read_queue.each_with_index.sort_by { |e, i| [-e[:priority], i] }.map(&:first)
+    return entries if entries.empty?
+
+    offset = (entries.size * @worker_index) / @worker_count
+    entries.rotate(offset)
+  end
+
+  def read_queue
+    CSV.parse(read_object(@queue_bucket, "#{@queue_prefix}#{QUEUE_KEY}"), headers: true).filter_map do |row|
+      export_id = row["export_id"].to_s.strip
+      next if export_id.empty?
+
+      { export_id: export_id, target_user_id: Integer(row["target_user_id"]), priority: row["priority"].to_i }
+    end
+  end
+
+  def succeeded?(export_id)
+    body = read_object(@queue_bucket, result_key(export_id))
+    body && JSON.parse(body)["status"] == "success"
+  end
+
+  def paused?
+    !read_object(@queue_bucket, "#{@queue_prefix}#{PAUSE_KEY}").nil?
+  end
+
+  def record(entry, status:, attempts: [], started_at: nil, stats: nil, timings: nil, warnings: nil, error: nil)
+    finished = Time.current
+    payload = {
+      export_id: entry[:export_id], target_user_id: entry[:target_user_id], status: status, attempts: attempts,
+      worker: @worker, started_at: started_at&.iso8601, finished_at: finished.iso8601,
+      seconds: started_at ? (finished - started_at).round(1) : nil,
+      stats: stats, timings: timings, warnings: Array(warnings).first(200), error: error,
+    }
+    @s3.put_object(bucket: @queue_bucket, key: result_key(entry[:export_id]), body: JSON.pretty_generate(payload),
+                   content_type: "application/json")
+    true
+  end
+
+  def result_key(export_id)
+    "#{@queue_prefix}#{RESULTS_PREFIX}#{export_id}.json"
+  end
+
+  # The newest immediate subfolder of <export_root><id>/ that holds a manifest.json (same rule as the
+  # import_user_data rake task's resolve_bundle_prefix).
+  def newest_bundle_prefix(export_id)
+    newest = nil
+    list(@export_bucket, "#{@export_prefix}#{export_id}/", delimiter: "/") do |page|
+      page.common_prefixes.each do |cp|
+        sub = cp.prefix.chomp("/")
+        head = head_or_nil(@export_bucket, "#{sub}/manifest.json")
+        newest = [sub, head.last_modified] if head && (newest.nil? || head.last_modified > newest[1])
+      end
+    end
+    newest&.first
+  end
+
+  def download_bundle(prefix, dir)
+    keys = []
+    list(@export_bucket, "#{prefix}/") { |page| page.contents.each { |o| keys << o.key unless o.key.end_with?("/") } }
+    queue = Queue.new
+    keys.each { |k| queue << k }
+    Array.new([DOWNLOAD_THREADS, keys.size].min) do
+      Thread.new do
+        while (key = begin
+          queue.pop(true)
+        rescue ThreadError
+          nil
+        end)
+          @s3.get_object(bucket: @export_bucket, key: key, response_target: File.join(dir, File.basename(key)))
+        end
+      end
+    end.each(&:join)
+    keys.size
+  end
+
+  def list(bucket, prefix, delimiter: nil)
+    token = nil
+    loop do
+      page = @s3.list_objects_v2(bucket: bucket, prefix: prefix, delimiter: delimiter, continuation_token: token)
+      yield page
+      break unless page.is_truncated
+
+      token = page.next_continuation_token
+    end
+  end
+
+  def read_object(bucket, key)
+    @s3.get_object(bucket: bucket, key: key).body.read
+  rescue Aws::S3::Errors::NoSuchKey, Aws::S3::Errors::NotFound
+    nil
+  end
+
+  def head_or_nil(bucket, key)
+    @s3.head_object(bucket: bucket, key: key)
+  rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey
+    nil
+  end
+
+  def split_uri(uri)
+    bucket, prefix = S3Util.parse_s3_path(uri.to_s)
+    raise ConfigError, "expected s3://bucket/prefix/, got #{uri.inspect}" if bucket.blank?
+
+    prefix = prefix.to_s
+    prefix = "#{prefix}/" unless prefix.empty? || prefix.end_with?("/")
+    [bucket, prefix]
+  end
+end

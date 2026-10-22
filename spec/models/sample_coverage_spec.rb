@@ -295,7 +295,8 @@ describe Sample, type: :model do
         :sample,
         project: project,
         status: Sample::STATUS_CREATED,
-        created_at: 4.hours.ago
+        created_at: 4.hours.ago,
+        updated_at: 4.hours.ago
       )
       create(
         :sample,
@@ -305,6 +306,12 @@ describe Sample, type: :model do
       )
       expect(Sample.current_stalled_local_uploads).to include(stalled)
       expect(Sample.orphaned_created_uploads).to include(stalled)
+    end
+
+    it "gives a reopened upload (old created_at, fresh updated_at) a new stall window" do
+      reopened = create(:sample, project: project, status: Sample::STATUS_CREATED,
+                                 created_at: 30.hours.ago, updated_at: 1.minute.ago)
+      expect(Sample.current_stalled_local_uploads(18.hours)).not_to include(reopened)
     end
   end
 

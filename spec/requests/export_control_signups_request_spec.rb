@@ -2,6 +2,8 @@
 
 require 'rails_helper'
 
+RSpec::Matchers.define_negated_matcher :not_change, :change unless RSpec::Matchers.method_defined?(:not_change)
+
 # SMP-1901 -- the CZ ID transfer request captured on the pre-account signup form. The point of these specs
 # is the boundary the design promises: the fields are written to the LOCAL czid_transfer_requests sidecar
 # and are NEVER added to the screening payload the producer sends.
@@ -17,6 +19,8 @@ RSpec.describe "ExportControlSignups", type: :request do
   before do
     # Keep screening inert and side-effect-free; assert separately on what (if anything) is handed to it.
     allow(ExportControl::SignupScreeningProducer).to receive(:submit).and_return(:skipped_unconfigured)
+    # The rate-limit counters live in their own store (not Rails.cache); reset so examples stay isolated.
+    SIGNUP_RATE_LIMIT_STORE.clear
   end
 
   describe "POST /export_control_signup -> the local sidecar" do
@@ -93,6 +97,94 @@ RSpec.describe "ExportControlSignups", type: :request do
 
   # SMP-1902 -- reject a blocked (personal/temporary) email domain at the signup form, before screening or
   # any local write, so the applicant sees the error immediately instead of a silent rejection later.
+  # An existing account must NOT be revealed on the page (bots could probe which emails are registered).
+  # Every submit gets the same redirect to pending; the account holder is told by email instead, and is
+  # not screened again (ProvisionScreenedAccountJob would no-op on the existing email anyway).
+  describe "an email that already has an account" do
+    include ActiveJob::TestHelper
+
+    before { create(:user, email: "ada@example.org") }
+
+    it "redirects to pending exactly like a new applicant, emails the reset link, and screens nothing" do
+      expect do
+        post export_control_signups_path,
+             params: base_params.merge(wants_czid_data_transferred: "1", czid_account_email: "ada@czid.org")
+      end.to(have_enqueued_mail(UserMailer, :existing_account_signup).with("ada@example.org")
+               .and(not_change(CzidTransferRequest, :count)))
+
+      expect(response).to redirect_to(export_control_signup_pending_path)
+      expect(ExportControl::SignupScreeningProducer).not_to have_received(:submit)
+    end
+
+    it "gives the same response as a new email -- nothing in it says which one has an account" do
+      post export_control_signups_path, params: base_params
+      existing = [response.status, response.location, response.body]
+
+      post export_control_signups_path, params: base_params.merge(email: "grace@example.org")
+      new_applicant = [response.status, response.location, response.body]
+
+      expect(existing).to eq(new_applicant)
+    end
+
+    it "matches case- and whitespace-insensitively" do
+      expect do
+        post export_control_signups_path, params: base_params.merge(email: "  ADA@EXAMPLE.ORG ")
+      end.to have_enqueued_mail(UserMailer, :existing_account_signup).with("ada@example.org")
+      expect(ExportControl::SignupScreeningProducer).not_to have_received(:submit)
+    end
+
+    it "still screens a different, new email and sends no existing-account mail" do
+      expect do
+        post export_control_signups_path, params: base_params.merge(email: "grace@example.org")
+      end.not_to have_enqueued_mail(UserMailer, :existing_account_signup)
+      expect(response).to redirect_to(export_control_signup_pending_path)
+      expect(ExportControl::SignupScreeningProducer).to have_received(:submit)
+    end
+  end
+
+  describe "rate limiting" do
+    it "limits one email address to 3 submits an hour, whatever the IP" do
+      3.times do |i|
+        post export_control_signups_path, params: base_params, headers: { "REMOTE_ADDR" => "10.0.0.#{i + 1}" }
+        expect(response).to redirect_to(export_control_signup_pending_path)
+      end
+
+      post export_control_signups_path, params: base_params, headers: { "REMOTE_ADDR" => "10.0.0.9" }
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.body).to include("Too many requests")
+      expect(ExportControl::SignupScreeningProducer).to have_received(:submit).exactly(3).times
+    end
+
+    it "limits one IP to 10 submits per 15 minutes across different emails" do
+      10.times do |i|
+        post export_control_signups_path, params: base_params.merge(email: "person#{i}@example.org")
+        expect(response).to redirect_to(export_control_signup_pending_path)
+      end
+
+      post export_control_signups_path, params: base_params.merge(email: "person99@example.org")
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "shows the same limit message for an existing account as for a new email" do
+      # Mask what legitimately differs per request: the email echoed back into the field, and the
+      # per-request CSRF token / CSP nonce. Everything else must be byte-identical.
+      masked = lambda do |body|
+        body.gsub(/ada@example\.org|grace@example\.org/i, "EMAIL")
+            .gsub(/(name="authenticity_token" value=|name="csrf-token" content=|nonce=)"[^"]*"/, '\\1"X"')
+      end
+      create(:user, email: "ada@example.org")
+      4.times { post export_control_signups_path, params: base_params }
+      expect(response).to have_http_status(:too_many_requests)
+      existing = masked.call(response.body)
+
+      SIGNUP_RATE_LIMIT_STORE.clear
+      4.times { post export_control_signups_path, params: base_params.merge(email: "grace@example.org") }
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(masked.call(response.body)).to eq(existing)
+    end
+  end
+
   describe "email-domain blocklist" do
     let(:blocked_params) { base_params.merge(email: "user@gmail.com") }
 

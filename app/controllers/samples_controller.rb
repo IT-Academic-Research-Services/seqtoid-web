@@ -43,13 +43,13 @@ class SamplesController < ApplicationController
   # uncapped since it re-uses cached compute). Admins are exempt.
   RERUN_DAILY_LIMIT = 3
 
-  OTHER_ACTIONS = [:bulk_upload_with_metadata, :bulk_import, :index, :index_v2, :details,
+  OTHER_ACTIONS = [:bulk_upload_with_metadata, :resume_upload_targets, :bulk_import, :index, :index_v2, :details,
                    :dimensions, :all, :show_sample_names, :cli_user_instructions, :metadata_fields,
                    :search_suggestions, :stats, :upload, :validate_sample_files, :taxa_with_reads_suggestions, :uploaded_by_current_user,
                    :taxa_with_contigs_suggestions, :validate_sample_ids, :enable_mass_normalized_backgrounds, :reads_stats, :consensus_genome_clade_export,
                    :bulk_kickoff_workflow_runs, :user_is_collaborator, :validate_user_can_delete_objects, :bulk_delete, :benchmark, :benchmark_ground_truth_files,].freeze
   OWNER_ACTIONS = [:raw_results_folder, :upload_credentials].freeze
-  TOKEN_AUTH_ACTIONS = [:update, :bulk_upload_with_metadata, :upload_credentials].freeze
+  TOKEN_AUTH_ACTIONS = [:update, :bulk_upload_with_metadata, :resume_upload_targets, :upload_credentials].freeze
   ACTIONS_TO_REDIRECT = [:show].freeze
 
   # For API-like access
@@ -873,6 +873,56 @@ class SamplesController < ApplicationController
     respond_to do |format|
       format.json { render json: resp }
     end
+  end
+
+  # POST /samples/resume_upload_targets.json  { project_id:, sample_names: [...] }
+  #
+  # seqtoid-cli `upload-samples --resume`: re-attach to samples a previous CLI batch CREATED but never
+  # finished uploading (the client died, slept, or lost its network mid-batch), instead of creating new
+  # samples -- which a re-run cannot do anyway, since sample names are unique per project. Returns, for
+  # each named sample the CURRENT USER uploaded to the project, the same upload targets
+  # bulk_upload_with_metadata returns to the CLI, plus whether each file is already on S3. A sample the
+  # stalled-upload sweep already failed (before processing started) is reopened. Anything else comes
+  # back in `errors` keyed by name and is left untouched.
+  def resume_upload_targets
+    names = Array(params[:sample_names]).map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    if names.length > SAMPLE_UPLOAD_LIMIT
+      render json: { samples: [], errors: { "_" => "at most #{SAMPLE_UPLOAD_LIMIT} samples per request" } },
+             status: :bad_request
+      return
+    end
+
+    by_name = Sample.where(project_id: params[:project_id], user_id: current_user.id, name: names)
+                    .includes(:input_files).index_by { |s| s.name.downcase }
+    samples = []
+    errors = {}
+    names.each do |name|
+      sample = by_name[name.downcase]
+      if sample.nil?
+        errors[name] = "no sample with this name that you uploaded in this project"
+        next
+      end
+      if (reason = sample.upload_resume_blocker)
+        errors[name] = reason
+        next
+      end
+
+      sample.reopen_failed_local_upload!
+      samples << {
+        id: sample.id,
+        name: sample.name,
+        input_files: sample.input_files.map do |input_file|
+          {
+            multipart_upload_id: input_file.multipart_upload_id,
+            s3_path: input_file.s3_path,
+            source: input_file.source,
+            uploaded: input_file.s3_presence_check,
+          }
+        end,
+      }
+    end
+
+    render json: { samples: samples, errors: errors }
   end
 
   # GET /samples/1/upload_credentials
