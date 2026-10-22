@@ -107,6 +107,7 @@ Rails.application.routes.draw do
       post :validate_sample_files
       post :enable_mass_normalized_backgrounds
       post :bulk_upload_with_metadata
+      post :resume_upload_targets
       post :bulk_upload
       post :validate_sample_ids
       post :taxa_with_reads_suggestions
