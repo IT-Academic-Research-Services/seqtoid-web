@@ -1337,46 +1337,53 @@ class UserDataImportService
   #   * create_user mode: the user's email is not already taken (unless skip_existing);
   #   * no imported primary key already exists on the target (unless skip_existing, which skips them).
   # Raises ValidationError / ImportError / DuplicateUserError exactly as the write path would have, but
-  # before anything is committed. Counts what it saw into @stats (rows per table, *_existing ids).
+  # before anything is committed. Counts what it saw into @stats (rows per table; <table>_existing_ids for
+  # the first colliding batch when it refuses).
   def validate_before_write!
+    # Cheap checks first, so a duplicate user reports as such rather than as a primary-key collision.
+    if @create_user && !@skip_existing && (existing = User.find_by(email: @user_data[:email]))
+      raise DuplicateUserError, "User with email #{@user_data[:email]} already exists (ID: #{existing.id})"
+    end
+
     file_mismatches = []
     @expected_counts.each do |table, expected|
       rows = 0
-      collisions = 0
       model = model_for_table(table)
+      check_ids = model && collision_checked?(table)
       each_row_batch(table) do |batch|
         rows += batch.size
-        next unless model
+        next unless check_ids
 
         ids = batch.filter_map { |r| r[:id] }
-        collisions += model.where(id: ids).count unless ids.empty?
+        next if ids.empty?
+
+        existing_ids = model.where(id: ids).count
+        raise_primary_keys_exist!(table, existing_ids) if existing_ids.positive?
       end
       file_mismatches << "#{table}: manifest=#{expected} file=#{rows}" if rows != expected.to_i
       @stats[:"#{table}_in_bundle"] = rows
-      @stats[:"#{table}_existing_ids"] = collisions if collisions.positive?
     end
     raise ImportError, "Row count mismatch (incomplete bundle?): #{file_mismatches.join('; ')}" if file_mismatches.any?
 
     check_reference_rows_exist!("host_genomes", HostGenome)
     check_reference_rows_exist!("alignment_configs", AlignmentConfig)
     count_name_conflicts
+  end
 
-    if @create_user && !@skip_existing && (existing = User.find_by(email: @user_data[:email]))
-      raise DuplicateUserError, "User with email #{@user_data[:email]} already exists (ID: #{existing.id})"
-    end
+  # Primary-key collisions are checked only when they would be an error: not with skip_existing (the import
+  # already skips existing ids batch by batch, so counting them up front was a second full pass over the
+  # bundle), and never for reference tables (remapped by natural key, not inserted by id) or
+  # projects (MERGED when they already exist: a shared project imported once per member).
+  def collision_checked?(table)
+    !@skip_existing && !(REFERENCE_TABLES + MERGED_BY_ID_TABLES).include?(table.to_s)
+  end
 
-    return if @skip_existing
-
-    collided = @stats.select { |k, v| k.to_s.end_with?("_existing_ids") && v.positive? }
-    return if collided.empty?
-
-    # Reference tables are remapped by natural key (never inserted by id), and projects are MERGED when they
-    # already exist (a shared project imported once per member -- the multi-user trickle), so an existing id
-    # is expected there and not a conflict.
-    collided = collided.reject { |k, _| (REFERENCE_TABLES + MERGED_BY_ID_TABLES).include?(k.to_s.delete_suffix("_existing_ids")) }
-    return if collided.empty?
-
-    raise ImportError, "Primary keys already exist on the target (#{collided.map { |k, v| "#{k.to_s.delete_suffix('_existing_ids')}: #{v}" }.join(', ')}); " \
+  # Stops at the FIRST colliding batch instead of scanning the rest of the bundle: one collision already
+  # means "re-run with skip_existing", so a partially imported export fails in seconds instead of after a
+  # read-only pass over every table (seen with a 75M-row export in the 2026-10-22 next-prod lab).
+  def raise_primary_keys_exist!(table, count)
+    @stats[:"#{table}_existing_ids"] = count
+    raise ImportError, "Primary keys already exist on the target (#{table}: #{count} in the first colliding batch); " \
                        "re-run with mode skip_existing to import only the missing rows"
   end
 

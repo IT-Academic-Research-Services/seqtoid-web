@@ -556,6 +556,25 @@ RSpec.describe UserDataImportService do
         expect(result[:error]).to include("samples: manifest=99 file=1")
       end
 
+      it "stops the primary-key check at the first colliding table instead of scanning the rest" do
+        create(:sample, id: SAMPLE_ID, project: create(:project))
+        allow(PipelineRun).to receive(:where).and_call_original
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("samples: 1 in the first colliding batch")
+        expect(PipelineRun).not_to have_received(:where)
+      end
+
+      it "with skip_existing, skips the up-front collision scan and still resumes" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats].keys.grep(/_existing_ids\z/)).to be_empty
+        expect(result[:stats][:samples_skipped]).to eq(1)
+      end
+
       it "refuses (before writing) when imported primary keys already exist and skip_existing is off" do
         create(:sample, id: SAMPLE_ID, project: create(:project))
         result = nil
