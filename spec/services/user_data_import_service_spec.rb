@@ -395,6 +395,70 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    # 2026-10-22: project, background and phylo tree names are unique platform-wide. A name already used on
+    # the target by a DIFFERENT row (e.g. the user recreated the project before their export arrived) renames
+    # the imported row instead of failing the import.
+    context "when an imported name is already used on the platform" do
+      it "renames the imported project and reports it" do
+        create(:project, name: "Migrated Project")
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID)")
+        expect(result[:stats][:projects_renamed]).to eq(1)
+        expect(result[:warnings]).to include(a_string_including("renamed to 'Migrated Project (CZID)'"))
+      end
+
+      it "leaves the existing project untouched" do
+        native = create(:project, name: "Migrated Project")
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(native.reload.name).to eq("Migrated Project")
+      end
+
+      it "matches names case-insensitively" do
+        create(:project, name: "MIGRATED project")
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID)")
+      end
+
+      it "numbers the suffix when the renamed name is also taken" do
+        create(:project, name: "Migrated Project")
+        create(:project, name: "Migrated Project (CZID)")
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID 2)")
+      end
+
+      it "renames a phylo tree whose name is taken" do
+        create(:phylo_tree, name: "Migrated Legacy Tree")
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(PhyloTree.find(PHYLO_TREE_ID).name).to eq("Migrated Legacy Tree (CZID)")
+        expect(result[:stats][:phylo_trees_renamed]).to eq(1)
+      end
+
+      it "does not rename again on a skip_existing re-run" do
+        create(:project, name: "Migrated Project")
+        described_class.call(input_dir: write_bundle, create_user: true)
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID)")
+        expect(result[:stats][:projects_renamed]).to eq(0)
+      end
+
+      it "a dry run counts the conflicts and writes nothing" do
+        create(:project, name: "Migrated Project")
+        result = described_class.call(input_dir: write_bundle, create_user: true, dry_run: true)
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats][:projects_name_conflicts]).to eq(1)
+        expect(Project.exists?(PROJECT_ID)).to be(false)
+      end
+    end
+
     # 2026-10-20: imports must never hold long locks. Every bundle-detectable failure is caught read-only
     # before anything is written; the dry run is exactly that validation pass.
     context "pre-write validation and dry run (read-only)" do

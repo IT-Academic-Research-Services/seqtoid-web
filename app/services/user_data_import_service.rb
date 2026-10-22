@@ -365,6 +365,38 @@ class UserDataImportService
     record
   end
 
+  # projects, backgrounds and phylo_trees names are unique platform-wide (case-insensitive). When an
+  # imported row's name is already used by a DIFFERENT row on the target -- the user (or anyone) created it
+  # on the platform before this export arrived, or another migrated user owns it -- the imported row is
+  # renamed "<name> (CZID)", then "<name> (CZID 2)", ... instead of failing the import. Nothing is merged
+  # or dropped. Each rename is counted in @stats[:<stat_key>_renamed] and listed in @warnings so support
+  # can tell the user. A row whose id already exists (a skip_existing re-run) keeps the name it has.
+  RENAME_SUFFIX = "CZID"
+  NAME_MAX_LENGTH = 255
+  NAME_UNIQUE_TABLES = { "projects" => "Project", "backgrounds" => "Background", "phylo_trees" => "PhyloTree" }.freeze
+
+  def import_name(model, stat_key, id, name)
+    return name if name.blank?
+    return name if id && model.exists?(id)
+    return name unless name_taken?(model, name, id)
+
+    candidate = (1..).lazy.map { |n| renamed(name, n) }.find { |c| !name_taken?(model, c, id) }
+    @stats[:"#{stat_key}_renamed"] += 1
+    @warnings << "#{model.name} '#{name}' (id: #{id}) renamed to '#{candidate}': that name is already used on this platform"
+    candidate
+  end
+
+  def renamed(name, attempt)
+    suffix = attempt == 1 ? " (#{RENAME_SUFFIX})" : " (#{RENAME_SUFFIX} #{attempt})"
+    "#{name[0, NAME_MAX_LENGTH - suffix.length]}#{suffix}"
+  end
+
+  def name_taken?(model, name, id)
+    scope = model.where("LOWER(#{model.table_name}.name) = ?", name.downcase)
+    scope = scope.where.not(id: id) if id
+    scope.exists?
+  end
+
   # ===========================================================================
   # USER IMPORT
   # ===========================================================================
@@ -480,7 +512,7 @@ class UserDataImportService
       project = insert_one(Project, :projects, {
                              id: row[:id],
                              # Strip latent trailing/leading whitespace from source data (also version_prefix below).
-                             name: row[:name]&.strip,
+                             name: import_name(Project, :projects, row[:id], row[:name]&.strip),
                              description: row[:description],
                              # Owner only; a member creates it owner-less (see above).
                              creator_id: row[:is_owner] ? @new_user_id : nil,
@@ -1060,7 +1092,7 @@ class UserDataImportService
                           id: row[:id],
                           user_id: map_user_id(row[:user_id]),
                           project_id: row[:project_id],
-                          name: row[:name],
+                          name: import_name(PhyloTree, :phylo_trees, row[:id], row[:name]),
                           taxid: row[:taxid],
                           tax_level: row[:tax_level],
                           tax_name: row[:tax_name],
@@ -1118,7 +1150,7 @@ class UserDataImportService
       bg = insert_one(Background, :backgrounds, {
                         id: row[:id],
                         user_id: map_user_id(row[:user_id]),
-                        name: row[:name],
+                        name: import_name(Background, :backgrounds, row[:id], row[:name]),
                         description: row[:description],
                         public_access: row[:public_access],
                         ready: row[:ready],
@@ -1312,6 +1344,7 @@ class UserDataImportService
 
     check_reference_rows_exist!("host_genomes", HostGenome)
     check_reference_rows_exist!("alignment_configs", AlignmentConfig)
+    count_name_conflicts
 
     if @create_user && !@skip_existing && (existing = User.find_by(email: @user_data[:email]))
       raise DuplicateUserError, "User with email #{@user_data[:email]} already exists (ID: #{existing.id})"
@@ -1330,6 +1363,21 @@ class UserDataImportService
 
     raise ImportError, "Primary keys already exist on the target (#{collided.map { |k, v| "#{k.to_s.delete_suffix('_existing_ids')}: #{v}" }.join(', ')}); " \
                        "re-run with mode skip_existing to import only the missing rows"
+  end
+
+  # Read-only: how many imported names will be renamed (see import_name), so a dry run surfaces them.
+  def count_name_conflicts
+    NAME_UNIQUE_TABLES.each do |table, model_name|
+      model = model_name.constantize
+      conflicts = 0
+      each_row(table) do |row|
+        name = row[:name].to_s.strip
+        next if name.empty? || model.exists?(row[:id])
+
+        conflicts += 1 if name_taken?(model, name, row[:id])
+      end
+      @stats[:"#{table}_name_conflicts"] = conflicts if conflicts.positive?
+    end
   end
 
   REFERENCE_TABLES = %w[host_genomes alignment_configs metadata_fields locations].freeze
