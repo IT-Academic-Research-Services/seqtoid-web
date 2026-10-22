@@ -94,6 +94,17 @@ class UserDataImportService
   # per-round-trip overhead negligible.
   INSERT_BATCH = 1_000
 
+  # Next-prod mode (bulk backfill into the replica cluster, see the CZI backfill runbook). All three are
+  # environment knobs so the import Job sets them and a default deploy behaves exactly as before:
+  #   IMPORT_REQUIRE_DB_HOST  refuse to run unless connected to this database host. Set on the replica's
+  #                           import Jobs, and on prod during the backfill window, so an import pointed at
+  #                           the live database by mistake stops before reading or writing anything.
+  #   IMPORT_LOCK_SCOPE       "global" (default): one import at a time. "export": one per export bundle, so
+  #                           a queue runner can run several exports in parallel.
+  #   IMPORT_INSERT_BATCH     rows per insert_all! statement (default INSERT_BATCH).
+  REQUIRE_DB_HOST_ENV = "IMPORT_REQUIRE_DB_HOST"
+  LOCK_SCOPES = %w[global export].freeze
+
   def initialize(input_dir:, dry_run: false, target_user_id: nil, skip_existing: false, create_user: false,
                  source_bucket: nil, dest_bucket: nil, single_transaction: false)
     @input_dir = input_dir.to_s
@@ -118,6 +129,9 @@ class UserDataImportService
 
     @new_user_id = nil
     @old_user_id = nil
+    @insert_batch = Integer(ENV.fetch("IMPORT_INSERT_BATCH", INSERT_BATCH.to_s))
+    @lock_scope = ENV.fetch("IMPORT_LOCK_SCOPE", "global")
+    raise ArgumentError, "IMPORT_LOCK_SCOPE must be one of #{LOCK_SCOPES.join(', ')}" unless LOCK_SCOPES.include?(@lock_scope)
 
     @warnings = []
     @stats = Hash.new(0)
@@ -129,6 +143,7 @@ class UserDataImportService
   end
 
   def call
+    check_target_db_host!
     validate_bundle!
     # Every check that can fail runs here, read-only, before anything is written -- so a bad bundle never
     # leaves a partial import even though writes are no longer one transaction.
@@ -316,7 +331,7 @@ class UserDataImportService
       next if attrs.nil? # block returned nil -> filter this row out (not buffered/inserted)
 
       buffer << attrs
-      if buffer.size >= INSERT_BATCH
+      if buffer.size >= @insert_batch
         flush_insert(model, stat_key, buffer)
         buffer = []
       end
@@ -1396,7 +1411,7 @@ class UserDataImportService
     buffer = []
     each_row(name) do |row|
       buffer << row
-      if buffer.size >= INSERT_BATCH
+      if buffer.size >= @insert_batch
         yield buffer
         buffer = []
       end
@@ -1414,21 +1429,37 @@ class UserDataImportService
   # YIELDING TO THE APP
   # ===========================================================================
 
-  # Only one import at a time (MySQL named lock, released when the session ends). A second import fails
-  # fast instead of piling more load onto the database.
+  # One import at a time by default (MySQL named lock, released when the session ends); per export with
+  # IMPORT_LOCK_SCOPE=export. A conflicting import fails fast instead of piling more load onto the database.
   IMPORT_LOCK_NAME = "seqtoid_user_data_import"
+
+  # "global": the one shared name (one import at a time). "export": scoped to the bundle's source user, so
+  # different exports run in parallel while the same export can never run twice at once.
+  def import_lock_name
+    @lock_scope == "export" ? "#{IMPORT_LOCK_NAME}:u#{@old_user_id}" : IMPORT_LOCK_NAME
+  end
+
+  def check_target_db_host!
+    required = ENV[REQUIRE_DB_HOST_ENV].to_s.strip
+    return if required.empty?
+
+    connected = ActiveRecord::Base.connection_db_config.configuration_hash[:host].to_s
+    return if connected.casecmp?(required)
+
+    raise ImportError, "Refusing to import: connected to database host '#{connected}' but #{REQUIRE_DB_HOST_ENV}='#{required}'"
+  end
 
   def with_import_lock
     conn = ActiveRecord::Base.connection
     return yield unless conn.adapter_name.to_s.match?(/mysql|trilogy/i)
 
-    acquired = conn.select_value("SELECT GET_LOCK(#{conn.quote(IMPORT_LOCK_NAME)}, 0)").to_i == 1
-    raise ImportError, "Another user-data import is already running (named lock #{IMPORT_LOCK_NAME}); retry when it finishes" unless acquired
+    acquired = conn.select_value("SELECT GET_LOCK(#{conn.quote(import_lock_name)}, 0)").to_i == 1
+    raise ImportError, "Another user-data import is already running (named lock #{import_lock_name}); retry when it finishes" unless acquired
 
     begin
       yield
     ensure
-      conn.select_value("SELECT RELEASE_LOCK(#{conn.quote(IMPORT_LOCK_NAME)})")
+      conn.select_value("SELECT RELEASE_LOCK(#{conn.quote(import_lock_name)})")
     end
   end
 

@@ -395,6 +395,79 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    # 2026-10-22: next-prod mode -- the bulk backfill runs against the replica cluster, several exports at once.
+    context "next-prod mode knobs" do
+      def with_env(vars)
+        old = vars.keys.index_with { |k| ENV.fetch(k, nil) }
+        vars.each { |k, v| ENV[k] = v }
+        yield
+      ensure
+        old.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
+      end
+
+      it "refuses to import when connected to a host other than IMPORT_REQUIRE_DB_HOST" do
+        result = with_env("IMPORT_REQUIRE_DB_HOST" => "next-prod.example.internal") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("Refusing to import").and(include("next-prod.example.internal"))
+        expect(User.find_by(email: "migrated@example.com")).to be_nil
+      end
+
+      it "imports when connected to the required host" do
+        host = ActiveRecord::Base.connection_db_config.configuration_hash[:host].to_s
+        result = with_env("IMPORT_REQUIRE_DB_HOST" => host.upcase) do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true)
+      end
+
+      it "with IMPORT_LOCK_SCOPE=export, takes a lock scoped to the export so other exports can run" do
+        conn = ActiveRecord::Base.connection
+        allow(conn).to receive(:select_value).and_call_original
+        allow(conn).to receive(:select_value).with(/GET_LOCK\('seqtoid_user_data_import', 0\)/).and_return(0)
+
+        result = with_env("IMPORT_LOCK_SCOPE" => "export") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(true)
+        expect(conn).to have_received(:select_value).with(/GET_LOCK\('seqtoid_user_data_import:u#{OLD_USER_ID}', 0\)/)
+      end
+
+      it "with IMPORT_LOCK_SCOPE=export, still fails fast when the same export is already running" do
+        conn = ActiveRecord::Base.connection
+        allow(conn).to receive(:select_value).and_call_original
+        allow(conn).to receive(:select_value).with(/GET_LOCK\('seqtoid_user_data_import:u#{OLD_USER_ID}', 0\)/).and_return(0)
+
+        result = with_env("IMPORT_LOCK_SCOPE" => "export") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("seqtoid_user_data_import:u#{OLD_USER_ID}")
+      end
+
+      it "rejects an unknown IMPORT_LOCK_SCOPE" do
+        with_env("IMPORT_LOCK_SCOPE" => "table") do
+          expect { described_class.new(input_dir: write_bundle, create_user: true) }.to raise_error(ArgumentError, /IMPORT_LOCK_SCOPE/)
+        end
+      end
+
+      it "reads the insert batch size from IMPORT_INSERT_BATCH and still imports everything" do
+        result = with_env("IMPORT_INSERT_BATCH" => "1") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true)
+        expect(PipelineRun.exists?(PIPELINE_RUN_ID)).to be(true)
+      end
+    end
+
     # 2026-10-22: project, background and phylo tree names are unique platform-wide. A name already used on
     # the target by a DIFFERENT row (e.g. the user recreated the project before their export arrived) renames
     # the imported row instead of failing the import.
