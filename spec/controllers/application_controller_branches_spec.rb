@@ -411,8 +411,8 @@ end
       request = ActionDispatch::TestRequest.create
       allow(controller_instance).to receive(:current_user).and_return(regular_user)
       allow(controller_instance).to receive(:request).and_return(request)
-      expect(JsonLogging::CurrentContext).to receive(:user_id=).with(regular_user.id).and_call_original
-      expect(JsonLogging::CurrentContext).to receive(:request_id=).with(request.request_id).and_call_original
+      expect(JsonLogging::CurrentContext).to receive(:user=).with(regular_user).and_call_original
+      expect(JsonLogging::CurrentContext).to receive(:request=).with(request).and_call_original
 
       controller_instance.send(:set_current_context_for_logging!)
 
@@ -424,8 +424,8 @@ end
       request = ActionDispatch::TestRequest.create
       allow(controller_instance).to receive(:current_user).and_return(nil)
       allow(controller_instance).to receive(:request).and_return(request)
-      expect(JsonLogging::CurrentContext).to receive(:user_id=).with(nil).and_call_original
-      expect(JsonLogging::CurrentContext).to receive(:request_id=).with(request.request_id).and_call_original
+      expect(JsonLogging::CurrentContext).not_to receive(:user=)
+      expect(JsonLogging::CurrentContext).to receive(:request=).with(request).and_call_original
 
       controller_instance.send(:set_current_context_for_logging!)
 

@@ -4,8 +4,8 @@ require 'ougai'
 
 module JsonLogging
   class CurrentContext < ActiveSupport::CurrentAttributes
-    attribute :user_id
-    attribute :request_id
+    attribute :user
+    attribute :request
   end
 
   # Deployed logging configuration.
@@ -24,8 +24,8 @@ module JsonLogging
     ougai_logger = Ougai::Logger.new($stdout)
     ougai_logger.level = config.log_level || :info
     ougai_logger.before_log = lambda do |data|
-      data[:request_id] = CurrentContext.request_id if CurrentContext.request_id
-      data[:user_id] = CurrentContext.user_id if CurrentContext.user_id
+      data[:request_id] = CurrentContext.request.request_id if CurrentContext.request
+      data[:user_id] = CurrentContext.user.id if CurrentContext.user
       data[:environment] = Rails.env
     end
     config.logger = ougai_logger
