@@ -12,7 +12,7 @@
 // collaborator call that results. Everything still runs against a real mounted
 // component, so the methods see a real `this.state`, real `configForWorkflow`
 // and the real data-layer views.
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { WORKFLOW_ENTITIES, WorkflowType } from "~/components/utils/workflows";
 import { DiscoveryView } from "~/components/views/DiscoveryView/DiscoveryView";
 import {
@@ -205,6 +205,15 @@ const baseProps = () => ({
 
 // Mounts DiscoveryView and hands back the live class instance so branch-heavy
 // methods can be driven with exactly the state they branch on.
+//
+// componentDidMount fires the initial loads (dimensions, stats, locations,
+// user stats) without awaiting them, and each one calls setState whenever its
+// mocked promise resolves. Returning as soon as the ref is set let those late
+// responses land AFTER a test's own setState and overwrite it (e.g. the
+// locations load resetting mapLocationData / rawMapLocationData to {}) -- the
+// source of the intermittent CI failures. So wait for the initial loads to
+// settle (locations only load outside the snapshot domain), then flush any
+// remaining promise callbacks, before handing the instance to the test.
 const mountView = async (overrides: $TSFixMe = {}) => {
   const props = { ...baseProps(), ...overrides };
   let instance: $TSFixMe = null;
@@ -217,6 +226,16 @@ const mountView = async (overrides: $TSFixMe = {}) => {
     />,
   );
   await waitFor(() => expect(instance).not.toBeNull());
+  await waitFor(() => {
+    expect(instance.state.loadingDimensions).toBe(false);
+    expect(instance.state.loadingStats).toBe(false);
+    if (props.domain !== "snapshot") {
+      expect(instance.state.loadingLocations).toBe(false);
+    }
+  });
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
   return { ...utils, props, instance };
 };
 
