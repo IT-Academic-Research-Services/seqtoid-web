@@ -373,6 +373,42 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    # 2026-10-22: skip_existing may skip only the SAME record (a resume). A different record under an
+    # imported id is a conflict: reported and stopped, never silently skipped.
+    context "with skip_existing and an id that belongs to a different record" do
+      it "stops with an id conflict on the bulk path instead of skipping the row" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        other_project = create(:project)
+        Sample.where(id: SAMPLE_ID).update_all(project_id: other_project.id) # rubocop:disable Rails/SkipsModelValidations
+
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error_class]).to eq("UserDataImportService::IdConflictError")
+        expect(result[:error]).to include("Id conflict in samples").and(include("id #{SAMPLE_ID}")).and(include("project_id"))
+        expect(result[:stats][:samples_id_conflicts]).to eq(1)
+      end
+
+      it "stops with an id conflict on the single-row path" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        PhyloTree.where(id: PHYLO_TREE_ID).update_all(user_id: create(:user).id) # rubocop:disable Rails/SkipsModelValidations
+
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("Id conflict in phylo_trees").and(include("id #{PHYLO_TREE_ID}"))
+      end
+
+      it "still skips rows that are the same record (a resume)" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats][:samples_skipped]).to eq(1)
+        expect(result[:stats][:pipeline_runs_skipped]).to eq(1)
+      end
+    end
+
     context "when the user already exists and skip_existing is off" do
       it "returns a DuplicateUserError" do
         described_class.call(input_dir: write_bundle, create_user: true)
@@ -392,6 +428,143 @@ RSpec.describe UserDataImportService do
         expect(Sample.exists?(SAMPLE_ID)).to be(false)
         expect(Project.exists?(PROJECT_ID)).to be(false)
         expect(User.find_by(email: "migrated@example.com")).to be_nil
+      end
+    end
+
+    # 2026-10-22: next-prod mode -- the bulk backfill runs against the replica cluster, several exports at once.
+    context "next-prod mode knobs" do
+      def with_env(vars)
+        old = vars.keys.index_with { |k| ENV.fetch(k, nil) }
+        vars.each { |k, v| ENV[k] = v }
+        yield
+      ensure
+        old.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
+      end
+
+      it "refuses to import when connected to a host other than IMPORT_REQUIRE_DB_HOST" do
+        result = with_env("IMPORT_REQUIRE_DB_HOST" => "next-prod.example.internal") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("Refusing to import").and(include("next-prod.example.internal"))
+        expect(User.find_by(email: "migrated@example.com")).to be_nil
+      end
+
+      it "imports when connected to the required host" do
+        host = ActiveRecord::Base.connection_db_config.configuration_hash[:host].to_s
+        result = with_env("IMPORT_REQUIRE_DB_HOST" => host.upcase) do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true)
+      end
+
+      it "with IMPORT_LOCK_SCOPE=export, takes a lock scoped to the export so other exports can run" do
+        conn = ActiveRecord::Base.connection
+        allow(conn).to receive(:select_value).and_call_original
+        allow(conn).to receive(:select_value).with(/GET_LOCK\('seqtoid_user_data_import', 0\)/).and_return(0)
+
+        result = with_env("IMPORT_LOCK_SCOPE" => "export") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(true)
+        expect(conn).to have_received(:select_value).with(/GET_LOCK\('seqtoid_user_data_import:u#{OLD_USER_ID}', 0\)/)
+      end
+
+      it "with IMPORT_LOCK_SCOPE=export, still fails fast when the same export is already running" do
+        conn = ActiveRecord::Base.connection
+        allow(conn).to receive(:select_value).and_call_original
+        allow(conn).to receive(:select_value).with(/GET_LOCK\('seqtoid_user_data_import:u#{OLD_USER_ID}', 0\)/).and_return(0)
+
+        result = with_env("IMPORT_LOCK_SCOPE" => "export") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("seqtoid_user_data_import:u#{OLD_USER_ID}")
+      end
+
+      it "rejects an unknown IMPORT_LOCK_SCOPE" do
+        with_env("IMPORT_LOCK_SCOPE" => "table") do
+          expect { described_class.new(input_dir: write_bundle, create_user: true) }.to raise_error(ArgumentError, /IMPORT_LOCK_SCOPE/)
+        end
+      end
+
+      it "reads the insert batch size from IMPORT_INSERT_BATCH and still imports everything" do
+        result = with_env("IMPORT_INSERT_BATCH" => "1") do
+          described_class.call(input_dir: write_bundle, create_user: true)
+        end
+
+        expect(result[:success]).to be(true)
+        expect(Sample.exists?(SAMPLE_ID)).to be(true)
+        expect(PipelineRun.exists?(PIPELINE_RUN_ID)).to be(true)
+      end
+    end
+
+    # 2026-10-22: project, background and phylo tree names are unique platform-wide. A name already used on
+    # the target by a DIFFERENT row (e.g. the user recreated the project before their export arrived) renames
+    # the imported row instead of failing the import.
+    context "when an imported name is already used on the platform" do
+      it "renames the imported project and reports it" do
+        create(:project, name: "Migrated Project")
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(result[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID)")
+        expect(result[:stats][:projects_renamed]).to eq(1)
+        expect(result[:warnings]).to include(a_string_including("renamed to 'Migrated Project (CZID)'"))
+      end
+
+      it "leaves the existing project untouched" do
+        native = create(:project, name: "Migrated Project")
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(native.reload.name).to eq("Migrated Project")
+      end
+
+      it "matches names case-insensitively" do
+        create(:project, name: "MIGRATED project")
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID)")
+      end
+
+      it "numbers the suffix when the renamed name is also taken" do
+        create(:project, name: "Migrated Project")
+        create(:project, name: "Migrated Project (CZID)")
+        described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID_2)")
+      end
+
+      it "renames a phylo tree whose name is taken" do
+        create(:phylo_tree, name: "Migrated Legacy Tree")
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(PhyloTree.find(PHYLO_TREE_ID).name).to eq("Migrated Legacy Tree (CZID)")
+        expect(result[:stats][:phylo_trees_renamed]).to eq(1)
+      end
+
+      it "does not rename again on a skip_existing re-run" do
+        create(:project, name: "Migrated Project")
+        described_class.call(input_dir: write_bundle, create_user: true)
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(true)
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID)")
+        expect(result[:stats][:projects_renamed]).to eq(0)
+      end
+
+      it "a dry run counts the conflicts and writes nothing" do
+        create(:project, name: "Migrated Project")
+        result = described_class.call(input_dir: write_bundle, create_user: true, dry_run: true)
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats][:projects_name_conflicts]).to eq(1)
+        expect(Project.exists?(PROJECT_ID)).to be(false)
       end
     end
 
@@ -415,6 +588,47 @@ RSpec.describe UserDataImportService do
         File.write(manifest_path, JSON.generate(manifest))
 
         result = described_class.call(input_dir: dir, create_user: true, dry_run: true)
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("samples: manifest=99 file=1")
+      end
+
+      it "stops the primary-key check at the first colliding table instead of scanning the rest" do
+        create(:sample, id: SAMPLE_ID, project: create(:project))
+        allow(PipelineRun).to receive(:where).and_call_original
+        result = described_class.call(input_dir: write_bundle, create_user: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("samples: 1 in the first colliding batch")
+        expect(PipelineRun).not_to have_received(:where)
+      end
+
+      it "with skip_existing, skips the up-front collision scan and still resumes" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats].keys.grep(/_existing_ids\z/)).to be_empty
+        expect(result[:stats][:samples_skipped]).to eq(1)
+      end
+
+      it "with skip_existing, checks file row counts without parsing rows into batches" do
+        service = described_class.new(input_dir: write_bundle, create_user: true, skip_existing: true)
+        allow(service).to receive(:each_row_batch).and_call_original
+        service.send(:validate_bundle!)
+        service.send(:validate_before_write!)
+
+        expect(service).not_to have_received(:each_row_batch)
+        expect(service.instance_variable_get(:@stats)[:samples_in_bundle]).to eq(1)
+      end
+
+      it "with skip_existing, still fails a bundle whose files do not match the manifest" do
+        dir = write_bundle
+        manifest_path = File.join(dir, "manifest.json")
+        manifest = JSON.parse(File.read(manifest_path))
+        manifest["table_counts"]["samples"] = 99
+        File.write(manifest_path, JSON.generate(manifest))
+
+        result = described_class.call(input_dir: dir, create_user: true, skip_existing: true)
         expect(result[:success]).to be(false)
         expect(result[:error]).to include("samples: manifest=99 file=1")
       end
