@@ -208,29 +208,14 @@ Rails.application.configure do
   # This setting prevents Rails from blocking requests to the ngrok endpoint
   config.hosts << ENV["SERVER_DOMAIN"].sub("https://", "") if ENV["SERVER_DOMAIN"]
 
-  # Deployed logging configuration.
-  #
-  # Overridable via RAILS_LOG_LEVEL, defaulting to :debug so a local `development`
-  # boot is unchanged. The deployed dev environment sets it to "info".
-  #
-  # At :debug, ActiveRecord echoes every statement WITH its bound values. On the
-  # resque worker that means whole `INSERT INTO contigs` statements including the
-  # `sequence` column: measured single log lines up to 484 KB, a 12 KB mean against
-  # a 106 B median, and roughly three quarters of all container log bytes in the dev
-  # cluster from this one process. Two problems, not one -- the volume, and the fact
-  # that sample sequence content is written verbatim into a log stream that ships to
-  # an aggregator (and, if enabled, to a third-party log vendor).
-  #
-  JsonLogging.init_logging(config)
-  # Only `development` had this: sandbox/staging/prod already run :info.
+  # The deployed dev environment supposedly sets it to "info", but that seems unlikely
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
-  # ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
-  ActiveRecord::Base.logger.level = :info if ActiveRecord::Base.logger # TODO: For testing PROD configuration
+  JsonLogging.init_logging(config)
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
 
-  config.log_to = %w[stdout file]
+  config.log_to = %w[stdout file] # Is this even used?
   config.active_record.verbose_query_logs = true
 
   config.after_initialize do

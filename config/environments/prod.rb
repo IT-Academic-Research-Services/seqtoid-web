@@ -114,11 +114,10 @@ Rails.application.configure do
   config.active_support.report_deprecations = false
 
   JsonLogging.init_logging(config)
-  ActiveRecord::Base.logger.level = 1 if ActiveRecord::Base.logger
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = false
 
   # Set the logging destination(s)
-  config.log_to = %w[stdout]
+  config.log_to = %w[stdout] # Is this even used?
 end

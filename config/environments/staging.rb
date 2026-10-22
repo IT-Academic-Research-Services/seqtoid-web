@@ -73,7 +73,8 @@ Rails.application.configure do
   config.session_store :cookie_store, key: "_czid_session"
 
   JsonLogging.init_logging(config)
+
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
-  config.log_to = %w[stdout]
+  config.log_to = %w[stdout] # Is this even used?
 end

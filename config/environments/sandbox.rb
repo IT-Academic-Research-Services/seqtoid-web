@@ -42,11 +42,6 @@ Rails.application.configure do
   # redirect loop. (Staging/prod force SSL at the app; sandbox mirrors dev and does not.)
   config.force_ssl = false
 
-  # RAILS_LOG_LEVEL overrides the default (e.g. debug while troubleshooting); the ActiveRecord
-  # logger below follows the same level.
-  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
-  config.log_tags = [:request_id]
-
   config.action_mailer.raise_delivery_errors = false
   config.action_mailer.default_url_options = { host: "sandbox.seqtoid.org" }
 
@@ -76,21 +71,9 @@ Rails.application.configure do
   # configuration method"). Use the supported method-call form (same as prod.rb, #594).
   config.session_store :cookie_store, key: "_czid_session"
 
-  # Deployed logging: JSON lograge to stdout.
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
+  JsonLogging.init_logging(config)
 
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
-  config.log_to = %w[stdout]
+  config.log_to = %w[stdout] # Is this even used?
 end

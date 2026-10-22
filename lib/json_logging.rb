@@ -5,13 +5,26 @@ require 'ougai'
 module JsonLogging
   class CurrentContext < ActiveSupport::CurrentAttributes
     attribute :user_id
+    attribute :request_id
   end
 
+  # Deployed logging configuration.
+  #
+  # Overridable via RAILS_LOG_LEVEL, defaulting to :debug so a local `development`
+  # boot is unchanged. The deployed dev environment sets it to "info".
+  #
+  # At :debug, ActiveRecord echoes every statement WITH its bound values. On the
+  # resque worker that means whole `INSERT INTO contigs` statements including the
+  # `sequence` column: measured single log lines up to 484 KB, a 12 KB mean against
+  # a 106 B median, and roughly three quarters of all container log bytes in the dev
+  # cluster from this one process. Two problems, not one -- the volume, and the fact
+  # that sample sequence content is written verbatim into a log stream that ships to
+  # an aggregator (and, if enabled, to a third-party log vendor).
   def self.init_logging(config)
     ougai_logger = Ougai::Logger.new($stdout)
-    ougai_logger.level = Ougai::Logger::TRACE
+    ougai_logger.level = config.log_level || :info
     ougai_logger.before_log = lambda do |data|
-      # :request_id,
+      data[:request_id] = CurrentContext.request_id
       data[:user_id] = CurrentContext.user_id
       data[:environment] = Rails.env
     end
@@ -45,10 +58,6 @@ module JsonLogging
       opt_hash.compact
     end
     config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-    # Rails.application.configure do
-    #   config.lograge.enabled = true
-    #   config.lograge.formatter = Lograge::Formatters::Json.new # or Lines.new
-    # end
 
     ActiveRecord::Base.logger = ougai_logger
 

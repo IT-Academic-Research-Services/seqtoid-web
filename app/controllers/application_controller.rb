@@ -180,6 +180,7 @@ class ApplicationController < ActionController::Base
   # See https://stackoverflow.com/a/11670283/200312
   def set_current_context_for_logging!
     JsonLogging::CurrentContext.user_id = current_user&.id
+    JsonLogging::CurrentContext.request_id = request&.request_id
     ApplicationRecord._current_user = current_user if current_user
     ApplicationRecord._current_request = request if request
   rescue StandardError => e
