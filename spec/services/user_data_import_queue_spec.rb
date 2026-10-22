@@ -126,6 +126,18 @@ RSpec.describe UserDataImportQueue do
     expect(result(12)).to include("status" => "success", "attempts" => %w[live skip_existing])
   end
 
+  it "records an id conflict as a failure and does not retry it again" do
+    responses[2] = [
+      { success: false, error: "Primary keys already exist on the target (samples: 3 in the first colliding batch); re-run with mode skip_existing" },
+      { success: false, error: "Id conflict in samples: 1 row(s) in this batch already exist on the target as a DIFFERENT record (...)" },
+    ]
+    queue.run
+
+    expect(calls.select { |c| c[:target_user_id] == 2 }.pluck(:mode)).to eq(%w[live skip_existing])
+    expect(result(12)).to include("status" => "failed", "attempts" => %w[live skip_existing])
+    expect(result(12)["error"]).to start_with("Id conflict in samples")
+  end
+
   it "records a failure and moves on to the next export" do
     responses[2] = [{ success: false, error: "host_genomes not found on target: Alien" }]
     summary = queue.run

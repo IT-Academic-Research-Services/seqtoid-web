@@ -84,6 +84,9 @@ class UserDataImportService
   class ImportError < StandardError; end
   class ValidationError < ImportError; end
   class DuplicateUserError < ImportError; end
+  # An imported primary key exists on the target as a DIFFERENT record (see partition_existing). Not
+  # retryable with skip_existing: it needs a person to look.
+  class IdConflictError < ImportError; end
 
   # Must match UserDataExportService::SCHEMA_VERSION. Forward-compatibility guard
   # only; the feature is unreleased so there is a single current version.
@@ -227,6 +230,11 @@ class UserDataImportService
   rescue StandardError => e
     raise if @single_transaction
 
+    if e.is_a?(IdConflictError)
+      Rails.logger.error("UserDataImport: #{phase} stopped on an id conflict; rows committed so far stay -- resolve the conflict before re-running")
+      raise
+    end
+
     Rails.logger.error(
       "UserDataImport: #{phase} failed (#{e.class}); rows committed so far stay -- re-run the same import " \
       "with mode skip_existing to resume"
@@ -321,6 +329,16 @@ class UserDataImportService
     end
   end
 
+  # Number of rows (non-blank lines) in a table file, without parsing them. 0 if the file is absent.
+  def count_rows(name)
+    path = File.join(@input_dir, "#{name}.ndjson.gz")
+    return 0 unless File.exist?(path)
+
+    count = 0
+    Zlib::GzipReader.open(path) { |gz| gz.each_line { |line| count += 1 if line.match?(/\S/) } }
+    count
+  end
+
   # Streams a gzipped NDJSON file and inserts it in INSERT_BATCH-sized batches.
   # The block maps a parsed row Hash to the DB attribute Hash for `model`.
   def stream_insert(name, model, stat_key = nil)
@@ -342,15 +360,7 @@ class UserDataImportService
   def flush_insert(model, stat_key, rows)
     return if rows.empty?
 
-    if @skip_existing
-      ids = rows.filter_map { |r| r[:id] }
-      existing = ids.empty? ? [] : model.where(id: ids).pluck(:id)
-      unless existing.empty?
-        existing_set = existing.to_set
-        @stats[:"#{stat_key}_skipped"] += rows.count { |r| existing_set.include?(r[:id]) }
-        rows = rows.reject { |r| existing_set.include?(r[:id]) }
-      end
-    end
+    rows = partition_existing(model, stat_key, rows) if @skip_existing
     return if rows.empty?
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -363,13 +373,53 @@ class UserDataImportService
     @stats[stat_key] += rows.size
   end
 
+  # skip_existing may skip a row only when the row already on the target is the SAME record from an earlier
+  # run of this export (a resume): same id AND the same parent references -- every *_id column the import
+  # writes (project, sample, pipeline run, user, background, ...). The same id under different parents is a
+  # different record: ids cannot be renumbered (S3 keys and every cross-reference embed them), so the import
+  # stops and reports it instead of silently dropping CZI data. Returns the rows still to insert.
+  def partition_existing(model, stat_key, rows)
+    ids = rows.filter_map { |r| r[:id] }
+    return rows if ids.empty?
+
+    cols = identity_columns(model, rows.first)
+    existing = model.where(id: ids).pluck(:id, *cols).to_h { |id, *vals| [id, vals] }
+    return rows if existing.empty?
+
+    conflicts = rows.select { |r| existing.key?(r[:id]) && !same_identity?(existing[r[:id]], cols, r) }
+    raise_id_conflicts!(model, cols, conflicts, existing) if conflicts.any?
+
+    @stats[:"#{stat_key}_skipped"] += rows.count { |r| existing.key?(r[:id]) }
+    rows.reject { |r| existing.key?(r[:id]) }
+  end
+
+  def identity_columns(model, row)
+    row.keys.map(&:to_s).select { |k| k.end_with?("_id") && model.column_names.include?(k) }.map(&:to_sym)
+  end
+
+  def same_identity?(found_values, cols, row)
+    found_values.map(&:to_s) == cols.map { |c| row[c].to_s }
+  end
+
+  def raise_id_conflicts!(model, cols, conflicts, existing)
+    @stats[:"#{model.table_name}_id_conflicts"] += conflicts.size
+    detail = conflicts.first(5).map do |r|
+      "id #{r[:id]}: target #{cols.zip(existing[r[:id]]).to_h} vs export #{cols.index_with { |c| r[c] }}"
+    end
+    raise IdConflictError, "Id conflict in #{model.table_name}: #{conflicts.size} row(s) in this batch already exist on the " \
+                           "target as a DIFFERENT record (#{detail.join('; ')}). Not skipped; resolve before re-running."
+  end
+
   # Insert a single low-volume record (returns the persisted instance so callers
   # can rebuild associations). Idempotent under skip_existing.
   def insert_one(model, stat_key, attributes)
     id = attributes[:id]
-    if @skip_existing && id && model.exists?(id)
+    if @skip_existing && id && (existing = model.find_by(id: id))
+      cols = identity_columns(model, attributes)
+      found = cols.map { |c| existing[c] }
+      raise_id_conflicts!(model, cols, [attributes], { id => found }) unless same_identity?(found, cols, attributes)
       @stats[:"#{stat_key}_skipped"] += 1
-      return model.find(id)
+      return existing
     end
 
     record = model.new(attributes)
@@ -1337,46 +1387,55 @@ class UserDataImportService
   #   * create_user mode: the user's email is not already taken (unless skip_existing);
   #   * no imported primary key already exists on the target (unless skip_existing, which skips them).
   # Raises ValidationError / ImportError / DuplicateUserError exactly as the write path would have, but
-  # before anything is committed. Counts what it saw into @stats (rows per table, *_existing ids).
+  # before anything is committed. Counts what it saw into @stats (rows per table; <table>_existing_ids for
+  # the first colliding batch when it refuses).
   def validate_before_write!
+    # Cheap checks first, so a duplicate user reports as such rather than as a primary-key collision.
+    if @create_user && !@skip_existing && (existing = User.find_by(email: @user_data[:email]))
+      raise DuplicateUserError, "User with email #{@user_data[:email]} already exists (ID: #{existing.id})"
+    end
+
     file_mismatches = []
     @expected_counts.each do |table, expected|
       rows = 0
-      collisions = 0
       model = model_for_table(table)
-      each_row_batch(table) do |batch|
-        rows += batch.size
-        next unless model
+      if model && collision_checked?(table)
+        each_row_batch(table) do |batch|
+          rows += batch.size
+          ids = batch.filter_map { |r| r[:id] }
+          next if ids.empty?
 
-        ids = batch.filter_map { |r| r[:id] }
-        collisions += model.where(id: ids).count unless ids.empty?
+          existing_ids = model.where(id: ids).count
+          raise_primary_keys_exist!(table, existing_ids) if existing_ids.positive?
+        end
+      else
+        # No ids needed: count lines without JSON-parsing them (a 75M-row bundle parses for a long time).
+        rows = count_rows(table)
       end
       file_mismatches << "#{table}: manifest=#{expected} file=#{rows}" if rows != expected.to_i
       @stats[:"#{table}_in_bundle"] = rows
-      @stats[:"#{table}_existing_ids"] = collisions if collisions.positive?
     end
     raise ImportError, "Row count mismatch (incomplete bundle?): #{file_mismatches.join('; ')}" if file_mismatches.any?
 
     check_reference_rows_exist!("host_genomes", HostGenome)
     check_reference_rows_exist!("alignment_configs", AlignmentConfig)
     count_name_conflicts
+  end
 
-    if @create_user && !@skip_existing && (existing = User.find_by(email: @user_data[:email]))
-      raise DuplicateUserError, "User with email #{@user_data[:email]} already exists (ID: #{existing.id})"
-    end
+  # Primary-key collisions are checked up front only when they would be an error: not with skip_existing (the
+  # import checks every existing id batch by batch in partition_existing -- skipping the same record, stopping
+  # on a different one -- so counting them up front was a second full pass over the bundle), and never for reference tables (remapped by natural key, not inserted by id) or
+  # projects (MERGED when they already exist: a shared project imported once per member).
+  def collision_checked?(table)
+    !@skip_existing && !(REFERENCE_TABLES + MERGED_BY_ID_TABLES).include?(table.to_s)
+  end
 
-    return if @skip_existing
-
-    collided = @stats.select { |k, v| k.to_s.end_with?("_existing_ids") && v.positive? }
-    return if collided.empty?
-
-    # Reference tables are remapped by natural key (never inserted by id), and projects are MERGED when they
-    # already exist (a shared project imported once per member -- the multi-user trickle), so an existing id
-    # is expected there and not a conflict.
-    collided = collided.reject { |k, _| (REFERENCE_TABLES + MERGED_BY_ID_TABLES).include?(k.to_s.delete_suffix("_existing_ids")) }
-    return if collided.empty?
-
-    raise ImportError, "Primary keys already exist on the target (#{collided.map { |k, v| "#{k.to_s.delete_suffix('_existing_ids')}: #{v}" }.join(', ')}); " \
+  # Stops at the FIRST colliding batch instead of scanning the rest of the bundle: one collision already
+  # means "re-run with skip_existing", so a partially imported export fails in seconds instead of after a
+  # read-only pass over every table (seen with a 75M-row export in the 2026-10-22 next-prod lab).
+  def raise_primary_keys_exist!(table, count)
+    @stats[:"#{table}_existing_ids"] = count
+    raise ImportError, "Primary keys already exist on the target (#{table}: #{count} in the first colliding batch); " \
                        "re-run with mode skip_existing to import only the missing rows"
   end
 
