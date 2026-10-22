@@ -428,7 +428,7 @@ RSpec.describe UserDataImportService do
         create(:project, name: "Migrated Project (CZID)")
         described_class.call(input_dir: write_bundle, create_user: true)
 
-        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID 2)")
+        expect(Project.find(PROJECT_ID).name).to eq("Migrated Project (CZID_2)")
       end
 
       it "renames a phylo tree whose name is taken" do
