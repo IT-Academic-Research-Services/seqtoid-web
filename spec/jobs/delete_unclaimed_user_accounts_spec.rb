@@ -45,7 +45,10 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
         DeleteUnclaimedUserAccounts.perform
 
         expect(Rails.logger).to have_received(:info).with(
-          { message: "Found 2 unclaimed user accounts in Auth0", details: {} }.to_json
+          "Checking for unclaimed user accounts..."
+        )
+        expect(Rails.logger).to have_received(:info).with(
+          { message: "Found 2 unclaimed user accounts in Auth0" }
         )
         expect(Sentry).to have_received(:capture_message).with(
           "Found 2 unclaimed user accounts in Auth0",
@@ -121,7 +124,8 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
       end
     end
 
-    context "when an unclaimed account contains samples" do # this should never happen
+    context "when an unclaimed account contains samples" do
+      # this should never happen
       before do
         user1 = User.find_by(email: "user1@test.com")
         create(:sample, user: user1)
@@ -139,7 +143,7 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
       end
 
       it "should log errors to cloudwatch" do
-        user1 = User.find_by(email: "user1@test.com")
+        user1 = User.find_by!(email: "user1@test.com")
         expect(LogUtil).to receive(:log_error).with(
           "ERROR: The user to-be-deleted owns samples",
           exception: DeleteUnclaimedUserAccounts::DeleteUnclaimedUserAccountsError.new,
@@ -226,7 +230,7 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
       end
 
       it "should log an error to cloudwatch" do
-        user1 = User.find_by(email: "user1@test.com")
+        user1 = User.find_by!(email: "user1@test.com")
         expect(LogUtil).to receive(:log_error).with(
           "Failed to delete account from MySQL. Manual action required: this account must be deleted from MySQL within 30 days of creation.",
           exception: StandardError,
