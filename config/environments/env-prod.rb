@@ -46,7 +46,9 @@ Rails.application.configure do
   # annotation); the app sees http via X-Forwarded-Proto. force_ssl here would risk a redirect loop.
   config.force_ssl = false
 
-  config.log_level = :info
+  # RAILS_LOG_LEVEL overrides the default (e.g. debug while troubleshooting); the ActiveRecord
+  # logger below follows the same level.
+  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
   config.log_tags = [:request_id]
 
   config.action_mailer.raise_delivery_errors = false
@@ -102,7 +104,10 @@ Rails.application.configure do
   end
   config.colorize_logging = false
   config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-  ActiveRecord::Base.logger = Logger.new($stdout)
+  # A bare Logger defaults to DEBUG, which logged every SQL statement (full multi-row INSERTs
+  # included) regardless of config.log_level -- enough volume to fill node disk during bulk
+  # imports. Give it the configured level.
+  ActiveRecord::Base.logger = Logger.new($stdout, level: config.log_level)
 
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
