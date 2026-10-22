@@ -393,9 +393,9 @@ class UserDataImportService
   # projects, backgrounds and phylo_trees names are unique platform-wide (case-insensitive). When an
   # imported row's name is already used by a DIFFERENT row on the target -- the user (or anyone) created it
   # on the platform before this export arrived, or another migrated user owns it -- the imported row is
-  # renamed "<name> (CZID)", then "<name> (CZID 2)", ... instead of failing the import. Nothing is merged
-  # or dropped. Each rename is counted in @stats[:<stat_key>_renamed] and listed in @warnings so support
-  # can tell the user. A row whose id already exists (a skip_existing re-run) keeps the name it has.
+  # renamed "<name> (CZID)", then "<name> (CZID_2)", "<name> (CZID_3)", ... instead of failing the import.
+  # Nothing is merged or dropped. Each rename is counted in @stats[:<stat_key>_renamed] and listed in
+  # @warnings so support can tell the user. A row whose id already exists (a skip_existing re-run) keeps the name it has.
   RENAME_SUFFIX = "CZID"
   NAME_MAX_LENGTH = 255
   NAME_UNIQUE_TABLES = { "projects" => "Project", "backgrounds" => "Background", "phylo_trees" => "PhyloTree" }.freeze
@@ -412,7 +412,7 @@ class UserDataImportService
   end
 
   def renamed(name, attempt)
-    suffix = attempt == 1 ? " (#{RENAME_SUFFIX})" : " (#{RENAME_SUFFIX} #{attempt})"
+    suffix = attempt == 1 ? " (#{RENAME_SUFFIX})" : " (#{RENAME_SUFFIX}_#{attempt})"
     "#{name[0, NAME_MAX_LENGTH - suffix.length]}#{suffix}"
   end
 
