@@ -26,8 +26,13 @@ module S3Util
         end
       end
     rescue Aws::S3::Errors::ServiceError => e
-      Rails.logger.error("Error retrieving entry #{expression} from #{bucket}/#{key} from s3")
-      Rails.logger.error(e.message)
+      LogUtil.log_error(
+        "s3_select_json: Error retrieving entry #{expression} from #{bucket}/#{key} from s3",
+        exception: e,
+        bucket: bucket,
+        key: key,
+        expression: expression
+      )
       return ""
     end
     return entry.join
@@ -38,7 +43,12 @@ module S3Util
     begin
       resp = AwsClient[:s3].get_object(bucket: bucket, key: key)
       return resp.body.read
-    rescue StandardError
+    rescue StandardError => e
+      LogUtil.log_error(
+        "get_s3_file: Error retrieving S3 file",
+        exception: e,
+        s3_path: s3_path
+      )
       return nil
     end
   end
@@ -56,8 +66,11 @@ module S3Util
       return resp.body.read
     rescue StandardError => e
       LogUtil.log_error(
-        "Error retrieving byte range from S3 file",
-        exception: e
+        "get_s3_range: Error retrieving byte range from S3 file",
+        exception: e,
+        s3_path: s3_path,
+        first_byte: first_byte,
+        last_byte: last_byte
       )
       return nil
     end
