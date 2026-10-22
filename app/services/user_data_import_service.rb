@@ -57,8 +57,22 @@ require "zlib"
 # OPTIONS:
 #   target_user_id: import into this existing user (default mode).
 #   create_user:    create a new user from the export instead.
-#   skip_existing:  skip rows whose primary key already exists (idempotent re-run).
-#   dry_run:        roll back the transaction at the end (no changes persisted).
+#   skip_existing:  skip rows whose primary key already exists (idempotent re-run / resume).
+#   dry_run:        validate only -- runs every pre-write check (bundle shape, manifest counts,
+#                   reference rows present on the target, duplicate user, primary-key collisions)
+#                   READ-ONLY and writes nothing. (It used to perform the whole import inside one
+#                   transaction and roll it back, holding locks for hours for no lasting effect.)
+#   single_transaction: legacy all-or-nothing mode (one transaction for the whole user). Default false.
+#
+# TRANSACTIONS (2026-10-20): a live import no longer runs as ONE transaction for the whole user. That
+# transaction held row locks on shared reference rows (host_genomes: Human/Bat/Unknown) and a metadata
+# lock on every table it touched for hours, so app writes to those rows (every new sample bumps its
+# host genome's counter) timed out and uploads failed, and a release's ALTER TABLE could not run.
+# Now: every check that can fail runs read-only BEFORE anything is written (#validate_before_write!);
+# high-volume tables commit per INSERT_BATCH statement and low-volume phases each commit in their own
+# short transaction. A mid-import database error leaves a partial import that `skip_existing` resumes.
+# The import also yields to the app: short lock waits with retry/backoff, and only one import runs at a
+# time (a MySQL named lock).
 #
 # USAGE:
 #   result = UserDataImportService.call(input_dir: "/mnt/.../user_123_export_...", target_user_id: 42)
@@ -70,6 +84,9 @@ class UserDataImportService
   class ImportError < StandardError; end
   class ValidationError < ImportError; end
   class DuplicateUserError < ImportError; end
+  # An imported primary key exists on the target as a DIFFERENT record (see partition_existing). Not
+  # retryable with skip_existing: it needs a person to look.
+  class IdConflictError < ImportError; end
 
   # Must match UserDataExportService::SCHEMA_VERSION. Forward-compatibility guard
   # only; the feature is unreleased so there is a single current version.
@@ -80,10 +97,22 @@ class UserDataImportService
   # per-round-trip overhead negligible.
   INSERT_BATCH = 1_000
 
+  # Next-prod mode (bulk backfill into the replica cluster, see the CZI backfill runbook). All three are
+  # environment knobs so the import Job sets them and a default deploy behaves exactly as before:
+  #   IMPORT_REQUIRE_DB_HOST  refuse to run unless connected to this database host. Set on the replica's
+  #                           import Jobs, and on prod during the backfill window, so an import pointed at
+  #                           the live database by mistake stops before reading or writing anything.
+  #   IMPORT_LOCK_SCOPE       "global" (default): one import at a time. "export": one per export bundle, so
+  #                           a queue runner can run several exports in parallel.
+  #   IMPORT_INSERT_BATCH     rows per insert_all! statement (default INSERT_BATCH).
+  REQUIRE_DB_HOST_ENV = "IMPORT_REQUIRE_DB_HOST"
+  LOCK_SCOPES = %w[global export].freeze
+
   def initialize(input_dir:, dry_run: false, target_user_id: nil, skip_existing: false, create_user: false,
-                 source_bucket: nil, dest_bucket: nil)
+                 source_bucket: nil, dest_bucket: nil, single_transaction: false)
     @input_dir = input_dir.to_s
     @dry_run = dry_run
+    @single_transaction = single_transaction
     @target_user_id = target_user_id
     @skip_existing = skip_existing
     @create_user = create_user
@@ -103,6 +132,9 @@ class UserDataImportService
 
     @new_user_id = nil
     @old_user_id = nil
+    @insert_batch = Integer(ENV.fetch("IMPORT_INSERT_BATCH", INSERT_BATCH.to_s))
+    @lock_scope = ENV.fetch("IMPORT_LOCK_SCOPE", "global")
+    raise ArgumentError, "IMPORT_LOCK_SCOPE must be one of #{LOCK_SCOPES.join(', ')}" unless LOCK_SCOPES.include?(@lock_scope)
 
     @warnings = []
     @stats = Hash.new(0)
@@ -114,44 +146,33 @@ class UserDataImportService
   end
 
   def call
+    check_target_db_host!
     validate_bundle!
+    # Every check that can fail runs here, read-only, before anything is written -- so a bad bundle never
+    # leaves a partial import even though writes are no longer one transaction.
+    validate_before_write!
 
-    # READ COMMITTED to prevent global DB Locking during migration.
-    # Ignore this inner transaction if there is an outer Transaction already (during RSpec tests)
-    ActiveRecord::Base.transaction(isolation: ActiveRecord::Base.connection.transaction_open? ? nil : :read_committed) do
-      import_user
-      import_user_profile
-      stream_user_settings
-      import_projects
-      import_reference_tables
-      import_metadata_field_associations
-      stream_samples
-      stream_input_files
-      stream_metadata
-      stream_pipeline_runs
-      stream_pipeline_run_children
-      stream_workflow_runs
-      import_visualizations
-      import_phylo_trees
-      import_phylo_tree_ngs
-      import_backgrounds
-      stream_taxon_summaries
-      import_bulk_downloads
-      stream_persisted_backgrounds
-      stream_snapshot_links
-
-      # Guard against a truncated/partial bundle: every row the manifest declares
-      # must have been inserted or skipped. Raising here (still inside the
-      # transaction) rolls the whole import back rather than committing a partial.
-      reconcile_counts!
-
-      if @dry_run
-        Rails.logger.info("UserDataImport: DRY RUN - Rolling back transaction")
-        raise ActiveRecord::Rollback
+    if @dry_run
+      Rails.logger.info("UserDataImport: DRY RUN - validated read-only, nothing written")
+    else
+      with_import_lock do
+        if @single_transaction
+          # Legacy all-or-nothing mode. READ COMMITTED; ignore this inner transaction if there is an
+          # outer one already (RSpec).
+          ActiveRecord::Base.transaction(isolation: ActiveRecord::Base.connection.transaction_open? ? nil : :read_committed) do
+            run_import_phases
+            reconcile_counts!
+          end
+        else
+          yield_locks_to_app!
+          run_import_phases
+          # The pre-write check already proved the files match the manifest; this catches a row the
+          # import itself dropped. Data written so far stays; `skip_existing` resumes.
+          reconcile_counts!
+        end
       end
+      reset_counter_caches
     end
-
-    reset_counter_caches unless @dry_run
 
     if @timestamps_defaulted.positive?
       @warnings << "Defaulted #{@timestamps_defaulted} missing created_at/updated_at value(s) to import time."
@@ -177,6 +198,49 @@ class UserDataImportService
   end
 
   private
+
+  # Phases in dependency order. Low-volume phases each run in their own short transaction (unless the
+  # whole import is one legacy transaction); high-volume streams commit per insert_all! batch.
+  LOW_VOLUME_PHASES = [
+    :import_user, :import_user_profile, :stream_user_settings, :import_projects, :import_reference_tables,
+    :import_metadata_field_associations,
+  ].freeze
+  HIGH_VOLUME_PHASES = [
+    :stream_samples, :stream_input_files, :stream_metadata, :stream_pipeline_runs,
+    :stream_pipeline_run_children, :stream_workflow_runs,
+  ].freeze
+  LATE_LOW_VOLUME_PHASES = [:import_visualizations, :import_phylo_trees, :import_phylo_tree_ngs, :import_backgrounds].freeze
+  LATE_PHASES = [:stream_taxon_summaries, :import_bulk_downloads, :stream_persisted_backgrounds, :stream_snapshot_links].freeze
+
+  def run_import_phases
+    LOW_VOLUME_PHASES.each { |phase| run_phase(phase, own_transaction: true) }
+    HIGH_VOLUME_PHASES.each { |phase| run_phase(phase, own_transaction: false) }
+    LATE_LOW_VOLUME_PHASES.each { |phase| run_phase(phase, own_transaction: true) }
+    LATE_PHASES.each { |phase| run_phase(phase, own_transaction: false) }
+  end
+
+  def run_phase(phase, own_transaction:)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    if own_transaction && !@single_transaction
+      ActiveRecord::Base.transaction(isolation: ActiveRecord::Base.connection.transaction_open? ? nil : :read_committed) { send(phase) }
+    else
+      send(phase)
+    end
+    Rails.logger.info("UserDataImport: #{phase} done in #{(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).round(1)}s")
+  rescue StandardError => e
+    raise if @single_transaction
+
+    if e.is_a?(IdConflictError)
+      Rails.logger.error("UserDataImport: #{phase} stopped on an id conflict; rows committed so far stay -- resolve the conflict before re-running")
+      raise
+    end
+
+    Rails.logger.error(
+      "UserDataImport: #{phase} failed (#{e.class}); rows committed so far stay -- re-run the same import " \
+      "with mode skip_existing to resume"
+    )
+    raise
+  end
 
   # Validates the shape of the import request, NOT the correctness of the record
   # data itself. We check: the bundle exists with a manifest + user.json, the
@@ -265,6 +329,16 @@ class UserDataImportService
     end
   end
 
+  # Number of rows (non-blank lines) in a table file, without parsing them. 0 if the file is absent.
+  def count_rows(name)
+    path = File.join(@input_dir, "#{name}.ndjson.gz")
+    return 0 unless File.exist?(path)
+
+    count = 0
+    Zlib::GzipReader.open(path) { |gz| gz.each_line { |line| count += 1 if line.match?(/\S/) } }
+    count
+  end
+
   # Streams a gzipped NDJSON file and inserts it in INSERT_BATCH-sized batches.
   # The block maps a parsed row Hash to the DB attribute Hash for `model`.
   def stream_insert(name, model, stat_key = nil)
@@ -275,7 +349,7 @@ class UserDataImportService
       next if attrs.nil? # block returned nil -> filter this row out (not buffered/inserted)
 
       buffer << attrs
-      if buffer.size >= INSERT_BATCH
+      if buffer.size >= @insert_batch
         flush_insert(model, stat_key, buffer)
         buffer = []
       end
@@ -286,34 +360,66 @@ class UserDataImportService
   def flush_insert(model, stat_key, rows)
     return if rows.empty?
 
-    if @skip_existing
-      ids = rows.filter_map { |r| r[:id] }
-      existing = ids.empty? ? [] : model.where(id: ids).pluck(:id)
-      unless existing.empty?
-        existing_set = existing.to_set
-        @stats[:"#{stat_key}_skipped"] += rows.count { |r| existing_set.include?(r[:id]) }
-        rows = rows.reject { |r| existing_set.include?(r[:id]) }
-      end
-    end
+    rows = partition_existing(model, stat_key, rows) if @skip_existing
     return if rows.empty?
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     # rubocop:disable Rails/SkipsModelValidations -- intentional: the import is a
     # faithful copy of already-persisted source rows; validations may have drifted
     # ahead of historical data (same rationale as save!(validate: false)).
-    model.insert_all!(rows)
+    with_lock_retry { model.insert_all!(rows) }
     # rubocop:enable Rails/SkipsModelValidations
     @timings[stat_key] += Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     @stats[stat_key] += rows.size
+  end
+
+  # skip_existing may skip a row only when the row already on the target is the SAME record from an earlier
+  # run of this export (a resume): same id AND the same parent references -- every *_id column the import
+  # writes (project, sample, pipeline run, user, background, ...). The same id under different parents is a
+  # different record: ids cannot be renumbered (S3 keys and every cross-reference embed them), so the import
+  # stops and reports it instead of silently dropping CZI data. Returns the rows still to insert.
+  def partition_existing(model, stat_key, rows)
+    ids = rows.filter_map { |r| r[:id] }
+    return rows if ids.empty?
+
+    cols = identity_columns(model, rows.first)
+    existing = model.where(id: ids).pluck(:id, *cols).to_h { |id, *vals| [id, vals] }
+    return rows if existing.empty?
+
+    conflicts = rows.select { |r| existing.key?(r[:id]) && !same_identity?(existing[r[:id]], cols, r) }
+    raise_id_conflicts!(model, cols, conflicts, existing) if conflicts.any?
+
+    @stats[:"#{stat_key}_skipped"] += rows.count { |r| existing.key?(r[:id]) }
+    rows.reject { |r| existing.key?(r[:id]) }
+  end
+
+  def identity_columns(model, row)
+    row.keys.map(&:to_s).select { |k| k.end_with?("_id") && model.column_names.include?(k) }.map(&:to_sym)
+  end
+
+  def same_identity?(found_values, cols, row)
+    found_values.map(&:to_s) == cols.map { |c| row[c].to_s }
+  end
+
+  def raise_id_conflicts!(model, cols, conflicts, existing)
+    @stats[:"#{model.table_name}_id_conflicts"] += conflicts.size
+    detail = conflicts.first(5).map do |r|
+      "id #{r[:id]}: target #{cols.zip(existing[r[:id]]).to_h} vs export #{cols.index_with { |c| r[c] }}"
+    end
+    raise IdConflictError, "Id conflict in #{model.table_name}: #{conflicts.size} row(s) in this batch already exist on the " \
+                           "target as a DIFFERENT record (#{detail.join('; ')}). Not skipped; resolve before re-running."
   end
 
   # Insert a single low-volume record (returns the persisted instance so callers
   # can rebuild associations). Idempotent under skip_existing.
   def insert_one(model, stat_key, attributes)
     id = attributes[:id]
-    if @skip_existing && id && model.exists?(id)
+    if @skip_existing && id && (existing = model.find_by(id: id))
+      cols = identity_columns(model, attributes)
+      found = cols.map { |c| existing[c] }
+      raise_id_conflicts!(model, cols, [attributes], { id => found }) unless same_identity?(found, cols, attributes)
       @stats[:"#{stat_key}_skipped"] += 1
-      return model.find(id)
+      return existing
     end
 
     record = model.new(attributes)
@@ -322,6 +428,38 @@ class UserDataImportService
     @timings[stat_key] += Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     @stats[stat_key] += 1
     record
+  end
+
+  # projects, backgrounds and phylo_trees names are unique platform-wide (case-insensitive). When an
+  # imported row's name is already used by a DIFFERENT row on the target -- the user (or anyone) created it
+  # on the platform before this export arrived, or another migrated user owns it -- the imported row is
+  # renamed "<name> (CZID)", then "<name> (CZID_2)", "<name> (CZID_3)", ... instead of failing the import.
+  # Nothing is merged or dropped. Each rename is counted in @stats[:<stat_key>_renamed] and listed in
+  # @warnings so support can tell the user. A row whose id already exists (a skip_existing re-run) keeps the name it has.
+  RENAME_SUFFIX = "CZID"
+  NAME_MAX_LENGTH = 255
+  NAME_UNIQUE_TABLES = { "projects" => "Project", "backgrounds" => "Background", "phylo_trees" => "PhyloTree" }.freeze
+
+  def import_name(model, stat_key, id, name)
+    return name if name.blank?
+    return name if id && model.exists?(id)
+    return name unless name_taken?(model, name, id)
+
+    candidate = (1..).lazy.map { |n| renamed(name, n) }.find { |c| !name_taken?(model, c, id) }
+    @stats[:"#{stat_key}_renamed"] += 1
+    @warnings << "#{model.name} '#{name}' (id: #{id}) renamed to '#{candidate}': that name is already used on this platform"
+    candidate
+  end
+
+  def renamed(name, attempt)
+    suffix = attempt == 1 ? " (#{RENAME_SUFFIX})" : " (#{RENAME_SUFFIX}_#{attempt})"
+    "#{name[0, NAME_MAX_LENGTH - suffix.length]}#{suffix}"
+  end
+
+  def name_taken?(model, name, id)
+    scope = model.where("LOWER(#{model.table_name}.name) = ?", name.downcase)
+    scope = scope.where.not(id: id) if id
+    scope.exists?
   end
 
   # ===========================================================================
@@ -439,7 +577,7 @@ class UserDataImportService
       project = insert_one(Project, :projects, {
                              id: row[:id],
                              # Strip latent trailing/leading whitespace from source data (also version_prefix below).
-                             name: row[:name]&.strip,
+                             name: import_name(Project, :projects, row[:id], row[:name]&.strip),
                              description: row[:description],
                              # Owner only; a member creates it owner-less (see above).
                              creator_id: row[:is_owner] ? @new_user_id : nil,
@@ -1019,7 +1157,7 @@ class UserDataImportService
                           id: row[:id],
                           user_id: map_user_id(row[:user_id]),
                           project_id: row[:project_id],
-                          name: row[:name],
+                          name: import_name(PhyloTree, :phylo_trees, row[:id], row[:name]),
                           taxid: row[:taxid],
                           tax_level: row[:tax_level],
                           tax_name: row[:tax_name],
@@ -1077,7 +1215,7 @@ class UserDataImportService
       bg = insert_one(Background, :backgrounds, {
                         id: row[:id],
                         user_id: map_user_id(row[:user_id]),
-                        name: row[:name],
+                        name: import_name(Background, :backgrounds, row[:id], row[:name]),
                         description: row[:description],
                         public_access: row[:public_access],
                         ready: row[:ready],
@@ -1237,5 +1375,183 @@ class UserDataImportService
     # since it's reference data shared across all users.
 
     Rails.logger.info("UserDataImport: Counter caches reset complete")
+  end
+
+  # ===========================================================================
+  # PRE-WRITE VALIDATION (read-only) -- also the whole of a dry run
+  # ===========================================================================
+
+  # Every failure the import can detect from the bundle itself, checked WITHOUT writing:
+  #   * each table file has exactly the row count the manifest declares (truncated / partial bundle);
+  #   * reference rows that must pre-exist on the target (host_genomes, alignment_configs) do;
+  #   * create_user mode: the user's email is not already taken (unless skip_existing);
+  #   * no imported primary key already exists on the target (unless skip_existing, which skips them).
+  # Raises ValidationError / ImportError / DuplicateUserError exactly as the write path would have, but
+  # before anything is committed. Counts what it saw into @stats (rows per table; <table>_existing_ids for
+  # the first colliding batch when it refuses).
+  def validate_before_write!
+    # Cheap checks first, so a duplicate user reports as such rather than as a primary-key collision.
+    if @create_user && !@skip_existing && (existing = User.find_by(email: @user_data[:email]))
+      raise DuplicateUserError, "User with email #{@user_data[:email]} already exists (ID: #{existing.id})"
+    end
+
+    file_mismatches = []
+    @expected_counts.each do |table, expected|
+      rows = 0
+      model = model_for_table(table)
+      if model && collision_checked?(table)
+        each_row_batch(table) do |batch|
+          rows += batch.size
+          ids = batch.filter_map { |r| r[:id] }
+          next if ids.empty?
+
+          existing_ids = model.where(id: ids).count
+          raise_primary_keys_exist!(table, existing_ids) if existing_ids.positive?
+        end
+      else
+        # No ids needed: count lines without JSON-parsing them (a 75M-row bundle parses for a long time).
+        rows = count_rows(table)
+      end
+      file_mismatches << "#{table}: manifest=#{expected} file=#{rows}" if rows != expected.to_i
+      @stats[:"#{table}_in_bundle"] = rows
+    end
+    raise ImportError, "Row count mismatch (incomplete bundle?): #{file_mismatches.join('; ')}" if file_mismatches.any?
+
+    check_reference_rows_exist!("host_genomes", HostGenome)
+    check_reference_rows_exist!("alignment_configs", AlignmentConfig)
+    count_name_conflicts
+  end
+
+  # Primary-key collisions are checked up front only when they would be an error: not with skip_existing (the
+  # import checks every existing id batch by batch in partition_existing -- skipping the same record, stopping
+  # on a different one -- so counting them up front was a second full pass over the bundle), and never for reference tables (remapped by natural key, not inserted by id) or
+  # projects (MERGED when they already exist: a shared project imported once per member).
+  def collision_checked?(table)
+    !@skip_existing && !(REFERENCE_TABLES + MERGED_BY_ID_TABLES).include?(table.to_s)
+  end
+
+  # Stops at the FIRST colliding batch instead of scanning the rest of the bundle: one collision already
+  # means "re-run with skip_existing", so a partially imported export fails in seconds instead of after a
+  # read-only pass over every table (seen with a 75M-row export in the 2026-10-22 next-prod lab).
+  def raise_primary_keys_exist!(table, count)
+    @stats[:"#{table}_existing_ids"] = count
+    raise ImportError, "Primary keys already exist on the target (#{table}: #{count} in the first colliding batch); " \
+                       "re-run with mode skip_existing to import only the missing rows"
+  end
+
+  # Read-only: how many imported names will be renamed (see import_name), so a dry run surfaces them.
+  def count_name_conflicts
+    NAME_UNIQUE_TABLES.each do |table, model_name|
+      model = model_name.constantize
+      conflicts = 0
+      each_row(table) do |row|
+        name = row[:name].to_s.strip
+        next if name.empty? || model.exists?(row[:id])
+
+        conflicts += 1 if name_taken?(model, name, row[:id])
+      end
+      @stats[:"#{table}_name_conflicts"] = conflicts if conflicts.positive?
+    end
+  end
+
+  REFERENCE_TABLES = %w[host_genomes alignment_configs metadata_fields locations].freeze
+  MERGED_BY_ID_TABLES = %w[projects].freeze
+
+  def check_reference_rows_exist!(name, model)
+    missing = []
+    each_row(name) { |row| missing << row[:name] unless model.exists?(name: row[:name]) }
+    return if missing.empty?
+
+    raise ImportError, "#{name} not found on target (create via db migrations first): #{missing.uniq.join(', ')}"
+  end
+
+  # Yields INSERT_BATCH-sized arrays of parsed rows (read-only streaming).
+  def each_row_batch(name)
+    buffer = []
+    each_row(name) do |row|
+      buffer << row
+      if buffer.size >= @insert_batch
+        yield buffer
+        buffer = []
+      end
+    end
+    yield buffer unless buffer.empty?
+  end
+
+  # The ActiveRecord model whose table is `table`, or nil (join tables / unknown).
+  def model_for_table(table)
+    model = table.to_s.classify.safe_constantize
+    model if model.is_a?(Class) && model < ActiveRecord::Base && model.table_name == table.to_s
+  end
+
+  # ===========================================================================
+  # YIELDING TO THE APP
+  # ===========================================================================
+
+  # One import at a time by default (MySQL named lock, released when the session ends); per export with
+  # IMPORT_LOCK_SCOPE=export. A conflicting import fails fast instead of piling more load onto the database.
+  IMPORT_LOCK_NAME = "seqtoid_user_data_import"
+
+  # "global": the one shared name (one import at a time). "export": scoped to the bundle's source user, so
+  # different exports run in parallel while the same export can never run twice at once.
+  def import_lock_name
+    @lock_scope == "export" ? "#{IMPORT_LOCK_NAME}:u#{@old_user_id}" : IMPORT_LOCK_NAME
+  end
+
+  def check_target_db_host!
+    required = ENV[REQUIRE_DB_HOST_ENV].to_s.strip
+    return if required.empty?
+
+    connected = ActiveRecord::Base.connection_db_config.configuration_hash[:host].to_s
+    return if connected.casecmp?(required)
+
+    raise ImportError, "Refusing to import: connected to database host '#{connected}' but #{REQUIRE_DB_HOST_ENV}='#{required}'"
+  end
+
+  def with_import_lock
+    conn = ActiveRecord::Base.connection
+    return yield unless conn.adapter_name.to_s.match?(/mysql|trilogy/i)
+
+    acquired = conn.select_value("SELECT GET_LOCK(#{conn.quote(import_lock_name)}, 0)").to_i == 1
+    raise ImportError, "Another user-data import is already running (named lock #{import_lock_name}); retry when it finishes" unless acquired
+
+    begin
+      yield
+    ensure
+      conn.select_value("SELECT RELEASE_LOCK(#{conn.quote(import_lock_name)})")
+    end
+  end
+
+  # The import waits at most IMPORT_LOCK_WAIT_SECONDS for a row lock (the server default is 50s), so on
+  # contention the IMPORT backs off and retries (with_lock_retry) instead of an app request waiting.
+  IMPORT_LOCK_WAIT_SECONDS = 5
+  LOCK_RETRY_ATTEMPTS = 8
+  LOCK_RETRY_MAX_SLEEP = 30
+
+  def yield_locks_to_app!
+    conn = ActiveRecord::Base.connection
+    return unless conn.adapter_name.to_s.match?(/mysql|trilogy/i)
+
+    conn.execute("SET SESSION innodb_lock_wait_timeout = #{IMPORT_LOCK_WAIT_SECONDS}")
+  end
+
+  # Retries a single-statement write that lost a lock conflict, with exponential backoff. Safe because a
+  # failed statement changes nothing. Inside the legacy single transaction a lock error aborts it, so no
+  # retry there.
+  def with_lock_retry
+    attempt = 0
+    begin
+      yield
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      raise if @single_transaction || ActiveRecord::Base.connection.transaction_open?
+
+      attempt += 1
+      raise if attempt >= LOCK_RETRY_ATTEMPTS
+
+      pause = [2**attempt, LOCK_RETRY_MAX_SLEEP].min
+      Rails.logger.warn("UserDataImport: #{e.class} (attempt #{attempt}); yielding to the app for #{pause}s")
+      sleep(pause)
+      retry
+    end
   end
 end
