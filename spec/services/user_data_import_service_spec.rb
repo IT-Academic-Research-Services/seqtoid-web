@@ -373,6 +373,42 @@ RSpec.describe UserDataImportService do
       end
     end
 
+    # 2026-10-22: skip_existing may skip only the SAME record (a resume). A different record under an
+    # imported id is a conflict: reported and stopped, never silently skipped.
+    context "with skip_existing and an id that belongs to a different record" do
+      it "stops with an id conflict on the bulk path instead of skipping the row" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        other_project = create(:project)
+        Sample.where(id: SAMPLE_ID).update_all(project_id: other_project.id) # rubocop:disable Rails/SkipsModelValidations
+
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error_class]).to eq("UserDataImportService::IdConflictError")
+        expect(result[:error]).to include("Id conflict in samples").and(include("id #{SAMPLE_ID}")).and(include("project_id"))
+        expect(result[:stats][:samples_id_conflicts]).to eq(1)
+      end
+
+      it "stops with an id conflict on the single-row path" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        PhyloTree.where(id: PHYLO_TREE_ID).update_all(user_id: create(:user).id) # rubocop:disable Rails/SkipsModelValidations
+
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(false)
+        expect(result[:error]).to include("Id conflict in phylo_trees").and(include("id #{PHYLO_TREE_ID}"))
+      end
+
+      it "still skips rows that are the same record (a resume)" do
+        described_class.call(input_dir: write_bundle, create_user: true)
+        result = described_class.call(input_dir: write_bundle, create_user: true, skip_existing: true)
+
+        expect(result[:success]).to be(true)
+        expect(result[:stats][:samples_skipped]).to eq(1)
+        expect(result[:stats][:pipeline_runs_skipped]).to eq(1)
+      end
+    end
+
     context "when the user already exists and skip_existing is off" do
       it "returns a DuplicateUserError" do
         described_class.call(input_dir: write_bundle, create_user: true)
