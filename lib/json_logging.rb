@@ -23,7 +23,9 @@ module JsonLogging
   def self.init_logging(config)
     ougai_logger = Ougai::Logger.new($stdout)
     ougai_logger.level = config.log_level || :info
+    # ougai_logger.default_message = "foo"
     ougai_logger.before_log = lambda do |data|
+      # data.delete(:msg) # if data[:msg].nil? || data[:msg].to_s.strip.empty?
       data[:request_id] = CurrentContext.request.request_id if CurrentContext.request
       data[:user_id] = CurrentContext.user.id if CurrentContext.user
       data[:environment] = Rails.env
@@ -38,7 +40,7 @@ module JsonLogging
     config.lograge.enabled = true
     config.lograge.formatter = Lograge::Formatters::Raw.new
     config.lograge.logger = ougai_logger
-    param_filtered = [] # %w[controller action] # TODO: Reset this if too spammy
+    param_filtered = %w[action controller pid v]
     config.lograge.custom_options = lambda do |event|
       opt_hash = {
         time: event.time, # TODO: Transform to ISO8601
