@@ -6,6 +6,25 @@ module JsonLogging
   class CurrentContext < ActiveSupport::CurrentAttributes
     attribute :user
     attribute :request
+
+    attr_reader :filters
+
+    def initialize
+      super
+      @filters = []
+    end
+
+    def add_filter(filters)
+      @filters << filters
+    end
+
+    # Filter out expected/normal/unwanted/spammy Trace messages like:
+    #   "[Tracing] Discarding <http.server> transaction </health_check> because traces_sampler returned 0 or false"
+    def should_log?(data)
+      @filters.all? do |filter|
+        filter.call(data)
+      end
+    end
   end
 
   class CustomizedFormatter < Ougai::Formatters::Bunyan
@@ -53,6 +72,8 @@ module JsonLogging
     )
     config.logger.default_message = nil
     config.logger.before_log = lambda do |data|
+      return false unless CurrentContext.should_log?(data)
+
       data.delete(:msg) if data[:msg].nil? || data[:msg].to_s.strip.empty?
       data[:request_id] = CurrentContext.request.request_id if CurrentContext.request && !data[:request_id]
       data[:user_id] = CurrentContext.user.id if CurrentContext.user && !data[:user_id]
@@ -75,7 +96,7 @@ module JsonLogging
     config.lograge.enabled = true
     config.lograge.formatter = Lograge::Formatters::Raw.new
     config.lograge.logger = config.logger
-    param_filtered = %w[action controller]
+    param_filtered = [] # %w[action controller]
     config.lograge.custom_options = lambda do |event|
       {
         time: event.time, # TODO: Transform to ISO8601

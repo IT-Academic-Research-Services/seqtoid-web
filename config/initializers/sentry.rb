@@ -20,6 +20,9 @@ if ENV['SENTRY_DSN_BACKEND']
     # Filter out expected/normal/unwanted/spammy Trace messages like:
     #   "[Tracing] Discarding <http.server> transaction </health_check> because traces_sampler returned 0 or false"
     config.sdk_logger.local_level = :info
+    JsonLogging::CurrentContext.add_filter(lambda { |data|
+      !data[:msg]&.include?('[Transport] Sending envelope with items [sessions]  to Sentry')
+    })
 
     # sentry-rails auto-instruments Rack and controllers; no manual middleware
     # insert is required (raven's Raven::Rack is gone).
