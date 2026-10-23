@@ -155,6 +155,43 @@ RSpec.describe UserDataImportQueue do
     expect(summary).to eq(paused: true)
   end
 
+  context "with a WORKERS control file" do
+    it "stops a worker whose index is at or above the desired count, before it takes an export" do
+      s3.store("ops", "queues/q1/WORKERS", "2")
+      summary = queue(worker_index: 2, worker_count: 4).run
+
+      expect(calls).to be_empty
+      expect(summary).to eq(drained: true)
+    end
+
+    it "lets a worker below the desired count keep going" do
+      s3.store("ops", "queues/q1/WORKERS", "2\n")
+      summary = queue(worker_index: 1, worker_count: 4).run
+
+      expect(calls.size).to eq(2)
+      expect(summary).to eq(succeeded: 2)
+    end
+
+    it "finishes the current export, then stops when the count drops mid-pass" do
+      scale_down = lambda do |**kw|
+        s3.store("ops", "queues/q1/WORKERS", "0")
+        importer.call(**kw)
+      end
+      summary = queue(importer: scale_down).run
+
+      expect(calls.size).to eq(1)
+      expect(result(12)).to include("status" => "success")
+      expect(summary).to eq(succeeded: 1, drained: true)
+    end
+
+    it "ignores a value that is not an integer" do
+      s3.store("ops", "queues/q1/WORKERS", "lots")
+      summary = queue(worker_index: 3, worker_count: 4).run
+
+      expect(summary).to eq(succeeded: 2)
+    end
+  end
+
   it "skips an export another worker has claimed (its per-export lock is held)" do
     conn = ActiveRecord::Base.connection
     allow(conn).to receive(:select_value).and_call_original
