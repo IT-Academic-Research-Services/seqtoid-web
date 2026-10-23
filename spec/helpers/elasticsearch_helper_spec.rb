@@ -42,6 +42,56 @@ RSpec.describe ElasticsearchHelper, type: :helper do
     end
   end
 
+  describe "#fetch_taxon_data for a taxon with many descendant rows" do
+    before do
+      # A genus whose lineage rows are its many species/strains: every row carries the genus taxid + name.
+      25.times do |i|
+        create(:taxon_lineage, taxid: 1000 + i, genus_taxid: 570, genus_name: "Klebsiella",
+                               species_taxid: 2000 + i, species_name: "Klebsiella sp. #{i}",
+                               version_start: "2024-02-06", version_end: "2024-02-06")
+      end
+      create(:taxon_lineage, taxid: 3000, genus_taxid: 590, genus_name: "Salmonella",
+                             species_taxid: 3001, species_name: "Salmonella enterica",
+                             version_start: "2024-02-06", version_end: "2024-02-06")
+      # The genus name changed in an older index version still covering the pinned date.
+      create(:taxon_lineage, taxid: 3002, genus_taxid: 590, genus_name: "Salmonella (old)",
+                             species_taxid: 3003, species_name: "Salmonella old",
+                             version_start: "2021-01-22", version_end: "2024-02-06")
+    end
+
+    it "returns one result per taxon, in the order the search returned them" do
+      results = fetch_taxon_data([590, 570], "2024-02-06", "genus")
+      expect(results.pluck("taxid")).to eq([590, 570])
+      expect(results.pluck("title")).to contain_exactly("Salmonella", "Klebsiella").or contain_exactly("Salmonella (old)", "Klebsiella")
+    end
+
+    it "takes the name from the row with the latest version_end" do
+      create(:taxon_lineage, taxid: 4000, genus_taxid: 600, genus_name: "Oldname",
+                             species_taxid: 4001, species_name: "x", version_start: "2021-01-22", version_end: "2024-01-01")
+      create(:taxon_lineage, taxid: 4002, genus_taxid: 600, genus_name: "Newname",
+                             species_taxid: 4003, species_name: "y", version_start: "2021-01-22", version_end: "2026-01-01")
+      expect(fetch_taxon_data([600], "2023-06-01", "genus").pluck("title")).to eq(["Newname"])
+    end
+
+    it "accepts taxids as strings (search bucket keys) and returns integers" do
+      expect(fetch_taxon_data(["570"], "2024-02-06", "genus").pluck("taxid")).to eq([570])
+    end
+
+    it "returns nothing for no taxids without querying" do
+      expect(TaxonLineage).not_to receive(:where)
+      expect(fetch_taxon_data([], "2024-02-06", "genus")).to eq([])
+    end
+
+    it "does not build ActiveRecord objects for the lineage rows" do
+      instantiated = 0
+      callback = ->(*, payload) { instantiated += payload[:record_count] if payload[:class_name] == "TaxonLineage" }
+      ActiveSupport::Notifications.subscribed(callback, "instantiation.active_record") do
+        fetch_taxon_data([570, 590], "2024-02-06", "genus")
+      end
+      expect(instantiated).to eq(0)
+    end
+  end
+
   context "when the taxid falls outside of the ncbi_version" do
     it "returns an empty array" do
       taxon_ids = [100, 200, 300]
