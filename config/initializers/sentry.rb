@@ -10,6 +10,16 @@ if ENV['SENTRY_DSN_BACKEND']
 
   Sentry.init do |config|
     config.dsn = ENV['SENTRY_DSN_BACKEND']
+    # config.breadcrumbs_logger = [
+    #   :active_support_logger,
+    #   :http_logger,
+    #   :sentry_logger,
+    #   :redis_logger,
+    #   :monotonic_active_support_logger,
+    # ]
+    # Filter out expected/normal/unwanted/spammy Trace messages like:
+    #   "[Tracing] Discarding <http.server> transaction </health_check> because traces_sampler returned 0 or false"
+    config.sdk_logger.local_level = :info
 
     # sentry-rails auto-instruments Rack and controllers; no manual middleware
     # insert is required (raven's Raven::Rack is gone).

@@ -10,7 +10,7 @@ class LogUtil
         **details
       )
     rescue StandardError
-      Rails.logger.error("#{message} #{exception.inspect} #{details.inspect}")
+      Rails.logger.error("#{message} #{exception&.inspect} #{details.inspect}")
     end
 
     if exception
@@ -20,7 +20,10 @@ class LogUtil
       # message through as extra context to preserve raven's behavior.
       Sentry.capture_exception(
         exception,
-        extra: details.merge(message: message).compact
+        extra: {
+          **details,
+          message: message,
+        }.compact
       )
     else
       Sentry.capture_message(

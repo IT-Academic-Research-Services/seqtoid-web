@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require './lib/json_logging'
 
 # The test environment is used exclusively to run your application's
 # test suite. You never need to work with it otherwise. Remember that
@@ -84,10 +85,10 @@ Rails.application.configure do
   ENV["AUTH0_CONNECTION"] = "Username-Password-Authentication"
 
   if Rails.logger.blank?
-    config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "warn").to_sym # TODO: Change to debug as needed for specific tests.
-    config.logger = Ougai::Logger.new($stdout, config.log_level)
-    Rails.logger = config.logger
-    ActiveRecord::Base.logger = config.logger
+    JsonLogging.init_logging(
+      config,
+      level: ENV.fetch("RAILS_LOG_LEVEL", "warn").to_sym
+      # formatter: Ougai::Formatters::Readable.new
+    )
   end
-  config.active_record.verbose_query_logs = true
 end

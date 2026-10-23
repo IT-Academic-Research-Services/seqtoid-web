@@ -8,6 +8,30 @@ module JsonLogging
     attribute :request
   end
 
+  class CustomizedFormatter < Ougai::Formatters::Bunyan
+    alias original_format_datetime format_datetime
+
+    def format_datetime(time)
+      # Sometimes time is a float, and needs to be a string or datetime, or format_datetime throws an error
+      time = Time.zone.at(time) if time.is_a?(Float)
+      original_format_datetime(time)
+    end
+
+    def to_level(severity)
+      # Log the level name like 'debug' or 'warn' instead of a number like 10,20,30
+      severity.downcase.to_sym
+    end
+
+    def dump(data)
+      # Remove unnecessary extra fields
+      # data.delete(:hostname)
+      # data.delete(:name)
+      data.delete(:pid)
+      data.delete(:v)
+      super(data.compact)
+    end
+  end
+
   # Deployed logging configuration.
   #
   # Overridable via RAILS_LOG_LEVEL, defaulting to :debug so a local `development`
@@ -20,17 +44,28 @@ module JsonLogging
   # cluster from this one process. Two problems, not one -- the volume, and the fact
   # that sample sequence content is written verbatim into a log stream that ships to
   # an aggregator (and, if enabled, to a third-party log vendor).
-  def self.init_logging(config)
-    ougai_logger = Ougai::Logger.new($stdout)
-    ougai_logger.level = config.log_level || :info
-    # ougai_logger.default_message = "foo"
-    ougai_logger.before_log = lambda do |data|
-      # data.delete(:msg) # if data[:msg].nil? || data[:msg].to_s.strip.empty?
-      data[:request_id] = CurrentContext.request.request_id if CurrentContext.request
-      data[:user_id] = CurrentContext.user.id if CurrentContext.user
+  def self.init_logging(config, level: nil, formatter: nil)
+    config.log_level = level || ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
+    config.logger = Ougai::Logger.new(
+      $stdout,
+      level: config.log_level,
+      formatter: formatter || CustomizedFormatter.new
+    )
+    config.logger.default_message = nil
+    config.logger.before_log = lambda do |data|
+      data.delete(:msg) if data[:msg].nil? || data[:msg].to_s.strip.empty?
+      data[:request_id] = CurrentContext.request.request_id if CurrentContext.request && !data[:request_id]
+      data[:user_id] = CurrentContext.user.id if CurrentContext.user && !data[:user_id]
       data[:environment] = Rails.env
+
+      current_span_context = OpenTelemetry::Trace.current_span&.context
+      if current_span_context&.valid?
+        data[:trace_id] = current_span_context.hex_trace_id
+        data[:span_id] = current_span_context.hex_span_id
+      end
+
+      true
     end
-    config.logger = ougai_logger
     config.active_record.verbose_query_logs = false
     config.colorize_logging = false
 
@@ -39,29 +74,24 @@ module JsonLogging
     # {"method":"GET","path":"/samples/dimensions.json","format":"json","controller":"SamplesController","action":"dimensions","status":200,"allocations":104589,"duration":350.85,"view":0.22,"db":91.61,"time":12508.690497849,"ddsource":["ruby"],"remote_ip":"1.2.3.4","user_id":789,"params":{"domain":"my_data","format":"json"}}
     config.lograge.enabled = true
     config.lograge.formatter = Lograge::Formatters::Raw.new
-    config.lograge.logger = ougai_logger
-    param_filtered = %w[action controller pid v]
+    config.lograge.logger = config.logger
+    param_filtered = %w[action controller]
     config.lograge.custom_options = lambda do |event|
-      opt_hash = {
+      {
         time: event.time, # TODO: Transform to ISO8601
         ddsource: ["ruby"], # TODO: necessary?
         request_id: event.payload[:request_id],
         remote_ip: event.payload[:remote_ip],
         user_id: event.payload[:user_id],
         params: event.payload[:params].reject { |k| param_filtered.include? k },
-      }
-
-      current_span = OpenTelemetry::Trace.current_span
-      if current_span&.context&.valid?
-        opt_hash[:trace_id] = current_span.context.hex_trace_id
-        opt_hash[:span_id] = current_span.context.hex_span_id
-      end
-
-      opt_hash.compact
+      }.compact
     end
-    config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
+    config.lograge.ignore_actions = [
+      "HealthCheck::HealthCheckController#index",
+      "Rails::HealthController#show",
+    ]
 
-    ActiveRecord::Base.logger = ougai_logger
+    ActiveRecord::Base.logger = config.logger
 
     config.after_initialize do
       if Rails.logger
@@ -72,6 +102,7 @@ module JsonLogging
         # As well as OmniAuth
         OmniAuth.config.logger = core_logger
       end
+      ActiveRecord::Migration.verbose = false
     end
   end
 end

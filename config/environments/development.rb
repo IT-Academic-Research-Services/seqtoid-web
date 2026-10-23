@@ -209,8 +209,7 @@ Rails.application.configure do
   config.hosts << ENV["SERVER_DOMAIN"].sub("https://", "") if ENV["SERVER_DOMAIN"]
 
   # The deployed dev environment supposedly sets it to "info", but that seems unlikely
-  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
-  JsonLogging.init_logging(config)
+  JsonLogging.init_logging(config, level: ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym)
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
