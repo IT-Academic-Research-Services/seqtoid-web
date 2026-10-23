@@ -10,7 +10,9 @@ require "tmpdir"
 #
 # Layout under the queue prefix (s3://bucket/prefix/):
 #   queue.csv                 export_id,target_user_id[,priority] -- higher priority first, then file order
-#   results/<export_id>.json  written after every attempt (status, mode, timings, stats, warnings, error)
+#   results/<export_id>.json  written after every live attempt (status, mode, timings, stats, warnings, error)
+#   dry-runs/<export_id>.json written by a dry-run pass (IMPORT_QUEUE_MODE=dry_run); never counts as done
+#   report.csv                written by `rake import_queue:report`: one row per export, live + dry-run status
 #   PAUSE                     while present, workers finish their current export and pick up no new one
 #                             (e.g. while a deploy migration on a table the imports write replicates)
 #
@@ -23,6 +25,11 @@ require "tmpdir"
 #      with skip_existing, which resumes;
 #   5. write the result and delete the scratch copy.
 # A failed export is recorded and the worker moves on; re-running the Job retries only what has not succeeded.
+#
+# Dry-run mode (IMPORT_QUEUE_MODE=dry_run): the same pass, but each export runs the importer's read-only dry
+# run (validates the bundle, reference rows, name renames and primary-key collisions; writes nothing) and the
+# result lands in dry-runs/ for review before the live pass. A partially imported export gets a second dry
+# run with skip_existing, so the warnings for what is still to come are reported too.
 class UserDataImportQueue
   class ConfigError < StandardError; end
 
@@ -31,10 +38,19 @@ class UserDataImportQueue
   QUEUE_KEY = "queue.csv"
   DOWNLOAD_THREADS = 4
   PRIMARY_KEYS_EXIST = "Primary keys already exist"
+  MODES = %w[live dry_run].freeze
+  DRY_RUN_PREFIX = "dry-runs/"
+  REPORT_KEY = "report.csv"
+  REPORT_COLUMNS = %w[export_id target_user_id priority live_status live_error dry_run_status dry_run_attempts
+                      warnings name_conflicts renamed id_conflicts dry_run_error].freeze
 
   def initialize(queue_uri:, export_root:, source_bucket: nil, dest_bucket: nil, worker: "w0", worker_index: 0,
-                 worker_count: 1, s3: AwsClient[:s3], importer: nil, scratch_dir: ENV.fetch("IMPORT_SCRATCH_DIR", Dir.tmpdir))
-    raise ConfigError, "#{UserDataImportService::REQUIRE_DB_HOST_ENV} must be set (the queue only runs against an explicit target database)" if ENV[UserDataImportService::REQUIRE_DB_HOST_ENV].to_s.strip.empty?
+                 worker_count: 1, s3: AwsClient[:s3], importer: nil, scratch_dir: ENV.fetch("IMPORT_SCRATCH_DIR", Dir.tmpdir),
+                 mode: ENV.fetch("IMPORT_QUEUE_MODE", "live"), require_target: true)
+    raise ConfigError, "#{UserDataImportService::REQUIRE_DB_HOST_ENV} must be set (the queue only runs against an explicit target database)" if require_target && ENV[UserDataImportService::REQUIRE_DB_HOST_ENV].to_s.strip.empty?
+    raise ConfigError, "IMPORT_QUEUE_MODE must be one of #{MODES.join(', ')} (got #{mode.inspect})" unless MODES.include?(mode)
+
+    @mode = mode
 
     @queue_bucket, @queue_prefix = split_uri(queue_uri)
     @export_bucket, @export_prefix = split_uri(export_root)
@@ -46,6 +62,21 @@ class UserDataImportQueue
     @s3 = s3
     @importer = importer || method(:default_import)
     @scratch_dir = scratch_dir
+  end
+
+  # Reads every export's live and dry-run results and writes report.csv to the queue prefix (no database).
+  def self.report(queue_uri:, s3: AwsClient[:s3])
+    new(queue_uri: queue_uri, export_root: queue_uri, s3: s3, require_target: false).write_report
+  end
+
+  def write_report
+    rows = read_queue.map { |entry| report_row(entry) }
+    csv = CSV.generate do |out|
+      out << REPORT_COLUMNS
+      rows.each { |row| out << REPORT_COLUMNS.map { |c| row[c.to_sym] } }
+    end
+    @s3.put_object(bucket: @queue_bucket, key: "#{@queue_prefix}#{REPORT_KEY}", body: csv, content_type: "text/csv")
+    { exports: rows.size, report: "s3://#{@queue_bucket}/#{@queue_prefix}#{REPORT_KEY}" }
   end
 
   # One pass over the queue. Returns a summary hash.
@@ -87,11 +118,13 @@ class UserDataImportQueue
     begin
       download_bundle(bundle, dir)
       attempts = []
-      result = run_import(entry, dir, "live")
-      attempts << "live"
+      first = dry_run? ? "dry_run" : "live"
+      result = run_import(entry, dir, first)
+      attempts << first
       if !result[:success] && result[:error].to_s.include?(PRIMARY_KEYS_EXIST)
-        result = run_import(entry, dir, "skip_existing")
-        attempts << "skip_existing"
+        retry_mode = dry_run? ? "dry_run_skip_existing" : "skip_existing"
+        result = run_import(entry, dir, retry_mode)
+        attempts << retry_mode
       end
       record(entry, status: result[:success] ? "success" : "failed", attempts: attempts, started_at: started,
                     stats: result[:stats], timings: result[:timings], warnings: result[:warnings], error: result[:error])
@@ -110,8 +143,13 @@ class UserDataImportQueue
   end
 
   def default_import(dir:, mode:, target_user_id:, source_bucket:, dest_bucket:)
-    UserDataImportService.call(input_dir: dir, target_user_id: target_user_id, skip_existing: mode == "skip_existing",
+    UserDataImportService.call(input_dir: dir, target_user_id: target_user_id, dry_run: mode.start_with?("dry_run"),
+                               skip_existing: mode.end_with?("skip_existing"),
                                source_bucket: source_bucket, dest_bucket: dest_bucket)
+  end
+
+  def dry_run?
+    @mode == "dry_run"
   end
 
   # Claims the export with the importer's per-export named lock (same session, so the importer's own
@@ -162,11 +200,35 @@ class UserDataImportQueue
       export_id: entry[:export_id], target_user_id: entry[:target_user_id], status: status, attempts: attempts,
       worker: @worker, started_at: started_at&.iso8601, finished_at: finished.iso8601,
       seconds: started_at ? (finished - started_at).round(1) : nil,
-      stats: stats, timings: timings, warnings: Array(warnings).first(200), error: error,
+      mode: @mode, stats: stats, timings: timings, warnings: Array(warnings).first(dry_run? ? 1000 : 200), error: error,
     }
-    @s3.put_object(bucket: @queue_bucket, key: result_key(entry[:export_id]), body: JSON.pretty_generate(payload),
-                   content_type: "application/json")
+    key = dry_run? ? dry_run_key(entry[:export_id]) : result_key(entry[:export_id])
+    @s3.put_object(bucket: @queue_bucket, key: key, body: JSON.pretty_generate(payload), content_type: "application/json")
     true
+  end
+
+  def dry_run_key(export_id)
+    "#{@queue_prefix}#{DRY_RUN_PREFIX}#{export_id}.json"
+  end
+
+  def report_row(entry)
+    live = read_json(result_key(entry[:export_id])) || {}
+    dry = read_json(dry_run_key(entry[:export_id])) || {}
+    stats = dry["stats"] || {}
+    sum = ->(suffix) { stats.sum { |k, v| k.to_s.end_with?(suffix) ? v.to_i : 0 } }
+    {
+      export_id: entry[:export_id], target_user_id: entry[:target_user_id], priority: entry[:priority],
+      live_status: live["status"], live_error: live["error"],
+      dry_run_status: dry["status"], dry_run_attempts: Array(dry["attempts"]).join("+").presence,
+      warnings: dry.key?("warnings") ? Array(dry["warnings"]).size : nil,
+      name_conflicts: sum.call("_name_conflicts"), renamed: sum.call("_renamed"),
+      id_conflicts: sum.call("_id_conflicts"), dry_run_error: dry["error"],
+    }
+  end
+
+  def read_json(key)
+    body = read_object(@queue_bucket, key)
+    body && JSON.parse(body)
   end
 
   def result_key(export_id)
