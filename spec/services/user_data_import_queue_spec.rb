@@ -180,6 +180,70 @@ RSpec.describe UserDataImportQueue do
     expect(calls.map { |c| Dir.exist?(c[:dir]) }).to all(be(false))
   end
 
+  context "with IMPORT_QUEUE_MODE=dry_run" do
+    def dry_result(id)
+      s3.json("ops", "queues/q1/dry-runs/#{id}.json")
+    end
+
+    it "runs the importer read-only and records results under dry-runs/, never results/" do
+      summary = queue(mode: "dry_run").run
+
+      expect(calls.pluck(:mode)).to eq(%w[dry_run dry_run])
+      expect(dry_result(12)).to include("status" => "success", "mode" => "dry_run", "attempts" => ["dry_run"])
+      expect(result(12)).to be_nil
+      expect(summary).to eq(succeeded: 2)
+    end
+
+    it "does not make the live pass skip anything" do
+      queue(mode: "dry_run").run
+      calls.clear
+      queue.run
+
+      expect(calls.pluck(:mode)).to eq(%w[live live])
+    end
+
+    it "dry-runs the remainder with skip_existing when the export is partially imported" do
+      responses[2] = [{ success: false, error: "Primary keys already exist on the target (samples: 3 in the first colliding batch)" }]
+      queue(mode: "dry_run").run
+
+      expect(calls.select { |c| c[:target_user_id] == 2 }.pluck(:mode)).to eq(%w[dry_run dry_run_skip_existing])
+      expect(dry_result(12)).to include("status" => "success", "attempts" => %w[dry_run dry_run_skip_existing])
+    end
+
+    it "skips exports that are already imported" do
+      s3.store("ops", "queues/q1/results/12.json", { status: "success" }.to_json)
+      summary = queue(mode: "dry_run").run
+
+      expect(calls.pluck(:target_user_id)).to eq([1])
+      expect(summary).to eq(already_done: 1, succeeded: 1)
+    end
+
+    it "rejects an unknown mode" do
+      expect { queue(mode: "dryrun") }.to raise_error(UserDataImportQueue::ConfigError, /IMPORT_QUEUE_MODE/)
+    end
+  end
+
+  describe ".report" do
+    it "writes one row per queued export with live and dry-run status and counts, without a target database" do
+      ENV.delete("IMPORT_REQUIRE_DB_HOST")
+      s3.store("ops", "queues/q1/results/12.json", { status: "failed", error: "boom" }.to_json)
+      s3.store("ops", "queues/q1/dry-runs/11.json", {
+        status: "success", attempts: %w[dry_run], warnings: %w[w1 w2],
+        stats: { projects_name_conflicts: 2, phylo_trees_name_conflicts: 1, samples_id_conflicts: 0 },
+      }.to_json)
+
+      out = described_class.report(queue_uri: "s3://ops/queues/q1/", s3: s3)
+
+      expect(out).to eq(exports: 2, report: "s3://ops/queues/q1/report.csv")
+      rows = CSV.parse(s3.get_object(bucket: "ops", key: "queues/q1/report.csv").body.read, headers: true).map(&:to_h)
+      expect(rows.find { |r| r["export_id"] == "11" }).to include(
+        "dry_run_status" => "success", "dry_run_attempts" => "dry_run", "warnings" => "2", "name_conflicts" => "3",
+        "id_conflicts" => "0", "live_status" => nil
+      )
+      expect(rows.find { |r| r["export_id"] == "12" }).to include("live_status" => "failed", "live_error" => "boom", "dry_run_status" => nil)
+    end
+  end
+
   it "starts each worker at its own offset in the queue" do
     write_queue("export_id,target_user_id\n11,1\n12,2\n")
     queue(worker_index: 1, worker_count: 2).run
