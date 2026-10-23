@@ -24,7 +24,7 @@ RSpec.describe TokenMaskingLogger do
 
   around do |example|
     original_logger = Rails.logger
-    Rails.logger = ActiveSupport::TaggedLogging.new(ActiveSupport::Logger.new(log_io))
+    Rails.logger = Ougai::Logger.new(log_io)
     example.run
   ensure
     Rails.logger = original_logger

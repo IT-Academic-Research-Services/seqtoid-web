@@ -2,6 +2,7 @@ require_relative "boot"
 
 require "rails/all"
 require "sprockets/railtie"
+require './lib/json_logging'
 # Require the gems listed in Gemfile, including any gems
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
@@ -35,8 +36,11 @@ module Czid
     # in config/environments, which are processed later.
     # config.eager_load_paths << Rails.root.join("extras")
     # CZID specific from here down
+    # TODO: Use UTC instead of Pacific
     config.time_zone = 'Pacific Time (US & Canada)'
+    # config.time_zone = 'UTC'
     config.active_record.default_timezone = :local
+    # config.active_record.default_timezone = :utc
     config.middleware.use Rack::Deflater
     config.encoding = "utf-8"
 
@@ -75,6 +79,13 @@ module Czid
     # has none of the old ids), so DEFAULT_BACKGROUND_ID overrides the historical 26. Where the id does not
     # exist, heatmap code falls back to the first public background (HeatmapIndexing.default_background_id).
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
+
+    JsonLogging::CurrentContext.add_filter(lambda { |data|
+      !data[:msg] || !(
+        data[:msg].include?('Cannot render console from') ||
+          data[:msg].include?('[Tracing] Discarding <http.server> transaction ') && data[:msg].include?(' because traces_sampler returned 0 or false')
+      )
+    })
   end
 end
 

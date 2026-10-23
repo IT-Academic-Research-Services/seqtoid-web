@@ -48,13 +48,11 @@ class AmrOntologyController < ApplicationController
     sql_expression = "SELECT * FROM S3Object[*].#{gene_name.dump} LIMIT 1"
     entry = S3Util.s3_select_json(S3_DATABASE_BUCKET, s3_key, sql_expression)
     trimmed_entry = entry.chomp(",")
-    ontology = {}
     begin
-      ontology = JSON.parse(trimmed_entry)
+      return JSON.parse(trimmed_entry)
     rescue JSON::ParserError => e
       Rails.logger.error(e.message)
       return {}
     end
-    return ontology
   end
 end

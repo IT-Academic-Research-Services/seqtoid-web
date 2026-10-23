@@ -1,3 +1,5 @@
+require './lib/json_logging'
+
 class ApplicationController < ActionController::Base
   before_action :authenticate_user!
   before_action :check_for_maintenance
@@ -53,7 +55,7 @@ class ApplicationController < ActionController::Base
     case auth_check
     when AUTH_INVALID_USER
       respond_to do |format|
-        format.html { redirect_to  controller: :auth0, action: :login }
+        format.html { redirect_to controller: :auth0, action: :login }
         format.json { render json: { errors: ['Not Authenticated'] }, status: :unauthorized }
       end
     when AUTH_TOKEN_EXPIRED
@@ -177,6 +179,8 @@ class ApplicationController < ActionController::Base
   # Set current user and request to global for use in logging in ActiveRecord.
   # See https://stackoverflow.com/a/11670283/200312
   def set_current_context_for_logging!
+    JsonLogging::CurrentContext.user = current_user if current_user
+    JsonLogging::CurrentContext.request = request if request
     ApplicationRecord._current_user = current_user if current_user
     ApplicationRecord._current_request = request if request
   rescue StandardError => e

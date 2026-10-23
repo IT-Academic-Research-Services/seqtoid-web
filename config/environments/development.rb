@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require './lib/json_logging'
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
@@ -105,9 +106,6 @@ Rails.application.configure do
   # information to avoid inadvertent exposure of personally identifiable information (PII).
   config.log_level = :debug
 
-  # Prepend all log lines with the following tags.
-  config.log_tags = [:request_id]
-
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque
   # config.active_job.queue_name_prefix = "idseq-dev"
@@ -210,45 +208,13 @@ Rails.application.configure do
   # This setting prevents Rails from blocking requests to the ngrok endpoint
   config.hosts << ENV["SERVER_DOMAIN"].sub("https://", "") if ENV["SERVER_DOMAIN"]
 
-  # Deployed logging configuration.
-  #
-  # Overridable via RAILS_LOG_LEVEL, defaulting to :debug so a local `development`
-  # boot is unchanged. The deployed dev environment sets it to "info".
-  #
-  # At :debug, ActiveRecord echoes every statement WITH its bound values. On the
-  # resque worker that means whole `INSERT INTO contigs` statements including the
-  # `sequence` column: measured single log lines up to 484 KB, a 12 KB mean against
-  # a 106 B median, and roughly three quarters of all container log bytes in the dev
-  # cluster from this one process. Two problems, not one -- the volume, and the fact
-  # that sample sequence content is written verbatim into a log stream that ships to
-  # an aggregator (and, if enabled, to a third-party log vendor).
-  #
-  # Only `development` had this: sandbox/staging/prod already run :info.
-  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym
-  config.lograge.enabled = true
-  config.lograge.formatter = Lograge::Formatters::Json.new
-  config.lograge.logger = ActiveSupport::Logger.new(STDOUT)
-  param_filtered = %w[controller action]
-  config.lograge.custom_options = lambda do |event|
-    { time: event.time,
-      ddsource: ["ruby"],
-      remote_ip: event.payload[:remote_ip],
-      user_id: event.payload[:user_id],
-      params: event.payload[:params].reject { |k| param_filtered.include? k }, }
-  end
-  config.colorize_logging = false
-  config.lograge.ignore_actions = ["HealthCheck::HealthCheckController#index"]
-  ActiveRecord::Base.logger = Logger.new(STDOUT)
-  ActiveRecord::Base.logger.level = :debug if ActiveRecord::Base.logger
+  # The deployed dev environment supposedly sets it to "info", but that seems unlikely
+  JsonLogging.init_logging(config, level: ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym)
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
 
-  # Development logging configuration
-  logger           = ActiveSupport::Logger.new(STDOUT)
-  logger.formatter = config.log_formatter
-  config.logger    = ActiveSupport::TaggedLogging.new(logger)
-  config.log_to = %w[stdout file]
+  config.log_to = %w[stdout file] # Is this even used?
   config.active_record.verbose_query_logs = true
 
   config.after_initialize do

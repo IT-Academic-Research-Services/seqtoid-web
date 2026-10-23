@@ -394,6 +394,7 @@ end
 
   describe "#set_current_context_for_logging!" do
     after do
+      JsonLogging::CurrentContext.reset_all
       ApplicationRecord._current_user = nil
       ApplicationRecord._current_request = nil
     end
@@ -407,25 +408,29 @@ end
     end
 
     it "records the user and request when both are present (both then-arms)" do
-      request_double = double("request")
+      request = ActionDispatch::TestRequest.create
       allow(controller_instance).to receive(:current_user).and_return(regular_user)
-      allow(controller_instance).to receive(:request).and_return(request_double)
+      allow(controller_instance).to receive(:request).and_return(request)
+      expect(JsonLogging::CurrentContext).to receive(:user=).with(regular_user).and_call_original
+      expect(JsonLogging::CurrentContext).to receive(:request=).with(request).and_call_original
 
       controller_instance.send(:set_current_context_for_logging!)
 
       expect(current_logging_user).to eq(regular_user)
-      expect(current_logging_request).to eq(request_double)
+      expect(current_logging_request).to eq(request)
     end
 
     it "skips the user when nobody is signed in (the first else-arm)" do
-      request_double = double("request")
+      request = ActionDispatch::TestRequest.create
       allow(controller_instance).to receive(:current_user).and_return(nil)
-      allow(controller_instance).to receive(:request).and_return(request_double)
+      allow(controller_instance).to receive(:request).and_return(request)
+      expect(JsonLogging::CurrentContext).not_to receive(:user=)
+      expect(JsonLogging::CurrentContext).to receive(:request=).with(request).and_call_original
 
       controller_instance.send(:set_current_context_for_logging!)
 
       expect(current_logging_user).to be_nil
-      expect(current_logging_request).to eq(request_double)
+      expect(current_logging_request).to eq(request)
     end
 
     it "logs and swallows an error raised while recording (the rescue arm)" do

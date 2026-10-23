@@ -2,13 +2,17 @@
 
 class LogUtil
   def self.log_error(message, exception: nil, **details)
-    # TODO(tiago): [CH-13826] add json support
-    Rails.logger.error({
-      message: message,
-      exception: exception&.message,
-      backtrace: exception&.backtrace,
-      details: details,
-    }.to_json)
+    begin
+      Rails.logger.error(
+        message: message,
+        exception: exception&.message,
+        backtrace: exception&.backtrace,
+        **details
+      )
+    rescue StandardError
+      Rails.logger.error("#{message} #{exception&.inspect} #{details.inspect}")
+    end
+
     if exception
       # Exceptions have a default level of "error".
       # sentry-ruby's capture_exception uses the exception's own message as the
@@ -16,13 +20,16 @@ class LogUtil
       # message through as extra context to preserve raven's behavior.
       Sentry.capture_exception(
         exception,
-        extra: details.merge(message: message)
+        extra: {
+          **details,
+          message: message,
+        }.compact
       )
     else
       Sentry.capture_message(
         message,
         level: "error",
-        extra: details
+        extra: details.compact
       )
     end
   end
@@ -39,7 +46,7 @@ class LogUtil
     # A logging helper must never raise and disturb its caller. Guard the JSON encode
     # (a detail value could be non-serializable) and fall back to inspect.
     begin
-      Rails.logger.info({ message: message, details: details }.to_json)
+      Rails.logger.info(message: message, **details)
     rescue StandardError
       Rails.logger.info("#{message} #{details.inspect}")
     end
@@ -48,7 +55,7 @@ class LogUtil
     Sentry.capture_message(
       message,
       level: "info",
-      extra: details
+      extra: details.compact
     )
   end
 end
