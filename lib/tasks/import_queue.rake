@@ -12,7 +12,8 @@ namespace :import_queue do
   task :run, [:queue_uri, :export_root, :source_bucket, :dest_bucket] => :environment do |_t, args|
     abort "Usage: rake 'import_queue:run[<queue s3 uri>,<export root s3 uri>,<source bucket>,<dest bucket>]'" if args[:queue_uri].blank? || args[:export_root].blank?
 
-    index = Integer(ENV.fetch("JOB_COMPLETION_INDEX", "0"))
+    # IMPORT_WORKER_INDEX: one Job per worker (seqtoid-data-ops autoscale.sh); JOB_COMPLETION_INDEX: an Indexed Job.
+    index = Integer(ENV["IMPORT_WORKER_INDEX"].presence || ENV.fetch("JOB_COMPLETION_INDEX", "0"))
     count = Integer(ENV.fetch("IMPORT_QUEUE_WORKERS", "1"))
     if count > 1 && ENV["IMPORT_LOCK_SCOPE"] != "export"
       abort "IMPORT_QUEUE_WORKERS=#{count} needs IMPORT_LOCK_SCOPE=export (otherwise the workers serialize on the global import lock)"

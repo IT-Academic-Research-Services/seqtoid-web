@@ -15,6 +15,9 @@ require "tmpdir"
 #   report.csv                written by `rake import_queue:report`: one row per export, live + dry-run status
 #   PAUSE                     while present, workers finish their current export and pick up no new one
 #                             (e.g. while a deploy migration on a table the imports write replicates)
+#   WORKERS                   optional desired worker count (an integer). A worker whose index is at or above
+#                             it finishes its current export and stops, so the pool shrinks without killing
+#                             an import mid-way (seqtoid-data-ops autoscale.sh writes it). Absent = no limit.
 #
 # Per export:
 #   1. skip it if results/<id>.json already says success;
@@ -35,6 +38,7 @@ class UserDataImportQueue
 
   RESULTS_PREFIX = "results/"
   PAUSE_KEY = "PAUSE"
+  WORKERS_KEY = "WORKERS"
   QUEUE_KEY = "queue.csv"
   DOWNLOAD_THREADS = 4
   PRIMARY_KEYS_EXIST = "Primary keys already exist"
@@ -85,6 +89,10 @@ class UserDataImportQueue
     ordered_entries.each do |entry|
       if paused?
         summary[:paused] = true
+        break
+      end
+      if scaled_down?
+        summary[:drained] = true
         break
       end
       outcome = process(entry)
@@ -188,6 +196,16 @@ class UserDataImportQueue
   def succeeded?(export_id)
     body = read_object(@queue_bucket, result_key(export_id))
     body && JSON.parse(body)["status"] == "success"
+  end
+
+  # True when the WORKERS control file asks for fewer workers than this one's index. An unreadable or
+  # non-integer value is ignored (no limit), so a bad write never stops the whole pool.
+  def scaled_down?
+    raw = read_object(@queue_bucket, "#{@queue_prefix}#{WORKERS_KEY}")
+    return false if raw.nil?
+
+    desired = Integer(raw.strip, exception: false)
+    !desired.nil? && desired >= 0 && @worker_index >= desired
   end
 
   def paused?
