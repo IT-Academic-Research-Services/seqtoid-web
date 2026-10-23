@@ -47,7 +47,8 @@ const BulkSamplesActionsMenu = ({
     let bulkKickoffAmrMenuItem = (
       <MenuItem
         className={cs.dropdownItem}
-        disabled={noObjectsSelected}
+        // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+        disabled={true} // {noObjectsSelected}
         onClick={() => {
           closeActionsMenu();
           handleBulkKickoffAmr();

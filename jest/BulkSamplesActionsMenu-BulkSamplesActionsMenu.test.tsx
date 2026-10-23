@@ -186,7 +186,9 @@ describe("BulkSamplesActionsMenu AMR + phylo items", () => {
     );
     openMenu();
     fireEvent.click(screen.getByText("Run Antimicrobial Resistance Pipeline"));
-    expect(handleBulkKickoffAmr).toHaveBeenCalledTimes(1);
+    // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+    // expect(handleBulkKickoffAmr).toHaveBeenCalledTimes(1);
+    expect(handleBulkKickoffAmr).toHaveBeenCalledTimes(0);
   });
 });
 

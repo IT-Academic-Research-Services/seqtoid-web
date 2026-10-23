@@ -368,6 +368,8 @@ export const HoverActions = ({
     } else if (!coverageVizEnabled) {
       return "Consensus genome pipeline only available when coverage visualization is available.";
     }
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    return "Temporarily Unavailable";
   };
 
   // TODO: move this to its own component

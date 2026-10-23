@@ -126,9 +126,12 @@ describe("HoverActions consensus genome coverage-viz guard", () => {
     });
 
     expect(button(VIZ_WORKFLOW_RUN).disabled).toBe(false);
-    expect(button(CG_WORKFLOW_RUN).disabled).toBe(false);
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    // expect(button(CG_WORKFLOW_RUN).disabled).toBe(false);
+    expect(button(CG_WORKFLOW_RUN).disabled).toBe(true);
     // No error string -> the popup falls back to the plain action label.
-    expect(tooltipFor(CG_WORKFLOW_RUN)).toBe("Consensus Genome");
+    // expect(tooltipFor(CG_WORKFLOW_RUN)).toBe("Consensus Genome");
+    expect(tooltipFor(CG_WORKFLOW_RUN)).toBe("Temporarily Unavailable");
   });
 
   it("never reaches the coverage-viz guard on the long-read tab, where coverage viz is unconditional", () => {
