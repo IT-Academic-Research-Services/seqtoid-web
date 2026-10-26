@@ -68,17 +68,23 @@ const BulkSamplesActionsMenu = ({
       </MenuItem>
     );
 
-    if (noObjectsSelected) {
-      bulkKickoffAmrMenuItem = (
-        <Tooltip
-          arrow
-          placement="top"
-          title={"Select at least 1 mNGS run to perform this action."}
-        >
-          <span>{bulkKickoffAmrMenuItem}</span>
-        </Tooltip>
-      );
-    }
+    // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+    // if (noObjectsSelected) {
+    //   bulkKickoffAmrMenuItem = (
+    //     <Tooltip
+    //       arrow
+    //       placement="top"
+    //       title={"Select at least 1 mNGS run to perform this action."}
+    //     >
+    //       <span>{bulkKickoffAmrMenuItem}</span>
+    //     </Tooltip>
+    //   );
+    // }
+    bulkKickoffAmrMenuItem = (
+      <Tooltip arrow placement="top" title={"Temporarily Disabled."}>
+        <span>{bulkKickoffAmrMenuItem}</span>
+      </Tooltip>
+    );
 
     return bulkKickoffAmrMenuItem;
   };
