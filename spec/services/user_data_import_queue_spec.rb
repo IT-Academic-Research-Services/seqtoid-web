@@ -247,6 +247,35 @@ RSpec.describe UserDataImportQueue do
       expect(dry_result(12)).to include("status" => "success", "attempts" => %w[dry_run dry_run_skip_existing])
     end
 
+    it "records which bundle it checked" do
+      queue(mode: "dry_run").run
+
+      expect(dry_result(12)).to include("bundle" => "exports/12/migration_1")
+    end
+
+    it "skips an export already checked successfully against its current bundle, so workers share one pass" do
+      queue(mode: "dry_run").run
+      calls.clear
+      summary = queue(mode: "dry_run", worker_index: 1, worker_count: 2).run
+
+      expect(calls).to be_empty
+      expect(summary).to eq(already_checked: 2)
+    end
+
+    it "checks again when the previous dry run failed" do
+      s3.store("ops", "queues/q1/dry-runs/12.json", { status: "failed", finished_at: Time.current.iso8601 }.to_json)
+      queue(mode: "dry_run").run
+
+      expect(calls.pluck(:target_user_id)).to eq([2, 1])
+    end
+
+    it "checks again when the bundle is newer than the previous dry run" do
+      s3.store("ops", "queues/q1/dry-runs/12.json", { status: "success", finished_at: 3.days.ago.iso8601 }.to_json)
+      queue(mode: "dry_run").run
+
+      expect(calls.pluck(:target_user_id)).to eq([2, 1])
+    end
+
     it "skips exports that are already imported" do
       s3.store("ops", "queues/q1/results/12.json", { status: "success" }.to_json)
       summary = queue(mode: "dry_run").run
