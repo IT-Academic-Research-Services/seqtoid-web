@@ -22,7 +22,7 @@ module ParameterSanitization
   def sanitize_accession_id(accession_id)
     if accession_id
       # Allow capital letters, numbers, underscores, and periods
-      return accession_id.gsub(/[^A-Z0-9_\.]/, '')
+      return accession_id.gsub(/[^A-Z0-9_.]/, '')
     end
   end
 
@@ -39,6 +39,8 @@ module ParameterSanitization
   def get_annotation_name(annotation_filter)
     if annotation_filter.is_a?(String)
       JSON.parse(annotation_filter)["name"].downcase.parameterize(separator: '_')
+    elsif annotation_filter.is_a?(Hash)
+      annotation_filter["name"].downcase.parameterize(separator: '_') || nil
     else
       annotation_filter.name.downcase.parameterize(separator: '_') || nil
     end
