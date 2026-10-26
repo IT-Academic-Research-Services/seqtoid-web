@@ -11,7 +11,9 @@ require "tmpdir"
 # Layout under the queue prefix (s3://bucket/prefix/):
 #   queue.csv                 export_id,target_user_id[,priority] -- higher priority first, then file order
 #   results/<export_id>.json  written after every live attempt (status, mode, timings, stats, warnings, error)
-#   dry-runs/<export_id>.json written by a dry-run pass (IMPORT_QUEUE_MODE=dry_run); never counts as done
+#   dry-runs/<export_id>.json written by a dry-run pass (IMPORT_QUEUE_MODE=dry_run); never counts as done for a live
+#                             pass. A dry-run pass skips an export whose dry-run result is a success newer than its
+#                             bundle (delete the file to check it again).
 #   report.csv                written by `rake import_queue:report`: one row per export, live + dry-run status
 #   PAUSE                     while present, workers finish their current export and pick up no new one
 #                             (e.g. while a deploy migration on a table the imports write replicates)
@@ -32,7 +34,9 @@ require "tmpdir"
 # Dry-run mode (IMPORT_QUEUE_MODE=dry_run): the same pass, but each export runs the importer's read-only dry
 # run (validates the bundle, reference rows, name renames and primary-key collisions; writes nothing) and the
 # result lands in dry-runs/ for review before the live pass. A partially imported export gets a second dry
-# run with skip_existing, so the warnings for what is still to come are reported too.
+# run with skip_existing, so the warnings for what is still to come are reported too. An export already
+# checked successfully against its current bundle is skipped, so N workers make one pass between them instead
+# of each re-checking the whole queue (2026-10-23: 8 workers each walked all 271 exports, ~12 h instead of ~2 h).
 class UserDataImportQueue
   class ConfigError < StandardError; end
 
@@ -107,11 +111,12 @@ class UserDataImportQueue
     export_id = entry[:export_id]
     return :already_done if succeeded?(export_id)
 
-    bundle = newest_bundle_prefix(export_id)
+    bundle, bundle_time = newest_bundle(export_id)
     unless bundle
       record(entry, status: "failed", error: "no bundle with manifest.json under #{@export_prefix}#{export_id}/")
       return :failed
     end
+    return :already_checked if dry_run? && dry_run_current?(export_id, bundle_time)
 
     old_user_id = JSON.parse(read_object(@export_bucket, "#{bundle}/manifest.json"))["user_id"]
     claimed = with_claim(old_user_id) do
@@ -134,11 +139,11 @@ class UserDataImportQueue
         result = run_import(entry, dir, retry_mode)
         attempts << retry_mode
       end
-      record(entry, status: result[:success] ? "success" : "failed", attempts: attempts, started_at: started,
+      record(entry, status: result[:success] ? "success" : "failed", attempts: attempts, started_at: started, bundle: bundle,
                     stats: result[:stats], timings: result[:timings], warnings: result[:warnings], error: result[:error])
       result[:success] ? :succeeded : :failed
     rescue StandardError => e
-      record(entry, status: "failed", started_at: started, error: "#{e.class}: #{e.message}")
+      record(entry, status: "failed", started_at: started, bundle: bundle, error: "#{e.class}: #{e.message}")
       :failed
     ensure
       FileUtils.remove_entry(dir) if Dir.exist?(dir)
@@ -212,13 +217,24 @@ class UserDataImportQueue
     !read_object(@queue_bucket, "#{@queue_prefix}#{PAUSE_KEY}").nil?
   end
 
-  def record(entry, status:, attempts: [], started_at: nil, stats: nil, timings: nil, warnings: nil, error: nil)
+  # A dry-run result counts as current when it succeeded and finished after the bundle was written, so a
+  # re-exported (newer) bundle is checked again. A failed dry run is always retried.
+  def dry_run_current?(export_id, bundle_time)
+    prior = read_json(dry_run_key(export_id))
+    return false unless prior && prior["status"] == "success" && prior["finished_at"].present?
+
+    Time.iso8601(prior["finished_at"]) >= bundle_time
+  rescue ArgumentError
+    false
+  end
+
+  def record(entry, status:, attempts: [], started_at: nil, bundle: nil, stats: nil, timings: nil, warnings: nil, error: nil)
     finished = Time.current
     payload = {
       export_id: entry[:export_id], target_user_id: entry[:target_user_id], status: status, attempts: attempts,
       worker: @worker, started_at: started_at&.iso8601, finished_at: finished.iso8601,
       seconds: started_at ? (finished - started_at).round(1) : nil,
-      mode: @mode, stats: stats, timings: timings, warnings: Array(warnings).first(dry_run? ? 1000 : 200), error: error,
+      mode: @mode, bundle: bundle, stats: stats, timings: timings, warnings: Array(warnings).first(dry_run? ? 1000 : 200), error: error,
     }
     key = dry_run? ? dry_run_key(entry[:export_id]) : result_key(entry[:export_id])
     @s3.put_object(bucket: @queue_bucket, key: key, body: JSON.pretty_generate(payload), content_type: "application/json")
@@ -255,7 +271,8 @@ class UserDataImportQueue
 
   # The newest immediate subfolder of <export_root><id>/ that holds a manifest.json (same rule as the
   # import_user_data rake task's resolve_bundle_prefix).
-  def newest_bundle_prefix(export_id)
+  # Returns [prefix, manifest last_modified], or nil.
+  def newest_bundle(export_id)
     newest = nil
     list(@export_bucket, "#{@export_prefix}#{export_id}/", delimiter: "/") do |page|
       page.common_prefixes.each do |cp|
@@ -264,7 +281,7 @@ class UserDataImportQueue
         newest = [sub, head.last_modified] if head && (newest.nil? || head.last_modified > newest[1])
       end
     end
-    newest&.first
+    newest
   end
 
   def download_bundle(prefix, dir)
