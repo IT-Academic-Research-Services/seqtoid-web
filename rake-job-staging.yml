@@ -5,12 +5,12 @@ metadata:
   name: rake-task-job
   namespace: seqtoid-staging
 spec:
-  backoffLimit: 2 # 2 3
-  #completions: 1
-  #parallelism: 1
-  #ttlSecondsAfterFinished: 36000
+  backoffLimit: 0 # 2 3
+  completions: 1
+  parallelism: 1
+  ttlSecondsAfterFinished: 36000
   #ttlSecondsAfterFinished: 86400
-  ttlSecondsAfterFinished: 864000 # 10 days
+#  ttlSecondsAfterFinished: 864000 # 10 days
   template:
     spec:
       nodeSelector:
@@ -27,7 +27,7 @@ spec:
             - "--"
             - bundle
             - exec
-            - rake
+            #- rake
             #- "--tasks"
             #- "taxon_lineage_slice:remove_slice"
             #- "taxon_lineage_slice:import_data_from_s3"
@@ -41,20 +41,20 @@ spec:
             # 8 is Gowtham - 2572
             # 5 is Matt - 8564
             # Matt =
-#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,dry_run,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,skip_existing,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,dry_run,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
-#            - "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,dry_run,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/8564/,dry_run,5,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,skip_existing,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2557/,dry_run,6,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
+            #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2572/,dry_run,8,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
-            #- rails
+            - rails
             #- "db:drop"
             #- "db:create"
             #- "db:schema:load" DO NOT USE !!!
             #- "db:migrate:with_data"
             #- "seed:migrate"
             #
-            # - runner
-            #- "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
+            - runner
+            - "UserFactoryService.call(created_by_user_id: 1, email: ARGV[0], name: ARGV[1], role: User::ROLE_REGULAR_USER, send_activation: false, signup_path: User::SIGNUP_PATH[:self_registered])"
             #- joseph.sims@ucsf.edu
             #- Joseph Sims
             #- Thomas.Horvath@ucsf.edu
@@ -63,7 +63,12 @@ spec:
             #- Ikram Ahmed
             #- matt.jobin@ucsf.edu
             #- Matt Jobin
-            #
+            #- matt.jobin@ucsf.edu
+            #- Matt Jobin
+            #- Andrew.Sunarto@ucsf.edu
+            #- Andrew Sunarto
+            - cole.krenz@ucsf.edu
+            - Cole Krenz
             #- rake
             #- "import_user_data[s3://idseq-prod-czi-data-transfer-2026-08-27/user_data_exports/2533/,dry_run,7,idseq-prod-samples-us-west-2,seqtoid-env-prod-samples]"
             #
