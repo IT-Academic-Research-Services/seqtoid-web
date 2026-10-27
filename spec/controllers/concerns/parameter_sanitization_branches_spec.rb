@@ -45,12 +45,30 @@ RSpec.describe ParameterSanitization do
 
   describe "#get_annotation_name" do
     it "parameterizes the #name of a non-String annotation filter object" do
-      annotation_filter = double(name: "Not a hit")
+      annotation_filter = { name: "Not a hit" }
       expect(subject.get_annotation_name(annotation_filter)).to eq("not_a_hit")
+    end
+
+    it "parameterizes the #name of an invalid non-String annotation filter object" do
+      annotation_filter = { foo: "Bar" }
+      expect(subject.get_annotation_name(annotation_filter)).to be_nil
     end
 
     it "parameterizes the parsed name of a String (JSON) annotation filter" do
       expect(subject.get_annotation_name("{\"name\":\"Not a hit\"}")).to eq("not_a_hit")
+    end
+
+    it "handles invalid String (JSON) annotation filter" do
+      expect(subject.get_annotation_name("{\"foo\":\"bar\"}")).to be_nil
+    end
+
+    it "handles Object annotation filter" do
+      AnnotationStruct = Struct.new(:name)
+      expect(subject.get_annotation_name(AnnotationStruct.new(name: "Not a hit"))).to eq("not_a_hit")
+    end
+
+    it "handles invalid Object annotation filter" do
+      expect(subject.get_annotation_name(91)).to be_nil
     end
   end
 end
