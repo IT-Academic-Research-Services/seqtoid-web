@@ -242,6 +242,20 @@ class AppConfig < ApplicationRecord
   # aborts without deleting) so a fat-fingered small window cannot wipe recent data.
   DATA_RETENTION_DAYS = "data_retention_days".freeze
 
+  # Weekly per-user sample upload limits (WeeklySampleUploadLimit). Each is a positive integer number of
+  # samples per week (Sunday 00:00 to Saturday 23:59:59 Pacific); unset/blank/0 = no limit on that channel,
+  # so this ships OFF and is turned on per deployment.
+  #   _CLI: uploads made with the SeqToID CLI (bearer-token requests).
+  #   _WEB: uploads from local files in the web uploader.
+  #   _S3 / _BASESPACE: web imports from S3 / BaseSpace. When unset, these share the _CLI allowance.
+  #   _TOTAL: all channels combined, on top of the per-channel limits.
+  # Admins are exempt; SampleUploadLimitOverride grants one user higher limits.
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_CLI = "upload_weekly_sample_limit_cli".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_WEB = "upload_weekly_sample_limit_web".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_S3 = "upload_weekly_sample_limit_s3".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_BASESPACE = "upload_weekly_sample_limit_basespace".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_TOTAL = "upload_weekly_sample_limit_total".freeze
+
   after_save :clear_cached_record
 
   def clear_cached_record

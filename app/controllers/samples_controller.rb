@@ -43,13 +43,13 @@ class SamplesController < ApplicationController
   # uncapped since it re-uses cached compute). Admins are exempt.
   RERUN_DAILY_LIMIT = 3
 
-  OTHER_ACTIONS = [:bulk_upload_with_metadata, :resume_upload_targets, :bulk_import, :index, :index_v2, :details,
+  OTHER_ACTIONS = [:bulk_upload_with_metadata, :upload_allowance, :resume_upload_targets, :bulk_import, :index, :index_v2, :details,
                    :dimensions, :all, :show_sample_names, :cli_user_instructions, :metadata_fields,
                    :search_suggestions, :stats, :upload, :validate_sample_files, :taxa_with_reads_suggestions, :uploaded_by_current_user,
                    :taxa_with_contigs_suggestions, :validate_sample_ids, :enable_mass_normalized_backgrounds, :reads_stats, :consensus_genome_clade_export,
                    :bulk_kickoff_workflow_runs, :user_is_collaborator, :validate_user_can_delete_objects, :bulk_delete, :benchmark, :benchmark_ground_truth_files,].freeze
   OWNER_ACTIONS = [:raw_results_folder, :upload_credentials].freeze
-  TOKEN_AUTH_ACTIONS = [:update, :bulk_upload_with_metadata, :resume_upload_targets, :upload_credentials].freeze
+  TOKEN_AUTH_ACTIONS = [:update, :bulk_upload_with_metadata, :upload_allowance, :resume_upload_targets, :upload_credentials].freeze
   ACTIONS_TO_REDIRECT = [:show].freeze
 
   # For API-like access
@@ -752,6 +752,31 @@ class SamplesController < ApplicationController
       errors << SampleUploadErrors.invalid_project_id(sample)
     end
 
+    # Weekly per-user sample upload limits. The channel comes from how the request authenticated (CLI bearer
+    # token vs browser session) and the samples' file sources -- not from the client-supplied `client` param.
+    # The whole upload is rejected if it would cross a limit; otherwise it is counted now and whatever is not
+    # created is given back below. If the upload raises before that, the reservation stands (fail-closed).
+    upload_reservation = WeeklySampleUploadLimit.reserve(
+      user: current_user,
+      counts: WeeklySampleUploadLimit.counts_for(
+        samples_to_upload.map { |sample| Array(sample[:input_files_attributes]).map { |file| file[:source_type] } },
+        cli: @auth0_cli_auth.present?
+      )
+    )
+    # A rejection uses this endpoint's normal response -- 200 with the reason in `errors` and no samples -- like
+    # any other upload error (invalid project, missing metadata). Both clients show `errors`: the web uploader
+    # per sample, and the CLI prints them and exits. A 429 would be retried by the CLI as "server busy"
+    # (seqtoid-cli retry.go) and surface only as a bare status code in either client.
+    unless upload_reservation.allowed?
+      render json: {
+        samples: [],
+        sample_ids: [],
+        errors: [WeeklySampleUploadLimit.rejection_message(upload_reservation)],
+        weekly_upload_limit: WeeklySampleUploadLimit.summary(current_user),
+      }
+      return
+    end
+
     # Apply project defaults such as subsample_default and max_input_fragments_default.
     # Get all projects that are targeted by this upload.
     sample_projects = Project.where(id: samples_to_upload.pluck(:project_id).uniq)
@@ -809,6 +834,11 @@ class SamplesController < ApplicationController
       end
     end
     samples -= removed_samples
+
+    WeeklySampleUploadLimit.release(
+      upload_reservation,
+      WeeklySampleUploadLimit.counts_for(samples.map { |sample| sample.input_files.map(&:source_type) }, cli: @auth0_cli_auth.present?)
+    )
 
     warn_if_large_bulk_upload(samples)
 
@@ -873,6 +903,13 @@ class SamplesController < ApplicationController
     respond_to do |format|
       format.json { render json: resp }
     end
+  end
+
+  # GET /samples/upload_allowance.json
+  # How many samples the current user can still upload this week, per upload method, and when that resets.
+  # See WeeklySampleUploadLimit.
+  def upload_allowance
+    render json: WeeklySampleUploadLimit.summary(current_user)
   end
 
   # POST /samples/resume_upload_targets.json  { project_id:, sample_names: [...] }
