@@ -103,6 +103,7 @@ Rails.application.routes.draw do
       get :reads_stats
       get :stats
       get :benchmark_ground_truth_files
+      get :upload_allowance
 
       post :validate_sample_files
       post :enable_mass_normalized_backgrounds
