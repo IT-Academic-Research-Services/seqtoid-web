@@ -84,6 +84,26 @@ jest.mock(
   }),
 );
 
+// The allowance notice fetches its own data; here it is a button that reports "over the weekly
+// allowance" so the test can drive the review step's Start Upload gating.
+const mockAllowanceNotice = jest.fn();
+jest.mock(
+  "~/components/views/SampleUploadFlow/components/ReviewStep/components/UploadAllowanceNotice",
+  () => ({
+    UploadAllowanceNotice: (props: $TSFixMe) => {
+      mockAllowanceNotice(props);
+      return require("react").createElement(
+        "button",
+        {
+          "data-testid": "allowance-exceeded",
+          onClick: () => props.onExceededChange(true),
+        },
+        "over allowance",
+      );
+    },
+  }),
+);
+
 jest.mock("~ui/controls/TermsAgreement", () => ({
   __esModule: true,
   default: (props: $TSFixMe) =>
@@ -173,6 +193,31 @@ describe("ReviewStep", () => {
     expect(
       (screen.getByTestId("start-upload") as HTMLButtonElement).disabled,
     ).toBe(false);
+    await flushMount();
+  });
+
+  it("passes the upload type and sample count to the weekly allowance notice", async () => {
+    renderStep({
+      samples: [{ name: "a" }, { name: "b" }],
+      uploadType: "remote",
+    });
+    expect(mockAllowanceNotice).toHaveBeenLastCalledWith(
+      expect.objectContaining({ uploadType: "remote", sampleCount: 2 }),
+    );
+    await flushMount();
+  });
+
+  it("keeps Start Upload disabled when the upload would go over the weekly allowance", async () => {
+    renderStep();
+    fireEvent.click(screen.getByTestId("terms-agreement"));
+    expect(
+      (screen.getByTestId("start-upload") as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByTestId("allowance-exceeded"));
+    expect(
+      (screen.getByTestId("start-upload") as HTMLButtonElement).disabled,
+    ).toBe(true);
     await flushMount();
   });
 

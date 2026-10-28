@@ -191,3 +191,18 @@ export const startUploadHeartbeat = async () => {
 
 export const getUploadCredentials = (sampleId: $TSFixMe) =>
   httpGet(`/samples/${sampleId}/upload_credentials.json`);
+
+// GET /samples/upload_allowance.json -- how many samples the current user can still upload this
+// week, per upload method (WeeklySampleUploadLimit.summary on the server). `remaining[channel]` is
+// null when that method has no limit; it already accounts for shared allowances and the total.
+export interface UploadAllowance {
+  week_start: string;
+  resets_at: string;
+  unlimited: boolean;
+  limits: Record<string, number | null>;
+  used: Record<string, number>;
+  remaining: Record<string, number | null>;
+}
+
+export const getUploadAllowance = (): Promise<UploadAllowance> =>
+  httpGet("/samples/upload_allowance.json");

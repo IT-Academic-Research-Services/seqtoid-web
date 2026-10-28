@@ -29,6 +29,7 @@ import { HostOrganismMessage } from "./components/HostOrganismMessage";
 import { ProjectInfo } from "./components/ProjectInfo";
 import { ReviewHeader } from "./components/ReviewHeader";
 import { SampleInfo } from "./components/SampleInfo";
+import { UploadAllowanceNotice } from "./components/UploadAllowanceNotice";
 import cs from "./review_step.scss";
 
 interface ReviewStepProps {
@@ -74,6 +75,8 @@ interface ReviewStepState {
   skipSampleProcessing: boolean;
   useStepFunctionPipeline: boolean;
   adminOptions: Record<string, string>;
+  // The selected samples would go over the user's weekly upload allowance (UploadAllowanceNotice).
+  uploadAllowanceExceeded: boolean;
 }
 
 class ReviewStepCC extends React.Component<
@@ -87,6 +90,7 @@ class ReviewStepCC extends React.Component<
     skipSampleProcessing: false,
     useStepFunctionPipeline: true,
     adminOptions: {},
+    uploadAllowanceExceeded: false,
   };
 
   componentDidMount() {
@@ -129,6 +133,10 @@ class ReviewStepCC extends React.Component<
     this.setState({ adminOptions });
   };
 
+  handleUploadAllowanceExceededChange = (uploadAllowanceExceeded: boolean) => {
+    this.setState({ uploadAllowanceExceeded });
+  };
+
   toggleSkipSampleProcessing = () => {
     const { skipSampleProcessing } = this.state;
     this.setState({
@@ -143,6 +151,7 @@ class ReviewStepCC extends React.Component<
       projectMetadataFields,
       showUploadModal,
       skipSampleProcessing,
+      uploadAllowanceExceeded,
       useStepFunctionPipeline,
     } = this.state;
 
@@ -231,6 +240,13 @@ class ReviewStepCC extends React.Component<
               samples={samples}
             />
           )}
+          {!showUploadModal && (
+            <UploadAllowanceNotice
+              uploadType={uploadType}
+              sampleCount={samples?.length ?? 0}
+              onExceededChange={this.handleUploadAllowanceExceededChange}
+            />
+          )}
           <TermsAgreement
             checked={consentChecked}
             onChange={() =>
@@ -242,7 +258,7 @@ class ReviewStepCC extends React.Component<
           {!showUploadModal && (
             <PrimaryButton
               text="Start Upload"
-              disabled={!consentChecked}
+              disabled={!consentChecked || uploadAllowanceExceeded}
               onClick={this.uploadSamplesAndMetadata}
             />
           )}
