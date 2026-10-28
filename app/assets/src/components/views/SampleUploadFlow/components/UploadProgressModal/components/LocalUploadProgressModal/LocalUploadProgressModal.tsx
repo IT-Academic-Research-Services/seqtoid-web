@@ -62,6 +62,8 @@ import {
   addFlagsToSamples,
   redirectToProject,
 } from "../../upload_progress_utils";
+import { userFacingUploadErrors } from "../../uploadErrorMessages";
+import { UploadErrorMessages } from "../UploadErrorMessages";
 import { LocalUploadModalHeader } from "./components/LocalUploadModalHeader";
 import { UploadConfirmationModal } from "./components/UploadConfirmationModal";
 import { UploadProgressModalSampleList } from "./components/UploadProgressModalSampleList";
@@ -172,6 +174,8 @@ export const LocalUploadProgressModal = ({
   >(persistedResumeState?.sampleFileUploadIds ?? {});
   const [sampleUploadPercentages, setSampleUploadPercentages] = useState({});
   const [sampleUploadStatuses, setSampleUploadStatuses] = useState({});
+  // Why the server refused to create samples (e.g. the weekly upload limit), shown above the list.
+  const [createSamplesErrors, setCreateSamplesErrors] = useState<string[]>([]);
   const [sampleFileCompleted, setSampleFileCompleted] = useState<
     Record<string, boolean>
   >(persistedResumeState?.sampleFileCompleted ?? {});
@@ -255,6 +259,10 @@ export const LocalUploadProgressModal = ({
 
   const initiateLocalUpload = async () => {
     if (!samples) return;
+    // Clear a previous attempt's reasons. Returning the same array when there is nothing to clear
+    // lets React skip the re-render: heartbeatInterval / wakeLock below are plain render-scoped
+    // variables, and an extra render here would hide them from the Pause handler.
+    setCreateSamplesErrors(prev => (prev.length > 0 ? [] : prev));
     const samplesToUpload = addFlagsToSamples({
       adminOptions,
       bedFileName: bedFile?.name,
@@ -290,6 +298,7 @@ export const LocalUploadProgressModal = ({
           message: "UploadProgressModal: onCreateSamplesError",
           details: { errors, erroredSampleNames },
         });
+        setCreateSamplesErrors(userFacingUploadErrors(errors));
 
         const uploadStatuses = zipObject(
           erroredSampleNames,
@@ -786,6 +795,7 @@ export const LocalUploadProgressModal = ({
         numberOfSamples={size(samples)}
         projectName={project.name}
       />
+      <UploadErrorMessages messages={createSamplesErrors} />
       <UploadProgressModalSampleList
         samples={samples}
         sampleUploadPercentages={sampleUploadPercentages}

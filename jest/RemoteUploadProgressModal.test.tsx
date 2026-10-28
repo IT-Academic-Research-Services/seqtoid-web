@@ -283,6 +283,22 @@ describe("RemoteUploadProgressModal in-progress and failure states", () => {
     expect(screen.queryByText(/more\./)).toBeNull();
   });
 
+  it("shows the server's reason when it refuses the upload (weekly upload limit)", async () => {
+    const reason =
+      "Weekly upload limit reached: 1000 samples per week through the SeqToID CLI, S3 import and " +
+      "BaseSpace import combined. You have uploaded 990 this week and have 10 left, but this upload " +
+      "has 2. The limit resets Sunday November 1 at 12:00 AM Pacific. Contact us if you need a higher limit.";
+    mockBulkUploadRemote.mockResolvedValue({
+      samples: [],
+      errors: [reason],
+      errored_sample_names: ["sample_one", "sample_two"],
+    });
+    renderModal();
+
+    expect((await screen.findByRole("alert")).textContent).toBe(reason);
+    expect(screen.getByText("All uploads failed")).toBeTruthy();
+  });
+
   it("marks every sample failed and logs when the bulk upload request rejects", async () => {
     mockBulkUploadRemote.mockRejectedValue(new Error("500 from server"));
     const onUploadComplete = jest.fn();
@@ -300,6 +316,8 @@ describe("RemoteUploadProgressModal in-progress and failure states", () => {
     expect(onUploadComplete).not.toHaveBeenCalled();
     // The "contact us" escape hatch only appears when everything failed.
     expect(screen.getByText("Contact us for help")).toBeTruthy();
+    // A thrown request error is not a user-facing message: nothing raw is shown.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
