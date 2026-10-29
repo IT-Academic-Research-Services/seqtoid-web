@@ -323,7 +323,7 @@ describe("api/core.ts", () => {
         {},
       );
       expect(serialized).toBe(
-        "annotations%5B%5D=%7B%22name%22%3A%22Hit%22%7D&annotations%5B%5D=%7B%22name%22%3A%22Not+a+Hit%22%7D",
+        "annotations%5B%5D%5Bname%5D=Hit&annotations%5B%5D%5Bname%5D=Not%20a%20Hit",
       );
     });
 
