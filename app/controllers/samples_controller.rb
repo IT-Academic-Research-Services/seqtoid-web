@@ -661,6 +661,16 @@ class SamplesController < ApplicationController
       return
     end
 
+    # Our web role can only read buckets on the import allowlist (IAM), so any other bucket would come back
+    # AccessDenied after a round trip to S3 and land in Sentry as an error. Refuse it up front with a clear
+    # message instead. Admins keep their existing bypass, as in can_upload.
+    bucket = bulk_path.split("/")[2]
+    unless current_user.admin? || S3_IMPORT_SOURCE_BUCKETS.include?(bucket)
+      LogUtil.log_message("bulk_import: bucket not on the import allowlist", to_sentry: false, bucket: bucket, user_id: current_user.id)
+      render json: { status: "We can’t import from the S3 bucket “#{bucket}” because it hasn’t been set up for SeqToID. Upload the files from your computer or with the CLI instead, or contact us to request access for this bucket." }, status: :unprocessable_content
+      return
+    end
+
     @host_genome_id = params[:host_genome_id]
     @bulk_path = bulk_path
     begin
