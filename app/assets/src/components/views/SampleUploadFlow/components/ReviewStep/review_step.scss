@@ -113,3 +113,23 @@
     margin-left: $sds-spaces-m;
   }
 }
+
+// Weekly upload allowance (UploadAllowanceNotice): a quiet note normally, an error box when the
+// selected samples would go over it.
+.allowance,
+.allowanceExceeded {
+  @include font-body-xs;
+  max-width: 600px;
+  margin-bottom: $sds-spaces-m;
+}
+
+.allowance {
+  color: $sds-color-gray-500;
+}
+
+.allowanceExceeded {
+  padding: $sds-spaces-m $sds-spaces-l;
+  border-radius: $sds-corners-corner-m;
+  background-color: $sds-color-error-100;
+  color: $sds-color-error-600;
+}
