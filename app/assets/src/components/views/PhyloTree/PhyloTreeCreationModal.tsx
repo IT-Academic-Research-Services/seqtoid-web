@@ -44,8 +44,8 @@ import Wizard from "../../ui/containers/Wizard";
 import Input from "../../ui/controls/Input";
 import DataTable from "../../visualizations/table/DataTable";
 import { COLUMNS } from "./ColumnConfiguration";
-import PhyloTreeChecks from "./PhyloTreeChecks";
 import cs from "./phylo_tree_creation_modal.scss";
+import PhyloTreeChecks from "./PhyloTreeChecks";
 
 interface PhyloTreeCreationModalProps {
   admin?: number;
@@ -91,11 +91,18 @@ interface PhyloTreeCreationModalState {
   treeNameValid?: $TSFixMeUnknown;
 }
 
+// Taxon search (GET /phylo_tree_ngs/choose_taxon). The server ignores queries shorter than
+// ElasticsearchHelper::MIN_TAXON_QUERY_LENGTH; the delay lets the user finish typing so a burst of
+// keystrokes sends one search, not several concurrent ones.
+export const TAXON_SEARCH_MIN_LENGTH = 3;
+export const TAXON_SEARCH_DELAY_MS = 400;
+
 class PhyloTreeCreationModal extends React.Component<
   PhyloTreeCreationModalProps,
   PhyloTreeCreationModalState
 > {
   handleTaxonSearchActionDebounced: $TSFixMe;
+  latestTaxonSearch = 0;
   infiniteTable: $TSFixMe;
   inputDelay: $TSFixMe;
   inputTimeout: $TSFixMe;
@@ -171,7 +178,7 @@ class PhyloTreeCreationModal extends React.Component<
       this.isTreeNameValid,
     );
     this.handleTaxonSearchActionDebounced = debounce(
-      this.inputDelay,
+      TAXON_SEARCH_DELAY_MS,
       this.handleTaxonSearchAction,
     );
 
@@ -614,6 +621,9 @@ class PhyloTreeCreationModal extends React.Component<
   handleTaxonSearchAction = async () => {
     const { taxonQuery, projectId } = this.state;
 
+    // Any reply to an earlier search that is still in flight is ignored from here on.
+    const searchId = ++this.latestTaxonSearch;
+
     if (isEmpty(taxonQuery)) {
       this.setState({
         taxonList: [],
@@ -623,10 +633,16 @@ class PhyloTreeCreationModal extends React.Component<
       return;
     }
 
+    if (String(taxonQuery).trim().length < TAXON_SEARCH_MIN_LENGTH) {
+      this.setState({ taxonList: [] });
+      return;
+    }
+
     const searchResults = await chooseTaxon({
       query: taxonQuery,
       projectId,
     });
+    if (searchId !== this.latestTaxonSearch) return;
     // SubtextDropdown needs text, value, subtext:
     const taxonList = map(t => {
       return { text: t.title, value: t.taxid, subtext: t.description, ...t };

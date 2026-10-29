@@ -5,6 +5,10 @@ module ElasticsearchHelper
   # TODO(tiago): Eventually, this filtering should be moved to ElasticSearch, at which point we should reduce the max value
   # (We can also move it to a parameter that clients of this functions can set)
   MAX_SEARCH_RESULTS = 50
+  # Shortest taxon query we search for. One- and two-letter queries match the largest taxa (the ES terms
+  # aggregation is ordered by document count), are the most expensive searches, and are rarely what the
+  # user means; the clients apply the same minimum (PhyloTreeCreationModal).
+  MIN_TAXON_QUERY_LENGTH = 3
 
   def prefix_match(model, field, prefix, condition)
     prefix = sanitize(prefix)
@@ -24,6 +28,8 @@ module ElasticsearchHelper
 
   def taxon_search(query, tax_levels = TaxonCount::NAME_2_LEVEL.keys, filters = {})
     return {} if Rails.env.test?
+    # Too short to search (also covers a nil query, which used to raise on nil.scan below).
+    return [] if query.to_s.strip.length < MIN_TAXON_QUERY_LENGTH
 
     query = sanitize(query)
 
@@ -119,28 +125,34 @@ module ElasticsearchHelper
   end
 
   def fetch_taxon_data(search_taxon_ids, ncbi_version, level)
+    return [] if search_taxon_ids.blank?
+
     taxid_column, name_column = get_taxid_name_columns(level)
-
     pinned_version_date = Date.parse(ncbi_version)
-    # Fetch all records for the given taxids within the date range
-    all_records = TaxonLineage.where(taxid_column => search_taxon_ids)
-                              .where("? >= version_start AND ? <= version_end", pinned_version_date, pinned_version_date)
-                              .order("version_end DESC")
 
-    # Ensure only unique records based on taxid, since the records are ordered by version_end in descending order,
-    # this first occurrence will be the record with the most recent version_end for that taxid
-    unique_records = all_records.uniq { |record| record.send(taxid_column) }
+    # One row per (taxid, name) with that pair's latest version_end inside the pinned version, computed in
+    # SQL. This used to load EVERY taxon_lineages row under each matched taxon -- for a genus or a big
+    # species that is every descendant strain, tens of thousands of ~33-column ActiveRecord objects -- just
+    # to keep two fields. On env-prod one taxon search allocated up to 14.6M objects and OOM-killed the web
+    # pods. Same result: for each taxid, the name from the row with the most recent version_end.
+    rows = TaxonLineage.where(taxid_column => search_taxon_ids)
+                       .where("? >= version_start AND ? <= version_end", pinned_version_date, pinned_version_date)
+                       .group(taxid_column, name_column)
+                       .pluck(taxid_column, name_column, Arel.sql("MAX(version_end)"))
+    latest_name = rows.group_by { |taxid, _name, _version_end| taxid.to_i }
+                      .transform_values { |pairs| pairs.max_by(&:last)[1] }
 
-    formatted_results = unique_records.pluck(name_column, taxid_column).map do |name, taxid|
+    # Keep the order the search returned the taxa in. (ES bucket keys are compared as integers.)
+    search_taxon_ids.map(&:to_i).uniq.filter_map do |taxid|
+      next unless latest_name.key?(taxid)
+
       {
-        "title" => name,
+        "title" => latest_name[taxid],
         "description" => "Taxonomy ID: #{taxid}",
         "taxid" => taxid,
         "level" => level,
       }
     end
-
-    formatted_results
   end
 
   def get_taxid_name_columns(level)
