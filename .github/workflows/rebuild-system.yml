@@ -40,7 +40,7 @@ run-name: "⚠️ REBUILD ${{ github.event.inputs.destination }} (DESTRUCTIVE) b
 jobs:
   guard:
     name: Confirm destructive rebuild
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate typed confirmation
         run: |
@@ -59,7 +59,7 @@ jobs:
   rebuild:
     name: Rebuild ${{ github.event.inputs.destination }}
     needs: guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # prod's protection rules (required reviewer) gate this job once they exist (CZID-81);
     # dev/staging/sandbox resolve their per-tier environment secrets/vars.
     environment: ${{ github.event.inputs.destination }}

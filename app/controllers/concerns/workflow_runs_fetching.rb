@@ -83,7 +83,7 @@ module WorkflowRunsFetching
         }
         formatted_wr[:wdl_version] = wr.wdl_version
         formatted_wr[:created_at] = wr.created_at
-        formatted_wr[:status] = WorkflowRun::SFN_STATUS_MAPPING[wr.status]
+        formatted_wr[:status] = wr.display_status
         formatted_wr[:cached_results] = wr.parsed_cached_results
 
         formatted_wr[:inputs] = {}.tap do |wr_info|

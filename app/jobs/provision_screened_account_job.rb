@@ -84,8 +84,9 @@ class ProvisionScreenedAccountJob
     else
       Rails.logger.info("[ProvisionScreenedAccountJob] denial recorded; no email sent (denial email disabled)")
     end
-    # SMP-1901: a denied applicant never becomes a user, so drop any CZ ID transfer request they left.
-    delete_czid_transfer_request(email)
+    # The CZ ID transfer request is deliberately KEPT on denial (it used to be deleted here). A denial can be
+    # reversed by a compliance officer, and the request is part of the applicant's record; it is cleaned up
+    # by the DeleteUnclaimedUserAccounts backstop like any other unclaimed request.
   end
 
   def send_denial_email?
@@ -125,11 +126,5 @@ class ProvisionScreenedAccountJob
     row.destroy!
   rescue StandardError => e
     Rails.logger.error("[ProvisionScreenedAccountJob] czid-transfer copy failed for user #{user&.id}: #{e.class}")
-  end
-
-  def delete_czid_transfer_request(email)
-    CzidTransferRequest.where(email: CzidTransferRequest.normalize_email(email)).delete_all
-  rescue StandardError => e
-    Rails.logger.error("[ProvisionScreenedAccountJob] czid-transfer delete-on-deny failed: #{e.class}")
   end
 end

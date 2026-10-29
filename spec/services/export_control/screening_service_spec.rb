@@ -44,9 +44,9 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
     JSON.dump(
       'transstatus' => 'On Hold-RPS', 'smaxalert' => smaxalert, 'sguid' => 'g-hit',
       'searches' => [{
-        # Pure NAME-match hit: riskcountry 0 so this isolates the transstatus/name path. The
-        # sanctioned-jurisdiction path (riskcountry >= 1 / embargoed subject country) is covered
-        # separately below, since it takes precedence and uses a different hold reason.
+        # Pure NAME-match hit: riskcountry 0 so this isolates the transstatus/name path. Jurisdiction
+        # evidence (riskcountry >= 1 / embargoed subject country) is covered
+        # separately below; it never changes the decision.
         'soptionalid' => '42', 'scountry' => 'GB', 'riskcountry' => '0', 'nomatch' => '0',
         'sdistributedid' => sdistributedid,
         'results' => [{ 'dp_id' => 'DBP000063', 'list' => 'AECA Debarred Parties [DDTC]',
@@ -115,42 +115,75 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
     end
   end
 
-  describe '#screen -- sanctioned-jurisdiction rule (hard HOLD/red, overrides transstatus)' do
-    it 'HOLDs a party from an embargoed country even on a clean Passed/nomatch screen' do
-      embargoed = ExportControl::ScreeningService::Subject.new(
+  describe '#screen -- jurisdiction signals are evidence only (Visual Compliance decides)' do
+    let(:embargoed) do
+      ExportControl::ScreeningService::Subject.new(
         subject_ref: 'User:99', subject_type: 'User', name: 'Jane Clean', country: 'IR', soptionalid: '99'
       )
+    end
+
+    it 'ALLOWS a clean Descartes verdict from an embargoed country, stamping the evidence' do
       stub_request(:post, search_url).to_return(status: 200, body: clean_body, headers: json_headers)
 
       expect { @outcome = service.screen(embargoed) }
         .to change(ScreeningResult, :count).by(1)
-        .and(change(Hold, :count).by(1))
+        .and(change(Hold, :count).by(0))
 
       sr = @outcome.screening_result
-      expect(@outcome.decision).to eq(:held)
+      expect(@outcome).to be_allowed
       expect(sr.jurisdiction_risk).to be(true)
       expect(sr.country).to eq('IR')
-      expect(sr.transstatus).to eq(ScreeningResult::TRANSSTATUS_PASSED) # would have ALLOWED on name-screen alone
-      expect(sr.effective_alert_level).to eq(ScreeningResult::ALERT_RED)
-      expect(@outcome.hold.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
-      expect(@outcome.to_provider_result.result).to eq(ExportControlClearance::SCREENING_HIT)
     end
 
-    it 'HOLDs on the vendor risk_country flag even when the subject country is not embargoed' do
+    it 'ALLOWS a clean Descartes verdict when only the vendor risk_country flag is set' do
       risky_clean = JSON.dump(
         'transstatus' => 'Passed', 'smaxalert' => '', 'sguid' => 'g-rc',
         'searches' => [{ 'soptionalid' => '42', 'riskcountry' => '1', 'nomatch' => '1', 'results' => [] }]
       )
       stub_request(:post, search_url).to_return(status: 200, body: risky_clean, headers: json_headers)
 
-      expect { @outcome = service.screen(party) }.to change(Hold, :count).by(1) # party.country == 'US'
-      expect(@outcome.decision).to eq(:held)
+      expect { @outcome = service.screen(party) }.not_to change(Hold, :count)
+      expect(@outcome).to be_allowed
       expect(@outcome.screening_result.jurisdiction_risk).to be(true)
-      expect(@outcome.hold.reason).to eq(Hold::REASON_SANCTIONED_JURISDICTION)
+      expect(@outcome.screening_result.risk_country).to eq(1)
+    end
+
+    it 'holds a Descartes match from an embargoed country as a screening_hit for an officer' do
+      stub_request(:post, search_url).to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-vc'), headers: json_headers)
+
+      outcome = service.screen(embargoed)
+      expect(outcome.decision).to eq(:held)
+      expect(outcome.hold.reason).to eq(Hold::REASON_SCREENING_HIT)
+      expect(outcome.screening_result.jurisdiction_risk).to be(true)
+    end
+
+    it 'never creates a sanctioned_jurisdiction hold' do
+      stub_request(:post, search_url).to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-vc'), headers: json_headers)
+      service.screen(embargoed)
+      expect(Hold.where(reason: Hold::REASON_SANCTIONED_JURISDICTION)).to be_empty
     end
   end
 
   describe '#screen -- fail-closed error paths (HOLD, no screening row, never allow)' do
+    it 'reuses the active error hold on a repeated failure instead of stacking rows' do
+      existing = create(:hold, :error, subject_ref: 'User:42')
+      stub_request(:post, search_url).to_timeout
+
+      expect { @outcome = service.screen(party) }.not_to change(Hold, :count)
+      expect(@outcome.hold).to eq(existing)
+    end
+
+    it 'a match on re-screen supersedes the error hold (the officer now decides)' do
+      error_hold = create(:hold, :error, subject_ref: 'User:42')
+      stub_request(:post, search_url)
+        .to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-sup'), headers: json_headers)
+
+      outcome = service.screen(party)
+      expect(outcome.hold.reason).to eq(Hold::REASON_SCREENING_HIT)
+      expect(error_hold.reload).not_to be_active
+      expect(error_hold.resolution_status).to eq('superseded-by-screen')
+    end
+
     it 'HOLDs on a per-search error (nomatch == E)' do
       body = JSON.dump('transstatus' => 'On Hold-RPS', 'smaxalert' => '',
                        'searches' => [{ 'nomatch' => 'E',
@@ -344,12 +377,13 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
 
   # ---- SMP-1684: ScreeningPolicy wiring (whitelist + screen-once cadence + hit-handling) ----
   describe '#screen -- policy short-circuits (SMP-1684)' do
-    it 'ALLOWS a whitelisted subject with NO vendor call and NO screening_results row' do
+    it 'still sends an app-whitelisted subject to Visual Compliance (no app-side bypass)' do
       allow(ExportControl::ScreeningPolicy).to receive(:whitelisted?).and_return(true)
-      outcome = nil
-      expect { outcome = service.screen(party) }.not_to change(ScreeningResult, :count)
-      expect(outcome).to be_allowed
-      expect(a_request(:post, search_url)).not_to have_been_made
+      stub_request(:post, search_url).to_return(status: 200, body: hit_body(smaxalert: '_R', sdistributedid: 'd-vc'), headers: json_headers)
+
+      outcome = service.screen(party)
+      expect(a_request(:post, search_url)).to have_been_made.once
+      expect(outcome.decision).to eq(:held)
     end
 
     it 'SKIPS re-screen when a recent passing screen is within cadence and no hold is active' do
@@ -393,13 +427,6 @@ RSpec.describe ExportControl::ScreeningService, type: :service do
       service.screen(party)
       expect(error_hold.reload).not_to be_active
       expect(error_hold.disposition).to eq(Hold::DISPOSITION_RELEASED)
-    end
-
-    it 'releases error holds for a whitelisted subject too' do
-      error_hold = create(:hold, :error, subject_ref: 'User:42')
-      allow(ExportControl::ScreeningPolicy).to receive(:whitelisted?).and_return(true)
-      service.screen(party)
-      expect(error_hold.reload).not_to be_active
     end
 
     it 'does NOT release a real screening_hit hold on a clean re-screen' do

@@ -27,6 +27,16 @@ class ExportControlSignupsController < ApplicationController
   skip_before_action :authenticate_user!
   before_action :disable_header_navigation
 
+  # Throttle the public submit so bots cannot use it to probe which emails have accounts or to flood an
+  # inbox with "you already have an account" emails. Per IP, and per (hashed) email so rotating IPs cannot
+  # hammer one address. The store is NOT Rails.cache: env-prod runs a null_store, which would silently turn
+  # every limit off. A tripped limit re-renders the same generic error for any email (reveals nothing).
+  rate_limit to: 10, within: 15.minutes, only: :create, store: SIGNUP_RATE_LIMIT_STORE,
+             with: -> { render_rate_limited }
+  rate_limit to: 3, within: 1.hour, only: :create, store: SIGNUP_RATE_LIMIT_STORE,
+             by: -> { "email:#{Digest::SHA256.hexdigest(normalized_email)}" },
+             with: -> { render_rate_limited }
+
   # ISO 3166-1 (English short name + alpha-2 code). HARDCODED on purpose: the app has no countries gem, and
   # the existing profile-form country field is a client-side World Bank API typeahead (JS-dependent) that
   # cannot work on a no-JS page. The option VALUE is the alpha-2 code because that is exactly what the app
@@ -140,6 +150,18 @@ class ExportControlSignupsController < ApplicationController
       return render :new, status: :unprocessable_entity
     end
 
+    # Someone who already has an account gets the SAME response as a new applicant (pending) -- the page
+    # must never reveal whether an email is registered -- and is told by EMAIL instead, with a password
+    # reset link, so only the inbox owner learns it. They are not screened again: before this a duplicate
+    # was screened (a real screening call + an officer-queue entry), ProvisionScreenedAccountJob no-op'd on
+    # the existing email, and the applicant waited on pending for an email that never came. deliver_later
+    # (in-process async adapter) keeps the response time close to the screening path's.
+    if existing_account?
+      UserMailer.existing_account_signup(normalized_email).deliver_later
+      Rails.logger.info("[ExportControlSignups] existing account -- emailed, not screened")
+      return redirect_to export_control_signup_pending_path
+    end
+
     # Persist the CZ ID transfer request to the LOCAL sidecar (czid_transfer_requests) before screening,
     # keyed by the normalized signup email; it is copied onto the User at provisioning. This deliberately
     # does NOT touch signup_fields -- the screening payload is byte-for-byte unchanged.
@@ -190,6 +212,22 @@ class ExportControlSignupsController < ApplicationController
     # AppConfig so the wording can change without a deploy. Blank/unset => the view renders nothing.
     # The view renders this as plain text and HTML-escapes it on output -- never as HTML.
     @czid_transfer_notice_text = get_app_config(AppConfig::CZID_TRANSFER_NOTICE_TEXT).to_s
+  end
+
+  # Same normalization ProvisionScreenedAccountJob uses before its own User.exists? check.
+  def normalized_email
+    params[:email].to_s.strip.downcase
+  end
+
+  def existing_account?
+    normalized_email.present? && User.exists?(email: normalized_email)
+  end
+
+  def render_rate_limited
+    prepare_form
+    @rate_limit_error = "Too many requests from this browser or for this email address. Please wait a " \
+                        "while and try again."
+    render :new, status: :too_many_requests
   end
 
   def czid_transfer_requested?

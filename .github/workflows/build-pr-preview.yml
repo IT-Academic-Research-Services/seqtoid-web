@@ -40,7 +40,7 @@ env:
 
 jobs:
   build_preview_image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # SAME-REPO ONLY: a fork PR gets no OIDC token (id-token is not granted to fork PRs),
     # so it could not assume the role anyway; skip it explicitly and loudly.
     # LABEL-GATED: the preview image feeds ONLY the label-gated sandbox ApplicationSet
@@ -66,7 +66,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Configure AWS credentials (preview build role)
         id: aws

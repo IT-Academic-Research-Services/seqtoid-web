@@ -29,13 +29,13 @@ jobs:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # The digest resolution below assumes the dev-account ECR-read role via GitHub OIDC.
       id-token: write
-    # SMP-1767: surface whether a NEW digest actually advanced (and which tag) so the auto-gauntlet
-    # trigger below fires ONCE per newly-vetted dev digest, not on every no-op re-run.
+    # Surface whether a NEW digest actually advanced (and which tag + digest), so a downstream
+    # consumer can act ONCE per newly-advanced dev digest, not on every no-op re-run.
     outputs:
       changed: ${{ steps.advance.outputs.changed }}
       tag: ${{ steps.advance.outputs.tag }}
@@ -58,7 +58,7 @@ jobs:
         if: ${{ vars.CI_APP_ENABLED == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
           owner: ${{ github.repository_owner }}
       - name: Checkout infra (the GitOps values repo)
@@ -258,50 +258,6 @@ jobs:
           [ -n "$merged" ] || { echo "::error::could not merge PR #${PR_NUM} after retries (checks were green). Leaving it OPEN."; exit 1; }
           echo "Dev advanced to ${TAG} and merged; Argo CD will sync."
 
-  # SMP-1767: auto-trigger the staging promotion gauntlet for the exact sha that just advanced to dev.
-  # This is the "dev deploy went green -> vet it for staging" hop that today is manual (the gauntlet is
-  # workflow_dispatch-only). It fires ONCE per newly-vetted digest (advance.changed == 'true'), passing
-  # the immutable sha-<commit> tag + the env-staging confirm token the gauntlet's guard requires.
-  #
-  # OFF BY DEFAULT (vars.STAGING_AUTO_GAUNTLET_ENABLED). Leave it unset until the SMP-1786 gauntlet
-  # residuals land -- notably the provision job's GITOPS_TOKEN (bin/gauntlet_env REQUIRES a token to
-  # push the candidate element; the gauntlet's provision job does not yet pass one). This trigger is
-  # fail-safe regardless: if the gauntlet is disabled or its provision/attest fail for ANY reason, no
-  # gauntlet-passed attestation is written, so gitops-promote.yml cannot advance staging (see there).
-  # The gauntlet's own STAGING_GAUNTLET_ENABLED master switch must also be on for the dispatched run to
-  # do anything, so both are required here to avoid dispatching a no-op run.
-  trigger-gauntlet:
-    needs: advance
-    if: >-
-      ${{ vars.STAGING_AUTO_GAUNTLET_ENABLED == 'true'
-          && vars.STAGING_GAUNTLET_ENABLED == 'true'
-          && needs.advance.result == 'success'
-          && needs.advance.outputs.changed == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write # dispatch the gauntlet's workflow_dispatch in this same repo
-    steps:
-      - name: Dispatch staging-gauntlet for the freshly-vetted dev sha
-        env:
-          # workflow_dispatch via GITHUB_TOKEN DOES create a run (the recursion guard exempts
-          # workflow_dispatch); prefer the GITOPS_TOKEN PAT when present for parity with the other
-          # gitops hops, else fall back to the job token (needs the actions: write above).
-          GH_TOKEN: ${{ secrets.GITOPS_TOKEN || github.token }}
-          TAG: ${{ needs.advance.outputs.tag }}
-        run: |
-          set -euo pipefail
-          case "$TAG" in
-            sha-[0-9a-f]*) : ;;
-            *) echo "::error::refusing to dispatch gauntlet for a non sha-<commit> tag ('$TAG')"; exit 1 ;;
-          esac
-          echo "auto-triggering staging promotion gauntlet for ${TAG} (advanced to dev this run)"
-          gh workflow run staging-gauntlet.yml \
-            --repo "${GITHUB_REPOSITORY}" \
-            --ref main \
-            -f sha="${TAG}" \
-            -f confirm_target=env-staging.seqtoid.org
-
   # Sentry release + dev deploy tracking (CZID-552) + frontend source-map upload (SMP-1826).
   # Runs on the same successful main build as the advance above, keyed to the exact commit
   # that produced the image. Creates a Sentry release, associates commits (suspect commits),
@@ -323,7 +279,7 @@ jobs:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # SMP-1855: bind this job to the dev GitHub Environment so vars.SENTRY_PROJECT resolves to the
     # environment-scoped value (the dev frontend project) rather than the repo-level default. Staging
     # and prod uploads run from promote-to-env.yml, which is already environment-scoped per tier, and
@@ -464,17 +420,20 @@ jobs:
           # Upload to the SAME release. sentry-cli reads SENTRY_ORG / SENTRY_PROJECT /
           # SENTRY_AUTH_TOKEN from the job env. A token missing project:releases 403s here
           # (non-zero, loud) -- it does NOT silently no-op.
-          sentry-cli sourcemaps upload --release "$RELEASE" ./dist-maps
+          upload_log="$(mktemp)"
+          sentry-cli sourcemaps upload --release "$RELEASE" ./dist-maps 2>&1 | tee "$upload_log"
 
-          # Verify the artifacts actually landed on the release rather than trusting exit 0
-          # (SMP-1826 item 2). Zero .map artifacts on the release == effective failure.
-          filecount="$(sentry-cli releases files "$RELEASE" list 2>/dev/null | grep -c '\.map' || true)"
-          echo "Sentry release ${RELEASE} now lists ${filecount} .map artifact(s)."
-          if [ "${filecount}" = "0" ]; then
-            echo "::error title=Sentry source-map upload::Upload exited 0 but release ${RELEASE} lists 0 .map artifacts (token scope? org/project mismatch?)."
+          # Verify the upload rather than trusting exit 0 (SMP-1826 item 2). sentry-cli 2.x uploads an
+          # ARTIFACT BUNDLE (debug-ID based); bundles never appear in the legacy `releases files` list,
+          # which is why counting that list reported 0 on every run. Instead require a non-empty bundle
+          # and sentry-cli's own confirmation that it is on the server.
+          bundled="$(sed -n 's/.*Bundled \([0-9][0-9]*\) files for upload.*/\1/p' "$upload_log" | tail -n1)"
+          if [ -z "${bundled}" ] || [ "${bundled}" = "0" ] \
+            || ! grep -qE "File upload complete|Nothing to upload, all files are on the server" "$upload_log"; then
+            echo "::error title=Sentry source-map upload::sentry-cli did not confirm a source-map bundle for release ${RELEASE} (bundled='${bundled:-none}'). See the upload output above."
             exit 1
           fi
-          echo "Uploaded ${mapcount} .map file(s) to release ${RELEASE}; ${filecount} confirmed on the release."
+          echo "Uploaded ${mapcount} .map file(s) to release ${RELEASE}: a bundle of ${bundled} file(s) is on the server."
 
       # Make a failed/empty upload VISIBLE (SMP-1826 item 1): continue-on-error keeps the job
       # green, so on its own a broken upload is easy to miss. `outcome` is the step result

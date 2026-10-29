@@ -29,6 +29,8 @@ class User < ApplicationRecord
   # All one-to-many assocs are counter cached for per-user analytics.
   # See traits_for_analytics.
   has_many :samples, dependent: :destroy
+  has_many :weekly_sample_upload_usages, dependent: :delete_all
+  has_one :sample_upload_limit_override, dependent: :delete
   has_many :workflow_runs, dependent: :destroy
   has_many :visualizations, dependent: :destroy
   has_many :phylo_trees, dependent: :destroy

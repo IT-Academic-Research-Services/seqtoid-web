@@ -292,6 +292,67 @@ RSpec.describe "Sample request", type: :request do
         return sample_id
       end
 
+      describe "weekly upload limits" do
+        def set_limit(key, value)
+          AppConfigHelper.set_app_config(key, value)
+        end
+
+        def used_this_week(user, channel)
+          WeeklySampleUploadUsage.find_by(user_id: user.id, week_start: WeeklySampleUploadLimit.week_start, channel: channel)&.samples_count.to_i
+        end
+
+        it "counts an accepted web upload against the web channel" do
+          set_limit(AppConfig::UPLOAD_WEEKLY_SAMPLE_LIMIT_WEB, "10")
+
+          post "/samples/bulk_upload_with_metadata", params: { samples: [@sample_params], metadata: @metadata_params, client: @client_params, format: :json }
+
+          expect(response).to have_http_status(:ok)
+          expect(used_this_week(@joe, "web")).to eq(1)
+        end
+
+        it "rejects the whole upload once the weekly web limit is used up, creating nothing" do
+          set_limit(AppConfig::UPLOAD_WEEKLY_SAMPLE_LIMIT_WEB, "1")
+          create(:weekly_sample_upload_usage, user: @joe, channel: "web", samples_count: 1)
+
+          expect do
+            post "/samples/bulk_upload_with_metadata", params: { samples: [@sample_params], metadata: @metadata_params, client: @client_params, format: :json }
+          end.not_to change(Sample, :count)
+
+          # The endpoint's normal error shape (200 + errors, no samples), which both the web uploader and the CLI show.
+          expect(response).to have_http_status(:ok)
+          json_response = JSON.parse(response.body)
+          expect(json_response["samples"]).to eq([])
+          expect(json_response["errors"].first).to include("Weekly upload limit reached: 1 samples per week through the web uploader")
+          expect(json_response["weekly_upload_limit"]["remaining"]["web"]).to eq(0)
+          expect(used_this_week(@joe, "web")).to eq(1)
+        end
+
+        it "counts a browser-session upload as web even when the client param claims to be the CLI" do
+          set_limit(AppConfig::UPLOAD_WEEKLY_SAMPLE_LIMIT_WEB, "1")
+          create(:weekly_sample_upload_usage, user: @joe, channel: "web", samples_count: 1)
+
+          expect do
+            post "/samples/bulk_upload_with_metadata", params: { samples: [@sample_params], metadata: @metadata_params, client: "6.0.0", format: :json }
+          end.not_to change(Sample, :count)
+
+          expect(JSON.parse(response.body)["errors"].first).to include("through the web uploader")
+        end
+
+        it "reports what is left this week on /samples/upload_allowance" do
+          set_limit(AppConfig::UPLOAD_WEEKLY_SAMPLE_LIMIT_WEB, "200")
+          set_limit(AppConfig::UPLOAD_WEEKLY_SAMPLE_LIMIT_CLI, "1000")
+          create(:weekly_sample_upload_usage, user: @joe, channel: "web", samples_count: 5)
+
+          get "/samples/upload_allowance", params: { format: :json }
+
+          expect(response).to have_http_status(:ok)
+          json_response = JSON.parse(response.body)
+          # s3 / basespace share the cli allowance.
+          expect(json_response["remaining"]).to include("web" => 195, "s3" => 1000, "cli" => 1000)
+          expect(json_response["resets_at"]).to end_with("-07:00").or end_with("-08:00")
+        end
+      end
+
       describe "sample input files" do
         it "returns input file attributes" do
           post "/samples/bulk_upload_with_metadata", params: { samples: [@sample_params], metadata: @metadata_params, client: @client_params, format: :json }

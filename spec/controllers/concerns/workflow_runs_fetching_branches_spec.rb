@@ -120,6 +120,7 @@ RSpec.describe WorkflowRunsFetching, type: :concern do
           wdl_version: "1.2.3",
           created_at: Time.zone.parse("2021-06-01T00:00:00Z"),
           status: WorkflowRun::STATUS[:succeeded],
+          display_status: WorkflowRun::SFN_STATUS_MAPPING[WorkflowRun::STATUS[:succeeded]],
           parsed_cached_results: { "foo" => 1 },
           sample_id: 99
         )
@@ -156,6 +157,7 @@ RSpec.describe WorkflowRunsFetching, type: :concern do
           wdl_version: "2.0.0",
           created_at: Time.zone.parse("2021-06-02T00:00:00Z"),
           status: WorkflowRun::STATUS[:running],
+          display_status: WorkflowRun::SFN_STATUS_MAPPING[WorkflowRun::STATUS[:running]],
           parsed_cached_results: nil,
           sample_id: 100
         )

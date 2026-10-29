@@ -43,13 +43,13 @@ class SamplesController < ApplicationController
   # uncapped since it re-uses cached compute). Admins are exempt.
   RERUN_DAILY_LIMIT = 3
 
-  OTHER_ACTIONS = [:bulk_upload_with_metadata, :bulk_import, :index, :index_v2, :details,
+  OTHER_ACTIONS = [:bulk_upload_with_metadata, :upload_allowance, :resume_upload_targets, :bulk_import, :index, :index_v2, :details,
                    :dimensions, :all, :show_sample_names, :cli_user_instructions, :metadata_fields,
                    :search_suggestions, :stats, :upload, :validate_sample_files, :taxa_with_reads_suggestions, :uploaded_by_current_user,
                    :taxa_with_contigs_suggestions, :validate_sample_ids, :enable_mass_normalized_backgrounds, :reads_stats, :consensus_genome_clade_export,
                    :bulk_kickoff_workflow_runs, :user_is_collaborator, :validate_user_can_delete_objects, :bulk_delete, :benchmark, :benchmark_ground_truth_files,].freeze
   OWNER_ACTIONS = [:raw_results_folder, :upload_credentials].freeze
-  TOKEN_AUTH_ACTIONS = [:update, :bulk_upload_with_metadata, :upload_credentials].freeze
+  TOKEN_AUTH_ACTIONS = [:update, :bulk_upload_with_metadata, :upload_allowance, :resume_upload_targets, :upload_credentials].freeze
   ACTIONS_TO_REDIRECT = [:show].freeze
 
   # For API-like access
@@ -761,6 +761,31 @@ class SamplesController < ApplicationController
       errors << SampleUploadErrors.invalid_project_id(sample)
     end
 
+    # Weekly per-user sample upload limits. The channel comes from how the request authenticated (CLI bearer
+    # token vs browser session) and the samples' file sources -- not from the client-supplied `client` param.
+    # The whole upload is rejected if it would cross a limit; otherwise it is counted now and whatever is not
+    # created is given back below. If the upload raises before that, the reservation stands (fail-closed).
+    upload_reservation = WeeklySampleUploadLimit.reserve(
+      user: current_user,
+      counts: WeeklySampleUploadLimit.counts_for(
+        samples_to_upload.map { |sample| Array(sample[:input_files_attributes]).map { |file| file[:source_type] } },
+        cli: @auth0_cli_auth.present?
+      )
+    )
+    # A rejection uses this endpoint's normal response -- 200 with the reason in `errors` and no samples -- like
+    # any other upload error (invalid project, missing metadata). Both clients show `errors`: the web uploader
+    # per sample, and the CLI prints them and exits. A 429 would be retried by the CLI as "server busy"
+    # (seqtoid-cli retry.go) and surface only as a bare status code in either client.
+    unless upload_reservation.allowed?
+      render json: {
+        samples: [],
+        sample_ids: [],
+        errors: [WeeklySampleUploadLimit.rejection_message(upload_reservation)],
+        weekly_upload_limit: WeeklySampleUploadLimit.summary(current_user),
+      }
+      return
+    end
+
     # Apply project defaults such as subsample_default and max_input_fragments_default.
     # Get all projects that are targeted by this upload.
     sample_projects = Project.where(id: samples_to_upload.pluck(:project_id).uniq)
@@ -818,6 +843,11 @@ class SamplesController < ApplicationController
       end
     end
     samples -= removed_samples
+
+    WeeklySampleUploadLimit.release(
+      upload_reservation,
+      WeeklySampleUploadLimit.counts_for(samples.map { |sample| sample.input_files.map(&:source_type) }, cli: @auth0_cli_auth.present?)
+    )
 
     warn_if_large_bulk_upload(samples)
 
@@ -882,6 +912,63 @@ class SamplesController < ApplicationController
     respond_to do |format|
       format.json { render json: resp }
     end
+  end
+
+  # GET /samples/upload_allowance.json
+  # How many samples the current user can still upload this week, per upload method, and when that resets.
+  # See WeeklySampleUploadLimit.
+  def upload_allowance
+    render json: WeeklySampleUploadLimit.summary(current_user)
+  end
+
+  # POST /samples/resume_upload_targets.json  { project_id:, sample_names: [...] }
+  #
+  # seqtoid-cli `upload-samples --resume`: re-attach to samples a previous CLI batch CREATED but never
+  # finished uploading (the client died, slept, or lost its network mid-batch), instead of creating new
+  # samples -- which a re-run cannot do anyway, since sample names are unique per project. Returns, for
+  # each named sample the CURRENT USER uploaded to the project, the same upload targets
+  # bulk_upload_with_metadata returns to the CLI, plus whether each file is already on S3. A sample the
+  # stalled-upload sweep already failed (before processing started) is reopened. Anything else comes
+  # back in `errors` keyed by name and is left untouched.
+  def resume_upload_targets
+    names = Array(params[:sample_names]).map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    if names.length > SAMPLE_UPLOAD_LIMIT
+      render json: { samples: [], errors: { "_" => "at most #{SAMPLE_UPLOAD_LIMIT} samples per request" } },
+             status: :bad_request
+      return
+    end
+
+    by_name = Sample.where(project_id: params[:project_id], user_id: current_user.id, name: names)
+                    .includes(:input_files).index_by { |s| s.name.downcase }
+    samples = []
+    errors = {}
+    names.each do |name|
+      sample = by_name[name.downcase]
+      if sample.nil?
+        errors[name] = "no sample with this name that you uploaded in this project"
+        next
+      end
+      if (reason = sample.upload_resume_blocker)
+        errors[name] = reason
+        next
+      end
+
+      sample.reopen_failed_local_upload!
+      samples << {
+        id: sample.id,
+        name: sample.name,
+        input_files: sample.input_files.map do |input_file|
+          {
+            multipart_upload_id: input_file.multipart_upload_id,
+            s3_path: input_file.s3_path,
+            source: input_file.source,
+            uploaded: input_file.s3_presence_check,
+          }
+        end,
+      }
+    end
+
+    render json: { samples: samples, errors: errors }
   end
 
   # GET /samples/1/upload_credentials

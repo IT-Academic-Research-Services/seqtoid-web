@@ -18,8 +18,13 @@ permissions:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
+    # Steps in a job container default to `sh` (dash), which rejects `set -o pipefail`; the run
+    # blocks below are bash.
+    defaults:
+      run:
+        shell: bash
     env:
       AUTH_TOKEN_SECRET: 'GYbvZ9/uHy75wWWK4BO3jZGJ0noacv7GbTJI96wZgWQ=' # dummy -- test only
       DB_USERNAME: root
@@ -75,11 +80,17 @@ jobs:
       # (1) GraphQL contract: the live IdseqSchema must match the committed SDL
       # (graphql_schema/czid_rails_schema.graphql). Reuses the existing CZID-158 spec.
       - name: GraphQL schema contract (SDL drift)
+        # A targeted spec run cannot meet the suite-wide 90% SimpleCov floor (.simplecov).
+        env:
+          SKIP_COVERAGE_MINIMUM: "1"
         run: bundle exec rspec spec/graphql/schema_contract_spec.rb
 
       # (2) REST contract: the curated key REST endpoints must still route to the same
       # controller#action (platform-overhaul #742).
       - name: REST endpoints contract
+        # A targeted spec run cannot meet the suite-wide 90% SimpleCov floor (.simplecov).
+        env:
+          SKIP_COVERAGE_MINIMUM: "1"
         run: bundle exec rspec spec/contract/rest_endpoints_contract_spec.rb
 
       # (3) Snapshot-diff belt-and-suspenders: regenerate BOTH committed artifacts

@@ -1,4 +1,5 @@
-import axios from "axios";
+import axios, { AxiosRequestConfig, CustomParamsSerializer } from "axios";
+import qs from "qs";
 import { getCsrfToken } from "./utils";
 
 const MAX_SAMPLES_FOR_GET_REQUEST = 256;
@@ -60,6 +61,37 @@ const toApiError = (e: $TSFixMe): Error => {
   return e;
 };
 
+/**
+ *  Utility method that removed nulls and undefined values from a dict
+ */
+function removeNullishValues<T extends Record<string, any>>(
+  obj: T,
+): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([key, value]) => key?.trim() && value != null)
+      .map(([key, value]) => [
+        key.trim(),
+        value === Object(value) && !Array.isArray(value)
+          ? removeNullishValues(value)
+          : value,
+      ]),
+  ) as Partial<T>;
+}
+
+/**
+ * Axios by default encodes arrays of objects as
+ *     annotations[0][name]=Hit&annotations[1][name]=Not a Hit
+ * When Rails expects
+ *     annotations[]={"name":"Hit"}&annotations[]={"name":"Not a Hit"}
+ * Which the encoder already does for arrays of primitives, but not arrays of objects.
+ * This is especially problematic for Annotations.
+ */
+const railsParamsSerializer: CustomParamsSerializer = (
+  params: Record<string, any>,
+): string =>
+  qs.stringify(removeNullishValues(params), { arrayFormat: "brackets" });
+
 const postWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
   try {
     // resp also contains headers, status, etc. that we might use later.
@@ -105,11 +137,17 @@ const GET_MAX_ATTEMPTS = 3;
 // transient-only: a real HTTP error or a cancel is rejected immediately, and a persistent
 // outage still rejects after the last attempt. Writes (post/put/delete) are intentionally NOT
 // retried -- they are not idempotent and a retry could double-submit.
-const get = async (url: $TSFixMe, config: $TSFixMe = {}) => {
+const get = async (url: string, config: AxiosRequestConfig = {}) => {
   let lastErr: $TSFixMe;
   for (let attempt = 1; attempt <= GET_MAX_ATTEMPTS; attempt++) {
     try {
-      const resp = await axios.get(url, config);
+      const resp = await axios.get(url, {
+        ...config,
+        paramsSerializer: {
+          indexes: false, // false uses empty brackets `[]` for arrays
+          serialize: railsParamsSerializer,
+        },
+      });
       // Just return the data.
       return resp.data;
     } catch (e) {
@@ -144,4 +182,5 @@ export {
   MAX_SAMPLES_FOR_GET_REQUEST,
   postWithCSRF,
   putWithCSRF,
+  railsParamsSerializer,
 };

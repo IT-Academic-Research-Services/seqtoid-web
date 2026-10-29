@@ -9,6 +9,9 @@ module SamplesHelper
   include SnapshotSamplesHelper
   include ErrorHelper
 
+  # An NCBI nucleotide accession, optionally versioned: OA990225.1, NC_045512.2, JAAAAA010000001.1.
+  CG_REFERENCE_ACCESSION_FORMAT = /\A[A-Z]{1,6}_?[0-9]{5,12}(\.[0-9]+)?\z/
+
   # We set S3_GLOBAL_ENDPOINT to enable cross-region listing in
   # parsed_samples_for_s3_path. By default S3::Client sets a regional endpoint
   # such as s3.us-west-2.amazonaws.com (from the config) and errs if you use a
@@ -694,6 +697,26 @@ module SamplesHelper
     increment_sample_name("benchmark_#{comparison}", existing_project_sample_names)
   end
 
+  # Returns an upload error for a consensus genome reference the pipeline cannot run as asked, or nil.
+  def cg_reference_error(sample_name, accession_id, ref_fasta, technology, wetlab_protocol)
+    nanopore = technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:nanopore]
+    illumina = technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina]
+
+    if nanopore && ref_fasta.present?
+      return SampleUploadErrors.cg_reference_requires_illumina(sample_name, "a reference FASTA")
+    end
+    return nil if accession_id.blank? || ref_fasta.present?
+
+    sc2_accession = ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_IDS.include?(accession_id)
+    if accession_id !~ CG_REFERENCE_ACCESSION_FORMAT
+      SampleUploadErrors.invalid_cg_reference_accession(sample_name, accession_id)
+    elsif nanopore && !sc2_accession
+      SampleUploadErrors.cg_reference_requires_illumina(sample_name, "reference accession #{accession_id}")
+    elsif illumina && sc2_accession && wetlab_protocol.blank?
+      SampleUploadErrors.sc2_reference_accession_needs_wetlab_protocol(sample_name, accession_id)
+    end
+  end
+
   def upload_samples_with_metadata(samples_to_upload, metadata, user)
     samples = []
     errors = []
@@ -789,6 +812,21 @@ module SamplesHelper
         primer_bed = sample_attributes.delete(:primer_bed)
       end
 
+      # Consensus genome reference checks. Refuse an upload the pipeline would otherwise run as something the user
+      # did not ask for (Nanopore CG is SARS-CoV-2 only, so a custom reference there silently became SC2), or that
+      # could only fail later in the pipeline. The CLI prints these errors and stops, so the user sees why at upload.
+      if workflows&.include?(WorkflowRun::WORKFLOW[:consensus_genome])
+        if accession_id.present? && ref_fasta.nil?
+          # sanitize_accession_id keeps only [A-Z0-9_.], so a lowercase accession would otherwise lose its letters.
+          accession_id = accession_id.to_s.strip.upcase
+        end
+        reference_error = cg_reference_error(sample_attributes[:name], accession_id, ref_fasta, technology, wetlab_protocol)
+        if reference_error
+          should_attempt_to_save_sample = false
+          errors << reference_error
+        end
+      end
+
       # Long read mNGS attributes
       if sample_attributes.key?(:guppy_basecaller_setting)
         guppy_basecaller_setting = sample_attributes.delete(:guppy_basecaller_setting)
@@ -857,9 +895,23 @@ module SamplesHelper
         inputs_json_wgs[:ref_fasta] = ref_fasta
         inputs_json_wgs[:primer_bed] = primer_bed
 
+        # General viral CG by reference accession, no reference FASTA: the CLI's --reference-accession. The web
+        # upload flow always sends ref_fasta (its accession is parsed from the FASTA header), so this only
+        # catches CLI uploads. Previously such an upload fell through to the SARS-CoV-2 branch below, which
+        # hardcodes the SC2 accession -- the user's accession was silently dropped and the sample ran as SC2.
+        # reference_accession routes it to the viral-upload dispatch, where the WDL fetches the reference from
+        # the NT/NR index. Illumina only (Nanopore CG is SC2/ARTIC); an explicit SC2 accession (either the GenBank or
+        # RefSeq ID, neither of which is in the NT index) keeps the SC2 path. cg_reference_error refuses the rest.
+        reference_accession_cg = ref_fasta.nil? && accession_id.present? &&
+                                 !ConsensusGenomeWorkflowRun::SARS_COV_2_ACCESSION_IDS.include?(accession_id) &&
+                                 technology == ConsensusGenomeWorkflowRun::TECHNOLOGY_INPUT[:illumina]
+        inputs_json_accession = base_inputs_json.merge(reference_accession: accession_id, primer_bed: primer_bed)
+
         workflows&.each do |workflow|
           inputs_json = if workflow == WorkflowRun::WORKFLOW[:consensus_genome]
-                          if ref_fasta.nil?
+                          if reference_accession_cg
+                            inputs_json_accession
+                          elsif ref_fasta.nil?
                             # signals SC2 (WGS - general viral case requires ref_file)
                             # TODO: replace this with the creation_source parameter once it's passed in from the FE
                             inputs_json_cg_sc2

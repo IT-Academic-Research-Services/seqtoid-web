@@ -48,7 +48,7 @@ concurrency:
 jobs:
   rspec_mysql8:
     name: RSpec (MySQL 8)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ruby:3.3.6
     outputs:
       line: ${{ steps.coverage.outputs.line }}
@@ -144,7 +144,7 @@ jobs:
 
   jest:
     name: Jest (JS/TS)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       lines: ${{ steps.coverage.outputs.lines }}
       statements: ${{ steps.coverage.outputs.statements }}
@@ -229,7 +229,7 @@ jobs:
     # Runs regardless of suite outcome so a red suite still produces a summary.
     if: ${{ always() }}
     needs: [rspec_mysql8, jest]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Summarize
         env:

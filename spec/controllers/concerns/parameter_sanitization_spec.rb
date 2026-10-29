@@ -47,5 +47,21 @@ RSpec.describe ParameterSanitization do
       annotation_filters = ["{\"name\":\"Hit\"}", "{\"name\":\"Not a hit\"}", "{\"name\":\"Inconclusive\"}"]
       expect(subject.sanitize_annotation_filters(annotation_filters)).to eq([Annotation.contents["hit"], Annotation.contents["not_a_hit"], Annotation.contents["inconclusive"]])
     end
+
+    it "handles hashes" do
+      annotation_filters = [{ "name": "Hit" }, { "name": "Invalid" }, { "name": "Not a hit" }]
+      expect(subject.sanitize_annotation_filters(annotation_filters)).to eq([Annotation.contents["hit"], Annotation.contents["not_a_hit"]])
+    end
+
+    it "handles objects" do
+      AnnotationStruct = Struct.new(:name)
+      annotation_filters = [AnnotationStruct.new(name: "Hit"), AnnotationStruct.new(name: "Invalid"), AnnotationStruct.new(name: "Not a hit")]
+      expect(subject.sanitize_annotation_filters(annotation_filters)).to eq([Annotation.contents["hit"], Annotation.contents["not_a_hit"]])
+    end
+
+    it "handles unexpected types" do
+      annotation_filters = [7, true, [{ "name": "Not a hit" }]]
+      expect(subject.sanitize_annotation_filters(annotation_filters)).to eq([])
+    end
   end
 end

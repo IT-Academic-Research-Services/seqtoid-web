@@ -13,10 +13,15 @@
 # indistinguishable from the feature not existing. There is intentionally NO live caller of this service
 # in the app yet; the core ships dark.
 #
+# ============================ VISUAL COMPLIANCE DECIDES ============================
+# Every screening decision is Descartes Visual Compliance's: its verdict on the screen, then a compliance
+# officer's adjudication in the Incident Manager. This service relays that verdict and never substitutes
+# its own rule. Our in-house embargo list and the vendor risk_country flag are stamped on the
+# screening_results row as evidence only; an app-side allow-list no longer bypasses the vendor call
+# (Descartes' own allow-list -- alert levels wl/al -- does that).
+#
 # ============================ POLICY (SMP-1684) ============================
 # ScreeningPolicy is now WIRED IN (it previously had zero live callers). Before any vendor call, screen():
-#   - WHITELIST: a counsel-cleared subject (by ref or email domain) is ALLOWED with no vendor call and no
-#     screening_results row.
 #   - SCREEN-ONCE CADENCE: if the subject has a recent PASSING screen still within the re-screen cadence
 #     AND no active hold, screen() skips the vendor call (no per-request screening / no unbounded row
 #     growth / no per-request metered transaction -- the bug this ticket fixes).
@@ -27,14 +32,14 @@
 # ============================ ERROR-HOLD RELEASE (SMP-1692) ============================
 # A fail-closed ERROR hold (screening_result_id NULL) cannot be adjudicated by the Incident-Manager
 # poller -- there is no incident. It is released by RE-SCREEN: when a subsequent screen for the subject
-# comes back CLEAN (or the subject is whitelisted), screen() releases that subject's active error holds
-# (the transient vendor failure has resolved). An operator backstop exists for stuck holds:
+# reaches Visual Compliance (clean, or a match that then goes to an officer), screen() releases that
+# subject's active error holds. Signups are re-screened automatically by ExportControl::ScreeningRetry. An operator backstop exists for stuck holds:
 # `rake export_control:release_error_holds[<subject_ref>]` (lib/tasks/export_control_holds.rake).
 #
 # ============================ FAIL-CLOSED (only when ON) ============================
 # When the flag IS on and screen(subject) runs, the decision is transstatus-primary and fail-closed:
-#   - transstatus == "Passed"           -> ALLOWED (screening_results row, no hold)
-#   - transstatus == "On Hold-RPS"      -> HELD    (screening_results row + hold)
+#   - transstatus == "Passed", or blank with a clean alert_level (nomatch/wl/al) -> ALLOWED
+#   - transstatus == "On Hold-RPS", or blank with a match alert_level            -> HELD (hold for an officer)
 #   - per-search error / transport / timeout / config-missing / anything unknown -> HELD (error hold,
 #     no screening_results row -- there is no valid alert level to record)
 # Never releases on uncertainty.
@@ -45,8 +50,8 @@ module ExportControl
     # The party to screen. subject_ref is OUR opaque handle (e.g. "User:42"); soptionalid is the
     # TABLE-KEYED correlation id we send to Descartes -- the caller mints it from the subject's DB id
     # (Compliance Manager requires "0" or a table-keyed reference, never a random GUID). Blank => "0".
-    # email is OPTIONAL (nil-safe) and used ONLY for the whitelist domain match -- it is NEVER sent to the
-    # vendor and NEVER logged.
+    # email is OPTIONAL (nil-safe) and currently unused by the decision -- it is NEVER sent to the vendor and
+    # NEVER logged.
     Subject = Struct.new(
       :subject_ref, :subject_type, :name, :company,
       :address1, :city, :state, :zip, :country, :soptionalid, :email,
@@ -92,13 +97,8 @@ module ExportControl
     # Screen a subject. Assumes the caller has already confirmed enabled? (screen_if_enabled does).
     # Fail-closed: any error path produces a HELD outcome, never an allow.
     def screen(subject)
-      # SMP-1684: a counsel-cleared (whitelisted) subject is allowed with NO vendor call and NO row.
-      # A clear subject also has any stale fail-closed error hold released (SMP-1692).
-      if ExportControl::ScreeningPolicy.whitelisted?(subject.subject_ref, subject.email)
-        release_error_holds(subject, resolution_status: 'whitelisted')
-        audit('screen.whitelisted', subject, decision: 'allowed')
-        return Outcome.new(decision: :allowed, screening_result: nil, hold: nil)
-      end
+      # No app-side allow-list short-circuit: every subject goes to Visual Compliance, whose own allow-list
+      # (alert levels wl/al) is the only way past a screen.
 
       # SMP-1684: screen-once -- a recent passing screen within cadence (and no active hold) means we do
       # NOT re-screen on this request. This is the fix for "unconditional vendor call + row per request".
@@ -141,10 +141,10 @@ module ExportControl
       # SMP-1253: stamp the OTel trace id onto the durable evidence row so each compliance
       # record cross-links to its distributed trace. nil when tracing is off (local/test/CI).
       trace_id = ExportControl::ScreeningAudit.current_trace_id
-      # Zero-tolerance geo rule (counsel): an association with a sanctioned jurisdiction is a hard HOLD
-      # regardless of name-match or transstatus. Two independent sources: our in-house embargo list
-      # (subject.country) and the vendor's own risk_country flag. Stamped onto the row so the decision
-      # is durable evidence even if the embargo list later changes.
+      # Jurisdiction signals -- EVIDENCE ONLY, never the decision. Our in-house embargo list (subject.country)
+      # and the vendor's own risk_country flag are stamped onto the row so a reviewer sees them, but the
+      # allow/hold decision is the Descartes verdict alone (ScreeningResult#passed?). A country-based
+      # screening rule belongs in the Visual Compliance profile, where it reaches an officer.
       jurisdiction_risk =
         ExportControl::ScreeningPolicy.sanctioned_country?(subject.country) ||
         response.risk_country.to_i >= 1
@@ -166,28 +166,18 @@ module ExportControl
         trace_id: trace_id
       )
 
-      # Jurisdiction rule takes precedence over the transstatus/name-match path: a sanctioned-jurisdiction
-      # association HOLDs (RED) even if the name screen returned "Passed"/nomatch.
-      if jurisdiction_risk
-        hold = create_hold(subject, Hold::REASON_SANCTIONED_JURISDICTION, screening_result)
-        ExportControl::ScreeningAudit.record(
-          "screen.held",
-          subject_ref: subject.subject_ref, decision: "held",
-          alert_level: screening_result.effective_alert_level, reason: Hold::REASON_SANCTIONED_JURISDICTION,
-          screening_result_id: screening_result.id, hold_id: hold.id,
-          provider: PROVIDER, trace_id: trace_id
-        )
-        return Outcome.new(decision: :held, screening_result: screening_result, hold: hold)
-      end
-
       if screening_result.hold_required?
         # SMP-1684: record counsel's hit-handling policy; never downgrade a hit to an allow.
         policy = ExportControl::ScreeningPolicy.hit_handling
         hold = create_hold(subject, Hold::REASON_SCREENING_HIT, screening_result)
+        # Visual Compliance has now actually screened the subject: its match (and the officer's verdict on
+        # it) governs, so a stale fail-closed error hold is superseded.
+        release_error_holds(subject, resolution_status: 'superseded-by-screen')
         # SMP-1253 audit: identifiers only -- never the screened party's name/address.
         ExportControl::ScreeningAudit.record(
           "screen.held",
           subject_ref: subject.subject_ref, decision: "held", alert_level: screening_result.alert_level,
+          jurisdiction_risk: jurisdiction_risk,
           screening_result_id: screening_result.id, hold_id: hold.id, hit_handling: policy,
           provider: PROVIDER, trace_id: trace_id
         )
@@ -205,6 +195,7 @@ module ExportControl
         ExportControl::ScreeningAudit.record(
           "screen.allowed",
           subject_ref: subject.subject_ref, decision: "allowed", alert_level: screening_result.alert_level,
+          jurisdiction_risk: jurisdiction_risk,
           screening_result_id: screening_result.id, provider: PROVIDER, trace_id: trace_id
         )
         Outcome.new(decision: :allowed, screening_result: screening_result, hold: nil)
@@ -240,7 +231,10 @@ module ExportControl
     # alert. Without one, a total Descartes failure looks identical to a run of genuinely-flagged
     # applicants, and nobody notices for days.
     def hold_on_error(subject, error: nil)
-      hold = create_hold(subject, Hold::REASON_SCREENING_ERROR, nil)
+      # One active error hold per subject: a repeated failure (a retry during a vendor outage) reuses it
+      # rather than stacking a new row per attempt.
+      hold = Hold.active.find_by(subject_ref: subject.subject_ref, reason: Hold::REASON_SCREENING_ERROR) ||
+             create_hold(subject, Hold::REASON_SCREENING_ERROR, nil)
       ExportControl::ScreeningAudit.report_failure(
         "screen.error",
         error: error,

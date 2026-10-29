@@ -674,6 +674,33 @@ RSpec.describe SfnCgPipelineDispatchService, type: :service do
         end
       end
 
+      # CLI --reference-accession with no reference FASTA: the WDL fetches the reference by accession from the
+      # NT/NR index, so the run must carry ref_accession_id and must NOT carry a ref_fasta (or ask the zip step
+      # to include one).
+      context "and created from a CLI reference-accession upload (no FASTA)" do
+        let(:workflow_run) do
+          create(:workflow_run,
+                 workflow: test_workflow_name,
+                 status: WorkflowRun::STATUS[:created],
+                 sample: sample,
+                 inputs_json: { technology: illumina_technology, accession_id: "MK468620.1", reference_accession: "MK468620.1" }.to_json)
+        end
+
+        it "stores the viral upload creation source" do
+          subject
+          expect(JSON.parse(workflow_run.inputs_json)).to include_json({ creation_source: ConsensusGenomeWorkflowRun::CREATION_SOURCE[:viral_cg_upload] })
+        end
+
+        it "passes the accession for the WDL to fetch, with no ref_fasta and the empty primer file" do
+          run = subject[:sfn_input_json][:Input][:Run]
+          expect(run[:ref_accession_id]).to eq("MK468620.1")
+          expect(run).not_to have_key(:ref_fasta)
+          expect(run[:output_refseq]).to eq(false)
+          expect(run[:output_bed]).to eq(false)
+          expect(run[:primer_bed]).to eq("s3://#{S3_DATABASE_BUCKET}/consensus-genome/#{SfnCgPipelineDispatchService::NA_PRIMER_FILE}")
+        end
+      end
+
       context "and created from mNGS Report" do
         let(:workflow_run) do
           create(:workflow_run,

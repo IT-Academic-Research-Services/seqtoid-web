@@ -230,6 +230,19 @@ RSpec.describe ResolveScreeningHolds, type: :job do
     end
   end
 
+  describe '#run -- error-hold retry' do
+    it 're-screens errored signups (ScreeningRetry) on every enabled run' do
+      enable!
+      expect(ExportControl::ScreeningRetry).to receive(:run)
+      run_with([])
+    end
+
+    it 'does not retry when the flag is OFF' do
+      expect(ExportControl::ScreeningRetry).not_to receive(:run)
+      described_class.new.run
+    end
+  end
+
   describe '#run -- OFF-by-default self-skip (full no-op)' do
     it 'when the flag is OFF: polls NOTHING, writes NOTHING, does not build a client' do
       # Flag defaults off; do not set it.
@@ -292,6 +305,104 @@ RSpec.describe ResolveScreeningHolds, type: :job do
       # The held account is forwarded on denial too (full account_payload) so the callback receiver has a
       # recipient for UserMailer.account_creation_denied; deny reads only the email.
       expect(captured['account']['email']).to eq('applicant@ucsf.edu')
+    end
+
+    it 'MOVES the denied signup into denied_signups (kept as a compliance record, not left pending)' do
+      sr, hold = held_subject(sdistributedid: '900005', subject_ref: 'User:904')
+      create(:pending_signup, subject_ref: 'User:904', callback_url: 'http://web/internal/v1/screening_result')
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+      run_with([verdict(status: 'True Hit', shresult_id: '900005')])
+
+      expect(PendingSignup.for_subject('User:904')).to be_empty
+      denied = DeniedSignup.for_subject('User:904').sole
+      expect(denied.decided_by).to eq(DeniedSignup::DECIDED_BY_OFFICER)
+      expect(denied.resolution_status).to eq('True Hit')
+      expect([denied.screening_result_id, denied.hold_id]).to eq([sr.id, hold.id])
+      expect(denied.account_email).to eq('applicant@ucsf.edu')
+    end
+
+    it 'REINSTATES an auto-denied (sanctioned-jurisdiction) applicant when an officer clears the case' do
+      sr = create(:screening_result, :red, subject_ref: 'Signup:auto1', sdistributedid: '920001')
+      create(:hold, subject_ref: 'Signup:auto1', screening_result: sr, reason: Hold::REASON_SANCTIONED_JURISDICTION)
+      denied = create(:denied_signup, subject_ref: 'Signup:auto1', screening_id: 'scr-auto1',
+                                      account_email: 'cleared@example.org')
+      captured = nil
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_u, body| captured = JSON.parse(body) }
+
+      run_with([verdict(status: 'Cleared', shresult_id: '920001')])
+
+      expect(captured['decision']).to eq('approved')
+      expect(captured['correlation_id']).to eq('Signup:auto1')
+      expect(captured['account']['email']).to eq('cleared@example.org')
+      expect(denied.reload).to be_reinstated
+      expect(denied.reinstated_by).to eq('officer:Cleared')
+      expect(DeniedSignup.where(id: denied.id)).to exist # kept as history
+    end
+
+    it 'does not re-post a reinstatement on an overlapping re-poll of the same verdict' do
+      sr = create(:screening_result, :red, subject_ref: 'Signup:auto2', sdistributedid: '920002')
+      create(:hold, subject_ref: 'Signup:auto2', screening_result: sr, reason: Hold::REASON_SANCTIONED_JURISDICTION)
+      create(:denied_signup, subject_ref: 'Signup:auto2')
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '920002')])
+      run_with([verdict(status: 'Cleared', shresult_id: '920002')])
+
+      expect(ExportControl::ScreeningServiceClient).to have_received(:post_signed).once
+    end
+
+    it 'records an officer True Hit on an auto-denial without re-posting a denial' do
+      sr = create(:screening_result, :red, subject_ref: 'Signup:auto3', sdistributedid: '920003')
+      create(:hold, subject_ref: 'Signup:auto3', screening_result: sr, reason: Hold::REASON_SANCTIONED_JURISDICTION)
+      denied = create(:denied_signup, subject_ref: 'Signup:auto3')
+      expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)
+
+      run_with([verdict(status: 'True Hit', shresult_id: '920003')])
+
+      expect(denied.reload.resolution_status).to eq('True Hit')
+      expect(denied).not_to be_reinstated
+    end
+
+    it 'leaves the auto-denial un-reinstated when the approval callback fails (retried next poll)' do
+      sr = create(:screening_result, :red, subject_ref: 'Signup:auto4', sdistributedid: '920004')
+      create(:hold, subject_ref: 'Signup:auto4', screening_result: sr, reason: Hold::REASON_SANCTIONED_JURISDICTION)
+      denied = create(:denied_signup, subject_ref: 'Signup:auto4')
+      allow(ExportControl::ScreeningServiceClient).to receive(:post_signed).and_raise(StandardError.new('boom'))
+
+      expect { run_with([verdict(status: 'Cleared', shresult_id: '920004')]) }.not_to raise_error
+      expect(denied.reload).not_to be_reinstated
+    end
+
+    it 'ALERTS when an officer clears a signup that has no pending or archived record (applicant fell through)' do
+      sr = create(:screening_result, :red, subject_ref: 'Signup:lost1', sdistributedid: '930001')
+      create(:hold, subject_ref: 'Signup:lost1', screening_result: sr, reason: Hold::REASON_SANCTIONED_JURISDICTION)
+      allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '930001')])
+
+      expect(ExportControl::ScreeningAudit).to have_received(:report_failure)
+        .with('signup.verdict_unmatched', hash_including(subject_ref: 'Signup:lost1', decision: 'approved',
+                                                         resolution_status: 'Cleared', incident_id: '930001'))
+    end
+
+    it 'stays quiet on a re-poll of an already-resolved signup verdict' do
+      held_subject(sdistributedid: '930002', subject_ref: 'Signup:done1')
+      create(:pending_signup, :resolved, subject_ref: 'Signup:done1')
+      allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '930002')])
+
+      expect(ExportControl::ScreeningAudit).not_to have_received(:report_failure).with('signup.verdict_unmatched', anything)
+    end
+
+    it 'stays quiet for a non-signup (User:<id>) screen' do
+      held_subject(sdistributedid: '930003', subject_ref: 'User:930003')
+      allow(ExportControl::ScreeningAudit).to receive(:report_failure)
+
+      run_with([verdict(status: 'Cleared', shresult_id: '930003')])
+
+      expect(ExportControl::ScreeningAudit).not_to have_received(:report_failure).with('signup.verdict_unmatched', anything)
     end
 
     it 'does nothing when there is no held signup for the subject' do

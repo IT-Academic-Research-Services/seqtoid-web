@@ -1,0 +1,365 @@
+name: release
+
+# The single release lane: promote one immutable image digest to an environment.
+#
+# The release logic lives in IT-Academic-Research-Services/seqtoid-gitops (the environment
+# registry + bin/release). This workflow is the thin caller, and it runs HERE because an org SCP
+# only lets a fixed list of GitHub OIDC identities into the staging and prod AWS accounts, and this
+# repo's `staging`/`prod` GitHub Environments are on it (seqtoid-gitops docs/DESIGN.md, option A).
+#
+#   plan  -- `bin/release resolve` + `bin/release preflight --checks ci`: the candidate is what the
+#            environment below the target runs (dev for staging). Writes exactly what would ship --
+#            commits, migrations -- and the preflight to the run summary. Read-only; also runs on PRs
+#            that touch this file.
+#   ship  -- runs in the target's GitHub Environment (the approval gate), then `bin/release ship`:
+#            verify the source image, `skopeo copy` the PLANNED digest into the target account, open
+#            one values PR on cypherid-web-infra main with auto-merge. Argo syncs it. The same command
+#            runs from a laptop as break-glass (seqtoid-gitops docs/DESIGN.md).
+#
+# Targets: staging and env-prod. Each target's GitHub Environment (its approval gate) comes from the
+# seqtoid-gitops registry; env-prod's (`prod`) requires a reviewer who is not the person who started
+# the release, and preflight fails the plan if that rule is ever switched off.
+# env-prod ships the image STAGING ran and vetted, copied from staging's registry: the job signs in to
+# the prod account only, and the prod push role reads staging's repo (registry `source_read: target-role`).
+#
+# Specific build (optional `digest` + `tag`): ship that build from the source environment's registry
+# instead of what the source environment runs -- e.g. a curated release/* branch build. `allow_older`
+# permits a candidate that is behind or diverged from the target (a deliberate rollback, or a curated
+# build replacing a fuller one); without it such a plan is not shippable. The soak rule is unchanged:
+# env-prod still only takes images from staging's registry.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to release to
+        type: choice
+        options: [staging, env-prod]
+        required: true
+      reason:
+        description: Why this release (recorded on the values PR)
+        required: true
+      digest:
+        description: "Optional: ship this build (sha256:...) from the source env's registry instead of what the source env runs"
+        required: false
+        default: ""
+      tag:
+        description: "With digest: its sha-<commit> tag"
+        required: false
+        default: ""
+      allow_older:
+        description: "Allow a build that is behind or diverged from the target (rollback / curated release branch)"
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.target || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan (resolve what would ship + preflight)
+    runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.resolve.outputs.digest }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      shippable: ${{ steps.resolve.outputs.shippable }}
+      gh_environment: ${{ steps.resolve.outputs.gh_environment }}
+    env:
+      TARGET: ${{ inputs.target || 'staging' }}
+      IN_DIGEST: ${{ inputs.digest }}
+      IN_TAG: ${{ inputs.tag }}
+      IN_ALLOW_OLDER: ${{ inputs.allow_older }}
+    steps:
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve
+        id: resolve
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pip install -q -r _gitops/requirements.txt
+          # Optional specific build. Validated strictly: these go onto a command line.
+          sel=()
+          if [ -n "${IN_DIGEST}" ] || [ -n "${IN_TAG}" ]; then
+            [[ "${IN_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::digest must be sha256:<64 hex>"; exit 1; }
+            [[ "${IN_TAG}" =~ ^sha-[0-9a-f]{7,40}$ ]] || { echo "::error::tag must be sha-<commit>"; exit 1; }
+            sel+=(--digest "${IN_DIGEST}" --tag "${IN_TAG}")
+          fi
+          if [ "${IN_ALLOW_OLDER}" = "true" ]; then sel+=(--allow-older); fi
+          : > select.args
+          if [ "${#sel[@]}" -gt 0 ]; then printf '%s\n' "${sel[@]}" > select.args; fi
+          _gitops/bin/release resolve --to "$TARGET" "${sel[@]+"${sel[@]}"}" --json > plan.json
+          _gitops/bin/release resolve --to "$TARGET" "${sel[@]+"${sel[@]}"}" > plan.txt
+          {
+            echo "### Release plan: ${TARGET}"
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "digest=$(jq -r .candidate.digest plan.json)"
+            echo "tag=$(jq -r .candidate.tag plan.json)"
+            echo "shippable=$(jq -r .shippable plan.json)"
+            echo "gh_environment=$(_gitops/bin/release show --to "$TARGET" | jq -r .target.github_environment)"
+          } >> "$GITHUB_OUTPUT"
+          cat plan.txt
+
+      - name: Preflight (GitHub-side checks, before anyone approves)
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          status=0
+          mapfile -t sel < select.args
+          _gitops/bin/release preflight --to "$TARGET" "${sel[@]+"${sel[@]}"}" --checks ci > preflight.txt || status=$?
+          cat preflight.txt
+          {
+            echo "### Preflight"
+            echo '```'
+            cat preflight.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  ship:
+    name: Ship to ${{ inputs.target }}
+    needs: plan
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.plan.outputs.shippable == 'true' }}
+    runs-on: ubuntu-24.04
+    # The approval gate, and the OIDC identity the org allowlists for this account -- the target's
+    # GitHub Environment from the registry (staging -> `staging`, env-prod -> `prod`).
+    environment: ${{ needs.plan.outputs.gh_environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-west-2
+      TARGET: ${{ inputs.target }}
+      ALLOW_OLDER: ${{ inputs.allow_older }}
+      DIGEST: ${{ needs.plan.outputs.digest }}
+      SHA_TAG: ${{ needs.plan.outputs.tag }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+      SENTRY_CLI_VERSION: "2.33.1"
+    steps:
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Read the roles from the registry
+        id: env
+        run: |
+          set -euo pipefail
+          pip install -q -r _gitops/requirements.txt
+          _gitops/bin/release show --to "$TARGET" > env.json
+          {
+            echo "pull_role=$(jq -r '.source.ci_pull_role // empty' env.json)"
+            echo "push_role=$(jq -r .target.push_role env.json)"
+            echo "src_repo=$(jq -r .source.ecr_repository env.json)"
+            echo "src_account=$(jq -r .source.account_id env.json)"
+            echo "source_read=$(jq -r '.target.source_read // "source-role"' env.json)"
+          } >> "$GITHUB_OUTPUT"
+          # A target that reads its source with its own push role (env-prod -> staging) needs no
+          # source-account sign-in; any other needs the source's ci_pull_role.
+          if [ "$(jq -r '.target.source_read // "source-role"' env.json)" != "target-role" ]; then
+            jq -e '.source.ci_pull_role' env.json > /dev/null \
+              || { echo "::error::the registry has no ci_pull_role for $(jq -r .source.name env.json)"; exit 1; }
+          fi
+
+      - name: Configure AWS (source account, image read)
+        if: ${{ steps.env.outputs.source_read != 'target-role' }}
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: ${{ steps.env.outputs.pull_role }}
+          role-session-name: release-src-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Mint the source registry password
+        if: ${{ steps.env.outputs.source_read != 'target-role' }}
+        run: |
+          set -euo pipefail
+          pw="$(aws ecr get-login-password --region "$AWS_REGION")"
+          echo "::add-mask::$pw"
+          echo "SRC_ECR_PASSWORD=$pw" >> "$GITHUB_ENV"
+
+      - name: Configure AWS (target account, image push)
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: ${{ steps.env.outputs.push_role }}
+          role-session-name: release-dst-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Mint the target registry password
+        run: |
+          set -euo pipefail
+          pw="$(aws ecr get-login-password --region "$AWS_REGION")"
+          echo "::add-mask::$pw"
+          echo "DST_ECR_PASSWORD=$pw" >> "$GITHUB_ENV"
+
+      - name: Mint the source registry password with the target role (cross-account read)
+        if: ${{ steps.env.outputs.source_read == 'target-role' }}
+        env:
+          SRC_ACCOUNT: ${{ steps.env.outputs.src_account }}
+        run: |
+          set -euo pipefail
+          # The source repo's policy lets this push role pull; the token is for the SOURCE registry.
+          pw="$(aws ecr get-authorization-token --region "$AWS_REGION" --registry-ids "$SRC_ACCOUNT" \
+                --query 'authorizationData[0].authorizationToken' --output text | base64 -d | cut -d: -f2-)"
+          echo "::add-mask::$pw"
+          echo "SRC_ECR_PASSWORD=$pw" >> "$GITHUB_ENV"
+
+      - name: Ship (copy by digest + values PR)
+        id: ship
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          command -v skopeo >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y skopeo; }
+          older=()
+          if [ "${ALLOW_OLDER}" = "true" ]; then older=(--allow-older); fi
+          _gitops/bin/release ship --to "$TARGET" --digest "$DIGEST" --tag "$SHA_TAG" "${older[@]+"${older[@]}"}" --reason "$REASON" --json > ship.json
+          pr="$(jq -r '.pr.url // empty' ship.json)"
+          {
+            echo "### Shipped ${SHA_TAG} to ${TARGET}"
+            echo "- digest: \`${DIGEST}\`"
+            echo "- image copied: $(jq -r '.copied // "n/a"' ship.json)"
+            echo "- values PR: ${pr:-none}"
+            echo ""
+            echo "Argo CD syncs once the values PR merges."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload frontend source maps to Sentry (extracted from the shipped image)
+        id: sourcemaps
+        if: ${{ steps.ship.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          ENV_NAME: ${{ inputs.target }}
+          SRC_REPO: ${{ steps.env.outputs.src_repo }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
+            echo "Sentry CD credentials not provisioned for ${ENV_NAME} (need SENTRY_AUTH_TOKEN secret + env-scoped SENTRY_ORG/SENTRY_PROJECT vars)."
+            echo "Skipping source-map upload -- see SMP-1855 ops steps. This is not a failure."
+            exit 0
+          fi
+          if [ -z "${SRC_ECR_PASSWORD:-}" ]; then
+            echo "::error title=Sentry source-map upload::SRC_ECR_PASSWORD not set -- the source-registry password was not minted. Cannot extract maps."
+            exit 1
+          fi
+
+          # Pinned sentry-cli install (matches the pinned-tool convention; no floating "latest").
+          command -v sentry-cli >/dev/null 2>&1 || curl -sSfL https://sentry.io/get-cli/ | INSTALL_DIR=/usr/local/bin bash
+
+          # Pull the exact promoted digest from the SOURCE/CI-account ECR (idseq-web lives there; the
+          # build pushes it), reusing the source token captured for the copy. docker create + cp only --
+          # the container is NEVER started, so no entrypoint / DB / secrets run.
+          SRC_ECR="${SRC_REPO%%/*}"
+          REF="${SRC_REPO}@${DIGEST}"
+          echo "Extracting source maps from ${REF}"
+          echo "${SRC_ECR_PASSWORD}" | docker login --username AWS --password-stdin "$SRC_ECR"
+          docker pull "$REF"
+
+          # Release id == the image's baked GIT_VERSION (== window.GIT_RELEASE_SHA on the frontend and
+          # config.release on the backend). Read it from the promoted image so maps key to the exact
+          # running app; fall back to the sha-<commit> tag only if the env is somehow absent.
+          RELEASE="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$REF" | sed -n 's/^GIT_VERSION=//p' | head -n1)"
+          if [ -z "${RELEASE}" ]; then
+            RELEASE="${SHA_TAG#sha-}"; RELEASE="${RELEASE:0:8}"
+            echo "::warning::GIT_VERSION not found on the image; falling back to sha_tag-derived release ${RELEASE}."
+          fi
+          [ -n "${RELEASE}" ] || { echo "::error title=Sentry source-map upload::could not determine a release id for ${REF}."; exit 1; }
+          echo "Release for ${ENV_NAME}: ${RELEASE} (org=${SENTRY_ORG} project=${SENTRY_PROJECT})"
+
+          cid="$(docker create "$REF")"
+          rm -rf ./dist-maps
+          docker cp "${cid}:/app/app/assets/dist" ./dist-maps
+          docker rm "$cid" >/dev/null
+
+          # Empty-extraction guard: a webpack/devtool change could stop emitting .map files. Uploading
+          # zero artifacts would exit 0 and look fine -- fail LOUDLY instead of shipping a release with
+          # no maps.
+          mapcount="$(find ./dist-maps -type f -name '*.map' 2>/dev/null | wc -l | tr -d ' ')"
+          echo "Found ${mapcount} .map file(s) in ${REF}."
+          if [ "${mapcount}" = "0" ]; then
+            echo "::error title=Sentry source-map upload::NO .map files in the promoted image (${REF}). Release ${RELEASE} for ${ENV_NAME} would have NO source maps. Check webpack devtool / the asset build."
+            exit 1
+          fi
+
+          # Create/finalize the release in THIS tier's project and record the deploy, then upload the
+          # maps to the SAME release. Suspect-commits (set-commits --auto) is intentionally NOT run here:
+          # this job checks out the INFRA repo, not seqtoid-web, so the app git history needed for the
+          # commit range is absent -- suspect commits stay a dev-side concern; symbolication is the goal.
+          sentry-cli releases new "$RELEASE"
+          sentry-cli releases finalize "$RELEASE"
+          sentry-cli releases deploys "$RELEASE" new -e "$ENV_NAME"
+
+          # A token missing project:releases 403s here (non-zero, loud) -- it does NOT silently no-op.
+          upload_log="$(mktemp)"
+          sentry-cli sourcemaps upload --release "$RELEASE" ./dist-maps 2>&1 | tee "$upload_log"
+
+          # Verify the upload rather than trusting exit 0 (SMP-1826 item 2). sentry-cli 2.x uploads an
+          # ARTIFACT BUNDLE (debug-ID based); bundles never appear in the legacy `releases files` list,
+          # which is why counting that list reported 0 on every run. Instead require a non-empty bundle
+          # and sentry-cli's own confirmation that it is on the server.
+          bundled="$(sed -n 's/.*Bundled \([0-9][0-9]*\) files for upload.*/\1/p' "$upload_log" | tail -n1)"
+          if [ -z "${bundled}" ] || [ "${bundled}" = "0" ] \
+            || ! grep -qE "File upload complete|Nothing to upload, all files are on the server" "$upload_log"; then
+            echo "::error title=Sentry source-map upload::sentry-cli did not confirm a source-map bundle for release ${RELEASE} for ${ENV_NAME} (bundled='${bundled:-none}'). See the upload output above."
+            exit 1
+          fi
+          echo "Uploaded ${mapcount} .map file(s) to release ${RELEASE} for ${ENV_NAME}: a bundle of ${bundled} file(s) is on the server."
+
+      - name: Surface source-map upload result
+        if: ${{ always() && steps.ship.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.sourcemaps.outcome }}" = "failure" ]; then
+            echo "::error title=Sentry source-map upload FAILED::${TARGET} may have NO usable source maps -- Sentry will show minified frames. See the 'Upload frontend source maps to Sentry' step log."
+            echo "### Sentry source-map upload FAILED for ${TARGET} (the release was not blocked)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Sentry source-map step: \`${{ steps.sourcemaps.outcome }}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi

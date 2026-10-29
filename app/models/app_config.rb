@@ -114,6 +114,13 @@ class AppConfig < ApplicationRecord
   # The server accepts the token from either the header or the legacy path segment regardless of this
   # flag, so in-flight callbacks are never broken.
   BULK_DOWNLOAD_CALLBACK_TOKEN_IN_HEADER = 'bulk_download_callback_token_in_header'.freeze
+  # Per-user cap on concurrently RUNNING pipeline runs (PipelineDispatchThrottle): mNGS pipeline runs plus
+  # consensus-genome and AMR workflow runs, counted together. When a user already has this many dispatched,
+  # unfinished runs, their next runs are held in SeqtoID (dispatch_deferred_at; shown as "Queued")
+  # and ReleaseDeferredPipelineRuns starts them oldest-first as earlier runs finish, so one bulk upload cannot
+  # fill the shared AWS Batch queues (2026-10-19: one 2,208-sample batch held ~95% of the spot queue for a day).
+  # Blank / 0 / non-integer => no cap (the behaviour before this existed). Admins are exempt.
+  MAX_ACTIVE_PIPELINE_RUNS_PER_USER = 'max_active_pipeline_runs_per_user'.freeze
   # The maximum number of objects (samples or workflow runs) that can be part of one bulk download.
   MAX_OBJECTS_BULK_DOWNLOAD = 'max_objects_bulk_download'.freeze
   # The maximum number of samples that can be part of an original input files bulk download.
@@ -234,6 +241,20 @@ class AppConfig < ApplicationRecord
   # RETENTION_DAYS. A configured value below EnforceDataRetention::MIN_RETENTION_DAYS is rejected (the job
   # aborts without deleting) so a fat-fingered small window cannot wipe recent data.
   DATA_RETENTION_DAYS = "data_retention_days".freeze
+
+  # Weekly per-user sample upload limits (WeeklySampleUploadLimit). Each is a positive integer number of
+  # samples per week (Sunday 00:00 to Saturday 23:59:59 Pacific); unset/blank/0 = no limit on that channel,
+  # so this ships OFF and is turned on per deployment.
+  #   _CLI: uploads made with the SeqToID CLI (bearer-token requests).
+  #   _WEB: uploads from local files in the web uploader.
+  #   _S3 / _BASESPACE: web imports from S3 / BaseSpace. When unset, these share the _CLI allowance.
+  #   _TOTAL: all channels combined, on top of the per-channel limits.
+  # Admins are exempt; SampleUploadLimitOverride grants one user higher limits.
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_CLI = "upload_weekly_sample_limit_cli".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_WEB = "upload_weekly_sample_limit_web".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_S3 = "upload_weekly_sample_limit_s3".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_BASESPACE = "upload_weekly_sample_limit_basespace".freeze
+  UPLOAD_WEEKLY_SAMPLE_LIMIT_TOTAL = "upload_weekly_sample_limit_total".freeze
 
   after_save :clear_cached_record
 

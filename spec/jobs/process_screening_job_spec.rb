@@ -19,7 +19,7 @@ RSpec.describe ProcessScreeningJob do
     ExportControl::ScreeningService::Outcome.new(decision: decision, screening_result: nil, hold: nil)
   end
 
-  # A held outcome whose hold was placed for a sanctioned-jurisdiction association (the auto-deny trigger).
+  # A held outcome carrying the LEGACY sanctioned-jurisdiction reason (it used to trigger an auto-deny).
   def sanctioned_outcome
     hold = Hold.new(subject_ref: 'User:42', reason: Hold::REASON_SANCTIONED_JURISDICTION)
     ExportControl::ScreeningService::Outcome.new(decision: :held, screening_result: nil, hold: hold)
@@ -54,23 +54,38 @@ RSpec.describe ProcessScreeningJob do
     expect(signup.account_payload['email']).to eq('jane@ucsf.edu')
   end
 
+  it 'keeps the screened party on the held signup so an errored screen can be retried' do
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
+    described_class.new.run(payload)
+
+    signup = PendingSignup.pending_for('User:42')
+    expect(signup.subject_hash['country']).to eq('US')
+    expect(signup.soptionalid).to eq('42')
+  end
+
+  it 'resolves a previously held signup when its re-screen now passes' do
+    PendingSignup.hold!(subject_ref: 'User:42', screening_id: 'scr-1', callback_url: 'http://cb', account: {})
+    allow(svc).to receive(:screen_if_enabled).and_return(outcome(:allowed))
+    allow(ExportControl::ScreeningServiceClient).to receive(:post_signed)
+
+    described_class.new.run(payload)
+    expect(PendingSignup.pending_for('User:42')).to be_nil
+    expect(PendingSignup.for_subject('User:42').sole.decision).to eq(PendingSignup::DECISION_APPROVED)
+  end
+
   it 'also holds a signup on an error outcome (fail-closed but recoverable by the poller)' do
     allow(svc).to receive(:screen_if_enabled).and_return(outcome(:error))
     expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
   end
 
-  it 'AUTO-DENIES a sanctioned-jurisdiction signup immediately, forwarding the account (no manual hold)' do
+  # Visual Compliance makes every decision: a legacy sanctioned-jurisdiction hold is treated like any
+  # other held outcome -- no auto-deny, the applicant waits for an officer's verdict.
+  it 'never auto-denies: a sanctioned-jurisdiction hold is held for an officer like any other' do
     allow(svc).to receive(:screen_if_enabled).and_return(sanctioned_outcome)
-    captured = nil
-    allow(ExportControl::ScreeningServiceClient).to receive(:post_signed) { |_url, body| captured = JSON.parse(body) }
+    expect(ExportControl::ScreeningServiceClient).not_to receive(:post_signed)
 
-    expect { described_class.new.run(payload) }.not_to change(PendingSignup, :count)
-
-    expect(captured['decision']).to eq('denied')
-    expect(captured['path']).to eq('auto')
-    # The account is forwarded on denial too, so the callback receiver can email the applicant
-    # (UserMailer.account_creation_denied). No PendingSignup is held for an auto-deny.
-    expect(captured['account']['email']).to eq('jane@ucsf.edu')
+    expect { described_class.new.run(payload) }.to change(PendingSignup, :count).by(1)
+    expect(DeniedSignup.count).to eq(0)
   end
 
   it 'does NOT hold a signup on the disabled bypass (nil outcome)' do

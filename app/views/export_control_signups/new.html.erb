@@ -43,6 +43,13 @@
       </p>
     </div>
 
+    <% if @rate_limit_error %>
+      <div class="ec-formerror" role="alert">
+        <strong>There is a problem with your submission.</strong>
+        <%= @rate_limit_error %>
+      </div>
+    <% end %>
+
     <% if @terms_error %>
       <div class="ec-formerror" role="alert">
         <strong>There is a problem with your submission.</strong>

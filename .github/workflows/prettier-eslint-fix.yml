@@ -11,13 +11,13 @@ on:
 name: lint-bot
 jobs:
   prettier-eslint-fix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Generate token
         id: generate_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
           owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v6

@@ -30,6 +30,7 @@ RSpec.describe WorkflowRunsFetching, type: :concern do
       wdl_version: "1.0.0",
       created_at: Time.zone.parse("2022-03-04T00:00:00Z"),
       status: WorkflowRun::STATUS[:succeeded],
+      display_status: WorkflowRun::SFN_STATUS_MAPPING[WorkflowRun::STATUS[:succeeded]],
       parsed_cached_results: nil,
       sample_id: sample_id,
       sample: nil
