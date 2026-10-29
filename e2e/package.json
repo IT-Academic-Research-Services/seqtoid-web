@@ -14,7 +14,7 @@
     "pw:report": "npx playwright show-report"
   },
   "devDependencies": {
-    "@faker-js/faker": "^7.6.0",
+    "@faker-js/faker": "^10.5.0",
     "@playwright/test": "^1.49.0",
     "@types/adm-zip": "^0.5.5",
     "@types/fast-diff": "^1.2.0",
