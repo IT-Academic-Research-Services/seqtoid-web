@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig, CustomParamsSerializer } from "axios";
+import qs from "qs";
 import { getCsrfToken } from "./utils";
 
 const MAX_SAMPLES_FOR_GET_REQUEST = 256;
@@ -61,6 +62,24 @@ const toApiError = (e: $TSFixMe): Error => {
 };
 
 /**
+ *  Utility method that removed nulls and undefined values from a dict
+ */
+function removeNullishValues<T extends Record<string, any>>(
+  obj: T,
+): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([key, value]) => key?.trim() && value != null)
+      .map(([key, value]) => [
+        key.trim(),
+        value === Object(value) && !Array.isArray(value)
+          ? removeNullishValues(value)
+          : value,
+      ]),
+  ) as Partial<T>;
+}
+
+/**
  * Axios by default encodes arrays of objects as
  *     annotations[0][name]=Hit&annotations[1][name]=Not a Hit
  * When Rails expects
@@ -70,25 +89,8 @@ const toApiError = (e: $TSFixMe): Error => {
  */
 const railsParamsSerializer: CustomParamsSerializer = (
   params: Record<string, any>,
-): string => {
-  const searchParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    const trimmedKey = key.trim();
-    if (trimmedKey) {
-      if (Array.isArray(value)) {
-        value.forEach(item => {
-          // If the item inside the array is an object, JSON stringify it
-          const formattedItem =
-            typeof item === "object" ? JSON.stringify(item) : item;
-          searchParams.append(`${trimmedKey}[]`, formattedItem);
-        });
-      } else if (value !== null && value !== undefined) {
-        searchParams.append(trimmedKey, value as string);
-      }
-    }
-  });
-  return searchParams.toString();
-};
+): string =>
+  qs.stringify(removeNullishValues(params), { arrayFormat: "brackets" });
 
 const postWithCSRF = async (url: $TSFixMe, params: $TSFixMe = {}) => {
   try {
