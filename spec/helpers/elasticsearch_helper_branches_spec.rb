@@ -103,6 +103,17 @@ RSpec.describe ElasticsearchHelper, type: :helper do
       expect(helper.taxon_search("Homo", ["species"])).to eq([])
     end
 
+    it "does not search for queries shorter than the minimum length (or a nil query)" do
+      # .search only exists on TaxonLineage when ELASTICSEARCH_ON, so verification is waived as above.
+      without_partial_double_verification do
+        expect(TaxonLineage).not_to receive(:search)
+      end
+
+      expect(helper.taxon_search("In", ["species"])).to eq([])
+      expect(helper.taxon_search("  a  ", ["species"])).to eq([])
+      expect(helper.taxon_search(nil, ["species"])).to eq([])
+    end
+
     it "ignores tax levels that are not real taxonomic levels" do
       stub_taxon_lineage_search([100])
 

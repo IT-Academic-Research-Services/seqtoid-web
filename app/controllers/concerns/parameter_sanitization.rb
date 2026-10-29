@@ -29,8 +29,7 @@ module ParameterSanitization
   def sanitize_annotation_filters(annotation_filters)
     if annotation_filters
       annotation_filters.filter_map do |a|
-        annotation_name = get_annotation_name(a)
-        Annotation.contents[annotation_name] if annotation_name && Annotation.contents.key?(annotation_name)
+        Annotation.contents[get_annotation_name(a)]
       end
     end
   end
@@ -38,16 +37,16 @@ module ParameterSanitization
   def get_annotation_name(annotation_filter)
     if annotation_filter.is_a?(String)
       annotation_json = JSON.parse(annotation_filter)
-      if annotation_json.key?("name") && annotation_json["name"]
+      if annotation_json["name"]
         return annotation_json["name"].downcase.parameterize(separator: '_')
       else
         raise StandardError, "annotation_filter(JSON) is missing 'name'"
       end
     end
     if annotation_filter.is_a?(Hash)
-      if annotation_filter.key?("name") && annotation_filter["name"]
+      if annotation_filter["name"]
         return annotation_filter["name"].downcase.parameterize(separator: '_')
-      elsif annotation_filter.key?(:name) && annotation_filter[:name]
+      elsif annotation_filter[:name]
         return annotation_filter[:name].downcase.parameterize(separator: '_')
       else
         raise StandardError, "annotation_filter(Hash) is missing 'name'"
