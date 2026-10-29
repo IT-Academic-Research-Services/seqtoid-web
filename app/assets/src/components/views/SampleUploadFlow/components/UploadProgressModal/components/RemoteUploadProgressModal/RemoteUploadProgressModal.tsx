@@ -35,6 +35,8 @@ import {
   addFlagsToSamples,
   redirectToProject,
 } from "../../upload_progress_utils";
+import { userFacingUploadErrors } from "../../uploadErrorMessages";
+import { UploadErrorMessages } from "../UploadErrorMessages";
 import { RemoteUploadModalHeader } from "./components/RemoteUploadModalHeader";
 
 const BASESPACE_SAMPLE_FIELDS = [
@@ -94,6 +96,8 @@ export const RemoteUploadProgressModal = ({
   const [uploadComplete, setUploadComplete] = useState(false);
   const [samplesToUpload, setSamplesToUpload] = useState([]);
   const [failedSampleNames, setFailedSampleNames] = useState([]);
+  // Why the server refused to create samples (e.g. the weekly upload limit), shown above the list.
+  const [createSamplesErrors, setCreateSamplesErrors] = useState<string[]>([]);
 
   const uploadSamples = useCallback(async (samples: SampleForUpload[]) => {
     // Note that unlike LocalUploadProgressModal, we don't track the progress of the uploads.
@@ -230,6 +234,7 @@ export const RemoteUploadProgressModal = ({
     setUploadComplete(true);
     // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
     setFailedSampleNames(response.errored_sample_names || []);
+    setCreateSamplesErrors(userFacingUploadErrors(response.errors));
 
     onUploadComplete();
   }, [
@@ -341,6 +346,7 @@ export const RemoteUploadProgressModal = ({
           uploadType={uploadType}
         />
       </div>
+      <UploadErrorMessages messages={createSamplesErrors} />
       {failedSampleNames.length > 0 && (
         <div className={cs.failedSamples}>
           Failed samples:{" "}

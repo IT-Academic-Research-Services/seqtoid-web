@@ -91,6 +91,26 @@
     text-align: center;
   }
 
+  // The server's reason an upload was refused (e.g. the weekly upload limit). See UploadErrorMessages.
+  .uploadErrors {
+    max-width: 500px;
+    margin: $sds-spaces-l auto 0;
+    padding: $sds-spaces-m $sds-spaces-l;
+    border-radius: $sds-corners-corner-m;
+    background-color: $sds-color-error-100;
+    text-align: left;
+
+    .uploadErrorMessage {
+      @include font-body-s;
+      color: $sds-color-error-600;
+      margin: 0;
+
+      & + .uploadErrorMessage {
+        margin-top: $sds-spaces-xs;
+      }
+    }
+  }
+
   .footer {
     text-align: center;
     height: 34px;
