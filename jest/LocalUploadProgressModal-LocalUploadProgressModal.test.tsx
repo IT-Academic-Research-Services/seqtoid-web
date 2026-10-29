@@ -190,6 +190,39 @@ describe("LocalUploadProgressModal in-progress rendering", () => {
   });
 });
 
+describe("LocalUploadProgressModal server refusal", () => {
+  it("shows the server's reason when it refuses to create the samples (weekly upload limit)", async () => {
+    const reason =
+      "Weekly upload limit reached: 200 samples per week through the web uploader. You have " +
+      "uploaded 199 this week and have 1 left, but this upload has 2. The limit resets Sunday " +
+      "November 1 at 12:00 AM Pacific. Contact us if you need a higher limit.";
+    mockInitiateBulkUpload.mockImplementation(
+      async ({ onCreateSamplesError }: any) => {
+        onCreateSamplesError([reason], ["alpha", "beta"]);
+        return [];
+      },
+    );
+    renderModal();
+
+    expect((await screen.findByRole("alert")).textContent).toBe(reason);
+    expect(await screen.findByText("All uploads failed")).toBeTruthy();
+    expect(screen.getAllByText("Upload failed")).toHaveLength(2);
+  });
+
+  it("shows nothing raw when the create request itself throws", async () => {
+    mockInitiateBulkUpload.mockImplementation(
+      async ({ onCreateSamplesError }: any) => {
+        onCreateSamplesError([new Error("500 from server")], ["alpha", "beta"]);
+        return [];
+      },
+    );
+    renderModal();
+
+    expect(await screen.findByText("All uploads failed")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("LocalUploadProgressModal completion path", () => {
   it("fires onUploadComplete and offers Go to Project when there is nothing to upload", async () => {
     const onUploadComplete = jest.fn();
