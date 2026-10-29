@@ -511,6 +511,49 @@ describe("PhyloTreeCreationModal debounced inputs", () => {
     expect(mockTaxonDropdownProps.onChange).toBe(ref.current.handleSelectTaxon);
   });
 
+  it("does not search for queries shorter than the minimum length", async () => {
+    const { ref } = await renderModal();
+    act(() =>
+      ref.current.setState({
+        taxonQuery: "sa",
+        taxonList: [{ value: 90, title: "Salmonella" }],
+      }),
+    );
+    await act(async () => {
+      await ref.current.handleTaxonSearchAction();
+    });
+    expect(mockChooseTaxon).not.toHaveBeenCalled();
+    expect(ref.current.state.taxonList).toEqual([]);
+  });
+
+  it("ignores the reply to a search that a newer search has superseded", async () => {
+    let resolveFirst: (v: $TSFixMe) => void = () => {};
+    mockChooseTaxon
+      .mockImplementationOnce(() => new Promise(r => (resolveFirst = r)))
+      .mockResolvedValueOnce([
+        { title: "Salmonella enterica", taxid: 28901, description: "new" },
+      ]);
+    const { ref } = await renderModal();
+
+    act(() => ref.current.setState({ taxonQuery: "salm", projectId: "11" }));
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = ref.current.handleTaxonSearchAction();
+    });
+    act(() => ref.current.setState({ taxonQuery: "salmonella" }));
+    await act(async () => {
+      await ref.current.handleTaxonSearchAction();
+    });
+    await act(async () => {
+      resolveFirst([{ title: "Stale result", taxid: 1, description: "old" }]);
+      await first;
+    });
+
+    expect(ref.current.state.taxonList.map((t: $TSFixMe) => t.value)).toEqual([
+      28901,
+    ]);
+  });
+
   it("clears the taxon list and id when the query is emptied", async () => {
     const { ref } = await renderModal();
     act(() =>
