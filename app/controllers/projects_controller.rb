@@ -405,15 +405,20 @@ class ProjectsController < ApplicationController
     render json: { users: @project.users.map { |user| { name: user[:name], email: user[:email] } } }
   end
 
+  # Sharing a project adds an EXISTING account only. It never creates one: every SeqToID account comes
+  # through the website sign-up form, which Visual Compliance screens. Creating an account here (as this
+  # action did until 2026-10-30) gave invitees access without any screening.
   def add_user
-    @user = User.find_by(email: add_user_params[:user_email_to_add].downcase)
+    email = add_user_params[:user_email_to_add].to_s.strip.downcase
+    @user = User.find_by(email: email)
 
-    if @user
-      UserMailer.added_to_projects_email(@user.id, shared_project_email_arguments).deliver_now unless @project.user_ids.include? @user.id
-    else
-      @user = create_new_user_random_password(name: add_user_params[:user_name_to_add], email: add_user_params[:user_email_to_add])
+    if @user.nil?
+      Rails.logger.info("[ProjectsController#add_user] refused: no account for the shared email (project #{@project.id})")
+      render json: { errors: [no_account_to_share_with_message(email)] }, status: :unprocessable_entity
+      return
     end
 
+    UserMailer.added_to_projects_email(@user.id, shared_project_email_arguments).deliver_now unless @project.user_ids.include? @user.id
     @project.user_ids |= [@user.id]
   end
 
@@ -503,22 +508,9 @@ class ProjectsController < ApplicationController
 
   private
 
-  # Use callbacks to share common setup or constraints between actions.
-  def create_new_user_random_password(name:, email:)
-    Rails.logger.info("Going to create new user via project sharing: #{email}")
-
-    user_params = {
-      email: email,
-      name: name,
-      created_by_user_id: current_user.id,
-    }
-
-    # All users prior to auto account creation v1 are considered to have completed a profile form
-    if AppConfigHelper.get_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1) != "1"
-      user_params[:profile_form_version] = User::PROFILE_FORM_VERSION[:interest_form]
-    end
-
-    return UserFactoryService.call(current_user: current_user, project_id: @project.id, send_activation: true, signup_path: User::SIGNUP_PATH[:project], **user_params)
+  def no_account_to_share_with_message(email)
+    "#{email} doesn't have a SeqToID account yet. Ask them to request one at #{new_export_control_signup_url}. " \
+      "Once their account is approved, share the project with them again."
   end
 
   def shared_project_email_arguments
