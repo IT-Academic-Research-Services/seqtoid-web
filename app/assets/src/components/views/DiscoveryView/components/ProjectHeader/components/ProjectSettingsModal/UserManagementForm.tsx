@@ -61,6 +61,17 @@ const UserManagementForm = ({
           setEmail("");
           setStatusMessage("Invitation sent! User added.");
           setStatusClass(cs.successMessage);
+        })
+        .catch(error => {
+          // The server refuses an email with no SeqToID account (accounts are only created through the
+          // screened sign-up form) and says what to do; show that, or a generic failure.
+          const serverMessage = error?.response?.data?.errors?.[0];
+          setStatusMessage(
+            typeof serverMessage === "string" && serverMessage
+              ? serverMessage
+              : "Couldn't add this person. Please try again.",
+          );
+          setStatusClass(cs.errorMessage);
         });
     } else {
       const invalidFieldsString = Object.keys(fieldsValidation)

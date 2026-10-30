@@ -150,7 +150,7 @@ class ExportControlSignupsController < ApplicationController
       return render :new, status: :unprocessable_entity
     end
 
-    # Someone who already has an account gets the SAME response as a new applicant (pending) -- the page
+    # Someone who already has a CLEARED account gets the SAME response as a new applicant (pending) -- the page
     # must never reveal whether an email is registered -- and is told by EMAIL instead, with a password
     # reset link, so only the inbox owner learns it. They are not screened again: before this a duplicate
     # was screened (a real screening call + an officer-queue entry), ProvisionScreenedAccountJob no-op'd on
@@ -219,8 +219,11 @@ class ExportControlSignupsController < ApplicationController
     params[:email].to_s.strip.downcase
   end
 
+  # An account that has already passed screening. An account that exists but never passed screening -- one
+  # a project share created before sharing stopped creating accounts -- is screened like a new applicant,
+  # and ProvisionScreenedAccountJob marks it cleared on approval.
   def existing_account?
-    normalized_email.present? && User.exists?(email: normalized_email)
+    normalized_email.present? && User.where(email: normalized_email).where.not(export_control_cleared_at: nil).exists?
   end
 
   def render_rate_limited

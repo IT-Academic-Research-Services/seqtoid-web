@@ -832,39 +832,31 @@ RSpec.describe ProjectsController, type: :controller do
         end
 
         context "when email does not exist for a user" do
-          before do
-            allow(UserFactoryService).to receive(:call).and_call_original
+          # Build the project (and its sample's owner) before measuring User.count; `let` is lazy, so
+          # otherwise the factory's users would be created inside the `expect { subject }` block.
+          before { project }
 
-            # stubs for methods in UserFactoryService - due to the logic in the controller
-            # we have to avoid creating the user as part of the stub, so unfortunately we need to
-            # let the original service run
-            allow(MetricUtil).to receive(:post_to_airtable)
-            allow(Auth0UserManagementHelper).to receive(:create_auth0_user).and_return(
-              { "user_id" => 1 }
-            )
-            allow(Auth0UserManagementHelper).to receive(:get_auth0_password_reset_token).and_return(
-              { "ticket" => "auth0_reset_url" }
-            )
-            allow(UserMailer).to receive(:new_auth0_user_new_project).and_return(email_message_double)
+          it "does not create a user or an Auth0 account" do
+            expect(UserFactoryService).not_to receive(:call)
+            expect(Auth0UserManagementHelper).not_to receive(:create_auth0_user)
+
+            expect { subject }.not_to change(User, :count)
           end
 
-          context "with AUTO_ACCOUNT_CREATION_V1 disabled" do
-            before do
-              AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "")
-            end
+          it "does not add anyone to the project or send email" do
+            expect(UserMailer).not_to receive(:added_to_projects_email)
+            expect(UserMailer).not_to receive(:new_auth0_user_new_project)
 
-            it "calls UserFactoryService to create a new user" do
-              expect(UserFactoryService).to receive(:call).with(a_collection_including(
-                                                                  name: name_to_add,
-                                                                  email: email_to_add,
-                                                                  profile_form_version: 1,
-                                                                  project_id: project.id,
-                                                                  send_activation: true,
-                                                                  signup_path: User::SIGNUP_PATH[:project]
-                                                                ))
+            expect { subject }.not_to(change { project.reload.user_ids })
+          end
 
-              subject
-            end
+          it "responds 422 and points the inviter at the screened sign-up form" do
+            subject
+
+            expect(response).to have_http_status(:unprocessable_entity)
+            error = JSON.parse(response.body)["errors"].first
+            expect(error).to include(email_to_add)
+            expect(error).to include("/export_control_signup")
           end
 
           context "with AUTO_ACCOUNT_CREATION_V1 enabled" do
@@ -872,29 +864,58 @@ RSpec.describe ProjectsController, type: :controller do
               AppConfigHelper.set_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1, "1")
             end
 
-            it "calls UserFactoryService to create a new user" do
-              expect(UserFactoryService).to receive(:call).with(a_collection_including(
-                                                                  name: name_to_add,
-                                                                  email: email_to_add,
-                                                                  project_id: project.id,
-                                                                  send_activation: true,
-                                                                  signup_path: User::SIGNUP_PATH[:project]
-                                                                ))
+            it "still does not create a user" do
+              expect(UserFactoryService).not_to receive(:call)
 
-              subject
+              expect { subject }.not_to change(User, :count)
+              expect(response).to have_http_status(:unprocessable_entity)
             end
           end
+        end
 
-          it "sets @user instance variable" do
+        context "when the email differs only in case and surrounding spaces" do
+          let(:existing_user) { create(:user, export_control_cleared_at: 1.day.ago) }
+          let(:email_to_add) { "  #{existing_user.email.upcase} " }
+
+          it "adds the existing account" do
+            expect(UserMailer).to receive(:added_to_projects_email).and_return(email_message_double)
+
             subject
 
-            new_user = assigns(:user)
-            expect(new_user.id).to eq(User.last.id)
+            expect(project.reload.user_ids).to include(existing_user.id)
+          end
+        end
+
+        context "when the email's account exists but has not passed screening" do
+          let(:uncleared_user) { create(:user, export_control_cleared_at: nil) }
+          let(:email_to_add) { uncleared_user.email }
+
+          it "refuses with the same message as for no account, and adds no one" do
+            expect(UserMailer).not_to receive(:added_to_projects_email)
+
+            subject
+
+            expect(response).to have_http_status(:unprocessable_entity)
+            expect(JSON.parse(response.body)["errors"].first).to include("/export_control_signup")
+            expect(project.reload.user_ids).not_to include(uncleared_user.id)
+          end
+        end
+
+        context "when the email belongs to an admin who has no screening record" do
+          let(:admin_user) { create(:admin, export_control_cleared_at: nil) }
+          let(:email_to_add) { admin_user.email }
+
+          it "adds the admin" do
+            expect(UserMailer).to receive(:added_to_projects_email).and_return(email_message_double)
+
+            subject
+
+            expect(project.reload.user_ids).to include(admin_user.id)
           end
         end
 
         context "when email is already tied to a user account" do
-          let(:email_to_add) { create(:user).email }
+          let(:email_to_add) { create(:user, export_control_cleared_at: 1.day.ago).email }
 
           it "sets @user instance variable to existing user" do
             subject
@@ -918,7 +939,10 @@ RSpec.describe ProjectsController, type: :controller do
           end
 
           context "when user is already added to project" do
-            let(:email_to_add) { @joe.email }
+            let(:email_to_add) do
+              @joe.update!(export_control_cleared_at: 1.day.ago)
+              @joe.email
+            end
 
             it "does not email existing user" do
               expect(UserMailer).not_to receive(:added_to_projects_email)

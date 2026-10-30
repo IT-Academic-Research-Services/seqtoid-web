@@ -9,18 +9,19 @@ RSpec.describe ProvisionScreenedAccountJob do
     let(:payload) { { 'decision' => 'approved', 'correlation_id' => 'User:1', 'account' => account } }
 
     it 'provisions a new account (DB + Auth0 + activation) via UserFactoryService' do
-      allow(User).to receive(:exists?).with(email: 'jane@ucsf.edu').and_return(false)
+      allow(User).to receive(:find_by).with(email: 'jane@ucsf.edu').and_return(nil)
       factory = instance_double(UserFactoryService)
       expect(UserFactoryService).to receive(:new)
         .with(email: 'jane@ucsf.edu', name: 'Jane Doe', institution: nil,
-              role: User::ROLE_REGULAR_USER, send_activation: true).and_return(factory)
+              role: User::ROLE_REGULAR_USER, send_activation: true,
+              export_control_cleared_at: an_instance_of(ActiveSupport::TimeWithZone)).and_return(factory)
       expect(factory).to receive(:call)
 
       described_class.new.run(payload)
     end
 
     it 'saves the institution from the signup form on the new account' do
-      allow(User).to receive(:exists?).and_return(false)
+      allow(User).to receive(:find_by).and_return(nil)
       factory = instance_double(UserFactoryService, call: nil)
       expect(UserFactoryService).to receive(:new)
         .with(hash_including(institution: 'University of California, San Francisco')).and_return(factory)
@@ -31,7 +32,7 @@ RSpec.describe ProvisionScreenedAccountJob do
     end
 
     it 'truncates an institution longer than the users column instead of failing the insert' do
-      allow(User).to receive(:exists?).and_return(false)
+      allow(User).to receive(:find_by).and_return(nil)
       factory = instance_double(UserFactoryService, call: nil)
       long_name = 'X' * 180
       expect(UserFactoryService).to receive(:new)
@@ -41,11 +42,24 @@ RSpec.describe ProvisionScreenedAccountJob do
       described_class.new.run(payload.merge('account' => account.merge('institution' => long_name)))
     end
 
-    it 'is idempotent: a replayed callback for an existing email is a no-op' do
-      allow(User).to receive(:exists?).with(email: 'jane@ucsf.edu').and_return(true)
+    it 'marks an existing account cleared instead of creating another one' do
+      user = create(:user, email: 'jane@ucsf.edu')
+      expect(user.export_control_cleared_at).to be_nil
       expect(UserFactoryService).not_to receive(:new)
 
       described_class.new.run(payload)
+
+      expect(user.reload.export_control_cleared_at).to be_present
+    end
+
+    it 'is idempotent: a replayed callback keeps the first clearance time' do
+      first = Time.zone.parse('2026-10-08 19:55:47')
+      user = create(:user, email: 'jane@ucsf.edu', export_control_cleared_at: first)
+      expect(UserFactoryService).not_to receive(:new)
+
+      described_class.new.run(payload)
+
+      expect(user.reload.export_control_cleared_at).to eq(first)
     end
 
     it 'does nothing when the account email is blank' do
@@ -99,7 +113,7 @@ RSpec.describe ProvisionScreenedAccountJob do
     let(:approved) { { 'decision' => 'approved', 'correlation_id' => 'Signup:x', 'account' => account } }
 
     def stub_provisioned_user(user)
-      allow(User).to receive(:exists?).with(email: 'jane@ucsf.edu').and_return(false)
+      allow(User).to receive(:find_by).with(email: 'jane@ucsf.edu').and_return(nil)
       factory = instance_double(UserFactoryService)
       allow(factory).to receive(:call).and_return(user)
       allow(UserFactoryService).to receive(:new).and_return(factory)
@@ -147,7 +161,7 @@ RSpec.describe ProvisionScreenedAccountJob do
     end
 
     it 'denies instead of raising' do
-      allow(User).to receive(:exists?).with(email: 'blocked@gmail.com').and_return(false)
+      allow(User).to receive(:find_by).with(email: 'blocked@gmail.com').and_return(nil)
       invalid = User.new(email: 'blocked@gmail.com')
       invalid.errors.add(:email, 'cannot be a personal or temporary email address')
       factory = instance_double(UserFactoryService)
