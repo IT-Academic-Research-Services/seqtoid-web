@@ -832,6 +832,10 @@ RSpec.describe ProjectsController, type: :controller do
         end
 
         context "when email does not exist for a user" do
+          # Build the project (and its sample's owner) before measuring User.count; `let` is lazy, so
+          # otherwise the factory's users would be created inside the `expect { subject }` block.
+          before { project }
+
           it "does not create a user or an Auth0 account" do
             expect(UserFactoryService).not_to receive(:call)
             expect(Auth0UserManagementHelper).not_to receive(:create_auth0_user)
