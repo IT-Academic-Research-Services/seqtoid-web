@@ -4,7 +4,7 @@
 // renders the member list. Its behaviour forks on appConfig.autoAccountCreationEnabled:
 // with it on, the name field disappears, the button reads "Send Invite", the
 // user list shows only emails, and a null username is sent. Both forks plus the
-// invalid-field and success paths are exercised here.
+// invalid-field, success and server-refusal paths are exercised here.
 const mockPut = jest.fn();
 jest.mock("axios", () => ({
   __esModule: true,
@@ -92,6 +92,48 @@ describe("UserManagementForm (manual account creation)", () => {
     expect(body.authenticity_token).toBe("csrf-token");
     expect(onUserAdded).toHaveBeenCalledWith("Bob", "bob@czid.org");
     await screen.findByText("Invitation sent! User added.");
+  });
+
+  it("shows the server's reason when it refuses the email", async () => {
+    const onUserAdded = jest.fn();
+    mockPut.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          errors: [
+            "carol@czid.org doesn't have a SeqToID account yet. Ask them to request one.",
+          ],
+        },
+      },
+    });
+    renderForm(false, { onUserAdded });
+    fireEvent.change(document.getElementById("fullName")!, {
+      target: { value: "Carol" },
+    });
+    fireEvent.change(document.getElementById("email")!, {
+      target: { value: "carol@czid.org" },
+    });
+    fireEvent.click(screen.getByText("Add"));
+
+    await screen.findByText(
+      "carol@czid.org doesn't have a SeqToID account yet. Ask them to request one.",
+    );
+    expect(onUserAdded).not.toHaveBeenCalled();
+    expect(screen.queryByText("Invitation sent! User added.")).toBeNull();
+  });
+
+  it("shows a generic failure when the request fails without a reason", async () => {
+    mockPut.mockRejectedValue(new Error("network down"));
+    renderForm(false);
+    fireEvent.change(document.getElementById("fullName")!, {
+      target: { value: "Dan" },
+    });
+    fireEvent.change(document.getElementById("email")!, {
+      target: { value: "dan@czid.org" },
+    });
+    fireEvent.click(screen.getByText("Add"));
+
+    await screen.findByText("Couldn't add this person. Please try again.");
   });
 
   it("clears the status message on name/email edits", () => {
