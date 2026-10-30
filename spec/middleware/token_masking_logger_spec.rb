@@ -24,7 +24,7 @@ RSpec.describe TokenMaskingLogger do
 
   around do |example|
     original_logger = Rails.logger
-    Rails.logger = ActiveSupport::TaggedLogging.new(ActiveSupport::Logger.new(log_io))
+    Rails.logger = Ougai::Logger.new(log_io)
     example.run
   ensure
     Rails.logger = original_logger
@@ -32,7 +32,7 @@ RSpec.describe TokenMaskingLogger do
 
   def log_output
     log_io.rewind
-    log_io.read
+    log_io.read || ""
   end
 
   %w[success error progress].each do |action|
@@ -41,9 +41,10 @@ RSpec.describe TokenMaskingLogger do
 
       middleware.call(env)
 
-      expect(log_output).to include("Started POST")
-      expect(log_output).not_to include(fake_token)
-      expect(log_output).to include("/bulk_downloads/123/#{action}/[REDACTED]")
+      expect(JSON.parse(log_output)).to include({
+                                                  "name" => "rspec",
+                                                  "msg" => a_string_matching(%r{Started POST "/bulk_downloads/123/#{action}/\[REDACTED\]"}),
+                                                })
     end
   end
 
@@ -52,8 +53,10 @@ RSpec.describe TokenMaskingLogger do
 
     middleware.call(env)
 
-    expect(log_output).to include("/samples/42")
-    expect(log_output).not_to include("[REDACTED]")
+    expect(JSON.parse(log_output)).to include({
+                                                "name" => "rspec",
+                                                "msg" => a_string_matching(%r{Started GET "/samples/42"}),
+                                              })
   end
 
   it "still silences /health_check (the behavior this swap has always provided)" do
@@ -61,6 +64,6 @@ RSpec.describe TokenMaskingLogger do
 
     middleware.call(env)
 
-    expect(log_output).not_to include("Started GET")
+    expect(log_output).to be_empty
   end
 end

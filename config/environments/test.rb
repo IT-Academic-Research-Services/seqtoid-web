@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require './lib/logging'
 
 # The test environment is used exclusively to run your application's
 # test suite. You never need to work with it otherwise. Remember that
@@ -29,7 +30,7 @@ Rails.application.configure do
   }
 
   # Show full error reports and disable caching.
-  config.consider_all_requests_local       = true
+  config.consider_all_requests_local = true
 
   config.action_controller.perform_caching = false
   config.cache_store = :null_store
@@ -82,4 +83,13 @@ Rails.application.configure do
   ENV["AUTH0_MANAGEMENT_CLIENT_ID"] = "FakeAuth0ClientId"
   ENV["AUTH0_MANAGEMENT_CLIENT_SECRET"] = "FakeAuth0ClientSecret"
   ENV["AUTH0_CONNECTION"] = "Username-Password-Authentication"
+
+  if Rails.logger.blank?
+    Logging.init_logging(
+      config,
+      level: ENV.fetch("RAILS_LOG_LEVEL", "warn").to_sym,
+      # formatter: Ougai::Formatters::Readable.new,
+      lograge_enabled: false # lograge intercepts HTTP requests, which breaks some tests
+    )
+  end
 end

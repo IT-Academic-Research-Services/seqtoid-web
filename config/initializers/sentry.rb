@@ -10,6 +10,20 @@ if ENV['SENTRY_DSN_BACKEND']
 
   Sentry.init do |config|
     config.dsn = ENV['SENTRY_DSN_BACKEND']
+    # config.breadcrumbs_logger = [
+    #   :active_support_logger,
+    #   :http_logger,
+    #   :sentry_logger,
+    #   :redis_logger,
+    #   :monotonic_active_support_logger,
+    # ]
+    # Filter out expected/normal/unwanted/spammy Trace messages like:
+    # '[Tracing] Discarding <http.server> transaction </health_check> because traces_sampler returned 0 or false'
+    # '[Tracing] Discarding <http.server> transaction </up> because traces_sampler returned 0 or false'
+    config.debug = false
+    config.sdk_logger.local_level = :info
+    # TODO: create a child logger of the Root (Ougai) logger, but with level 'info'
+    Logging.add_filter(->(data) { data && !data[:msg]&.include?(' because traces_sampler returned 0 or false') && data })
 
     # sentry-rails auto-instruments Rack and controllers; no manual middleware
     # insert is required (raven's Raven::Rack is gone).

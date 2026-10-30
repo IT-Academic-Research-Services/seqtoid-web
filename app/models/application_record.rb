@@ -45,28 +45,6 @@ class ApplicationRecord < ActiveRecord::Base
     Rails.logger.error("Backtrace:\n\t#{caller.join("\n\t")}")
   end
 
-  # Set current user and request to global for use in logging.
-  # See https://stackoverflow.com/a/11670283/200312
-  class << self
-    def _current_user=(user)
-      Thread.current[:_current_user] = user
-    end
-
-    def _current_request=(request)
-      Thread.current[:_current_request] = request
-    end
-  end
-
-  private
-
-  def _current_user
-    Thread.current[:_current_user]
-  end
-
-  def _current_request
-    Thread.current[:_current_request]
-  end
-
   # See also EventDictionary
   def log_analytics(record, action)
     # Short-circuit to no-op if model not explicitly marked for auto-analytics.
@@ -101,9 +79,9 @@ class ApplicationRecord < ActiveRecord::Base
     # log_analytics_event will never block
     MetricUtil.log_analytics_event(
       event,
-      _current_user,
+      Logging::CurrentContext.user,
       properties,
-      _current_request
+      Logging::CurrentContext.request
     )
     Rails.logger.debug("Event '#{event}' logged with properties #{properties}")
   end
