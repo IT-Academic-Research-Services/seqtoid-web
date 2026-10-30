@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_27_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_30_000001) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -960,6 +960,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_27_000001) do
     t.integer "profile_form_version", default: 0, null: false, comment: "Version of completed user profile form, or 0 to denote missing profile form."
     t.boolean "wants_czid_data_transferred", default: false, null: false
     t.string "czid_account_email", comment: "Email on the user's existing CZ ID account, for the data-transfer request (SMP-1901). May differ from :email."
+    t.datetime "export_control_cleared_at", comment: "When this account passed Visual Compliance screening. NULL = not screened/cleared; project sharing refuses it."
     t.index ["email"], name: "index_users_on_email", unique: true
   end
 

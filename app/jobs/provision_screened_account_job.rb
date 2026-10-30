@@ -39,8 +39,13 @@ class ProvisionScreenedAccountJob
     email = account['email'].to_s.downcase
     return if email.blank?
 
-    if User.exists?(email: email)
-      Rails.logger.info("[ProvisionScreenedAccountJob] #{correlation_id} already provisioned (#{email}) -- no-op")
+    # An approved screen clears the account for project sharing (users.export_control_cleared_at), whether
+    # the account is new or already existed -- e.g. someone a project share created before sharing stopped
+    # creating accounts, who then went through the sign-up form. The first clearance is kept.
+    existing = User.find_by(email: email)
+    if existing
+      existing.update!(export_control_cleared_at: Time.current) if existing.export_control_cleared_at.nil?
+      Rails.logger.info("[ProvisionScreenedAccountJob] #{correlation_id} already provisioned (#{email}) -- marked cleared")
       return
     end
 
@@ -53,7 +58,8 @@ class ProvisionScreenedAccountJob
       # Set explicitly, as admin-created accounts are. The model allows a nil role (and nil is not an
       # admin), but a blank role on a real user is an odd state to leave behind.
       role: User::ROLE_REGULAR_USER,
-      send_activation: true
+      send_activation: true,
+      export_control_cleared_at: Time.current
     ).call
 
     # SMP-1901: if this applicant asked to transfer their CZ ID data on the (accountless) signup form, copy

@@ -103,7 +103,7 @@ RSpec.describe "ExportControlSignups", type: :request do
   describe "an email that already has an account" do
     include ActiveJob::TestHelper
 
-    before { create(:user, email: "ada@example.org") }
+    before { create(:user, email: "ada@example.org", export_control_cleared_at: 1.day.ago) }
 
     it "redirects to pending exactly like a new applicant, emails the reset link, and screens nothing" do
       expect do
@@ -142,6 +142,26 @@ RSpec.describe "ExportControlSignups", type: :request do
     end
   end
 
+  # An account that exists but never passed screening (a project share created it before sharing stopped
+  # creating accounts) is screened like a new applicant, so it can be cleared; it gets no existing-account
+  # email, and its CZ ID transfer request is recorded as for any applicant.
+  describe "an email whose account has not passed screening" do
+    include ActiveJob::TestHelper
+
+    before { create(:user, email: "ada@example.org", export_control_cleared_at: nil) }
+
+    it "screens it like a new applicant" do
+      expect do
+        post export_control_signups_path,
+             params: base_params.merge(wants_czid_data_transferred: "1", czid_account_email: "ada@czid.org")
+      end.not_to have_enqueued_mail(UserMailer, :existing_account_signup)
+
+      expect(response).to redirect_to(export_control_signup_pending_path)
+      expect(ExportControl::SignupScreeningProducer).to have_received(:submit)
+      expect(CzidTransferRequest.find_by(email: "ada@example.org")).to be_present
+    end
+  end
+
   describe "rate limiting" do
     it "limits one email address to 3 submits an hour, whatever the IP" do
       3.times do |i|
@@ -172,7 +192,7 @@ RSpec.describe "ExportControlSignups", type: :request do
         body.gsub(/ada@example\.org|grace@example\.org/i, "EMAIL")
             .gsub(/(name="authenticity_token" value=|name="csrf-token" content=|nonce=)"[^"]*"/, '\\1"X"')
       end
-      create(:user, email: "ada@example.org")
+      create(:user, email: "ada@example.org", export_control_cleared_at: 1.day.ago)
       4.times { post export_control_signups_path, params: base_params }
       expect(response).to have_http_status(:too_many_requests)
       existing = masked.call(response.body)

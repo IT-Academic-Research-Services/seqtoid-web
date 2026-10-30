@@ -405,15 +405,17 @@ class ProjectsController < ApplicationController
     render json: { users: @project.users.map { |user| { name: user[:name], email: user[:email] } } }
   end
 
-  # Sharing a project adds an EXISTING account only. It never creates one: every SeqToID account comes
-  # through the website sign-up form, which Visual Compliance screens. Creating an account here (as this
-  # action did until 2026-10-30) gave invitees access without any screening.
+  # Sharing a project adds an EXISTING account that has passed Visual Compliance screening
+  # (users.export_control_cleared_at, set when the website sign-up form's screen is approved) or is an admin.
+  # It never creates an account: creating one here (as this action did until 2026-10-30) gave invitees
+  # access without any screening.
   def add_user
     email = add_user_params[:user_email_to_add].to_s.strip.downcase
     @user = User.find_by(email: email)
 
-    if @user.nil?
-      Rails.logger.info("[ProjectsController#add_user] refused: no account for the shared email (project #{@project.id})")
+    unless @user && (@user.admin? || @user.export_control_cleared_at.present?)
+      reason = @user ? "account not cleared by screening" : "no account"
+      Rails.logger.info("[ProjectsController#add_user] refused: #{reason} for the shared email (project #{@project.id})")
       render json: { errors: [no_account_to_share_with_message(email)] }, status: :unprocessable_entity
       return
     end
@@ -508,9 +510,11 @@ class ProjectsController < ApplicationController
 
   private
 
+  # Same message whether the email has no account or an account that hasn't been approved, so a share
+  # attempt doesn't reveal which.
   def no_account_to_share_with_message(email)
-    "#{email} doesn't have a SeqToID account yet. Ask them to request one at #{new_export_control_signup_url}. " \
-      "Once their account is approved, share the project with them again."
+    "#{email} doesn't have an approved SeqToID account yet. Ask them to request one at " \
+      "#{new_export_control_signup_url}. Once their account is approved, share the project with them again."
   end
 
   def shared_project_email_arguments

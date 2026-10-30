@@ -874,7 +874,7 @@ RSpec.describe ProjectsController, type: :controller do
         end
 
         context "when the email differs only in case and surrounding spaces" do
-          let(:existing_user) { create(:user) }
+          let(:existing_user) { create(:user, export_control_cleared_at: 1.day.ago) }
           let(:email_to_add) { "  #{existing_user.email.upcase} " }
 
           it "adds the existing account" do
@@ -886,8 +886,36 @@ RSpec.describe ProjectsController, type: :controller do
           end
         end
 
+        context "when the email's account exists but has not passed screening" do
+          let(:uncleared_user) { create(:user, export_control_cleared_at: nil) }
+          let(:email_to_add) { uncleared_user.email }
+
+          it "refuses with the same message as for no account, and adds no one" do
+            expect(UserMailer).not_to receive(:added_to_projects_email)
+
+            subject
+
+            expect(response).to have_http_status(:unprocessable_entity)
+            expect(JSON.parse(response.body)["errors"].first).to include("/export_control_signup")
+            expect(project.reload.user_ids).not_to include(uncleared_user.id)
+          end
+        end
+
+        context "when the email belongs to an admin who has no screening record" do
+          let(:admin_user) { create(:admin, export_control_cleared_at: nil) }
+          let(:email_to_add) { admin_user.email }
+
+          it "adds the admin" do
+            expect(UserMailer).to receive(:added_to_projects_email).and_return(email_message_double)
+
+            subject
+
+            expect(project.reload.user_ids).to include(admin_user.id)
+          end
+        end
+
         context "when email is already tied to a user account" do
-          let(:email_to_add) { create(:user).email }
+          let(:email_to_add) { create(:user, export_control_cleared_at: 1.day.ago).email }
 
           it "sets @user instance variable to existing user" do
             subject
@@ -911,7 +939,10 @@ RSpec.describe ProjectsController, type: :controller do
           end
 
           context "when user is already added to project" do
-            let(:email_to_add) { @joe.email }
+            let(:email_to_add) do
+              @joe.update!(export_control_cleared_at: 1.day.ago)
+              @joe.email
+            end
 
             it "does not email existing user" do
               expect(UserMailer).not_to receive(:added_to_projects_email)
