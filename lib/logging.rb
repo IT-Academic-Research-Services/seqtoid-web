@@ -41,10 +41,8 @@ module Logging
   end
 
   class Formatter < Ougai::Formatters::Bunyan
-    alias original_format_datetime format_datetime
-
     def format_datetime(time)
-      original_format_datetime((time.is_a?(Float) ? Time.zone.at(time) : time).utc)
+      time.utc.iso8601(3)
     end
 
     def to_level(severity)
@@ -62,7 +60,7 @@ module Logging
 
   # Keys in the JSON log object that don't contribute to whether the message is valid.
   # IE: They are not used to determine if the log object is effectively empty, and thus not logged.
-  @global_unimportant_fields = [:module]
+  @global_unimportant_fields = [:module, :stream]
 
   def self.without_unimportant(data)
     data = data.except(*@global_unimportant_fields)
@@ -79,6 +77,7 @@ module Logging
     data[:request_id] = Logging::CurrentContext.request.request_id if Logging::CurrentContext.request && !data[:request_id]
     data[:user_id] = Logging::CurrentContext.user.id if Logging::CurrentContext.user && !data[:user_id]
     data[:environment] = Rails.env
+    data[:thread_id] = Thread.current.object_id
 
     current_span_context = OpenTelemetry::Trace.current_span&.context
     if current_span_context&.valid?
@@ -142,10 +141,9 @@ module Logging
     config.lograge.enabled = lograge_enabled
     config.lograge.formatter = Lograge::Formatters::Raw.new
     config.lograge.logger = config.logger
-    param_filtered = [] # %w[action controller]
+    param_filtered = %w[action controller]
     config.lograge.custom_options = lambda do |event|
       {
-        time: event.time, # TODO: Transform to ISO8601
         ddsource: ["ruby"], # TODO: necessary?
         request_id: event.payload[:request_id],
         remote_ip: event.payload[:remote_ip],
@@ -169,6 +167,33 @@ module Logging
         OmniAuth.config.logger = core_logger
       end
       ActiveRecord::Migration.verbose = false
+    end
+  end
+
+  def self.capture_console(**kwargs)
+    old_stdout = Thread.current[:stdout_proxy]
+    old_stderr = Thread.current[:stderr_proxy]
+    stdout_io = StringIO.new
+    stderr_io = StringIO.new
+
+    begin
+      Thread.current[:stdout_proxy] = stdout_io
+      Thread.current[:stderr_proxy] = stderr_io
+      yield
+    ensure
+      Thread.current[:stdout_proxy] = old_stdout
+      Thread.current[:stderr_proxy] = old_stderr
+    end
+
+    stdout_io.rewind
+    stderr_io.rewind
+    # TODO: line.start_with?("{") is _very_ JSON specific, so if the logger ever stops being JSON (Ougai),
+    #       then already json-formatted text will be passed through a Rails.logger again
+    (stdout_io.read || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
+      line.start_with?("{") ? puts(line) : Rails.logger.info(line, stream: "stdout", **kwargs) # rubocop:disable Rails/Output
+    end
+    (stderr_io.read || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
+      line.start_with?("{") ? puts(line) : Rails.logger.warn(line, stream: "stderr", **kwargs) # rubocop:disable Rails/Output
     end
   end
 end
