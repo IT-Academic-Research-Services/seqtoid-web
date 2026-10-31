@@ -34,29 +34,28 @@ module ParameterSanitization
     end
   end
 
-  def get_annotation_name(annotation_filter)
-    if annotation_filter.is_a?(String)
-      annotation_json = JSON.parse(annotation_filter)
-      if annotation_json["name"]
-        return annotation_json["name"].downcase.parameterize(separator: '_')
-      else
-        raise StandardError, "annotation_filter(JSON) is missing 'name'"
-      end
+  def parse_annotation_name(annotation_filter_hashlike)
+    annotation_filter_hashlike = annotation_filter_hashlike.with_indifferent_access
+    if annotation_filter_hashlike[:name]
+      annotation_filter_hashlike[:name].downcase.parameterize(separator: '_')
+    else
+      raise StandardError, "annotation_filter is missing 'name'"
     end
-    if annotation_filter.is_a?(Hash)
-      if annotation_filter["name"]
-        return annotation_filter["name"].downcase.parameterize(separator: '_')
-      elsif annotation_filter[:name]
-        return annotation_filter[:name].downcase.parameterize(separator: '_')
-      else
-        raise StandardError, "annotation_filter(Hash) is missing 'name'"
-      end
-    end
-    if annotation_filter.respond_to?(:name) && annotation_filter.name
-      return annotation_filter.name.downcase.parameterize(separator: '_') || nil
-    end
+  end
 
-    raise StandardError, "annotation_filter has unknown Type [#{annotation_filter.class}]"
+  def get_annotation_name(annotation_filter)
+    case annotation_filter
+    when String
+      return parse_annotation_name(JSON.parse(annotation_filter))
+    when Hash
+      return parse_annotation_name(annotation_filter)
+    when ActionController::Parameters
+      return parse_annotation_name(annotation_filter.permit(:name).to_h)
+    else
+      # if annotation_filter.respond_to?(:name) && annotation_filter.name
+      #   return annotation_filter.name.downcase.parameterize(separator: '_')
+      raise StandardError, "annotation_filter has unknown Type [#{annotation_filter.class}]"
+    end
   rescue StandardError => ex
     LogUtil.log_error(
       "Invalid annotation_filter [#{annotation_filter.class}]: #{annotation_filter&.inspect}",
