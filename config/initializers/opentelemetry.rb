@@ -30,7 +30,7 @@ if ENV["OTEL_EXPORTER_OTLP_ENDPOINT"].present?
                                                            end
   Rails.application.config.after_initialize do
     OpenTelemetry::SDK.configure do |c|
-      c.logger = Rails.application.config.logger # Log all OpenTelemetry Log messages using the root Rails JSON Logger
+      c.logger = Rails.application.config.logger # Use the root Rails JSON Logger
       c.service_name = otel_service_name
       c.resource = OpenTelemetry::SDK::Resources::Resource.create(
         OpenTelemetry::SemanticConventions::Resource::DEPLOYMENT_ENVIRONMENT => (ENV["RAILS_ENV"] || Rails.env)

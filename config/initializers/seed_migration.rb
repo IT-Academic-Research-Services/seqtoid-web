@@ -1,3 +1,7 @@
+Rails.application.config.after_initialize do
+  SeedMigration::Migrator.set_logger(Rails.logger)
+end
+
 SeedMigration.config do |c|
   c.migration_table_name = "seed_migrations"
   c.migrations_path = "seeds"

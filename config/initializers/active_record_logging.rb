@@ -1,19 +1,45 @@
 # frozen_string_literal: true
 
-# Filter out spammy "ActiveRecord::SchemaMigration Load" messages
-ActiveSupport.on_load(:active_record) do
-  ActiveRecord::LogSubscriber.class_eval do
-    alias_method :old_sql, :sql
+require './lib/logging'
 
-    def sql(event)
-      payload = event.payload
+class ActiveRecord::LogSubscriber
+  alias old_sql sql
 
-      # Filter out schema migrations and internal metadata spam
-      return if payload[:name] == 'ActiveRecord::SchemaMigration Load'
-      return if payload[:name] == 'ActiveRecord::InternalMetadata Load'
-      return if payload[:sql] =~ /schema_migrations/
+  def sql(event)
+    payload = event.payload
 
-      old_sql(event)
+    # Filter out schema migrations and internal metadata spam
+    return if payload[:name] == 'ActiveRecord::SchemaMigration Load'
+    return if payload[:name] == 'ActiveRecord::InternalMetadata Load'
+    return if payload[:sql] =~ /schema_migrations/
+
+    old_sql(event)
+  end
+end
+
+class ActiveRecord::Migration
+  alias original_write write
+
+  def write(text = "")
+    Logging.capture_console(module: "ActiveRecord::Migration") do
+      original_write(text)
+    end
+  end
+end
+
+module ActiveRecord::Tasks::DatabaseTasks
+  alias original_create create
+  alias original_drop drop
+
+  def create(configuration, *arguments)
+    Logging.capture_console(module: "ActiveRecord::Tasks::DatabaseTasks") do
+      original_create(configuration, *arguments)
+    end
+  end
+
+  def drop(configuration, *arguments)
+    Logging.capture_console(module: "ActiveRecord::Tasks::DatabaseTasks") do
+      original_drop(configuration, *arguments)
     end
   end
 end
