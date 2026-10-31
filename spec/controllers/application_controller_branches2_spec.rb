@@ -14,14 +14,8 @@ RSpec.describe ApplicationController, type: :controller do
   let(:regular_user) { build_stubbed(:user, role: 0) }
 
   describe "#set_current_context_for_logging! with no request" do
-    before do
-      ApplicationRecord._current_user = nil
-      ApplicationRecord._current_request = nil
-    end
-
     after do
-      ApplicationRecord._current_user = nil
-      ApplicationRecord._current_request = nil
+      Logging::CurrentContext.reset_all
     end
 
     it "records the user but leaves the request unset (the request else-arm)" do
@@ -30,8 +24,8 @@ RSpec.describe ApplicationController, type: :controller do
 
       controller_instance.send(:set_current_context_for_logging!)
 
-      expect(Thread.current[:_current_user]).to eq(regular_user)
-      expect(Thread.current[:_current_request]).to be_nil
+      expect(Logging::CurrentContext.user).to eq(regular_user)
+      expect(Logging::CurrentContext.request).to be_nil
     end
 
     it "leaves both unset when there is neither a user nor a request (both else-arms)" do
@@ -40,8 +34,8 @@ RSpec.describe ApplicationController, type: :controller do
 
       controller_instance.send(:set_current_context_for_logging!)
 
-      expect(Thread.current[:_current_user]).to be_nil
-      expect(Thread.current[:_current_request]).to be_nil
+      expect(Logging::CurrentContext.user).to be_nil
+      expect(Logging::CurrentContext.request).to be_nil
     end
   end
 end

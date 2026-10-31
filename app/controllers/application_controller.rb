@@ -1,3 +1,5 @@
+require './lib/logging'
+
 class ApplicationController < ActionController::Base
   before_action :authenticate_user!
   before_action :check_for_maintenance
@@ -39,7 +41,7 @@ class ApplicationController < ActionController::Base
   end
 
   def admin_required
-    redirect_to root_path unless current_user && current_user.admin?
+    redirect_to root_path unless current_user&.admin?
   end
 
   def authenticate_user!
@@ -53,7 +55,7 @@ class ApplicationController < ActionController::Base
     case auth_check
     when AUTH_INVALID_USER
       respond_to do |format|
-        format.html { redirect_to  controller: :auth0, action: :login }
+        format.html { redirect_to controller: :auth0, action: :login }
         format.json { render json: { errors: ['Not Authenticated'] }, status: :unauthorized }
       end
     when AUTH_TOKEN_EXPIRED
@@ -162,7 +164,7 @@ class ApplicationController < ActionController::Base
   # Disabled by default. Add param ?pp=enable to enable or ?pp=disable to disable for your session.
   # See https://github.com/chanzuckerberg/czid-web-private/wiki/%5BDev%5D-Profiling-and-performance-optimization
   def check_rack_mini_profiler
-    if current_user && current_user.admin?
+    if current_user&.admin?
       Rack::MiniProfiler.authorize_request
     end
   end
@@ -177,8 +179,8 @@ class ApplicationController < ActionController::Base
   # Set current user and request to global for use in logging in ActiveRecord.
   # See https://stackoverflow.com/a/11670283/200312
   def set_current_context_for_logging!
-    ApplicationRecord._current_user = current_user if current_user
-    ApplicationRecord._current_request = request if request
+    Logging::CurrentContext.user = current_user if current_user
+    Logging::CurrentContext.request = request if request
   rescue StandardError => e
     Rails.logger.error(e)
   end
@@ -221,6 +223,7 @@ class ApplicationController < ActionController::Base
   def announcement_banner_enabled
     # Enabled if the flag is enabled AND it's in the active time range.
     if get_app_config(AppConfig::SHOW_ANNOUNCEMENT_BANNER) == "1"
+      # TODO: Handle locales, of the Server or of the User (preferably)
       time_zone = ActiveSupport::TimeZone.new("Pacific Time (US & Canada)")
       now = time_zone.now
       # This is for the Low-Support mode banner in LandingHeaderV2.tsx.
