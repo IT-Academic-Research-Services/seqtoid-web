@@ -61,6 +61,7 @@ AllCops:
     # Schema dumps and structure files stay excluded: they are generated, not authored.
     - 'db/schema.rb'
     - 'db/structure.sql'
+    - 'config/environments/env-prod.rb'
     - vendor/**/*
     - bin/*
     - node_modules/**/*
