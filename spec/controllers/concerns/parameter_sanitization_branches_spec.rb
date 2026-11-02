@@ -62,12 +62,15 @@ RSpec.describe ParameterSanitization do
       expect(subject.get_annotation_name("{\"foo\":\"bar\"}")).to be_nil
     end
 
-    it "handles Object annotation filter" do
-      AnnotationStruct = Struct.new(:name)
-      expect(subject.get_annotation_name(AnnotationStruct.new(name: "Not a hit"))).to eq("not_a_hit")
+    it "handles ActionController::Parameters annotation filter" do
+      expect(subject.get_annotation_name(ActionController::Parameters.new({ name: "Not a hit" }))).to eq("not_a_hit")
     end
 
-    it "handles invalid Object annotation filter" do
+    it "handles Object annotation filter" do
+      expect(subject.get_annotation_name(double('AnnotationObj', name: "Not a Hit"))).to eq("not_a_hit")
+    end
+
+    it "handles invalid annotation filter type" do
       expect(subject.get_annotation_name(91)).to be_nil
     end
   end
