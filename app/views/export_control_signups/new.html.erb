@@ -76,7 +76,8 @@
         <input class="ec-input" type="email" id="email" name="email"
                autocomplete="email" required value="<%= params[:email] %>"
                <%= 'aria-invalid="true"'.html_safe if @email_error %>
-               <%= 'aria-describedby="email-error"'.html_safe if @email_error %>>
+               aria-describedby="<%= @email_error ? 'email-help email-error' : 'email-help' %>">
+        <p id="email-help" class="ec-help">Use your individual institutional email address. Personal email addresses (e.g., Gmail, Yahoo, Outlook) and shared lab or team accounts are not accepted.</p>
         <% if @email_error %>
           <p id="email-error" class="ec-error"><%= @email_error %></p>
         <% end %>
@@ -87,7 +88,9 @@
         <%# Plain text input, not the ROR typeahead (JS-dependent, no server proxy). ror_id is intentionally
             not captured here; Descartes takes free text for scompany. See the header note. %>
         <input class="ec-input" type="text" id="institution" name="institution" maxlength="200"
-               autocomplete="organization" required value="<%= params[:institution] %>">
+               autocomplete="organization" required value="<%= params[:institution] %>"
+               aria-describedby="institution-help">
+        <p id="institution-help" class="ec-help">Enter your institution's full official name. Please avoid abbreviations or acronyms (e.g., University of California, San Francisco instead of UCSF).</p>
       </div>
 
       <div class="ec-field">
