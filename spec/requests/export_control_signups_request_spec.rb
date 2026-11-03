@@ -326,4 +326,42 @@ RSpec.describe "ExportControlSignups", type: :request do
       expect(response.body).not_to include("%>")
     end
   end
+
+  # The email and institution inputs each carry an .ec-help caption wired to the field with
+  # aria-describedby so screen readers read the guidance with the field. The email field's
+  # aria-describedby must MERGE the help id with the error id when a submission error is shown,
+  # not replace one with the other.
+  describe "GET /export_control_signup -- field helper text" do
+    it "renders the email and institution helper captions wired via aria-describedby" do
+      get new_export_control_signup_path
+
+      expect(response).to have_http_status(:ok)
+      doc = Nokogiri::HTML(response.body)
+
+      email_help = doc.at_css("p#email-help.ec-help")
+      expect(email_help&.text).to eq(
+        "Use your individual institutional email address. Personal email addresses " \
+        "(e.g., Gmail, Yahoo, Outlook) and shared lab or team accounts are not accepted."
+      )
+      expect(doc.at_css("input#email")["aria-describedby"]).to eq("email-help")
+
+      institution_help = doc.at_css("p#institution-help.ec-help")
+      expect(institution_help&.text).to eq(
+        "Enter your institution's full official name. Please avoid abbreviations or acronyms " \
+        "(e.g., University of California, San Francisco instead of UCSF)."
+      )
+      expect(doc.at_css("input#institution")["aria-describedby"]).to eq("institution-help")
+    end
+
+    it "merges the help and error ids on the email field when the submission has an email error" do
+      AppConfigHelper.set_app_config(AppConfig::BLOCK_FREE_EMAIL_DOMAINS, "1")
+
+      post export_control_signups_path, params: base_params.merge(email: "user@gmail.com")
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      doc = Nokogiri::HTML(response.body)
+      expect(doc.at_css("input#email")["aria-describedby"]).to eq("email-help email-error")
+      expect(doc.at_css("p#email-error")).to be_present
+    end
+  end
 end
