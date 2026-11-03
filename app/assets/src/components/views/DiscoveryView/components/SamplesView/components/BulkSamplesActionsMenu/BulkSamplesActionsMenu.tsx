@@ -4,6 +4,7 @@ import cx from "classnames";
 import React, { useContext, useState } from "react";
 import { UserContext } from "~/components/common/UserContext";
 import { BENCHMARKING_FEATURE } from "~/components/utils/features";
+import { FORKING_DISABLED_MESSAGE } from "~/components/views/SampleView/utils";
 import cs from "../../samples_view.scss";
 import { BenchmarkSamplesMenuItem } from "../BenchmarkSamplesMenuItem";
 import ToolbarButtonIcon from "../ToolbarButtonIcon/ToolbarButtonIcon";
@@ -47,7 +48,8 @@ const BulkSamplesActionsMenu = ({
     let bulkKickoffAmrMenuItem = (
       <MenuItem
         className={cs.dropdownItem}
-        disabled={noObjectsSelected}
+        // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+        disabled={true} // {noObjectsSelected}
         onClick={() => {
           closeActionsMenu();
           handleBulkKickoffAmr();
@@ -67,17 +69,23 @@ const BulkSamplesActionsMenu = ({
       </MenuItem>
     );
 
-    if (noObjectsSelected) {
-      bulkKickoffAmrMenuItem = (
-        <Tooltip
-          arrow
-          placement="top"
-          title={"Select at least 1 mNGS run to perform this action."}
-        >
-          <span>{bulkKickoffAmrMenuItem}</span>
-        </Tooltip>
-      );
-    }
+    // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+    // if (noObjectsSelected) {
+    //   bulkKickoffAmrMenuItem = (
+    //     <Tooltip
+    //       arrow
+    //       placement="top"
+    //       title={"Select at least 1 mNGS run to perform this action."}
+    //     >
+    //       <span>{bulkKickoffAmrMenuItem}</span>
+    //     </Tooltip>
+    //   );
+    // }
+    bulkKickoffAmrMenuItem = (
+      <Tooltip arrow placement="top" title={FORKING_DISABLED_MESSAGE}>
+        <span>{bulkKickoffAmrMenuItem}</span>
+      </Tooltip>
+    );
 
     return bulkKickoffAmrMenuItem;
   };

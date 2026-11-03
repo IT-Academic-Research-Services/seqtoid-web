@@ -11,16 +11,15 @@ import BareDropdown from "~/components/ui/controls/dropdowns/BareDropdown";
 import BetaLabel from "~/components/ui/labels/BetaLabel";
 import { getDownloadContigUrl } from "~/components/utils/download";
 import {
-  CONSENSUS_GENOME_FEATURE,
   COVERAGE_VIZ_FEATURE,
   isPipelineFeatureAvailable,
-  MINIMUM_VERSIONS,
 } from "~/components/utils/pipeline_versions";
 import { WORKFLOW_TABS } from "~/components/utils/workflows";
 import PhyloTreeChecks from "~/components/views/PhyloTree/PhyloTreeChecks";
 import {
   DOWNLOAD_CONTIGS,
   DOWNLOAD_READS,
+  FORKING_DISABLED_MESSAGE,
   GENUS_LEVEL_INDEX,
   SPECIES_LEVEL_INDEX,
   TAX_LEVEL_GENUS,
@@ -82,7 +81,8 @@ export const HoverActions = ({
     name: taxonName,
     common_name: taxonCommonName,
     species: taxonSpecies,
-    category: taxonCategory,
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    // category: taxonCategory,
   } = rowData;
 
   const taxonLevelIndex =
@@ -354,20 +354,22 @@ export const HoverActions = ({
   };
 
   const getConsensusGenomeError = () => {
-    if (
-      // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
-      !isPipelineFeatureAvailable(CONSENSUS_GENOME_FEATURE, pipelineVersion)
-    ) {
-      return `Consensus genome pipeline not available for mNGS pipeline versions < ${MINIMUM_VERSIONS[CONSENSUS_GENOME_FEATURE]}`;
-    } else if (taxonCategory !== "viruses") {
-      return "Consensus genome pipeline is currently available for viruses only.";
-    } else if (taxonLevelIndex !== 1) {
-      return "Consensus genome pipeline only available at the species level.";
-    } else if (ntContigs === undefined || ntContigs <= 0) {
-      return "Please select a virus with at least 1 contig that aligned to the NT database to run the consensus genome pipeline.";
-    } else if (!coverageVizEnabled) {
-      return "Consensus genome pipeline only available when coverage visualization is available.";
-    }
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    return FORKING_DISABLED_MESSAGE;
+    // if (
+    //   // @ts-expect-error CZID-8698 expect strictNullCheck error: error TS2345
+    //   !isPipelineFeatureAvailable(CONSENSUS_GENOME_FEATURE, pipelineVersion)
+    // ) {
+    //   return `Consensus genome pipeline not available for mNGS pipeline versions < ${MINIMUM_VERSIONS[CONSENSUS_GENOME_FEATURE]}`;
+    // } else if (taxonCategory !== "viruses") {
+    //   return "Consensus genome pipeline is currently available for viruses only.";
+    // } else if (taxonLevelIndex !== 1) {
+    //   return "Consensus genome pipeline only available at the species level.";
+    // } else if (ntContigs === undefined || ntContigs <= 0) {
+    //   return "Please select a virus with at least 1 contig that aligned to the NT database to run the consensus genome pipeline.";
+    // } else if (!coverageVizEnabled) {
+    //   return "Consensus genome pipeline only available when coverage visualization is available.";
+    // }
   };
 
   // TODO: move this to its own component

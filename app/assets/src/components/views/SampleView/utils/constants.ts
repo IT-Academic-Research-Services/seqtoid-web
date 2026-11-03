@@ -492,3 +492,6 @@ export const KEY_TAXON_THRESHOLDS_SELECTED = "taxonThresholdsSelected";
 export const KEY_ANNOTATIONS_SELECTED = "annotationsSelected";
 
 export const ONT_PIPELINE_RUNNING_STATUS_MESSAGE = "Running Pipeline Steps";
+
+export const FORKING_DISABLED_MESSAGE =
+  "Starting a new analysis on existing samples is unavailable. To run another analysis, please upload your files and select the appropriate workflow.";
