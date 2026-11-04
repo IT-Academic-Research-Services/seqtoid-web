@@ -90,6 +90,7 @@ export const sanitizeCSVRow = (row: string[]) => {
 //        ["694009,"species",694002,"Severe acute respiratory …98.5,187350,1,187294,100,4399.7,0,"-","-","-","-""],
 //     ]
 export const createCSVObjectURL = (headers: string[], rows: string[][]) => {
+  // eslint-disable-next-line no-console
   console.log("createCSVObjectURL Rows:", rows);
   const csvData = [headers].concat(rows);
   const dataString = csvData.join("\n");
@@ -105,8 +106,11 @@ export const createCSVRowForAppliedFilters = (
   backgrounds,
   selectedOptions,
 ) => {
+  // eslint-disable-next-line no-console
   console.log("createCSVRowForAppliedFilters appliedFilters:", appliedFilters);
+  // eslint-disable-next-line no-console
   console.log("createCSVRowForAppliedFilters backgrounds:", backgrounds);
+  // eslint-disable-next-line no-console
   console.log("createCSVRowForAppliedFilters selectedOptions:", selectedOptions);
   const filterRow = [];
   if (selectedOptions.background) {
@@ -335,6 +339,7 @@ export const computeMngsReportTableValuesForCSV = (
     csvHeaders.forEach(column => {
       let val = JSON.stringify(getOr("-", column, datum));
       val = val === "null" ? '"-"' : val;
+      // eslint-disable-next-line no-console
       console.log("Processing column:", column, "Value:", val);
 
       // If value contains a comma, add double quotes around it to preserve the comma and prevent the creation of a new column.
@@ -349,6 +354,7 @@ export const computeMngsReportTableValuesForCSV = (
         csvHeaders.forEach(column => {
           let val = JSON.stringify(getOr("-", column, speciesTaxon));
           val = val === "null" ? '"-"' : val;
+          // eslint-disable-next-line no-console
           console.log("Processing column:", column, "Value:", val);
 
           // If value contains a comma, add double quotes around it to preserve the comma and prevent the creation of a new column.
@@ -369,6 +375,7 @@ export const computeMngsReportTableValuesForCSV = (
       ),
     );
   }
+  // eslint-disable-next-line no-console
   console.log("CSV Rows:", csvRows);
   return [[csvHeaders.join()], csvRows];
 };
