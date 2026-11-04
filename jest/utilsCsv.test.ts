@@ -4,6 +4,7 @@
 import {
   createCSVObjectURL,
   createCSVRowForAppliedFilters,
+  filterMngsReportCsvByTaxa,
   parseCSVBlob,
   sanitizeCSVRow,
 } from "../app/assets/src/components/utils/csv";
@@ -22,6 +23,24 @@ describe("utils/csv", () => {
     it("skips empty lines", () => {
       const { rows } = parseCSVBlob("a,b\n\n1,2\n");
       expect(rows).toEqual([["1", "2"]]);
+    });
+  });
+
+  describe("filterMngsReportCsvByTaxa", () => {
+    it("keeps canonical CSV values for matching genus/species IDs only", () => {
+      const reportCsv =
+        'tax_id,tax_level,nt_rpm,name\n10,2,19897461153.095,"Genus, name"\n11,1,999915.088732275,Species\n12,2,42,Other';
+
+      const filteredCsv = filterMngsReportCsvByTaxa(reportCsv, [
+        { taxId: 10, filteredSpecies: [{ taxId: 11 }] },
+      ]);
+      const { headers, rows } = parseCSVBlob(filteredCsv);
+
+      expect(rows).toEqual([
+        ["10", "2", "19897461153.095", "Genus, name"],
+        ["11", "1", "999915.088732275", "Species"],
+      ]);
+      expect(headers).toEqual(["tax_id", "tax_level", "nt_rpm", "name"]);
     });
   });
 

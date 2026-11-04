@@ -21,7 +21,9 @@ export interface MngsDownloadDropdownProps {
   readyToDownload?: boolean;
   backgroundId: number | null;
   className?: string;
-  getDownloadReportTableWithAppliedFiltersLink: () => string;
+  getDownloadReportTableWithAppliedFiltersLink: (
+    reportCsvUrl: string,
+  ) => Promise<string>;
   hasAppliedFilters?: boolean;
   pipelineRun?: PipelineRun;
   sample: Sample;
@@ -41,7 +43,7 @@ export const MngsDownloadDropdown = ({
   const trackEvent = useTrackEvent();
   if (!readyToDownload) return null;
 
-  const downloadCSV = () => {
+  const getReportCsvUrl = () => {
     const resParams = {
       ...(backgroundId && { background_id: backgroundId }),
       ...(pipelineRun &&
@@ -49,9 +51,13 @@ export const MngsDownloadDropdown = ({
           pipeline_version: pipelineRun.pipeline_version,
         }),
     };
-    location.href = `/samples/${sample.id}/report_csv?${querystring.stringify(
+    return `/samples/${sample.id}/report_csv?${querystring.stringify(
       resParams,
     )}`;
+  };
+
+  const downloadCSV = () => {
+    location.href = getReportCsvUrl();
   };
 
   const handleDownload = (option: $TSFixMe) => {
@@ -66,10 +72,20 @@ export const MngsDownloadDropdown = ({
         isNull(backgroundId) &&
           sample.initial_workflow !== WorkflowType.LONG_READ_MNGS &&
           renderNoBackgroundSelectedNotification();
-        triggerFileDownload({
-          downloadUrl: getDownloadReportTableWithAppliedFiltersLink(),
-          fileName: `${sample.name}_report_with_applied_filters.csv`,
-        });
+        getDownloadReportTableWithAppliedFiltersLink(getReportCsvUrl())
+          .then(downloadUrl =>
+            triggerFileDownload({
+              downloadUrl,
+              fileName: `${sample.name}_report_with_applied_filters.csv`,
+            }),
+          )
+          .catch(error =>
+            logError({
+              message:
+                "SampleViewControls/DownloadDropdown: Failed to download filtered report CSV",
+              details: { error },
+            }),
+          );
         break;
       case "taxon_svg":
         new SvgSaver().asSvg(getTaxonTreeNode(), "taxon_tree.svg");

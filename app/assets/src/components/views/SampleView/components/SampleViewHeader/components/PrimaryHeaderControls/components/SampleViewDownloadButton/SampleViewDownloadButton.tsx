@@ -13,7 +13,9 @@ interface SampleViewDownloadButtonProps {
   currentRun: WorkflowRun | PipelineRun;
   view: string;
   hasAppliedFilters: boolean;
-  getDownloadReportTableWithAppliedFiltersLink: () => string;
+  getDownloadReportTableWithAppliedFiltersLink: (
+    reportCsvUrl: string,
+  ) => Promise<string>;
   reportMetadata: ReportMetadata;
   backgroundId: number | null;
   currentTab: CurrentTabSample;

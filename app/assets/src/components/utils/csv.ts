@@ -56,6 +56,31 @@ export const parseCSVBlob = (blob: string) => {
   };
 };
 
+export const filterMngsReportCsvByTaxa = (
+  reportCsv: string,
+  filteredReportData: $TSFixMe[],
+) => {
+  const includedTaxIds = new Set<string>();
+  filteredReportData.forEach(genus => {
+    includedTaxIds.add(String(genus.taxId));
+    (genus.filteredSpecies || []).forEach((species: $TSFixMe) => {
+      includedTaxIds.add(String(species.taxId));
+    });
+  });
+
+  const { headers, rows } = parseCSVBlob(reportCsv);
+  if (!headers?.length) return "";
+  const taxIdColumn = headers.indexOf("tax_id");
+  if (taxIdColumn < 0) {
+    throw new Error("Report CSV is missing the tax_id column");
+  }
+
+  return Papa.unparse([
+    headers,
+    ...rows.filter(row => includedTaxIds.has(row[taxIdColumn])),
+  ]);
+};
+
 const escapeFormulae = (datum: string) => {
   // Defend against injection attacks, because Excel and LibreOffice will automatically parse =, +, -, or @ such cells as formulae.
   // Formulae Injection Attacks: https://www.contextis.com/en/blog/comma-separated-vulnerabilities
