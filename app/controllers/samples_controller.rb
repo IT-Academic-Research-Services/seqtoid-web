@@ -1001,6 +1001,20 @@ class SamplesController < ApplicationController
     pipeline_run = select_pipeline_run(@sample, params[:pipeline_version])
     background_id = get_background_id(@sample, params[:background])
     @report_csv = PipelineReportService.call(pipeline_run, background_id, csv: true)
+    report_rows = CSV.parse(@report_csv, headers: true)
+    if report_rows.headers&.include?("tax_level")
+      report_rows.each do |row|
+        row["tax_level"] = case row["tax_level"]
+                            when TaxonCount::TAX_LEVEL_GENUS.to_s then "genus"
+                            when TaxonCount::TAX_LEVEL_SPECIES.to_s then "species"
+                            else row["tax_level"]
+                            end
+      end
+      @report_csv = CSV.generate do |csv|
+        csv << report_rows.headers
+        report_rows.each { |row| csv << row.fields }
+      end
+    end
     send_data @report_csv, filename: @sample.name + '_report.csv'
   end
 
