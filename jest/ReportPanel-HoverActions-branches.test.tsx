@@ -20,6 +20,7 @@ import { render, screen } from "@testing-library/react";
 import { kebabCase } from "lodash/fp";
 import { WORKFLOW_TABS } from "~/components/utils/workflows";
 import { HoverActions } from "~/components/views/SampleView/components/ReportPanel/components/HoverActions/HoverActions";
+import { FORKING_DISABLED_MESSAGE } from "~/components/views/SampleView/utils";
 
 jest.mock("~/api/analytics", () => ({
   ...jest.requireActual("~/api/analytics"),
@@ -115,7 +116,8 @@ describe("HoverActions consensus genome coverage-viz guard", () => {
     // ...and the consensus genome action reports that specific reason, proving
     // the four earlier guards in the ladder all passed.
     expect(button(CG_WORKFLOW_RUN).disabled).toBe(true);
-    expect(tooltipFor(CG_WORKFLOW_RUN)).toBe(COVERAGE_VIZ_UNAVAILABLE_MESSAGE);
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    expect(tooltipFor(CG_WORKFLOW_RUN)).toBe(FORKING_DISABLED_MESSAGE); //COVERAGE_VIZ_UNAVAILABLE_MESSAGE,
   });
 
   it("clears the guard as soon as the row has NT reads", () => {
@@ -126,9 +128,10 @@ describe("HoverActions consensus genome coverage-viz guard", () => {
     });
 
     expect(button(VIZ_WORKFLOW_RUN).disabled).toBe(false);
-    expect(button(CG_WORKFLOW_RUN).disabled).toBe(false);
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    expect(button(CG_WORKFLOW_RUN).disabled).toBe(true);
     // No error string -> the popup falls back to the plain action label.
-    expect(tooltipFor(CG_WORKFLOW_RUN)).toBe("Consensus Genome");
+    expect(tooltipFor(CG_WORKFLOW_RUN)).toBe(FORKING_DISABLED_MESSAGE); //"Consensus Genome");
   });
 
   it("never reaches the coverage-viz guard on the long-read tab, where coverage viz is unconditional", () => {
@@ -151,8 +154,10 @@ describe("HoverActions consensus genome coverage-viz guard", () => {
     });
 
     expect(button(CG_WORKFLOW_RUN).disabled).toBe(true);
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
     expect(tooltipFor(CG_WORKFLOW_RUN)).toBe(
-      "Please select a virus with at least 1 contig that aligned to the NT database to run the consensus genome pipeline.",
+      FORKING_DISABLED_MESSAGE,
+      // "Please select a virus with at least 1 contig that aligned to the NT database to run the consensus genome pipeline.",
     );
   });
 });

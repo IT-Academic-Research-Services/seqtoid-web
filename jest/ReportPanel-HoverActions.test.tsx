@@ -194,7 +194,8 @@ describe("HoverActions consensus genome gating", () => {
 
   it("is enabled for a viral species with an NT contig and coverage", () => {
     renderActions();
-    expect(cgButton().disabled).toBe(false);
+    // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+    expect(cgButton().disabled).toBe(true);
   });
 
   it("is disabled for a pipeline older than the consensus genome minimum", () => {
@@ -288,15 +289,16 @@ describe("HoverActions click handlers", () => {
     });
   });
 
-  it("consensus genome passes the NT percent identity", () => {
-    const { onConsensusGenomeClick } = renderActions();
-    fireEvent.click(actionButton("consensus_genome_573"));
-    expect(onConsensusGenomeClick).toHaveBeenCalledWith({
-      percentIdentity: 99.1,
-      taxId: 573,
-      taxName: "Klebsiella pneumoniae",
-    });
-  });
+  // TODO: Disabled until we fix CG workflows to use post-human-filtered data
+  // it("consensus genome passes the NT percent identity", () => {
+  //   const { onConsensusGenomeClick } = renderActions();
+  //   fireEvent.click(actionButton("consensus_genome_573"));
+  //   expect(onConsensusGenomeClick).toHaveBeenCalledWith({
+  //     percentIdentity: 99.1,
+  //     taxId: 573,
+  //     taxName: "Klebsiella pneumoniae",
+  //   });
+  // });
 });
 
 describe("HoverActions download dropdown", () => {

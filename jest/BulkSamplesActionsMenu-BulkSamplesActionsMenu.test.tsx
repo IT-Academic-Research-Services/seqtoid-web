@@ -86,6 +86,7 @@ jest.mock(
 // features constant is a plain string; import indirectly via the real module.
 import { BENCHMARKING_FEATURE } from "~/components/utils/features";
 import BulkSamplesActionsMenu from "~/components/views/DiscoveryView/components/SamplesView/components/BulkSamplesActionsMenu/BulkSamplesActionsMenu";
+import { FORKING_DISABLED_MESSAGE } from "~/components/views/SampleView/utils";
 
 const baseProps = () => ({
   noObjectsSelected: false,
@@ -172,8 +173,10 @@ describe("BulkSamplesActionsMenu AMR + phylo items", () => {
     renderMenu({ admin: false }, { noObjectsSelected: true });
     openMenu();
     const tooltips = screen.getAllByTestId("tooltip");
-    const amrTip = tooltips.find(t =>
-      (t.getAttribute("data-title") || "").includes("mNGS run"),
+    const amrTip = tooltips.find(
+      t =>
+        // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+        (t.getAttribute("data-title") || "").includes(FORKING_DISABLED_MESSAGE), //"mNGS run"),
     );
     expect(amrTip).toBeTruthy();
   });
@@ -186,7 +189,8 @@ describe("BulkSamplesActionsMenu AMR + phylo items", () => {
     );
     openMenu();
     fireEvent.click(screen.getByText("Run Antimicrobial Resistance Pipeline"));
-    expect(handleBulkKickoffAmr).toHaveBeenCalledTimes(1);
+    // TODO: Disabled until we fix AMR workflows to use post-human-filtered data
+    expect(handleBulkKickoffAmr).toHaveBeenCalledTimes(0);
   });
 });
 
