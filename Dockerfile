@@ -193,7 +193,7 @@ ARG TARGETARCH
 #    The web/request path does NOT use these binaries (it uses the mysql2 gem →
 #    libmariadb3, already multi-arch), so arm64 web pods are unaffected.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-  ca-certificates curl wget tzdata procps \
+  ca-certificates curl wget tzdata procps git \
   libaio1 libatomic1 libnuma1 \
   libncurses6 libbz2-1.0 liblzma5 zlib1g libcurl4 libdeflate0 \
   libmariadb3 \
