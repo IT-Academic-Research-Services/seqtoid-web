@@ -48,10 +48,9 @@ module Rails
       # Override Thor's instance method 'say' (lib/thor/shell.rb:59)
       def say(message = "", color = nil, force_new_line = true)
         # Cannot use Rails.Logger because it isn't initialized yet
-        data = Logging.reduce_filters({ msg: message.strip, module: "boot" })
-        if data
-          message = Logging.default_formatter.call(:debug, Time.current, nil, data).strip
-          super(message, color, force_new_line)
+        formatted_message = Logging.filter_and_format(message.strip, zone: 'UTC', module: "boot")
+        if formatted_message
+          super(formatted_message, color, force_new_line)
         end
       end
     end
