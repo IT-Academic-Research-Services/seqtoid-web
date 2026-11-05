@@ -75,7 +75,7 @@ module ExportControlLayer3Gate
 
     # #286 — device/location attestation, only when the policy flag requires it (independently dark).
     if device_location_attestation_required? &&
-       !DeviceLocationAttestation.current_attestation_satisfied?(current_user)
+       !DeviceLocationAttestation.current_attestation_satisfied?(current_user, ip_address: request.remote_ip)
       return deny_layer3(reason: :device_attestation_required,
                          denied_path: device_location_attestation_denied_path,
                          start_path: new_device_location_attestation_path)
