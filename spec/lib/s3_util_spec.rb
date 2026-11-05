@@ -28,6 +28,8 @@ RSpec.describe S3Util do
     # from a JSON file with information about many genes
     it "should return a single string on success" do
       @mock_aws_clients[:s3].stub_responses(:select_object_content, { payload: successful_stream_response })
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
       entry = S3Util.s3_select_json(fake_database_bucket, ontology_file_key, test_expression)
       expect(entry).to be_instance_of(String)
       expect(entry).to eq(sample_gene_response)
@@ -39,6 +41,16 @@ RSpec.describe S3Util do
       # which s3_select_json rescues and turns into "". (CZID-119: the old in-stream
       # error-event stub format is no longer valid under aws-sdk-core 3.248.)
       @mock_aws_clients[:s3].stub_responses(:select_object_content, 'InternalError')
+      expect(LogUtil).to receive(:log_error).with(
+        /s3_select_json: Error retrieving entry .* from s3/,
+        hash_including(
+          exception: satisfy { |e| e.code == "InternalError" },
+          bucket: fake_database_bucket,
+          key: ontology_file_key,
+          expression: test_expression
+        )
+      ).twice.and_call_original
+      expect(LogUtil).not_to receive(:log_message)
       expect { S3Util.s3_select_json(fake_database_bucket, ontology_file_key, test_expression) }.not_to raise_error
       entry = S3Util.s3_select_json(fake_database_bucket, ontology_file_key, test_expression)
       expect(entry).to be_instance_of(String)
@@ -65,6 +77,8 @@ RSpec.describe S3Util do
       allow(@mock_aws_clients[:s3]).to receive(:abort_multipart_upload) do |args|
         aborted_args << args
       end
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       count = S3Util.abort_multipart_uploads(bucket, prefix)
 
@@ -77,6 +91,8 @@ RSpec.describe S3Util do
 
     it "does nothing when there are no incomplete multipart uploads" do
       @mock_aws_clients[:s3].stub_responses(:list_multipart_uploads, { uploads: [] })
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
       expect(@mock_aws_clients[:s3]).not_to receive(:abort_multipart_upload)
       expect(S3Util.abort_multipart_uploads(bucket, prefix)).to eq(0)
     end
@@ -89,6 +105,8 @@ RSpec.describe S3Util do
     it "uploads the content to S3 when the bucket name is present" do
       uploaded_args = nil
       allow(@mock_aws_clients[:s3]).to receive(:put_object) { |args| uploaded_args = args }
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       S3Util.upload_to_s3("fake-downloads-bucket", key, content)
 
@@ -99,6 +117,8 @@ RSpec.describe S3Util do
     # actionable error instead of the opaque SDK "Invalid bucket name" deep in put_object.
     it "raises an actionable error and does not call the SDK when the bucket name is blank" do
       expect(@mock_aws_clients[:s3]).not_to receive(:put_object)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       [nil, "", "  "].each do |blank_bucket|
         expect do
@@ -119,6 +139,8 @@ RSpec.describe S3Util do
       copy_args = nil
       allow(@mock_aws_clients[:s3]).to receive(:copy_object) { |args| copy_args = args }
       expect_any_instance_of(Aws::S3::Object).not_to receive(:copy_from)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       S3Util.copy_with_tags(source_path, dest_path, tags)
 
@@ -138,6 +160,8 @@ RSpec.describe S3Util do
       expect(@mock_aws_clients[:s3]).not_to receive(:copy_object)
       expect_any_instance_of(Aws::S3::Object).to receive(:copy_from)
         .with("src-bucket/import/big_R1.fastq.gz", hash_including(multipart_copy: true, tagging: tagging))
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       S3Util.copy_with_tags(source_path, dest_path, tags)
     end
@@ -153,6 +177,8 @@ RSpec.describe S3Util do
     it "applies the tag set to the existing object via put_object_tagging" do
       tagging_args = nil
       allow(@mock_aws_clients[:s3]).to receive(:put_object_tagging) { |args| tagging_args = args }
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       S3Util.put_object_tags(dest_path, tags)
 

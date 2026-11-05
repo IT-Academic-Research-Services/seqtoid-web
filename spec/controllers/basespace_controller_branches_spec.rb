@@ -16,16 +16,16 @@ RSpec.describe BasespaceController, type: :controller do
   describe "GET #oauth token-exchange failure (rescue arm)" do
     before do
       stub_const('ENV', ENV.to_hash.merge(
-        "CZID_BASESPACE_OAUTH_REDIRECT_URI" => "MOCK_URI",
-        "CZID_BASESPACE_CLIENT_ID" => "MOCK_ID",
-        "CZID_BASESPACE_CLIENT_SECRET" => "MOCK_SECRET"
-      ))
+                          "CZID_BASESPACE_OAUTH_REDIRECT_URI" => "MOCK_URI",
+                          "CZID_BASESPACE_CLIENT_ID" => "MOCK_ID",
+                          "CZID_BASESPACE_CLIENT_SECRET" => "MOCK_SECRET"
+                        ))
       allow(HttpHelper).to receive(:post_json).and_raise(StandardError, "network down")
     end
 
     it "logs the failure and leaves the access token nil without raising" do
       expect(LogUtil).to receive(:log_error)
-        .with(a_string_including("Failed to get basespace access token"), any_args)
+        .with(/Failed to get basespace access token/, any_args)
 
       get :oauth, params: { code: "MOCK_CODE" }
 

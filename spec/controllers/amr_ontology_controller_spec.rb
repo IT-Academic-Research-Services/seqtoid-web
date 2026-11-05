@@ -78,6 +78,9 @@ RSpec.describe AmrOntologyController, type: :controller do
         end
 
         it "should return relevant information from the Ontology JSON stored on s3" do
+          expect(LogUtil).not_to receive(:log_message)
+          expect(LogUtil).not_to receive(:log_error)
+
           get :fetch_ontology, params: { geneName: "oqxb" }
           expect(response.content_type).to include("application/json")
           expect(response).to have_http_status(:ok)
@@ -112,14 +115,30 @@ RSpec.describe AmrOntologyController, type: :controller do
         end
 
         it "should return an ontology object with an error message if no match is found" do
+          expect(LogUtil).not_to receive(:log_message)
+          expect(LogUtil).to receive(:log_error).with(
+            "fetch_ontology_entry failed to parse JSON []",
+            exception: satisfy { |error| error.is_a?(JSON::ParserError) },
+            s3_key: "card/card-3.2.6-wildcard-4.0.0/ontology.json",
+            gene_name: "ImNotInCard",
+            sql_expression: "SELECT * FROM S3Object[*].\"ImNotInCard\" LIMIT 1",
+            trimmed_entry: ""
+          )
+          expect(LogUtil).to receive(:log_error).with(
+            "fetch_ontology_entry failed to parse JSON []",
+            exception: satisfy { |error| error.is_a?(JSON::ParserError) },
+            s3_key: "card/card-3.2.6-wildcard-4.0.0/ontology.json",
+            gene_name: "imNotInCard",
+            sql_expression: "SELECT * FROM S3Object[*].\"imNotInCard\" LIMIT 1",
+            trimmed_entry: ""
+          )
           get :fetch_ontology, params: { geneName: "ImNotInCard" }
           expect(response.content_type).to include("application/json")
           expect(response).to have_http_status(:ok)
 
           json_response = JSON.parse(response.body)
-          expect(json_response).to include_json(
-            error: "No data for imNotInCard." # will try the downcased version if the uppercased version is not found
-          )
+          # will try the downcased version if the uppercased version is not found
+          expect(json_response).to include_json(error: "No data for imNotInCard.")
         end
       end
     end

@@ -1402,8 +1402,13 @@ class PipelineRun < ApplicationRecord
 
     # If we are missing job stats in the db, log and return an error.
     unless all_stats_loaded
-      error = "PipelineRun #{id} failed to load job stats: #{stats_array - loaded_job_stats}"
-      LogUtil.log_error(error)
+      LogUtil.log_error(
+        error = "PipelineRun #{id} failed to load job stats: #{stats_array - loaded_job_stats}",
+        id: id,
+        stats_json_s3_path: stats_json_s3_path,
+        stats_array: stats_array.inspect,
+        loaded_job_stats: loaded_job_stats.inspect
+      )
       error
     end
   end

@@ -1349,9 +1349,11 @@ export const DiscoveryViewFC = (props: DiscoveryViewProps) => {
         return;
       }
       logError({
-        exception: error,
         message: "[DiscoveryViewError] fetchCgFilteredWorkflowRuns() failed",
-        details: { conditions },
+        exception: error,
+        details: {
+          conditions: conditions ? JSON.stringify(conditions) : null,
+        },
       });
     }
   };
