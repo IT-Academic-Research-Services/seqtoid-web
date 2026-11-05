@@ -61,7 +61,7 @@ const getDiscoveryDimensions = async ({
         "getDiscoveryDimensions(): getSampleDimensions() or getProjectDimensions() failed",
       details: {
         domain,
-        filters,
+        filters: filters ? JSON.stringify(filters) : null,
         projectId,
         snapshotShareId,
         search,
@@ -96,7 +96,7 @@ const getDiscoveryStats = async ({
       message: "getDiscoveryStats(): getSampleStats() failed",
       details: {
         domain,
-        filters,
+        filters: filters ? JSON.stringify(filters) : null,
         projectId,
         snapshotShareId,
         search,
@@ -474,7 +474,7 @@ const getDiscoveryLocations = async ({
       message: "getDiscoveryLocations(): getSamplesLocations() failed",
       details: {
         domain,
-        filters,
+        filters: filters ? JSON.stringify(filters) : null,
         projectId,
         snapshotShareId,
         search,

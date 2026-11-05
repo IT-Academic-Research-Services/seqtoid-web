@@ -79,15 +79,18 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
     before { stub_const("ElasticsearchQueryHelper::ES_CLIENT", es_client) }
 
     it "sends one bulk update doc per pipeline run and logs nothing on success" do
-      captured = nil
+      captured_all = []
       allow(es_client).to receive(:bulk) do |args|
-        captured = args[:body]
+        captured_all << args[:body]
         { "errors" => false }
       end
       expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).not_to receive(:log_error)
 
       described_class.update_last_read_at(5, [11, 12])
 
+      expect(captured_all.length).to eq(1)
+      captured = captured_all.first
       expect(captured.length).to eq(2)
       expect(captured.first[:update][:_id]).to eq("11_5")
       expect(captured.first[:update][:_index]).to eq("pipeline_runs")
@@ -95,15 +98,29 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
     end
 
     it "logs a message when the bulk response reports partial errors" do
-      allow(es_client).to receive(:bulk).and_return("errors" => true, "items" => [{ "update" => { "status" => 404 } }])
-      expect(LogUtil).to receive(:log_message).with(/last_read_at failed/, hash_including(background_id: 5, errors: true, items: [{ "update" => { "status" => 404 } }]))
+      items = [{ "update" => { "status" => 404 } }]
+      allow(es_client).to receive(:bulk).and_return("errors" => true, "items" => items)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).to receive(:log_message).with(
+        /last_read_at failed/,
+        errors: true,
+        items: items,
+        pipeline_run_ids: [11],
+        background_id: 5
+      )
 
       described_class.update_last_read_at(5, [11])
     end
 
     it "swallows and logs a raise from the bulk call" do
       allow(es_client).to receive(:bulk).and_raise(StandardError, "opensearch down")
-      expect(LogUtil).to receive(:log_error).with(/Failed to submit bulk update/, hash_including(:exception))
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_error).with(
+        /Failed to submit bulk update/,
+        exception: having_attributes(message: /opensearch down/),
+        pipeline_run_ids: [11],
+        background_id: 5
+      )
 
       expect { described_class.update_last_read_at(5, [11]) }.not_to raise_error
     end
@@ -248,6 +265,8 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
     it "returns the response untouched on a 200 with no function error" do
       resp = { "status_code" => 200, "function_error" => nil }
       allow(described_class).to receive(:invoke_lambda).and_return(resp)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).not_to receive(:log_error)
 
       expect(described_class.call_lambda("fn", {})).to eq(resp)
     end
@@ -258,7 +277,8 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
       allow(resp).to receive(:[]).with("function_error").and_return(nil)
       allow(described_class).to receive(:invoke_lambda).and_return(resp)
       allow(described_class).to receive(:sleep) # keep the bounded retry instant
-      allow(LogUtil).to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_error).twice
 
       expect { described_class.call_lambda("fn", {}) }.to raise_error(/invocation failed with status_code: 500/)
       # attempts starts at 1, retries once (attempts 2), gives up at 3.
@@ -272,33 +292,44 @@ RSpec.describe ElasticsearchQueryHelper, type: :helper do
       allow(resp).to receive(:[]).with("function_error").and_return("Unhandled")
       allow(described_class).to receive(:invoke_lambda).and_return(resp)
       allow(described_class).to receive(:sleep)
-      allow(LogUtil).to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_error).twice
 
       expect { described_class.call_lambda("fn", {}) }.to raise_error(/function_error: handler blew up/)
     end
   end
 
   describe ".call_taxon_indexing_lambda empty-response arms" do
-    before { allow(LogUtil).to receive(:log_error) }
-
     it "raises when call_lambda yields no response at all" do
       allow(described_class).to receive(:call_lambda).and_return(nil)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_error).with(
+        "Taxon indexing lambda returned an empty response",
+        pipeline_run_ids: [2],
+        background_id: 1
+      )
 
       expect { described_class.call_taxon_indexing_lambda(1, [2]) }
-        .to raise_error(/empty response from taxon-indexing-concurrency-manager/)
-      expect(LogUtil).to have_received(:log_error).with(/empty response/, hash_including(background_id: 1))
+        .to raise_error(/Taxon indexing failed: empty response from taxon-indexing-concurrency-manager/)
     end
 
     it "raises when the response carries no payload" do
       allow(described_class).to receive(:call_lambda).and_return(OpenStruct.new(payload: nil))
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_error).with(
+        "Taxon indexing lambda returned an empty response",
+        pipeline_run_ids: [2],
+        background_id: 1
+      )
 
       expect { described_class.call_taxon_indexing_lambda(1, [2]) }
-        .to raise_error(/empty response from taxon-indexing-concurrency-manager/)
+        .to raise_error(/Taxon indexing failed: empty response from taxon-indexing-concurrency-manager/)
     end
 
     it "accepts a well-formed array payload with no failures" do
-      allow(described_class).to receive(:call_lambda)
-        .and_return(OpenStruct.new(payload: OpenStruct.new(string: '[{"StatusCode":200}]')))
+      allow(described_class).to receive(:call_lambda).and_return(OpenStruct.new(payload: OpenStruct.new(string: '[{"StatusCode":200}]')))
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).not_to receive(:log_error)
 
       expect { described_class.call_taxon_indexing_lambda(1, [2]) }.not_to raise_error
     end

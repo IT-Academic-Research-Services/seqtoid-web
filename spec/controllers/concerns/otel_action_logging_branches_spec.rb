@@ -34,7 +34,17 @@ RSpec.describe OtelActionLogging, type: :concern do
     end
   end
 
+  let(:expected_error) { StandardError.new("resolver boom") }
+
+  before do
+    allow(LogUtil).to receive(:log_error)
+  end
+
   describe "#base_action_attributes (trace_id arm)" do
+    before do
+      expect(LogUtil).not_to receive(:log_error)
+    end
+
     it "adds the trace_id attribute when an active trace id is present" do
       allow(host).to receive(:current_otel_trace_id).and_return("deadbeefcafefeed")
       attrs = host.base_action_attributes
@@ -49,6 +59,10 @@ RSpec.describe OtelActionLogging, type: :concern do
   end
 
   describe "#current_otel_trace_id" do
+    before do
+      expect(LogUtil).not_to receive(:log_error)
+    end
+
     it "returns the hex trace id when a valid span is recording" do
       ctx = double("span_context", valid?: true, hex_trace_id: "0123456789abcdef")
       span = double("span", context: ctx)
@@ -67,13 +81,16 @@ RSpec.describe OtelActionLogging, type: :concern do
     it "returns the resolver's value on success" do
       resolver = ->(controller) { { "czid.project.id" => controller.controller_name } }
       expect(host.resolve_context(resolver)).to eq("czid.project.id" => "projects")
+      expect(LogUtil).not_to have_received(:log_error)
     end
 
     it "swallows a raising resolver and returns {}" do
-      allow(Rails.logger).to receive(:error)
-      resolver = ->(_c) { raise "resolver boom" }
+      resolver = ->(_c) { raise expected_error }
       expect(host.resolve_context(resolver)).to eq({})
-      expect(Rails.logger).to have_received(:error).with(/context resolver raised/)
+      expect(LogUtil).to have_received(:log_error).with(
+        /context resolver raised.*resolver boom/,
+        exception: expected_error
+      )
     end
   end
 
@@ -86,20 +103,30 @@ RSpec.describe OtelActionLogging, type: :concern do
       expect(recorded["czid.project.id"]).to eq(5)
       # sensitive key dropped by the sanitizer even on the context path
       expect(recorded).not_to have_key("user_email")
+      expect(LogUtil).not_to have_received(:log_error)
     end
 
     it "returns nil (never raises) when tracer acquisition fails" do
-      allow(Rails.logger).to receive(:error)
-      allow(OpenTelemetry).to receive(:tracer_provider).and_raise(StandardError.new("no provider"))
+      allow(OpenTelemetry).to receive(:tracer_provider).and_raise(expected_error)
 
       expect(host.start_user_action_span("project.create", nil)).to be_nil
-      expect(Rails.logger).to have_received(:error).with(/tracing setup failed/)
+      expect(LogUtil).to have_received(:log_error).with(
+        /tracing setup failed for project.create/,
+        exception: expected_error,
+        action_name: "project.create",
+        attributes: {
+          "czid.user_action.action" => "create",
+          "czid.user_action.controller" => "projects",
+          "czid.user_action.request_id" => request_double.request_id,
+        }
+      )
     end
   end
 
   describe "#tag_span_error" do
     it "returns immediately when the span is nil (no active span)" do
       expect { host.tag_span_error(nil, StandardError.new("x")) }.not_to raise_error
+      expect(LogUtil).not_to have_received(:log_error)
     end
 
     it "records the exception and sets an error status on a real span" do
@@ -109,28 +136,35 @@ RSpec.describe OtelActionLogging, type: :concern do
       expect(span).to receive(:status=)
 
       host.tag_span_error(span, error)
+
+      expect(LogUtil).not_to have_received(:log_error)
     end
   end
 
   describe "#finish_user_action" do
     it "swallows an exception raised while finishing the span" do
       allow(Rails.logger).to receive(:info)
-      allow(Rails.logger).to receive(:error)
       host.instance_variable_set(:@user_action_attributes, {})
       span = double("span")
-      allow(span).to receive(:finish).and_raise(StandardError.new("finish boom"))
+      allow(span).to receive(:finish).and_raise(expected_error)
 
       expect { host.finish_user_action(span, "project.create", "ok", nil) }.not_to raise_error
-      expect(Rails.logger).to have_received(:error).with(/finish failed/)
+      expect(LogUtil).to have_received(:log_error).with(
+        /finish failed for project.create/,
+        exception: expected_error,
+        action_name: "project.create",
+        outcome: "ok",
+        error_class: nil
+      )
     end
 
     it "emits the log and finishes a healthy span without error" do
-      allow(Rails.logger).to receive(:info)
       host.instance_variable_set(:@user_action_attributes, { "czid.user_action.user_id" => 1 })
       span = double("span")
       expect(span).to receive(:finish)
 
       host.finish_user_action(span, "project.create", "ok", nil)
+      expect(LogUtil).not_to have_received(:log_error)
     end
   end
 end
