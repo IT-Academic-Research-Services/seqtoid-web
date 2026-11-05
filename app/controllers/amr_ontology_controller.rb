@@ -15,7 +15,7 @@ class AmrOntologyController < ApplicationController
       "proteinAccession" => nil,
       "error" => "",
     }
-    ontology_json_key = fetch_current_ontology_file_key()
+    ontology_json_key = fetch_current_ontology_file_key
     card_entry = fetch_ontology_entry(ontology_json_key, gene_name)
 
     # For deprecated AMR pipeline, the first letter of the gene name may have been uppercased
@@ -48,13 +48,18 @@ class AmrOntologyController < ApplicationController
     sql_expression = "SELECT * FROM S3Object[*].#{gene_name.dump} LIMIT 1"
     entry = S3Util.s3_select_json(S3_DATABASE_BUCKET, s3_key, sql_expression)
     trimmed_entry = entry.chomp(",")
-    ontology = {}
     begin
-      ontology = JSON.parse(trimmed_entry)
+      return JSON.parse(trimmed_entry)
     rescue JSON::ParserError => e
-      Rails.logger.error(e.message)
+      LogUtil.log_error(
+        "fetch_ontology_entry failed to parse JSON [#{trimmed_entry}]",
+        exception: e,
+        s3_key: s3_key,
+        gene_name: gene_name,
+        sql_expression: sql_expression,
+        trimmed_entry: trimmed_entry
+      )
       return {}
     end
-    return ontology
   end
 end

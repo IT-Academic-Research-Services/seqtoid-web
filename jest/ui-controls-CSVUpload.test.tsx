@@ -49,7 +49,7 @@ describe("CSVUpload", () => {
     const onCSV = jest.fn();
     render(<CSVUpload onCSV={onCSV} />);
 
-    act(() => {
+    await act(async () => {
       filePickerProps.onChange([
         csvFile("Sample Name,Host\nsample_one,Human\nsample_two,Mosquito\n"),
       ]);
@@ -75,7 +75,7 @@ describe("CSVUpload", () => {
     const onCSV = jest.fn();
     render(<CSVUpload onCSV={onCSV} />);
 
-    act(() => {
+    await act(async () => {
       filePickerProps.onChange([
         csvFile('Name,Host\nsample_one,Human\n"",""\n'),
       ]);
@@ -92,7 +92,7 @@ describe("CSVUpload", () => {
     const onCSV = jest.fn();
     render(<CSVUpload onCSV={onCSV} removeEmptyRows />);
 
-    act(() => {
+    await act(async () => {
       filePickerProps.onChange([
         csvFile('Name,Host\nsample_one,Human\n"",""\nsample_two,Mosquito\n'),
       ]);
@@ -113,7 +113,7 @@ describe("CSVUpload", () => {
     const onCSV = jest.fn();
     render(<CSVUpload onCSV={onCSV} removeEmptyRows />);
 
-    act(() => {
+    await act(async () => {
       filePickerProps.onChange([csvFile('Name,Host\nsample_one,""\n"",""\n')]);
     });
 
@@ -125,7 +125,7 @@ describe("CSVUpload", () => {
     const onCSV = jest.fn();
     render(<CSVUpload onCSV={onCSV} removeEmptyRows />);
 
-    act(() => {
+    await act(async () => {
       filePickerProps.onChange([csvFile("Name,Host\n")]);
     });
 

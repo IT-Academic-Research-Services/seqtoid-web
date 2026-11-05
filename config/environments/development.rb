@@ -213,7 +213,7 @@ Rails.application.configure do
   # The deployed dev environment supposedly sets it to "info", but that seems unlikely
   Logging.init_logging(config, level: ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym)
 
-  Logging.add_filter(->(data) { data && !data[:msg]&.include?('Rendering text template') && !data[:msg]&.include?('Rendering html template') && data })
+  Logging.add_filter(->(data) { !data[:msg]&.include?('Rendering text template') && !data[:msg]&.include?('Rendering html template') })
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = true

@@ -14,27 +14,20 @@ module Logging
     attribute :unimportant_fields
   end
 
-  class << self
-    attr_accessor :default_formatter, :global_fields_to_remove, :global_filters, :global_unimportant_fields
-  end
-
-  # This hides the getters and setters from outside the module
-  private_class_method :default_formatter=, :global_fields_to_remove, :global_fields_to_remove=
-  private_class_method :global_filters, :global_filters=, :global_unimportant_fields, :global_unimportant_fields=
-
   # Keys removed from each JSON log object (unnecessary fields)
-  @global_fields_to_remove = [:pid, :v]
+  FIELDS_TO_REMOVE = [:pid, :v].freeze
 
+  # TODO: Make protected
   def self.remove_fields(data)
-    @global_fields_to_remove.each { |field| data.delete(field) }
+    FIELDS_TO_REMOVE.each { |field| data.delete(field) }
     @fields_to_remove.each { |field| data.delete(field) } if @fields_to_remove
   end
 
-  # Temporarily remove a field
-  def self.with_field_removed(field)
+  # Temporarily remove a field from logged JSON messages
+  def self.with_fields_to_remove(*fields)
     original_fields_to_remove = @fields_to_remove
     @fields_to_remove = @fields_to_remove&.dup || []
-    @fields_to_remove << field
+    @fields_to_remove.concat(fields)
     yield
   ensure
     @fields_to_remove = original_fields_to_remove
@@ -42,7 +35,7 @@ module Logging
 
   class Formatter < Ougai::Formatters::Bunyan
     def format_datetime(time)
-      time.utc.iso8601(3)
+      time.in_time_zone.iso8601(3)
     end
 
     def to_level(severity)
@@ -56,42 +49,50 @@ module Logging
     end
   end
 
-  @default_formatter = Logging::Formatter.new
+  DEFAULT_FORMATTER = Logging::Formatter.new
 
   # Keys in the JSON log object that don't contribute to whether the message is valid.
   # IE: They are not used to determine if the log object is effectively empty, and thus not logged.
-  @global_unimportant_fields = [:module, :stream]
+  UNIMPORTANT_FIELDS = [:module, :stream]
 
   def self.without_unimportant(data)
-    data = data.except(*@global_unimportant_fields)
-    @unimportant_fields ? @unimportant_fields.except(*@unimportant_fields) : data
+    data = data.except(*UNIMPORTANT_FIELDS)
+    @unimportant_fields ? data.except(*@unimportant_fields) : data
   end
 
   private_class_method def self.default_filter(data)
-    data.delete(:msg) if data && (data[:msg].nil? || data[:msg].to_s.strip.empty?)
+    if data&.key?(:msg)
+      msg = data[:msg]&.to_s&.strip.presence
+      if msg.nil?
+        data.delete(:msg)
+      else
+        data[:msg] = msg
+      end
+    end
+
     if Logging.without_unimportant(data).blank?
       # Skip if log message is nil or blank, and there are no other properties
       return nil
     end
 
-    data[:request_id] = Logging::CurrentContext.request.request_id if Logging::CurrentContext.request && !data[:request_id]
-    data[:user_id] = Logging::CurrentContext.user.id if Logging::CurrentContext.user && !data[:user_id]
-    data[:environment] = Rails.env
-    data[:thread_id] = Thread.current.object_id
+    data[:request_id] = data[:request_id].presence || Logging::CurrentContext.request&.request_id
+    data[:user_id] = data[:user_id].presence || Logging::CurrentContext.user&.id
+    data[:environment] = data[:environment].presence || Rails.env
+    data[:thread_id] = data[:thread_id].presence || Thread.current.object_id
 
     current_span_context = OpenTelemetry::Trace.current_span&.context
     if current_span_context&.valid?
-      data[:trace_id] = current_span_context.hex_trace_id
-      data[:span_id] = current_span_context.hex_span_id
+      data[:trace_id] = data[:trace_id].presence || current_span_context.hex_trace_id
+      data[:span_id] = data[:span_id].presence || current_span_context.hex_span_id
     end
 
     data
   end
 
-  @global_filters = [->(data) { default_filter(data) }]
+  FILTERS = [->(data) { default_filter(data) }]
 
   def self.add_filter(filter)
-    @global_filters << filter
+    FILTERS << filter
   end
 
   # Temporarily add a filter
@@ -105,16 +106,31 @@ module Logging
   end
 
   # Filter out and transform messages through each filter; if the final value is falsy, nothing will be logged
-  def self.reduce_filters(data)
-    data = @global_filters.reduce(data) { |val, lmb| lmb.call(val) }
-    @filters ? @filters.reduce(data) { |val, lmb| lmb.call(val) } : data
+  private_class_method def self.filter_data(data)
+    all_passed = FILTERS.all? { |filter_lambda| filter_lambda.call(data) }
+    all_passed &&= @filters.all? { |filter_lambda| filter_lambda.call(data) } unless @filters.nil?
+    all_passed
   end
 
   def self.create_json_logger(logdev, level, formatter: nil)
-    ougai_logger = Ougai::Logger.new(logdev, level: level, formatter: formatter || @default_formatter)
+    ougai_logger = Ougai::Logger.new(logdev, level: level, formatter: formatter || DEFAULT_FORMATTER)
     ougai_logger.default_message = nil
-    ougai_logger.before_log = ->(data) { reduce_filters(data).present? }
+    ougai_logger.before_log = ->(data) { filter_data(data) }
     ougai_logger
+  end
+
+  # Used for logging before Rails.Logger is initialized.
+  # IE: Can be used before init_logging() is called, and thus before Application is created in application.rb.
+  def self.filter_and_format(message, severity: :debug, zone: nil, **kwargs)
+    data = { msg: message.strip, **kwargs }
+    unless filter_data(data)
+      return nil
+    end
+
+    # NOTE: Rails Application Timezone not set yet, so messages logged here might have a different zone/offset than later log messages
+    now_dt = zone.nil? ? Time.current : Time.current.in_time_zone(zone)
+
+    return DEFAULT_FORMATTER.call(severity, now_dt, nil, data).strip
   end
 
   # Deployed logging configuration.

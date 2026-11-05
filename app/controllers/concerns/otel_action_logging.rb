@@ -89,7 +89,12 @@ module OtelActionLogging
     span_attributes = { "#{ACTION_LOG_ATTR_PREFIX}.name" => action_name }.merge(attributes)
     tracer.start_span("user_action.#{action_name}", attributes: span_attributes, kind: :internal)
   rescue StandardError => e
-    Rails.logger.error("[user_action] tracing setup failed for #{action_name}: #{e.class}: #{e.message}")
+    LogUtil.log_error(
+      "[user_action] start_user_action_span: tracing setup failed for #{action_name}: #{e.class}: #{e.message}",
+      exception: e,
+      action_name: action_name,
+      attributes: attributes
+    )
     nil
   end
 
@@ -106,7 +111,13 @@ module OtelActionLogging
     emit_action_log(action_name, @user_action_attributes || {}, outcome: outcome, error_class: error_class)
     span&.finish
   rescue StandardError => e
-    Rails.logger.error("[user_action] finish failed for #{action_name}: #{e.class}: #{e.message}")
+    LogUtil.log_error(
+      "[user_action] finish_user_action: finish failed for #{action_name}: #{e.class}: #{e.message}",
+      exception: e,
+      action_name: action_name,
+      outcome: outcome,
+      error_class: error_class
+    )
   end
 
   # Imperative entry point: record a one-shot action log (no span nesting around a
@@ -120,7 +131,12 @@ module OtelActionLogging
     end
     emit_action_log(action_name, merged, outcome: "ok", error_class: nil)
   rescue StandardError => e
-    Rails.logger.error("[user_action] failed to log #{action_name}: #{e.class}: #{e.message}")
+    LogUtil.log_error(
+      "[user_action] log_user_action: failed to log #{action_name}: #{e.class}: #{e.message}",
+      exception: e,
+      action_name: action_name,
+      attributes: attributes
+    )
   end
 
   # Identifiers common to every action log. IDs only - no PII.
@@ -153,7 +169,10 @@ module OtelActionLogging
   def resolve_context(context_proc)
     context_proc.call(self)
   rescue StandardError => e
-    Rails.logger.error("[user_action] context resolver raised: #{e.class}: #{e.message}")
+    LogUtil.log_error(
+      "[user_action] resolve_context: context resolver raised: #{e.class}: #{e.message}",
+      exception: e
+    )
     {}
   end
 
@@ -180,8 +199,15 @@ module OtelActionLogging
       "outcome"     => outcome,
       "error_class" => error_class,
     ).compact
-    Rails.logger.info("[user_action] #{payload.to_json}")
+    Rails.logger.info("[user_action] emit_action_log: #{action_name}", **payload)
   rescue StandardError => e
-    Rails.logger.error("[user_action] failed to emit log for #{action_name}: #{e.class}: #{e.message}")
+    LogUtil.log_error(
+      "[user_action] emit_action_log: failed to emit log for #{action_name}: #{e.class}: #{e.message}",
+      exception: e,
+      action_name: action_name,
+      outcome: outcome,
+      error_class: error_class,
+      attributes: attributes
+    )
   end
 end
