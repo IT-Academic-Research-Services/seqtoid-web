@@ -25,7 +25,7 @@ if ENV['SENTRY_DSN_BACKEND']
     config.debug = false
     # TODO: create a child logger of the Root (Ougai) logger, but with level 'info'
     config.sdk_logger.local_level = :info
-    Logging.add_filter(->(data) { data && !data[:msg]&.include?(' because traces_sampler returned 0 or false') && !data[:msg]&.include?('Sending envelope with items [sessions]  to Sentry') && data })
+    Logging.add_filter(->(data) { !data[:msg]&.include?(' because traces_sampler returned 0 or false') && !data[:msg]&.include?('Sending envelope with items [sessions]  to Sentry') })
 
     # sentry-rails auto-instruments Rack and controllers; no manual middleware
     # insert is required (raven's Raven::Rack is gone).

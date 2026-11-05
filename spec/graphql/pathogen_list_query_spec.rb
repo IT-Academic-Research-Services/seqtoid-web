@@ -52,7 +52,7 @@ RSpec.describe GraphqlController, type: :request do
 
       expected = {
         version: list_version.version,
-        updatedAt: list_version.updated_at.strftime("%Y-%m-%dT%H:%M:%S%:z"),
+        updatedAt: list_version.updated_at.iso8601,
         pathogens: pathogens_info,
         citations: list_version.fetch_citation_footnotes,
       }
@@ -85,7 +85,7 @@ RSpec.describe GraphqlController, type: :request do
 
       expected = {
         version: old_list_version.version,
-        updatedAt: old_list_version.updated_at.strftime("%Y-%m-%dT%H:%M:%S%:z"),
+        updatedAt: old_list_version.updated_at.iso8601,
         pathogens: pathogens_info,
         citations: old_list_version.fetch_citation_footnotes,
       }

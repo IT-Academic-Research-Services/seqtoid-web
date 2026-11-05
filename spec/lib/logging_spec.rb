@@ -3,8 +3,8 @@ require "rails_helper"
 require Rails.root.join("lib", "logging").to_s
 
 RSpec.describe Logging do
-  let(:now_dt) { Time.now.getlocal }
-  let(:now_dt_str) { now_dt.utc.iso8601(3) }
+  let(:now_dt) { Time.current }
+  let(:now_dt_str) { now_dt.iso8601(3) }
   let(:thread_id) { Thread.current.object_id }
   let(:message) { "This is a fake message" }
 
@@ -34,7 +34,7 @@ RSpec.describe Logging do
       expect(actual).to include(name: "rspec", level: "invalid", msg: message, time: now_dt_str)
     end
 
-    it "format_datetime() always transforms datetime to UTC" do
+    it "format_datetime() always transforms datetime to Rails configured Timezone" do
       actual = JSON.parse(custom_formatter.call("DEBUG", now_dt.utc, nil, message), symbolize_names: true)
       expect(actual).to include(name: "rspec", level: "debug", msg: message, time: now_dt_str)
 
@@ -44,12 +44,12 @@ RSpec.describe Logging do
 
     it "dump() removes unwanted fields" do
       # Filter out global [:pid, :v] and thread-local [:zip]
-      Logging.with_field_removed(:zip) do
+      Logging.with_fields_to_remove(:zip, :nonexistent) do
         actual = JSON.parse(custom_formatter.call("DEBUG", now_dt, nil, { msg: message, foo: "bar", module: "baz", zip: "zoom" }), symbolize_names: true)
         expect(actual).to include(name: "rspec", level: "debug", msg: message, time: now_dt_str, foo: "bar", module: "baz")
         expect(actual).to include(:hostname)
         # Ougai::Formatters::Bunyan only has the following default fields: [name, hostname, pid, level, time, v]
-        # And we explicitly remove [pid, v] globally, and [zip] via Logging.with_field_removed() above
+        # And we explicitly remove [pid, v] globally, and [zip] via Logging.with_fields_to_remove() above
         expect(actual).not_to include(:pid, :request_id, :thread_id, :user_id, :v, :zip)
       end
     end
@@ -80,7 +80,7 @@ RSpec.describe Logging do
     end
 
     it "logs JSON correctly, even with custom fields" do
-      Logging.with_field_removed(:foo) do
+      Logging.with_fields_to_remove(:foo) do
         logger.info({ msg: message, foo: "bar", module: "baz", zip: "zoom" })
 
         actual = JSON.parse(log_output, symbolize_names: true)
@@ -106,6 +106,13 @@ RSpec.describe Logging do
       expect(log_output).to be_blank
     end
 
+    it "Will not log if message is nil, if it has no other non-ignored fields" do
+      # :module is in Logging::@ignored, so it doesn't impact whether it will log or not
+      logger.info(nil, module: "baz")
+
+      expect(log_output).to be_blank
+    end
+
     it "Reads fields from CurrentContext" do
       request = ActionDispatch::TestRequest.create("action_dispatch.request_id" => SecureRandom.uuid)
       user = build_stubbed(:user, role: 0)
@@ -122,7 +129,7 @@ RSpec.describe Logging do
 
     it "Will not log if any of Logging::filters fails" do
       # Uses global and thread-local lists of filters
-      Logging.with_filter(->(data) { data && !data[:msg]&.include?('message we want excluded') && data }) do
+      Logging.with_filter(->(data) { !data[:msg]&.include?('message we want excluded') }) do
         logger.info("message we want excluded")
 
         expect(log_output).to be_blank
@@ -131,6 +138,38 @@ RSpec.describe Logging do
 
         actual = JSON.parse(log_output, symbolize_names: true)
         expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", thread_id: thread_id)
+        expect(actual).to include(:hostname)
+        expect(actual).not_to include(:pid, :request_id, :user_id, :v)
+      end
+    end
+
+    it "Will not log if any of Logging::filters fails with symbol keys" do
+      # Uses global and thread-local lists of filters
+      Logging.with_filter(->(data) { !data[:required_key].nil? }) do
+        logger.info(message, required_key: nil)
+
+        expect(log_output).to be_blank
+
+        logger.info(message, required_key: "my-key")
+
+        actual = JSON.parse(log_output, symbolize_names: true)
+        expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", thread_id: thread_id, required_key: "my-key")
+        expect(actual).to include(:hostname)
+        expect(actual).not_to include(:pid, :request_id, :user_id, :v)
+      end
+    end
+
+    it "Will not log if any of Logging::filters fails with string keys" do
+      # Uses global and thread-local lists of filters
+      Logging.with_filter(->(data) { !data["required_key"].nil? }) do
+        logger.info(message, "required_key": nil)
+
+        expect(log_output).to be_blank
+
+        logger.info(message, "required_key" => "my-key")
+
+        actual = JSON.parse(log_output, symbolize_names: true)
+        expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", thread_id: thread_id, required_key: "my-key")
         expect(actual).to include(:hostname)
         expect(actual).not_to include(:pid, :request_id, :user_id, :v)
       end
