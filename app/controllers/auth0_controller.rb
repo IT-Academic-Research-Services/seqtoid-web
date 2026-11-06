@@ -17,8 +17,6 @@ class Auth0Controller < ApplicationController
   MAX_TOKEN_REFRESH_IN_SECONDS = (60.minutes / 1.second).to_i
 
   AUTH0_CONNECTION_NAME = ENV["AUTH0_CONNECTION"] || "Username-Password-Authentication"
-  AUTH0_UNAUTHORIZED = "unauthorized"
-  AUTH0_LOGIN_REQUIRED = "login_required"
   # Whitelist descriptions to prevent phishing attempts.
   ERROR_EXPLANATIONS = { password_expired: "Your password has expired. Please update it by clicking Forgot Password on the sign-in page.", default: "Sorry, something went wrong when signing in. Please try again." }.freeze
 
@@ -84,10 +82,10 @@ class Auth0Controller < ApplicationController
 
     user = dev_login_user
     if user.nil?
-      return render(
+      render(
         plain: "dev_login: no seeded user found. Seed a user (e.g. #{DEV_LOGIN_EMAIL}) first.",
         status: :not_found
-      )
+      ) and return
     end
 
     # Traceability (no untraceable logins): a direct dev sign-in bypasses Auth0
@@ -116,28 +114,48 @@ class Auth0Controller < ApplicationController
 
   # Handle omniauth errors coming from Auth0.
   def omniauth_failure
-    # Error and error_description come from Auth0. Ex: unauthorized and password_expired.
-    error_type = (params["error"] || "").to_sym
-    error_code = (params["error_description"] || "").to_sym
-    unless params["error"] && params["error_description"]
+    error_type = (request.env["omniauth.error.type"] || params["error"] || "").to_sym
+    exception = request.env["omniauth.error"]
+    Rails.logger.debug("omniauth_failure.omniauth.error.type=#{error_type}")
+    Rails.logger.debug("omniauth_failure.omniauth.error=#{exception&.inspect}")
+    if exception.is_a?(OmniAuth::Strategies::OAuth2::CallbackError)
+      Rails.logger.debug("omniauth_failure.omniauth.error.error=#{exception.error}")
+      Rails.logger.debug("omniauth_failure.omniauth.error.error_reason=#{exception.error_reason}")
+      Rails.logger.debug("omniauth_failure.omniauth.error.error_uri=#{exception.error_uri}")
+    end
+    Rails.logger.debug("omniauth_failure.params=#{params.permit(:connection, :error, :error_description, :mode, :prompt, :state).to_h}")
+    Rails.logger.debug("omniauth_failure.request.env=#{request.env.inspect}")
+    unless error_type.present? && exception.present?
+      error_info = {}
+      if exception.is_a?(OmniAuth::Strategies::OAuth2::CallbackError)
+        error_info = {
+          error: exception.error,
+          error_reason: exception.error_reason,
+          error_uri: exception.error_uri,
+        }
+      end
       LogUtil.log_error(
         "omniauth_failure called with missing error or error_description.",
-        error_type: error_type,
-        error_description: error_code,
-        params: params.inspect
+        exception: exception,
+        error_type: error_type.to_s,
+        params: params.permit(:connection, :error, :error_description, :mode, :prompt, :state).to_h,
+        request_env_parameters: request.env["action_dispatch.request.parameters"],
+        request_env_path_parameters: request.env["action_dispatch.request.path_parameters"],
+        request_env_query_parameters: request.env["action_dispatch.request.query_parameters"],
+        request_env_request_parameters: request.env["action_dispatch.request.request_parameters"],
+        **error_info,
       )
     end
 
-    if error_type.present? && error_type == AUTH0_LOGIN_REQUIRED.to_sym
+    if error_type == :login_required
       # Silent login is expired, we need to logout current user
       logout
-    elsif error_type.present? && error_type == AUTH0_UNAUTHORIZED.to_sym
+    elsif error_type == :password_expired || exception&.error&.to_s == "password_expired" || exception&.error_reason&.downcase == "password_expired"
+      @message = ERROR_EXPLANATIONS[:password_expired]
+      render :omniauth_failure
+    elsif error_type == :unauthorized || exception&.error&.to_s == "unauthorized" || exception&.error_reason&.downcase == "unauthorized" # || error_type == :access_denied
       # Display 'unauthorized' errors but go to `failure` endpoint for all others.
-      @message = if ERROR_EXPLANATIONS.key?(error_code)
-                   ERROR_EXPLANATIONS[error_code]
-                 else
-                   ERROR_EXPLANATIONS[:default]
-                 end
+      @message = ERROR_EXPLANATIONS[:default]
       render :omniauth_failure
     else
       failure
