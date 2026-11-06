@@ -1,16 +1,14 @@
 <%#
-  CZID-286 — Layer 3 device / location attestation step-up page (SERVER-SIDE gate; CLIENT SDK HELD).
+  CZID-286 -- Layer 3 device / location attestation step-up page (SERVER-SIDE gate; client SDK: GeoComply).
 
   ⚠️ TODO(counsel): copy is a PLACEHOLDER with legal weight — counsel-owned. Precise-location collection is
   sensitive PII and requires consent + a DPA (design doc §10 item 7).
 
-  ⚠️ TODO(vendor) — CLIENT SDK INTEGRATION POINT (HELD): this page is where the device-location vendor's
-  frontend SDK (e.g. GeoComply PinPoint web SDK) is embedded. The SDK collects a signed device-attestation
-  token and POSTs it to `device_location_attestations_path` as `attestation_token`; the server verifies it
-  (see DeviceLocationAttestationsController#create → ExportControl::DeviceLocationProvider). Building that
-  vendor-specific frontend against an unknown SDK is deliberately HELD (standing rule) — the form below is
-  a documented placeholder so the fail-closed server verifier is exercisable now (an empty/absent token is
-  verified server-side and DENIED, which is the correct dark-mode behavior).
+  CLIENT SDK: when AppConfig::DEVICE_LOCATION_PROVIDER is "geocomply" and GeoComply is configured, the
+  page loads GeoComply's BrowserGuard SDK from GeoComply's CDN, authorizes it with a token the server signed
+  (GcHtml5.authorize), runs a check (GcHtml5.verify) and posts the signed result as `attestation_token`. The
+  server validates it (DeviceLocationAttestationsController#create -> ExportControl::DeviceLocationProvider).
+  With any other provider the token stays empty and is DENIED.
 %>
 <div class="device-location-attestation" style="max-width: 720px; margin: 64px auto; padding: 0 24px; font-family: 'Open Sans', sans-serif;">
   <h1 style="font-size: 24px; margin-bottom: 16px;">
@@ -27,21 +25,114 @@
     </p>
   </div>
 
-  <%= form_with url: device_location_attestations_path, method: :post, local: true do %>
+  <%= form_with url: device_location_attestations_path, method: :post, local: true, id: "device-location-form" do %>
     <p style="color:#57606a; font-size:13px; margin-bottom:20px;">
-      Policy version: <%= @attestation_policy_version %> &nbsp;·&nbsp; Provider: <%= @device_provider %>
+      Policy version: <%= @attestation_policy_version %> &nbsp;&middot;&nbsp; Provider: <%= @device_provider %>
     </p>
 
     <%#
-      TODO(vendor): the chosen SDK writes the signed device-attestation token into this hidden field before
-      submit. With no SDK wired, it stays empty → the server verifier fails closed (DENY).
+      The GeoComply SDK below writes its result into this field and submits. With no SDK (any other
+      provider, or GeoComply not configured) it stays empty and the server verifier fails closed (DENY).
     %>
-    <input type="hidden" name="attestation_token" value="" />
+    <input type="hidden" name="attestation_token" id="attestation-token" value="" />
 
-    <button type="submit"
+    <p id="device-location-status" style="color:#57606a; margin-bottom:16px;" aria-live="polite"></p>
+
+    <button type="submit" id="device-location-submit"
             style="background:#0969da; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:15px; cursor:pointer;">
       <%# TODO(counsel): button label %>
       Verify device location
     </button>
+  <% end %>
+
+  <% if @device_provider == "geocomply" %>
+    <% if @geocomply_cdn_id && @geocomply_auth_token %>
+      <%= stylesheet_link_tag "https://cdn.geocomply.com/#{ERB::Util.url_encode(@geocomply_cdn_id)}/gc-html5.ui.css" %>
+      <%= javascript_include_tag "https://cdn.geocomply.com/#{ERB::Util.url_encode(@geocomply_cdn_id)}/gc-html5.js" %>
+      <%= javascript_include_tag "https://cdn.geocomply.com/#{ERB::Util.url_encode(@geocomply_cdn_id)}/gc-html5.ui.js" %>
+      <script>
+        (function () {
+          var form = document.getElementById("device-location-form");
+          var tokenField = document.getElementById("attestation-token");
+          var statusEl = document.getElementById("device-location-status");
+          var button = document.getElementById("device-location-submit");
+
+          function setStatus(text) { statusEl.textContent = text; }
+          function fail(text) { button.disabled = false; setStatus(text); }
+
+          var Gc = window.GcHtml5;
+          if (!Gc) {
+            setStatus("The location check could not load. Please reload the page or contact support.");
+            return;
+          }
+
+          <% if @geocomply_staging %>
+          // Staging only: without this the SDK talks to GeoComply production and verify() fails with 672.
+          Gc.setEnvironment(Gc.ENV.STG);
+          <% end %>
+
+          var auth = Gc.authorize(<%= raw @geocomply_auth_token.to_json %>);
+          if (auth.errorCode) {
+            setStatus("The location check could not start (" + auth.errorCode + "). Please reload the page.");
+            button.disabled = true;
+            return;
+          }
+
+          // Free the SDK if the user leaves mid-check (the cancelled verify() resolves with 619).
+          window.addEventListener("pagehide", function () { Gc.abort(); });
+
+          form.addEventListener("submit", function (event) {
+            if (tokenField.value) { return; }
+            event.preventDefault();
+            // Our token is signed when this page renders, so a fresh one means reloading the page.
+            if (!Gc.isAuthorized()) {
+              setStatus("Your session for the location check expired. Reloading...");
+              window.location.reload();
+              return;
+            }
+            if (Gc.isGeolocationInProgress()) { return; }
+            if (!Gc.isActive()) {
+              setStatus("Keep this tab in focus, then try again.");
+              return;
+            }
+            button.disabled = true;
+            setStatus("Checking your location...");
+
+            // Never time out verify(): it always resolves with data or an error code.
+            // acceptNoCoordinates false: an IP-only location is not enough for export control.
+            Gc.verify({ reason: "login", acceptNoCoordinates: false }).then(function (result) {
+              if (result.data) {
+                tokenField.value = result.data;
+                setStatus("Location checked. Continuing...");
+                form.submit();
+                return;
+              }
+              var codes = Gc.ErrorCodes || {};
+              switch (result.errorCode) {
+                case codes.CLNT_ERROR_TOKEN_EXPIRED:
+                case codes.CLNT_ERROR_UNAUTHORIZED:
+                  fail("Your session for the location check expired. Please reload the page.");
+                  break;
+                case codes.CLNT_ERROR_NETWORK_CONNECTION:
+                case codes.CLNT_ERROR_SERVER_COMMUNICATION:
+                  fail("We could not reach the location service. Check your connection and try again.");
+                  break;
+                case codes.CLNT_ERROR_NO_COORDINATES:
+                  fail("Your browser did not share its location. Turn on Location Services (and Precise Location " +
+                       "for your browser), allow this site to use your location, turn on Wi-Fi, then try again.");
+                  break;
+                case codes.CLNT_ERROR_ABORTED:
+                  button.disabled = false;
+                  break;
+                default:
+                  fail("Your location could not be checked (" + result.errorCode + "). Try again or contact support.");
+              }
+            });
+          });
+        })();
+      </script>
+    <% else %>
+      <p style="color:#cf222e;">Device location checking is not configured. Contact support.</p>
+    <% end %>
   <% end %>
 </div>
