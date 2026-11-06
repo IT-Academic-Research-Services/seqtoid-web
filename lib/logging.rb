@@ -79,6 +79,7 @@ module Logging
     data[:user_id] = data[:user_id].presence || Logging::CurrentContext.user&.id
     data[:environment] = data[:environment].presence || Rails.env
     data[:thread_id] = data[:thread_id].presence || Thread.current.object_id
+    data[:thread_name] = data[:thread_name].presence || Thread.current.name.presence
 
     current_span_context = OpenTelemetry::Trace.current_span&.context
     if current_span_context&.valid?
@@ -182,7 +183,6 @@ module Logging
         # As well as OmniAuth
         OmniAuth.config.logger = core_logger
       end
-      ActiveRecord::Migration.verbose = false
     end
   end
 
