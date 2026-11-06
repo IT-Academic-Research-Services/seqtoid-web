@@ -419,7 +419,6 @@ RSpec.describe "Samples (coverage3) request", type: :request do
       rows = CSV.parse(response.body, headers: true)
       expect(rows.pluck("tax_level")).to eq(["genus", "species"])
       expect(rows.pluck("nt_rpm")).to eq(["19897461153.095", "999915.088732275"])
-
     end
   end
 
