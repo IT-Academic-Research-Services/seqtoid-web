@@ -21,6 +21,7 @@ interface SampleViewHeaderProps {
   backgroundId: number | null;
   currentRun?: WorkflowRun | PipelineRun | null;
   currentTab: CurrentTabSample;
+  /* Pass the default CSV URL through so the filtered export uses the same data source. */
   getDownloadReportTableWithAppliedFiltersLink: (
     reportCsvUrl: string,
   ) => Promise<string>;

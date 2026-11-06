@@ -21,6 +21,7 @@ export interface MngsDownloadDropdownProps {
   readyToDownload?: boolean;
   backgroundId: number | null;
   className?: string;
+  /* Fetch and filter the canonical report CSV before starting this download. */
   getDownloadReportTableWithAppliedFiltersLink: (
     reportCsvUrl: string,
   ) => Promise<string>;
@@ -43,6 +44,7 @@ export const MngsDownloadDropdown = ({
   const trackEvent = useTrackEvent();
   if (!readyToDownload) return null;
 
+  /* Share endpoint parameters between both report-table download options. */
   const getReportCsvUrl = () => {
     const resParams = {
       ...(backgroundId && { background_id: backgroundId }),
@@ -72,6 +74,7 @@ export const MngsDownloadDropdown = ({
         isNull(backgroundId) &&
           sample.initial_workflow !== WorkflowType.LONG_READ_MNGS &&
           renderNoBackgroundSelectedNotification();
+        /* Apply UI row filtering to the same report payload as the default option. */
         getDownloadReportTableWithAppliedFiltersLink(getReportCsvUrl())
           .then(downloadUrl =>
             triggerFileDownload({

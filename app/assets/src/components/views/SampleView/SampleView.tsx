@@ -1391,6 +1391,10 @@ const SampleViewComponent = ({
     setView(view);
   };
 
+  /*
+   * Reuse the default report CSV as the source of truth, then remove rows
+   * excluded by the UI filters and append the selected-filter description.
+   */
   const getDownloadReportTableWithAppliedFiltersLink = async (
     reportCsvUrl: string,
   ) => {

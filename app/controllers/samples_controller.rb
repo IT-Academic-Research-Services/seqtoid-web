@@ -996,6 +996,10 @@ class SamplesController < ApplicationController
     }, status: :service_unavailable
   end
 
+=begin
+Present readable tax-level names in SampleView downloads while leaving the
+shared report service output unchanged for its other consumers.
+=end
   # GET /samples/1/report_csv
   def report_csv
     pipeline_run = select_pipeline_run(@sample, params[:pipeline_version])

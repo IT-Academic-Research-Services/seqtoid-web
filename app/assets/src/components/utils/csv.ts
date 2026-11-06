@@ -56,6 +56,10 @@ export const parseCSVBlob = (blob: string) => {
   };
 };
 
+/*
+ * Filter rows from the canonical server-generated CSV by the taxa currently
+ * retained by the report UI, preserving the server's original cell values.
+ */
 export const filterMngsReportCsvByTaxa = (
   reportCsv: string,
   filteredReportData: $TSFixMe[],

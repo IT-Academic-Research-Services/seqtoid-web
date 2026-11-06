@@ -26,6 +26,7 @@ describe("utils/csv", () => {
     });
   });
 
+  /* Verify row filtering preserves canonical values and removes only unmatched taxa. */
   describe("filterMngsReportCsvByTaxa", () => {
     it("keeps canonical CSV values for matching genus/species IDs only", () => {
       const reportCsv =

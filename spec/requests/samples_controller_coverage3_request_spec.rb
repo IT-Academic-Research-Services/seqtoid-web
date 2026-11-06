@@ -403,6 +403,10 @@ RSpec.describe "Samples (coverage3) request", type: :request do
     end
   end
 
+=begin
+The endpoint should label tax levels for users without changing any source
+metric values in the report CSV.
+=end
   describe "GET /samples/:id/report_csv" do
     before { sign_in @joe }
 

@@ -13,6 +13,7 @@ export interface PrimaryHeaderControlsProps {
   backgroundId: number | null;
   currentRun?: WorkflowRun | PipelineRun | null;
   currentTab: CurrentTabSample;
+  /* Keep the canonical CSV URL available to the filtered-download action. */
   getDownloadReportTableWithAppliedFiltersLink: (
     reportCsvUrl: string,
   ) => Promise<string>;
