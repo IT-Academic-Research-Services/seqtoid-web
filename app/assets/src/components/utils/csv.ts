@@ -6,13 +6,11 @@ import {
   get,
   getOr,
   has,
-  head,
   isEmpty,
   isNumber,
   isString,
   map,
   snakeCase,
-  tail,
 } from "lodash/fp";
 import Papa from "papaparse";
 import { CATEGORIES } from "~/components/ui/labels/PathogenLabel";
@@ -46,13 +44,13 @@ import { IdMap } from "./objectUtil";
 
 // Assumes that the CSV has headers.
 export const parseCSVBlob = (blob: string) => {
-  const csvData = Papa.parse(blob, {
+  const { data: csvData } = Papa.parse<string[]>(blob, {
     skipEmptyLines: true,
-  }).data;
+  });
 
   return {
-    headers: head(csvData),
-    rows: tail(csvData),
+    headers: csvData[0] || [],
+    rows: csvData.slice(1),
   };
 };
 
