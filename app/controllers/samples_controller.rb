@@ -996,10 +996,6 @@ class SamplesController < ApplicationController
     }, status: :service_unavailable
   end
 
-=begin
-Present readable tax-level names in SampleView downloads while leaving the
-shared report service output unchanged for its other consumers.
-=end
   # GET /samples/1/report_csv
   def report_csv
     pipeline_run = select_pipeline_run(@sample, params[:pipeline_version])
@@ -1008,11 +1004,12 @@ shared report service output unchanged for its other consumers.
     report_rows = CSV.parse(@report_csv, headers: true)
     if report_rows.headers&.include?("tax_level")
       report_rows.each do |row|
-        row["tax_level"] = case row["tax_level"]
-                            when TaxonCount::TAX_LEVEL_GENUS.to_s then "genus"
-                            when TaxonCount::TAX_LEVEL_SPECIES.to_s then "species"
-                            else row["tax_level"]
-                            end
+        row["tax_level"] =
+          case row["tax_level"]
+          when TaxonCount::TAX_LEVEL_GENUS.to_s then "genus"
+          when TaxonCount::TAX_LEVEL_SPECIES.to_s then "species"
+          else row["tax_level"]
+          end
       end
       @report_csv = CSV.generate do |csv|
         csv << report_rows.headers

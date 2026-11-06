@@ -403,10 +403,6 @@ RSpec.describe "Samples (coverage3) request", type: :request do
     end
   end
 
-=begin
-The endpoint should label tax levels for users without changing any source
-metric values in the report CSV.
-=end
   describe "GET /samples/:id/report_csv" do
     before { sign_in @joe }
 
@@ -414,15 +410,16 @@ metric values in the report CSV.
       sample = sample_for(@joe)
       create(:pipeline_run, sample: sample)
       allow(PipelineReportService).to receive(:call).and_return(
-        "tax_id,tax_level,nt_rpm\n570,2,19897461153.095\n573,1,999915.088732275\n",
+        "tax_id,tax_level,nt_rpm\n570,2,19897461153.095\n573,1,999915.088732275\n"
       )
 
       get "/samples/#{sample.id}/report_csv"
 
       expect(response).to have_http_status(:ok)
       rows = CSV.parse(response.body, headers: true)
-      expect(rows.map { |row| row["tax_level"] }).to eq(["genus", "species"])
-      expect(rows.map { |row| row["nt_rpm"] }).to eq(["19897461153.095", "999915.088732275"])
+      expect(rows.pluck("tax_level")).to eq(["genus", "species"])
+      expect(rows.pluck("nt_rpm")).to eq(["19897461153.095", "999915.088732275"])
+
     end
   end
 

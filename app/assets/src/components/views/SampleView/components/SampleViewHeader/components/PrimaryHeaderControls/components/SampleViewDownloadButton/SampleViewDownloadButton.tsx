@@ -13,7 +13,6 @@ interface SampleViewDownloadButtonProps {
   currentRun: WorkflowRun | PipelineRun;
   view: string;
   hasAppliedFilters: boolean;
-  /* Forward the same report CSV URL used by the unfiltered download. */
   getDownloadReportTableWithAppliedFiltersLink: (
     reportCsvUrl: string,
   ) => Promise<string>;
