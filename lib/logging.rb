@@ -172,18 +172,6 @@ module Logging
     # Suppress messages like: ActionController::RoutingError (No route matches [GET] "..."):
     # config.lograge.ignore_actions = %w[HealthCheck::HealthCheckController#index Rails::HealthController#show ErrorsController#not_found]
     config.lograge.ignore_actions = %w[HealthCheck::HealthCheckController#index Rails::HealthController#show]
-    ActiveRecord::Base.logger = config.logger
-
-    config.after_initialize do
-      if Rails.logger
-        # Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
-        core_logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
-        # Also update ActiveRecord's dedicated logger just to be completely safe
-        ActiveRecord::Base.logger = core_logger
-        # As well as OmniAuth
-        OmniAuth.config.logger = core_logger
-      end
-    end
   end
 
   def self.capture_console(**kwargs)
@@ -201,14 +189,12 @@ module Logging
       Thread.current[:stderr_proxy] = old_stderr
     end
 
-    stdout_io.rewind
-    stderr_io.rewind
     # TODO: line.start_with?("{") is _very_ JSON specific, so if the logger ever stops being JSON (Ougai),
     #       then already json-formatted text will be passed through a Rails.logger again
-    (stdout_io.read || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
+    (stdout_io.string || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
       line.start_with?("{") ? puts(line) : Rails.logger.info(line, stream: "stdout", **kwargs) # rubocop:disable Rails/Output
     end
-    (stderr_io.read || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
+    (stderr_io.string || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
       line.start_with?("{") ? puts(line) : Rails.logger.warn(line, stream: "stderr", **kwargs) # rubocop:disable Rails/Output
     end
   end

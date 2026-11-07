@@ -73,3 +73,6 @@ module ActiveRecord::Tasks::DatabaseTasks
     end
   end
 end
+
+# Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
+ActiveRecord::Base.logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
