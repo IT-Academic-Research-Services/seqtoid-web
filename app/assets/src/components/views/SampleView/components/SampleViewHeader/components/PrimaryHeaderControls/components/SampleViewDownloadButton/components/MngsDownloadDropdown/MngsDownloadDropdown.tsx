@@ -83,10 +83,9 @@ export const MngsDownloadDropdown = ({
           )
           .catch(error =>
             logError({
-              message:
-                "SampleViewControls/DownloadDropdown: Failed to download filtered report CSV",
-              details: { error },
-            }),
+              message: "SampleViewControls/DownloadDropdown: Failed to download filtered report CSV",
+              exception: error
+            })
           );
         break;
       case "taxon_svg":
