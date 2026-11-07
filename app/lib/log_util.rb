@@ -7,7 +7,7 @@ class LogUtil
         message,
         exception: exception&.message,
         backtrace: exception&.backtrace,
-        **details
+        **details.compact
       )
     rescue StandardError
       Rails.logger.error("#{message} #{exception&.inspect} #{details.inspect}")
@@ -46,7 +46,7 @@ class LogUtil
     # A logging helper must never raise and disturb its caller. Guard the JSON encode
     # (a detail value could be non-serializable) and fall back to inspect.
     begin
-      Rails.logger.info(message, **details)
+      Rails.logger.info(message, **details.compact)
     rescue StandardError
       Rails.logger.info("#{message} #{details.inspect}")
     end
