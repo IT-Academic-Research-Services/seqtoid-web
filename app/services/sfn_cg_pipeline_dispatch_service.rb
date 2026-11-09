@@ -344,7 +344,7 @@ class SfnCgPipelineDispatchService
   end
 
   def dispatch(sfn_input_json)
-    sfn_name = "idseq-#{Rails.env}-#{@sample.project_id}-#{@sample.id}-#{@workflow_run.id}-#{Time.zone.now.strftime('%Y%m%d%H%M%S')}"
+    sfn_name = "#{SfnExecutionName.prefix("idseq-#{Rails.env}")}-#{@sample.project_id}-#{@sample.id}-#{@workflow_run.id}-#{Time.zone.now.strftime('%Y%m%d%H%M%S')}"
     sfn_input = JSON.dump(sfn_input_json)
     resp = AwsClient[:states].start_execution(state_machine_arn: @sfn_arn,
                                               name: sfn_name,
