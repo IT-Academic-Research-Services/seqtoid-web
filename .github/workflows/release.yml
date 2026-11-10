@@ -1,5 +1,21 @@
 name: release
 
+# HOW TO USE (Actions -> release -> Run workflow; pick an `operation`):
+#   ship         promote to `target` (staging | env-prod). Needs `reason`. Waits for the target's
+#                GitHub Environment approval. Everything below this block describes ship.
+#   cut-rc       cut a release candidate from what dev runs (`rc` = optional id). Pins dev to it.
+#   rc-signoff   sign off RC `rc` as you (--by <you>).
+#   rc-reject    reject RC `rc`; needs `reason`.
+#   lease-take   hold dev on build `tag` (sha-<commit>) for `hours` (max 8); needs `ticket`.
+#   lease-renew  extend your lease by `hours` from now.
+#   lease-end    release dev. The lease reaper then moves dev to the newest main build (<= 10 min).
+#   lease-status show who holds dev and until when.
+# Lease ops act as YOU (the person who started the run) and need you on repo var DEV_LEASE_HOLDERS
+# (the CLI also enforces its own allowlist and the 8h cap). The non-ship ops only open/merge PRs on
+# seqtoid-gitops / cypherid-web-infra with the CI app token: no AWS identity, no staging/prod
+# approval, and they never deploy to staging or env-prod. Same commands work from a laptop:
+# `bin/release <op> ...` in seqtoid-gitops.
+
 # The single release lane: promote one immutable image digest to an environment.
 #
 # The release logic lives in IT-Academic-Research-Services/seqtoid-gitops (the environment
@@ -31,26 +47,45 @@ name: release
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: What to do (see HOW TO USE at the top of release.yml)
+        type: choice
+        options: [ship, cut-rc, rc-signoff, rc-reject, lease-take, lease-renew, lease-end, lease-status]
+        default: ship
       target:
-        description: Environment to release to
+        description: "ship: environment to release to (ignored by the other operations)"
         type: choice
         options: [staging, env-prod]
         required: true
       reason:
-        description: Why this release (recorded on the values PR)
-        required: true
+        description: "ship: why this release (recorded on the values PR; required). rc-reject: why (required). lease-take: optional note"
+        required: false
+        default: ""
       digest:
         description: "Optional: ship this build (sha256:...) from the source env's registry instead of what the source env runs"
         required: false
         default: ""
       tag:
-        description: "With digest: its sha-<commit> tag"
+        description: "ship with digest: its sha-<commit> tag. lease-take: the sha-<commit> build to hold dev on"
         required: false
         default: ""
       allow_older:
         description: "Allow a build that is behind or diverged from the target (rollback / curated release branch)"
         type: boolean
         default: false
+      rc:
+        description: "cut-rc: optional RC id. rc-signoff / rc-reject: the RC id (required)"
+        required: false
+        default: ""
+      hours:
+        description: "lease-take / lease-renew: hours (max 8)"
+        type: choice
+        options: ["1", "2", "3", "4", "5", "6", "7", "8"]
+        default: "4"
+      ticket:
+        description: "lease-take: the ticket you are testing (required)"
+        required: false
+        default: ""
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -59,12 +94,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.target || 'staging' }}
+  # ship keeps its per-target group; every other operation shares one group so dev-pin / RC writes
+  # serialize without queueing behind a ship that is waiting for approval.
+  group: release-${{ (inputs.operation || 'ship') == 'ship' && (inputs.target || 'staging') || 'ops' }}
   cancel-in-progress: false
 
 jobs:
   plan:
     name: Plan (resolve what would ship + preflight)
+    if: ${{ (inputs.operation || 'ship') == 'ship' }}
     runs-on: ubuntu-24.04
     outputs:
       digest: ${{ steps.resolve.outputs.digest }}
@@ -76,7 +114,13 @@ jobs:
       IN_DIGEST: ${{ inputs.digest }}
       IN_TAG: ${{ inputs.tag }}
       IN_ALLOW_OLDER: ${{ inputs.allow_older }}
+      IN_REASON: ${{ inputs.reason }}
     steps:
+      - name: Require a reason
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          [ -n "${IN_REASON// /}" ] || { echo "::error::ship needs a reason (recorded on the values PR)."; exit 1; }
+
       - name: Generate app token
         id: app_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -150,7 +194,7 @@ jobs:
   ship:
     name: Ship to ${{ inputs.target }}
     needs: plan
-    if: ${{ github.event_name == 'workflow_dispatch' && needs.plan.outputs.shippable == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'ship' && needs.plan.outputs.shippable == 'true' }}
     runs-on: ubuntu-24.04
     # The approval gate, and the OIDC identity the org allowlists for this account -- the target's
     # GitHub Environment from the registry (staging -> `staging`, env-prod -> `prod`).
@@ -363,3 +407,105 @@ jobs:
           else
             echo "### Sentry source-map step: \`${{ steps.sourcemaps.outcome }}\`" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # Every non-ship operation. No GitHub Environment (no staging/prod approval) and no AWS identity:
+  # these only record RCs in seqtoid-gitops and write the dev pin in cypherid-web-infra, by PR, with
+  # the CI app token -- the same token ship uses for its values PR.
+  operate:
+    name: ${{ inputs.operation }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation != 'ship' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      OP: ${{ inputs.operation }}
+      # The person who started THIS run (a re-run by someone else acts as them, not the original).
+      ACTOR: ${{ github.triggering_actor }}
+      LEASE_HOLDERS: ${{ vars.DEV_LEASE_HOLDERS }}
+      IN_RC: ${{ inputs.rc }}
+      IN_TAG: ${{ inputs.tag }}
+      IN_HOURS: ${{ inputs.hours }}
+      IN_TICKET: ${{ inputs.ticket }}
+      IN_REASON: ${{ inputs.reason }}
+    steps:
+      - name: Validate inputs and build the command (fail fast)
+        run: |
+          set -euo pipefail
+          die() { echo "::error::${OP}: $*"; exit 1; }
+          need_rc() { [[ "${IN_RC}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "set rc to the RC id (letters, digits, . _ -)"; }
+          need_holder() {
+            # Fail-closed: nobody may hold dev until DEV_LEASE_HOLDERS lists them. GitHub logins are
+            # case-insensitive. The CLI enforces its own allowlist as well; this is the early, clear no.
+            [ -n "${LEASE_HOLDERS// /}" ] || die "repo variable DEV_LEASE_HOLDERS is not set, so nobody may lease dev yet."
+            local me ok=""
+            me="$(tr '[:upper:]' '[:lower:]' <<<"${ACTOR}")"
+            for h in $(tr '[:upper:],' '[:lower:] ' <<<"${LEASE_HOLDERS}"); do [ "$h" = "$me" ] && ok=1; done
+            [ -n "$ok" ] || die "${ACTOR} is not on DEV_LEASE_HOLDERS (${LEASE_HOLDERS}); ask Tom to add you."
+          }
+          need_hours() { [[ "${IN_HOURS}" =~ ^[1-8]$ ]] || die "hours must be 1-8"; }
+          case "$OP" in
+            cut-rc)
+              cmd=(cut-rc --from dev)
+              if [ -n "${IN_RC}" ]; then need_rc; cmd+=(--id "${IN_RC}"); fi ;;
+            rc-signoff)
+              need_rc; cmd=(rc signoff --rc "${IN_RC}" --by "${ACTOR}") ;;
+            rc-reject)
+              need_rc
+              [ -n "${IN_REASON// /}" ] || die "set reason (why the RC is rejected)"
+              cmd=(rc reject --rc "${IN_RC}" --reason "${IN_REASON}") ;;
+            lease-take)
+              need_holder; need_hours
+              [[ "${IN_TAG}" =~ ^sha-[0-9a-f]{7,40}$ ]] || die "set tag to the sha-<commit> build to hold dev on"
+              [[ "${IN_TICKET}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$ ]] || die "set ticket (e.g. SMP-1234 or a URL)"
+              cmd=(lease take --env dev --tag "${IN_TAG}" --hours "${IN_HOURS}" --holder "${ACTOR}" --ticket "${IN_TICKET}")
+              if [ -n "${IN_REASON// /}" ]; then cmd+=(--reason "${IN_REASON}"); fi ;;
+            lease-renew)
+              need_holder; need_hours
+              cmd=(lease renew --hours "${IN_HOURS}" --holder "${ACTOR}") ;;
+            lease-end)
+              need_holder; cmd=(lease end --holder "${ACTOR}") ;;
+            lease-status)
+              cmd=(lease status) ;;
+            *) die "unknown operation" ;;
+          esac
+          # NUL-separated so free text (reason) stays one argument whatever it contains.
+          printf '%s\0' "${cmd[@]}" > op.args
+          printf 'bin/release'; printf ' %q' "${cmd[@]}"; echo
+
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pip install -q -r _gitops/requirements.txt
+          mapfile -d '' -t cmd < op.args
+          status=0
+          _gitops/bin/release "${cmd[@]}" > out.txt 2>&1 || status=$?
+          cat out.txt
+          {
+            echo "### release ${OP} (by ${ACTOR})"
+            echo '```'
+            cat out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
