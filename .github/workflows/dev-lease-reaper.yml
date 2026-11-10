@@ -1,6 +1,6 @@
 name: dev-lease-reaper
 
-# Deploy lanes: keeps the dev lease honest. Every 10 minutes (and on demand):
+# Deploy lanes: keeps the dev lease honest. Every 15 minutes (and on demand):
 #
 #   1. reap     -- `bin/release lease reap` (seqtoid-gitops) ends a lease past its expires_at and
 #                  clears the dev pin (cypherid-web-infra deploy/argocd/values/seqtoid-web/dev-pin.yaml).
@@ -13,14 +13,14 @@ name: dev-lease-reaper
 #                  dev returns to main after `lease end`, a reap, or the end of an RC window: the
 #                  advance skipped builds while pinned, and nothing else would move dev until the next
 #                  merge. Consequence: an unpinned dev.yaml held on an older build by hand is moved
-#                  forward within 10 minutes -- hold dev with `lease-take` (release.yml) instead.
+#                  forward within 15 minutes -- hold dev with `lease-take` (release.yml) instead.
 #
 # Identities: the CI app token (GH_ACTIONS_HELPER_*) for seqtoid-gitops + cypherid-web-infra; this
 # run's GITHUB_TOKEN (actions: write) to list runs and dispatch gitops-advance-dev. No AWS identity.
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
