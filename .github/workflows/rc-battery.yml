@@ -1,0 +1,284 @@
+name: rc-battery (release-candidate test battery)
+
+# Runs every required release-candidate check against dev while dev is pinned to the RC, and
+# records each result on the RC with seqtoid-gitops' `bin/release rc record-check`. An RC goes to
+# staging only when every required check is `pass` and a second person signs off; that gate lives
+# in seqtoid-gitops, this workflow only feeds it.
+#
+# The legs REUSE the nightly regime's tiers (the same reusable workflows nightly-full-regime.yml
+# calls), at the RC's source commit, with the E2E and pipeline legs ON regardless of the NIGHTLY_*
+# vars. Required check -> leg:
+#   browser_e2e          e2e-automation.yml against dev (gauntlet config + base-url)   REAL
+#   pipeline_e2e         pipeline-aupr.yml (seqtoid-workflows viral benchmark)          REAL, proxy*
+#   aupr                 baseline-tolerance compare                                     NOT BUILT
+#   contract_api         contract-api.yml                                               REAL
+#   data_integrity       data-integrity.yml                                             REAL
+#   dast                 nightly dast_zap is a stub                                     NOT BUILT
+#   migration_rehearsal  (follow-up PR)                                                 NOT BUILT
+#   error_budget         (follow-up PR)                                                 NOT BUILT
+#   smoke_gate           dev serves the RC commit -> pending (no CI read of Argo)      PARTIAL
+#   cutover_check        same; dev also has postCutoverCheck disabled                   PARTIAL
+# * pipeline_e2e runs seqtoid-workflows@integration's benchmark in a runner; it does not exercise
+#   the RC's deployed pipeline on dev.
+# A leg that is not built records `fail` ("not implemented"), never `pass`: an RC must not go green
+# on a stub. Missing configuration records `fail` ("not configured").
+#
+# The RC record (`bin/release rc show --latest --json`) is read by scripts/rc-battery/rc-context.sh;
+# see that file for the fields used.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_id:
+        description: "RC to test (e.g. rc-2026.11.10). Must be the latest RC and in state vetting."
+        required: true
+  schedule:
+    # Tuesday 20:00 America/Los_Angeles. GitHub cron is UTC with no DST, so both twins are listed:
+    # 03:00 UTC Wed = 20:00 PDT (Mar-Nov), 04:00 UTC Wed = 20:00 PST (Nov-Mar). The `resolve` job
+    # keeps only the twin that matches LA's current UTC offset.
+    - cron: '0 3 * * 3'
+    - cron: '0 4 * * 3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc-battery
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve the RC under vetting
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.rc.outputs.run }}
+      rc_id: ${{ steps.rc.outputs.rc_id }}
+      digest: ${{ steps.rc.outputs.digest }}
+      tag: ${{ steps.rc.outputs.tag }}
+      commit: ${{ steps.sha.outputs.commit }}
+      commit8: ${{ steps.sha.outputs.commit8 }}
+      cut_at: ${{ steps.rc.outputs.cut_at }}
+      repository: ${{ steps.rc.outputs.repository }}
+    steps:
+      - name: Keep only the schedule twin for LA's current offset
+        id: when
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          go=true
+          if [ "$EVENT" = "schedule" ]; then
+            want='0 4 * * 3'
+            if [ "$(TZ=America/Los_Angeles date +%z)" = "-0700" ]; then want='0 3 * * 3'; fi
+            if [ "$SCHEDULE" != "$want" ]; then
+              go=false
+              echo "Cron '${SCHEDULE}' is the DST twin; '${want}' is Tuesday 20:00 in LA now."
+            fi
+          fi
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        if: ${{ steps.when.outputs.go == 'true' }}
+
+      - name: Generate app token
+        id: app_token
+        if: ${{ steps.when.outputs.go == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        if: ${{ steps.when.outputs.go == 'true' }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        if: ${{ steps.when.outputs.go == 'true' }}
+        with:
+          python-version: "3.12"
+
+      - name: Read the RC
+        id: rc
+        if: ${{ steps.when.outputs.go == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          WANT: ${{ inputs.rc_id }}
+        run: |
+          set -euo pipefail
+          pip install -q -r _gitops/requirements.txt
+          _gitops/bin/release rc show --latest --json > rc.json
+          scripts/rc-battery/rc-context.sh rc.json "${WANT:-}" | tee -a "$GITHUB_OUTPUT"
+          if [ -n "${WANT:-}" ] && grep -q '^run=false' "$GITHUB_OUTPUT"; then
+            echo "::error::Asked to test ${WANT}, which is not the latest RC in state vetting (see above)."
+            exit 1
+          fi
+
+      - name: Resolve the RC's full source commit
+        id: sha
+        if: ${{ steps.rc.outputs.run == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHORT: ${{ steps.rc.outputs.commit }}
+          RC_ID: ${{ steps.rc.outputs.rc_id }}
+        run: |
+          set -euo pipefail
+          full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHORT}" --jq .sha)"
+          echo "commit=${full}" >> "$GITHUB_OUTPUT"
+          echo "commit8=${full:0:8}" >> "$GITHUB_OUTPUT"
+          echo "### Testing ${RC_ID} (commit \`${full:0:8}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- reused nightly tiers, at the RC's commit -----------------------------------------------
+
+  browser_e2e:
+    name: browser_e2e
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/e2e-automation.yml
+    permissions:
+      contents: read
+    with:
+      node-environment: gauntlet
+      base-url: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
+      test-category: ${{ vars.RC_E2E_CATEGORY || 'smoke' }}
+      should-run-with-feature-flags: false
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  pipeline_e2e:
+    name: pipeline_e2e
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/pipeline-aupr.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  contract_api:
+    name: contract_api
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/contract-api.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  data_integrity:
+    name: data_integrity
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/data-integrity.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  # ---- RC-only legs ----------------------------------------------------------------------------
+
+  rollout:
+    name: smoke_gate + cutover_check
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      status: ${{ steps.serve.outputs.status }}
+      reason: ${{ steps.serve.outputs.reason }}
+    steps:
+      # No workflow can read the dev Argo Rollout's analysis results today (no cluster read path
+      # from CI). What CI CAN see is whether dev serves the RC: the PreSync smoke gate blocks a
+      # failing image from ever serving, and an aborted rollout puts the previous build back. So a
+      # mismatch is a real `fail`; a match is only `pending` until the rollout result is readable.
+      - name: Is dev serving the RC commit?
+        id: serve
+        env:
+          BASE: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
+          WANT: ${{ needs.resolve.outputs.commit8 }}
+        run: |
+          set -uo pipefail
+          page="$(mktemp)"
+          code=$(curl -s -o "$page" -w '%{http_code}' --max-time 15 "${BASE}/" || echo 000)
+          served="$(sed -n 's/.*GIT_RELEASE_SHA = "\([0-9a-f]*\)".*/\1/p' "$page" | head -n1)"
+          if [ "$code" = "200" ] && [ "$served" = "$WANT" ]; then
+            s=pending; r="dev serves the RC commit ${WANT}; the Argo rollout analysis result is not readable from CI -- confirm in Argo CD"
+          else
+            s=fail; r="dev answered HTTP ${code} serving '${served:-unknown}', not the RC commit ${WANT}: the rollout did not complete or was rolled back"
+          fi
+          { echo "status=$s"; echo "reason=$r"; } >> "$GITHUB_OUTPUT"
+          echo "$s: $r"
+          [ "$s" != "fail" ]
+
+  # ---- record ----------------------------------------------------------------------------------
+
+  record:
+    name: Record results on the RC
+    needs: [resolve, browser_e2e, pipeline_e2e, contract_api, data_integrity, rollout]
+    if: ${{ always() && needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: record-check for every required check
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          RELEASE: _gitops/bin/release
+          RC_ID: ${{ needs.resolve.outputs.rc_id }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RC_E2E_CATEGORY: ${{ vars.RC_E2E_CATEGORY || 'smoke' }}
+          BROWSER: ${{ needs.browser_e2e.result }}
+          PIPELINE: ${{ needs.pipeline_e2e.result }}
+          CONTRACT: ${{ needs.contract_api.result }}
+          DATA: ${{ needs.data_integrity.result }}
+          RO_S: ${{ needs.rollout.outputs.status }}
+          RO_R: ${{ needs.rollout.outputs.reason }}
+          RO_JOB: ${{ needs.rollout.result }}
+        run: |
+          set -uo pipefail
+          pip install -q -r _gitops/requirements.txt
+          { echo "### ${RC_ID}: battery results"; echo "| check | status | note |"; echo "| --- | --- | --- |"; } >> "$GITHUB_STEP_SUMMARY"
+          errors=0; red=0
+          rec() {
+            [ "$2" = "pass" ] || red=1
+            scripts/rc-battery/record.sh "$@" || { echo "::error::record-check $1 failed"; errors=1; }
+          }
+          job() { if [ "$2" = "success" ]; then rec "$1" pass "$URL" "$3"; else rec "$1" fail "$URL" "job result: ${2:-none}"; fi; }
+          leg() { if [ -n "$2" ]; then rec "$1" "$2" "$URL" "$3"; else rec "$1" fail "$URL" "leg did not report (job result: ${4:-none})"; fi; }
+
+          job browser_e2e "$BROWSER" "Playwright ${RC_E2E_CATEGORY} suite against dev"
+          job pipeline_e2e "$PIPELINE" "seqtoid-workflows viral benchmark (in-runner; not dev's deployed pipeline)"
+          rec aupr fail "$URL" "not implemented: compare AUPR to the last released baseline within tolerance (pipeline_e2e floor-only gate: ${PIPELINE})"
+          job contract_api "$CONTRACT" ""
+          job data_integrity "$DATA" ""
+          rec dast fail "$URL" "not implemented: OWASP ZAP leg is a stub in nightly-full-regime"
+          rec migration_rehearsal fail "$URL" "not implemented yet in this battery"
+          rec error_budget fail "$URL" "not implemented yet in this battery"
+          leg smoke_gate "$RO_S" "$RO_R" "$RO_JOB"
+          cut_note="$RO_R; postCutoverCheck is not enabled on dev"
+          leg cutover_check "$RO_S" "${RO_S:+$cut_note}" "$RO_JOB"
+
+          [ "$errors" -eq 0 ] || exit 1
+          if [ "$red" -ne 0 ]; then echo "::error::${RC_ID} is not green: at least one required check is not pass (see summary)."; exit 1; fi
