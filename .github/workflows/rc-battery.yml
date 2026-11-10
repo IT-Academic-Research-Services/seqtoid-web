@@ -15,7 +15,7 @@ name: rc-battery (release-candidate test battery)
 #                        result + report digest (scripts/rc-battery/aupr_gate.py)       CronJob + role
 #   contract_api         contract-api.yml                                               REAL
 #   data_integrity       data-integrity.yml                                             REAL
-#   dast                 nightly dast_zap is a stub                                     NOT BUILT
+#   dast                 dast-zap.yml (OWASP ZAP) against dev at the RC commit          REAL
 #   migration_rehearsal  RC image: db:migrate:with_data on a restored env-prod copy     REAL, needs DB
 #   error_budget         Sentry new issues + dev ALB 5xx rate since the cut             REAL, needs config
 #   smoke_gate           dev serves the RC commit -> pending (no CI read of Argo)      PARTIAL
@@ -180,6 +180,20 @@ jobs:
     permissions:
       contents: read
     with:
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  dast:
+    # OWASP ZAP against dev while it serves the RC. dast-zap.yml returns result (pass|fail) and a
+    # one-line summary, and uploads the HTML/JSON report as an artifact of this run.
+    name: dast
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/dast-zap.yml
+    permissions:
+      contents: read
+    with:
+      target_url: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
       ref: ${{ needs.resolve.outputs.commit }}
     secrets: inherit
 
@@ -516,7 +530,7 @@ jobs:
 
   record:
     name: Record results on the RC
-    needs: [resolve, browser_e2e, dev_benchmark, contract_api, data_integrity, migration_rehearsal, error_budget, rollout]
+    needs: [resolve, browser_e2e, dev_benchmark, contract_api, data_integrity, dast, migration_rehearsal, error_budget, rollout]
     if: ${{ always() && needs.resolve.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -553,6 +567,9 @@ jobs:
           BENCH_JOB: ${{ needs.dev_benchmark.result }}
           CONTRACT: ${{ needs.contract_api.result }}
           DATA: ${{ needs.data_integrity.result }}
+          DAST_RES: ${{ needs.dast.outputs.result }}
+          DAST_SUM: ${{ needs.dast.outputs.summary }}
+          DAST_JOB: ${{ needs.dast.result }}
           MIG_S: ${{ needs.migration_rehearsal.outputs.status }}
           MIG_R: ${{ needs.migration_rehearsal.outputs.reason }}
           MIG_JOB: ${{ needs.migration_rehearsal.result }}
@@ -579,7 +596,10 @@ jobs:
           leg aupr "$AU_S" "$AU_R" "$BENCH_JOB"
           job contract_api "$CONTRACT" ""
           job data_integrity "$DATA" ""
-          rec dast fail "$URL" "not implemented: OWASP ZAP leg is a stub in nightly-full-regime"
+          case "$DAST_RES" in
+            pass|fail) rec dast "$DAST_RES" "$URL" "OWASP ZAP vs dev: ${DAST_SUM}" ;;
+            *) rec dast fail "$URL" "ZAP leg reported '${DAST_RES:-nothing}' (job result: ${DAST_JOB:-none})" ;;
+          esac
           leg migration_rehearsal "$MIG_S" "$MIG_R" "$MIG_JOB"
           leg error_budget "$EB_S" "$EB_R" "$EB_JOB"
           leg smoke_gate "$RO_S" "$RO_R" "$RO_JOB"
