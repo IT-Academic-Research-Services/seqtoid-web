@@ -1,0 +1,195 @@
+name: DAST (OWASP ZAP baseline)
+
+# Reusable DAST check: an OWASP ZAP BASELINE (passive-only) scan of a deployed SeqToID
+# environment, gated "accept current, fail new" against .zap/baseline.json -- the same doctrine
+# as the repo's trivy/checkov baselines.
+#
+# What it does:
+#   1. Refuses any target that is not https://dev.seqtoid.org or https://pr-<N>.dev.seqtoid.org
+#      (allowlist below), so nobody points it at staging/prod by accident.
+#   2. Runs zap-baseline.py (spider capped at 2 minutes, passive rules only; NO active/attack
+#      scan) from the official ZAP image pinned by digest -- no third-party GitHub Action.
+#   3. scripts/dast/zap_compare.py reduces each finding to (alertRef, risk, normalized path) and
+#      compares it with .zap/baseline.json. A NEW finding at/above `fail_on` fails the check;
+#      baseline entries no longer seen are reported as FIXED. ZAP's own exit code does not decide
+#      (-I, and .zap/rules.tsv has no FAIL entries).
+#   4. Uploads zap.json + zap.html and writes a job summary table.
+#
+# Scope / known limits:
+#   - UNAUTHENTICATED. Most of the app sits behind Auth0 login, so this covers the public pages,
+#     the landing/login flow, static assets and response headers/cookies (CSP, HSTS,
+#     X-Frame-Options, cookie flags, information leakage). An authenticated scan (ZAP context +
+#     a dedicated test user, never a personal account) is a follow-up.
+#   - Passive only by design. Active scanning (zap-full-scan / attack mode) is out of scope here
+#     and must not be added to this workflow without the owner's sign-off.
+#
+# Interface (the release-candidate battery and the nightly regime call this; keep it stable):
+#   inputs : target_url (required), ref (optional; commit whose .zap/ config to use, default the
+#            caller's ref), fail_on (optional, default Medium: Informational|Low|Medium|High)
+#   outputs: result (pass|fail), summary (one line)
+#   The job itself also fails when result=fail, so callers can use needs.<job>.result too.
+#
+# Updating the ZAP image: bump the digest deliberately in its own PR, re-run against dev and
+# reconcile .zap/baseline.json (new ZAP versions add rules).
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: "Deployed URL to scan (allowlisted: https://dev.seqtoid.org or https://pr-<N>.dev.seqtoid.org)"
+        type: string
+        required: true
+      ref:
+        description: "Commit/ref whose .zap/ config and compare script to use (default: the caller's ref)"
+        type: string
+        required: false
+        default: ''
+      fail_on:
+        description: "Minimum risk of a NEW finding that fails: Informational|Low|Medium|High"
+        type: string
+        required: false
+        default: Medium
+    outputs:
+      result:
+        description: "pass or fail"
+        value: ${{ jobs.zap.outputs.result }}
+      summary:
+        description: "One-line summary"
+        value: ${{ jobs.zap.outputs.summary }}
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Deployed URL to scan (allowlisted: https://dev.seqtoid.org or https://pr-<N>.dev.seqtoid.org)"
+        type: string
+        required: true
+        default: https://dev.seqtoid.org
+      ref:
+        description: "Commit/ref whose .zap/ config to use (default: the dispatched ref)"
+        type: string
+        required: false
+        default: ''
+      fail_on:
+        description: "Minimum risk of a NEW finding that fails"
+        type: choice
+        options: [Informational, Low, Medium, High]
+        default: Medium
+
+permissions:
+  contents: read
+
+env:
+  # ghcr.io/zaproxy/zaproxy:stable (ZAP 2.17.0), multi-arch index digest resolved 2026-11-10 with
+  # `docker buildx imagetools inspect`. Pinned so scanner updates are deliberate PRs.
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
+
+jobs:
+  zap:
+    name: ZAP baseline scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      result: ${{ steps.compare.outputs.result || steps.verdict.outputs.result }}
+      summary: ${{ steps.compare.outputs.summary || steps.verdict.outputs.summary }}
+    steps:
+      - name: Validate target (allowlist)
+        id: target
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+          FAIL_ON: ${{ inputs.fail_on }}
+        run: |
+          set -euo pipefail
+          # Only dev and its per-PR preview sandboxes. Anchored; no paths, ports or userinfo.
+          if ! printf '%s' "${TARGET_URL}" | grep -Eq '^https://(dev|pr-[0-9]+\.dev)\.seqtoid\.org/?$'; then
+            echo "::error::Refusing to scan '${TARGET_URL}': only https://dev.seqtoid.org or https://pr-<N>.dev.seqtoid.org are allowed."
+            exit 1
+          fi
+          case "${FAIL_ON}" in
+            Informational|Low|Medium|High) ;;
+            *) echo "::error::fail_on must be Informational|Low|Medium|High (got '${FAIL_ON}')"; exit 1 ;;
+          esac
+          host="${TARGET_URL#https://}"; host="${host%/}"
+          echo "slug=${host%%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout (.zap config + compare script)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Run ZAP baseline (passive)
+        id: scan
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+        run: |
+          set -uo pipefail
+          mkdir -p zap-wrk
+          cp .zap/rules.tsv zap-wrk/rules.tsv
+          # The image runs as the 'zap' user (uid 1000); the runner workspace is uid 1001.
+          chmod 0777 zap-wrk
+          docker pull -q "${ZAP_IMAGE}"
+          # -m 2: spider at most 2 minutes. -I: warnings never set the exit code (our compare
+          # step decides). zap-baseline exit codes: 0 clean, 1 FAIL rule hit, 2 WARN, 3 error.
+          # One retry: ZAP's automation plan can abort on a transient dropped response
+          # ("msg is null") with exit 0 and NO report (seen against dev 2026-11-10).
+          rc=0
+          for attempt in 1 2; do
+            rm -f zap-wrk/zap.json zap-wrk/zap.html
+            docker run --rm -v "${PWD}/zap-wrk:/zap/wrk:rw" "${ZAP_IMAGE}" \
+              zap-baseline.py -t "${TARGET_URL}" -J zap.json -r zap.html -c rules.tsv -m 2 -I
+            rc=$?
+            echo "attempt ${attempt}: zap exit code ${rc}"
+            if [ "${rc}" -lt 3 ] && [ -s zap-wrk/zap.json ]; then break; fi
+          done
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+          if [ "${rc}" -ge 3 ] || [ ! -s zap-wrk/zap.json ]; then
+            echo "::error::ZAP did not complete (exit ${rc}) or wrote no report."
+          fi
+
+      - name: Compare against accepted baseline
+        id: compare
+        if: ${{ hashFiles('zap-wrk/zap.json') != '' }}
+        env:
+          FAIL_ON: ${{ inputs.fail_on }}
+        run: |
+          set -uo pipefail
+          python3 scripts/dast/zap_compare.py \
+            --report zap-wrk/zap.json \
+            --baseline .zap/baseline.json \
+            --rules .zap/rules.tsv \
+            --fail-on "${FAIL_ON}" \
+            --github-output "$GITHUB_OUTPUT" \
+            --summary-md "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Verdict
+        id: verdict
+        if: ${{ always() }}
+        env:
+          RESULT: ${{ steps.compare.outputs.result }}
+          SUMMARY: ${{ steps.compare.outputs.summary }}
+          TARGET_URL: ${{ inputs.target_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RESULT}" ]; then
+            # Scan or compare never produced a verdict: fail closed.
+            line="ZAP baseline FAIL: no verdict for ${TARGET_URL} (scan error, see logs)"
+            { echo "result=fail"; echo "summary=${line}"; } >> "$GITHUB_OUTPUT"
+            { echo "## DAST (OWASP ZAP baseline)"; echo ""; echo "${line}"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::${line}"
+            exit 1
+          fi
+          echo "${SUMMARY}"
+          if [ "${RESULT}" != "pass" ]; then
+            echo "::error::${SUMMARY}"
+            exit 1
+          fi
+
+      - name: Upload ZAP reports
+        if: ${{ always() && hashFiles('zap-wrk/zap.json') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dast-zap-${{ steps.target.outputs.slug }}-${{ github.run_attempt }}
+          path: |
+            zap-wrk/zap.json
+            zap-wrk/zap.html
+          retention-days: 30
+          if-no-files-found: warn
