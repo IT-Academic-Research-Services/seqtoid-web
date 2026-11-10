@@ -1,0 +1,25 @@
+<%# Server-rendered so it shows before the React app loads. See DevPinHelper. %>
+<% banner = dev_pin_banner %>
+<% if banner %>
+  <div id="dev-pin-banner" role="status" style="background: #fff4d6; color: #5c4200; border-bottom: 1px solid #e8c766; padding: 4px 16px; font-size: 13px; line-height: 20px; text-align: center;">
+    <% if banner.kind == "lease" %>
+      dev is running <strong><%= banner.holder %></strong>'s branch build<% if banner.expires_at %>
+      until <time datetime="<%= banner.expires_at.iso8601 %>" data-dev-pin-local><%= banner.expires_at.strftime("%Y-%m-%d %H:%M UTC") %></time><% end %>
+      -- results may differ from main
+    <% else %>
+      dev is frozen on release candidate <strong><%= banner.rc %></strong> for testing
+    <% end %>
+  </div>
+  <% if banner.expires_at %>
+    <%= javascript_tag do %>
+      (function () {
+        var el = document.querySelector("[data-dev-pin-local]");
+        if (!el) { return; }
+        var t = new Date(el.getAttribute("datetime"));
+        if (!isNaN(t.getTime())) {
+          el.textContent = t.toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZoneName: "short" });
+        }
+      })();
+    <% end %>
+  <% end %>
+<% end %>

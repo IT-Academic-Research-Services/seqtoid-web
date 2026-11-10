@@ -464,6 +464,14 @@ taxonLoad:
 # Extra plain env vars applied to web + workers + migrate (name/value pairs).
 extraEnv: []
 
+# Dev pin (deploy lanes). Argo layers cypherid-web-infra deploy/argocd/values/seqtoid-web/dev-pin.yaml
+# on top of the env values; it holds `pin: {kind: none|lease|rc, holder, expires_at, rc, ...}`.
+# When kind is lease or rc the WEB pods get DEV_PIN_KIND / DEV_PIN_HOLDER / DEV_PIN_EXPIRES_AT /
+# DEV_PIN_RC and the app shows a banner on every page. Absent or kind none renders nothing. Web only:
+# workers do not show the banner, so a pin change does not restart them.
+pin:
+  kind: none
+
 # Worker workloads (ECS czecs-resque.json x4 + czecs-shoryuken.json). Each becomes a
 # Deployment. `args` go to the image ENTRYPOINT (bin/entrypoint.sh), which wraps them
 # in `chamber exec ... bundle exec`. Keyed by NAME (a map, not a list) so a per-env
