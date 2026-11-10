@@ -13,6 +13,12 @@ on:
       # can promote it. Safe for dev: gitops-advance-dev is guarded to head_branch==main, and non-main
       # builds use CACHE_MODE=read, so a staging build never advances dev or writes the shared cache.
       - staging
+      # Hotfix lane. A push to hotfix/** builds sha-<sha8> into dev ECR so `release` can ship that
+      # exact build by digest (its `digest` + `tag` inputs; the prod GitHub Environment already
+      # allows hotfix/* deploy branches). Same safety as `staging`: gitops-advance-dev only advances
+      # on head_branch == main and promote-staging-on-build only on staging, and non-main builds use
+      # CACHE_MODE=read, so a hotfix build never moves dev or writes the shared cache.
+      - 'hotfix/**'
   workflow_dispatch:
     inputs:
       environment:
