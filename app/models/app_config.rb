@@ -160,6 +160,11 @@ class AppConfig < ApplicationRecord
   # List of launched features still guarded by a flag.
   # Use the features rake tasks for editing this key
   LAUNCHED_FEATURES = 'launched_features'.freeze
+  # Feature-flag GROUP "beta_testers" (see app/models/feature.rb). FEATURES is a JSON array of flag names
+  # that are on for every member; MEMBERS is a JSON array of user ids and/or emails. Both default to empty
+  # (no group flags). Edit through Feature.enable_for_group / Feature.add_to_group so changes are logged.
+  FEATURE_GROUP_BETA_TESTERS_FEATURES = 'feature_group_beta_testers_features'.freeze
+  FEATURE_GROUP_BETA_TESTERS_MEMBERS = 'feature_group_beta_testers_members'.freeze
   # The projects to apply the following two defaults to.
   # Stored as a JSON array of project_ids.
   # This is intended to be a temporary short-term mechanism to service critical projects with our partners.
@@ -256,7 +261,12 @@ class AppConfig < ApplicationRecord
   UPLOAD_WEEKLY_SAMPLE_LIMIT_BASESPACE = "upload_weekly_sample_limit_basespace".freeze
   UPLOAD_WEEKLY_SAMPLE_LIMIT_TOTAL = "upload_weekly_sample_limit_total".freeze
 
+  # after_save busts the key for readers inside the writing transaction; after_commit busts it again once
+  # the new value is visible to everyone (and on destroy), so a concurrent reader cannot re-cache the old
+  # value between the two. Rails.cache is shared (Redis) or absent (:null_store) in every environment, so
+  # this reaches every pod.
   after_save :clear_cached_record
+  after_commit :clear_cached_record
 
   def clear_cached_record
     Rails.cache.delete("app_config-#{key}")

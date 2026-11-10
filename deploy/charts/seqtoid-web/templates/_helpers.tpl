@@ -150,3 +150,27 @@ ApplicationSet puts in extraEnv, else idseq-pr-<prNumber>.
 {{- end -}}
 {{- $prefix | default (printf "idseq-pr-%v" .Values.preview.prNumber) -}}
 {{- end -}}
+
+{{/*
+Dev pin env (web container only). Renders only when .Values.pin.kind is lease or rc; absent pin or
+kind none renders nothing. Read by app/helpers/dev_pin_helper.rb for the app-wide banner.
+*/}}
+{{- define "seqtoid-web.pinEnv" -}}
+{{- $pin := .Values.pin | default dict -}}
+{{- if has ($pin.kind | default "none" | toString) (list "lease" "rc") -}}
+- name: DEV_PIN_KIND
+  value: {{ $pin.kind | quote }}
+{{- with $pin.holder }}
+- name: DEV_PIN_HOLDER
+  value: {{ . | toString | quote }}
+{{- end }}
+{{- with $pin.expires_at }}
+- name: DEV_PIN_EXPIRES_AT
+  value: {{ . | toString | quote }}
+{{- end }}
+{{- with $pin.rc }}
+- name: DEV_PIN_RC
+  value: {{ . | toString | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}

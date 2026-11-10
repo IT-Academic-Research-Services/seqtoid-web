@@ -1681,36 +1681,14 @@ class SamplesController < ApplicationController
     end
 
     sample_name = generate_benchmark_sample_name(sample_ids, project_id, ground_truth_file)
-    # Skip callbacks and validations. A benchmark sample has no input files or host genomes.
-    # rubocop:disable Rails/SkipsModelValidations
-    Sample.insert({
-                    name: sample_name,
-                    status: Sample::STATUS_CHECKED,
-                    user_id: current_user.id,
-                    initial_workflow: WorkflowRun::WORKFLOW[:benchmark],
-                    project_id: project_id,
-                    created_at: Time.current,
-                    updated_at: Time.current,
-                  })
-
-    benchmark_sample_id = Sample.where(name: sample_name).last.id
-    WorkflowRun.insert({
-                         sample_id: benchmark_sample_id,
-                         user_id: current_user.id,
-                         workflow: WorkflowRun::WORKFLOW[:benchmark],
-                         created_at: Time.current,
-                         updated_at: Time.current,
-                         wdl_version: AppConfigHelper.get_workflow_version(WorkflowRun::WORKFLOW[:benchmark]),
-                         inputs_json: {
-                           run_ids: run_ids,
-                           workflow_benchmarked: workflow_benchmarked,
-                           ground_truth_file: ground_truth_file,
-                         }.to_json,
-                       })
-
-    benchmark_wr = WorkflowRun.where(sample_id: benchmark_sample_id, workflow: WorkflowRun::WORKFLOW[:benchmark]).last
-    # rubocop:enable Rails/SkipsModelValidations
-    benchmark_wr.dispatch
+    benchmark_wr = BenchmarkCreationService.call(
+      run_ids: run_ids,
+      workflow_benchmarked: workflow_benchmarked,
+      project_id: project_id,
+      user_id: current_user.id,
+      sample_name: sample_name,
+      ground_truth_file: ground_truth_file
+    )
 
     render json: { benchmarkWorkflowRunId: benchmark_wr.id }, status: :ok
   end

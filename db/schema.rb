@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_30_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_10_000001) do
   create_table "accession_coverage_stats", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|
     t.bigint "pipeline_run_id", null: false, comment: "The id of the pipeline run the coverage stats were generated from"
     t.string "accession_id", null: false, comment: "The NCBI GenBank id of the accession the coverage stats were created for"
@@ -268,6 +268,21 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_30_000001) do
     t.datetime "created_at", null: false
     t.index ["user_id", "clearance_version", "verification_status", "screening_result"], name: "idx_export_clearance_user_version_status"
     t.index ["user_id"], name: "index_export_control_clearances_on_user_id"
+  end
+
+  create_table "feature_flag_events", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.string "feature", comment: "Flag name; NULL for a group membership change"
+    t.string "action", limit: 32, null: false, comment: "enable, disable, add_member or remove_member"
+    t.string "scope", limit: 16, null: false, comment: "global, user or group"
+    t.string "group_name", limit: 64, comment: "Group for scope=group"
+    t.bigint "target_user_id", comment: "User the change applies to (scope=user, or a member)"
+    t.string "target_member", comment: "Group member as given (user id or email)"
+    t.bigint "actor_user_id", comment: "User who made the change; NULL for a non-user actor"
+    t.string "actor_label", null: false, comment: "Actor email, or e.g. 'rake features:launch'"
+    t.string "environment", limit: 64, null: false, comment: "Rails.env, plus ENV['ENVIRONMENT'] when set"
+    t.datetime "created_at", null: false
+    t.index ["created_at"], name: "index_feature_flag_events_on_created_at"
+    t.index ["feature"], name: "index_feature_flag_events_on_feature"
   end
 
   create_table "holds", charset: "utf8mb3", collation: "utf8mb3_unicode_ci", force: :cascade do |t|

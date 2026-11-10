@@ -134,6 +134,8 @@ jobs:
 
           Isolated per-PR environment: its own DB schema + scoped user, SSM config, S3 bucket prefix and hostname (it can never touch the shared dev DB or dev's samples). Shares the dev Batch/SFN pipeline. Auto-reaped when this PR closes.
 
+          **Runs on spot capacity.** AWS can reclaim the node with ~2 minutes notice; the sandbox comes back by itself in ~10-15 minutes with its database, S3 files and queued jobs intact. Page loads in flight during that window may fail.
+
           Watch it: [Grafana](https://grafana.dev.seqtoid.org) -> Argo CD dashboard (\`seqtoid-pr-${PR_NUMBER}\`), or Logs Overview filtered to \`namespace=seqtoid-pr-${PR_NUMBER}\`.
           EOF
           )"
@@ -191,6 +193,8 @@ jobs:
           ${STATUS}
 
           Isolated per-PR environment: its own DB schema + scoped user, SSM config, S3 bucket prefix and hostname (it can never touch the shared dev DB or dev's samples). Shares the dev Batch/SFN pipeline. Auto-reaped when this PR closes.
+
+          **Runs on spot capacity.** AWS can reclaim the node with ~2 minutes notice; the sandbox comes back by itself in ~10-15 minutes with its database, S3 files and queued jobs intact. Page loads in flight during that window may fail.
 
           Watch it: [Grafana](https://grafana.dev.seqtoid.org) -> Argo CD dashboard (\`seqtoid-pr-${PR_NUMBER}\`), or Logs Overview filtered to \`namespace=seqtoid-pr-${PR_NUMBER}\`.
           EOF

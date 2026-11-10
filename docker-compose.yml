@@ -146,6 +146,7 @@ services:
     environment:
       <<: [*web-variables, *aws-variables, *auth0-variables, *env-variables]
       RUBY_DEBUG_SKIP_BP: true
+      RUBY_DEBUG_SERVER: "1"
       DB_HOST: db
       DB_PORT: "3306"
       DB_USERNAME: root

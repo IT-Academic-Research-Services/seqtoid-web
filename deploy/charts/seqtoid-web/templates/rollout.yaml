@@ -114,6 +114,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.topologySpread.enabled }}
       # Availability: keep the replicas off a single node (and best-effort across AZs) so
       # one node/spot loss can't take the whole app down. matchLabelKeys scopes the spread
@@ -186,6 +190,9 @@ spec:
               containerPort: {{ .Values.containerPort }}
           env:
             {{- include "seqtoid-web.commonEnv" . | nindent 12 }}
+            {{- with include "seqtoid-web.pinEnv" . }}
+            {{- . | nindent 12 }}
+            {{- end }}
             {{- if .Values.scratchVolume.enabled }}
             # Point Ruby's Dir.tmpdir at the private 0700 dir the init container made inside
             # the scratch volume. Without this, Dir.tmpdir rejects the world-writable,
