@@ -119,6 +119,21 @@ RSpec.describe SfnPipelineDispatchService, type: :service do
         expect(subject).to include_json({})
       end
 
+      it "names the execution with the default prefix when no deployment prefix is set" do
+        expect(FAKE_STATES_CLIENT).to receive(:start_execution)
+          .with(hash_including(name: /\Aidseq-test-#{project.id}-#{sample.id}-#{pipeline_run.id}-\d{14}\z/))
+          .and_call_original
+        subject
+      end
+
+      it "names the execution with SFN_EXECUTION_NAME_PREFIX when the deployment sets one" do
+        allow(ENV).to receive(:[]).with(SfnExecutionName::ENV_KEY).and_return("idseq-pr-753")
+        expect(FAKE_STATES_CLIENT).to receive(:start_execution)
+          .with(hash_including(name: /\Aidseq-pr-753-#{project.id}-#{sample.id}-#{pipeline_run.id}-\d{14}\z/))
+          .and_call_original
+        subject
+      end
+
       it "returns pipeline version from SFN tag" do
         expect(subject).to include_json(pipeline_version: FAKE_WDL_VERSION.split('.').slice(0, 2).join('.'))
       end
