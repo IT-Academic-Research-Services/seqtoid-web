@@ -14,7 +14,7 @@ name: rc-battery (release-candidate test battery)
 #   contract_api         contract-api.yml                                               REAL
 #   data_integrity       data-integrity.yml                                             REAL
 #   dast                 nightly dast_zap is a stub                                     NOT BUILT
-#   migration_rehearsal  (follow-up PR)                                                 NOT BUILT
+#   migration_rehearsal  RC image: db:migrate:with_data on a restored env-prod copy     REAL, needs DB
 #   error_budget         (follow-up PR)                                                 NOT BUILT
 #   smoke_gate           dev serves the RC commit -> pending (no CI read of Argo)      PARTIAL
 #   cutover_check        same; dev also has postCutoverCheck disabled                   PARTIAL
@@ -45,6 +45,9 @@ permissions:
 concurrency:
   group: rc-battery
   cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-2
 
 jobs:
   resolve:
@@ -184,6 +187,90 @@ jobs:
 
   # ---- RC-only legs ----------------------------------------------------------------------------
 
+  migration_rehearsal:
+    name: migration_rehearsal
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+      reason: ${{ steps.result.outputs.reason }}
+    env:
+      # A RESTORED COPY of env-prod's database (restoring it is an ops step outside this workflow).
+      # The runner must be able to reach it. Never the live database: the re-run check deletes rows.
+      REHEARSAL_DATABASE_URL: ${{ secrets.RC_REHEARSAL_DATABASE_URL }}
+      REHEARSAL_ENV_FILE: ${{ secrets.RC_REHEARSAL_ENV }}
+      RAILS_ENV_NAME: ${{ vars.RC_REHEARSAL_RAILS_ENV || 'env-prod' }}
+      CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+      ROLE: ${{ vars.RC_BATTERY_ROLE || vars.GHA_ROLE || 'czid-dev-gh-actions-build' }}
+      REPO: ${{ needs.resolve.outputs.repository }}
+      DIGEST: ${{ needs.resolve.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Preconditions
+        id: pre
+        run: |
+          if [ -z "${REHEARSAL_DATABASE_URL}" ]; then
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "reason=rehearsal DB not configured (secret RC_REHEARSAL_DATABASE_URL unset)" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=ready" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure AWS (dev, image pull)
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CI_ACCOUNT_ID }}:role/${{ env.ROLE }}
+          role-session-name: rc-battery-migrate-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Run db:migrate:with_data from the RC image on the restored copy
+        id: run
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          repo="${REPO:-${CI_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/seqtoid-web}"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${repo%%/*}"
+          docker pull "${repo}@${DIGEST}"
+          # database.yml reads RDS_ADDRESS/DB_* (and routes the screening alias to the same DB), so
+          # split the URL into those as well as passing DATABASE_URL.
+          python3 - > db.env <<'PY'
+          import os, urllib.parse as u
+          url = u.urlparse(os.environ["REHEARSAL_DATABASE_URL"])
+          db = url.path.lstrip("/")
+          for k, v in {"DATABASE_URL": os.environ["REHEARSAL_DATABASE_URL"], "RDS_ADDRESS": url.hostname,
+                       "DB_HOST": url.hostname, "DB_PORT": url.port or 3306,
+                       "DB_USERNAME": u.unquote(url.username or ""), "DB_PASSWORD": u.unquote(url.password or ""),
+                       "DB_NAME": db, "SCREENING_DB_NAME": db}.items():
+              print(f"{k}={v}")
+          PY
+          pw="$(sed -n 's/^DB_PASSWORD=//p' db.env)"
+          if [ -n "$pw" ]; then echo "::add-mask::${pw}"; fi
+          printf '%s\n' "${REHEARSAL_ENV_FILE}" > extra.env
+          docker run --rm --env-file db.env --env-file extra.env \
+            -e OFFLINE=1 -e RAILS_ENV="${RAILS_ENV_NAME}" -e SECRET_KEY_BASE_DUMMY=1 \
+            -v "${PWD}/scripts/rc-battery:/rc:ro" \
+            "${repo}@${DIGEST}" bash /rc/migration-rehearsal.sh
+      - name: Result
+        id: result
+        if: ${{ always() }}
+        env:
+          PRE: ${{ steps.pre.outputs.status }}
+          PRE_REASON: ${{ steps.pre.outputs.reason }}
+          RUN: ${{ steps.run.outcome }}
+        run: |
+          rm -f db.env extra.env
+          if [ "$PRE" = "fail" ]; then s=fail; r="$PRE_REASON"
+          elif [ "$RUN" = "success" ]; then s=pass; r="db:migrate:with_data applied, parity checked, re-run converged"
+          else s=fail; r="rehearsal ${RUN:-did not run}; see the job log"; fi
+          { echo "status=$s"; echo "reason=$r"; } >> "$GITHUB_OUTPUT"
+          echo "migration_rehearsal: $s ($r)"
+          [ "$s" = "pass" ]
+
   rollout:
     name: smoke_gate + cutover_check
     needs: resolve
@@ -220,7 +307,7 @@ jobs:
 
   record:
     name: Record results on the RC
-    needs: [resolve, browser_e2e, pipeline_e2e, contract_api, data_integrity, rollout]
+    needs: [resolve, browser_e2e, pipeline_e2e, contract_api, data_integrity, migration_rehearsal, rollout]
     if: ${{ always() && needs.resolve.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -253,6 +340,9 @@ jobs:
           PIPELINE: ${{ needs.pipeline_e2e.result }}
           CONTRACT: ${{ needs.contract_api.result }}
           DATA: ${{ needs.data_integrity.result }}
+          MIG_S: ${{ needs.migration_rehearsal.outputs.status }}
+          MIG_R: ${{ needs.migration_rehearsal.outputs.reason }}
+          MIG_JOB: ${{ needs.migration_rehearsal.result }}
           RO_S: ${{ needs.rollout.outputs.status }}
           RO_R: ${{ needs.rollout.outputs.reason }}
           RO_JOB: ${{ needs.rollout.result }}
@@ -274,7 +364,7 @@ jobs:
           job contract_api "$CONTRACT" ""
           job data_integrity "$DATA" ""
           rec dast fail "$URL" "not implemented: OWASP ZAP leg is a stub in nightly-full-regime"
-          rec migration_rehearsal fail "$URL" "not implemented yet in this battery"
+          leg migration_rehearsal "$MIG_S" "$MIG_R" "$MIG_JOB"
           rec error_budget fail "$URL" "not implemented yet in this battery"
           leg smoke_gate "$RO_S" "$RO_R" "$RO_JOB"
           cut_note="$RO_R; postCutoverCheck is not enabled on dev"
