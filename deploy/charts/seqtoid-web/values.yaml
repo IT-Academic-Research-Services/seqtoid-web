@@ -753,7 +753,13 @@ preview:
   redis:
     enabled: false
     image: redis:7-alpine
-    # Redis holds only a sandbox's job queue: small, and nothing persists.
+    # Off: nothing persists (a restart drops queued jobs). On: append-only file on a PVC of `size`,
+    # in `storageClass` (empty -> the cluster default), so queued jobs survive a spot reclaim.
+    persistence:
+      enabled: false
+      size: 1Gi
+      storageClass: ""
+    # Redis holds only a sandbox's job queue: small.
     resources:
       requests:
         cpu: 50m
