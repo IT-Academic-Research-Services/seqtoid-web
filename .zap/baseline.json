@@ -1,0 +1,92 @@
+{
+  "_comment": [
+    "Accepted DAST findings (accept current, fail new). Keyed by alertRef + risk + normalized path;",
+    "see scripts/dast/zap_compare.py. Work these down: fix, then delete the entry. A NEW finding",
+    "at/above fail_on (default Medium) fails the check. path may be an fnmatch glob."
+  ],
+  "schema": 1,
+  "generated": "2026-11-10",
+  "source": "zap-baseline.py -m 2 (passive, unauthenticated) against https://dev.seqtoid.org, ZAP 2.17.0",
+  "findings": [
+    {
+      "pluginid": "10038",
+      "alertRef": "10038-1",
+      "alert": "Content Security Policy (CSP) Header Not Set",
+      "risk": "Medium",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "90003",
+      "alertRef": "90003",
+      "alert": "Sub Resource Integrity Attribute Missing",
+      "risk": "Medium",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "10011",
+      "alertRef": "10011",
+      "alert": "Cookie Without Secure Flag",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "10017",
+      "alertRef": "10017",
+      "alert": "Cross-Domain JavaScript Source File Inclusion",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "10035",
+      "alertRef": "10035-1",
+      "alert": "Strict-Transport-Security Header Not Set",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "10063",
+      "alertRef": "10063-1",
+      "alert": "Permissions Policy Header Not Set",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "90004",
+      "alertRef": "90004-1",
+      "alert": "Cross-Origin-Resource-Policy Header Missing or Invalid",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "90004",
+      "alertRef": "90004-2",
+      "alert": "Cross-Origin-Embedder-Policy Header Missing or Invalid",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "90004",
+      "alertRef": "90004-3",
+      "alert": "Cross-Origin-Opener-Policy Header Missing or Invalid",
+      "risk": "Low",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    },
+    {
+      "pluginid": "10015",
+      "alertRef": "10015",
+      "alert": "Re-examine Cache-control Directives",
+      "risk": "Informational",
+      "path": "/",
+      "reason": "accepted at baseline 2026-11-10; triage"
+    }
+  ]
+}
