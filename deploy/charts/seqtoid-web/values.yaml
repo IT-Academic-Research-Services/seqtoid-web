@@ -667,6 +667,37 @@ taxonRefresh:
       cpu: 500m
       memory: 2Gi
 
+# Release-candidate AUPR gate tick (deploy lanes). OFF by default -- every env renders nothing.
+# Dev enables it in its infra values; the tick itself no-ops unless dev is pinned to an RC
+# (pin.kind rc, pin.rc = RC id -> DEV_PIN_KIND / DEV_PIN_RC). See templates/rc-gate-cronjob.yaml and
+# app/services/rc_gate_tick_service.rb (result.json contract).
+rcGate:
+  enabled: false
+  schedule: "*/15 * * * *"
+  # s3://<bucket>/<prefix>/ ; the tick writes <prefix>/<rc>/result.json.
+  resultsPrefix: ""
+  dataset: ""
+  # 1 or 2 s3:// fastq URIs (R1, R2).
+  fastqs: []
+  # Truth file name under S3_TRUTH_FILES_BUCKET, or a full s3:// URI.
+  truthFile: ""
+  # short-read-mngs version the RC Benchmarks project is pinned to.
+  srmVersion: ""
+  # Owner of the RC Benchmarks project. Required when enabled (render fails otherwise).
+  ownerEmail: ""
+  timeoutHours: 6
+  command: ["rake", "rc_gate:tick"]
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  # A tick only reads state and maybe creates a sample; bound it well under the 15 min schedule.
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+
 # Per-PR preview sandbox extras (#616/#617). OFF by default -- dev/staging/prod render
 # nothing here. The preview ApplicationSet sets these per PR. When enabled, a PreSync
 # provision Job (isolated schema + scoped DB user + the sandbox's own SSM path) runs
