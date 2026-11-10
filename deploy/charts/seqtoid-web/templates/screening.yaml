@@ -31,6 +31,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if $root.Values.screening.migrate.enabled }}
       # Piece 5b: build the ISOLATED screening store before the API serves. Runs against the SCREENING
       # chamber (SCREENING_DB_* -> the dedicated screening cluster). PRIMARY_DB_TASKS=false so it never

@@ -36,6 +36,14 @@ image:
 nodeSelector:
   kubernetes.io/arch: amd64
 
+# Tolerations for EVERY pod this chart schedules (web, workers, migrate/smoke/taxon hooks, the
+# preview provision/seed/teardown Jobs and the preview Redis). Empty by default, so dev/staging/prod
+# render nothing new. A tainted pool must admit all of an env's pods or the ones without the
+# toleration sit Pending: the preview pool is tainted seqtoid.io/pool=preview:NoSchedule, and
+# preview-base.yaml sets the matching toleration here. Argo Rollouts AnalysisTemplate smoke Jobs
+# carry no nodeSelector and are deliberately left off the pool.
+tolerations: []
+
 # Cost spin-down switch. When true, scale ALL workloads to 0 (web Rollout + every
 # worker) AND skip the migrate/taxon-load PreSync hooks. The app's data lives in
 # Aurora + OpenSearch (persistent, not on the pods), so this is a safe, reversible
