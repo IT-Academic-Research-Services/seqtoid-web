@@ -75,6 +75,8 @@ module Czid
     # has none of the old ids), so DEFAULT_BACKGROUND_ID overrides the historical 26. Where the id does not
     # exist, heatmap code falls back to the first public background (HeatmapIndexing.default_background_id).
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
+
+    ActiveRecord::Migration.verbose = false
   end
 end
 
