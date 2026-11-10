@@ -137,7 +137,11 @@ metadata:
     {{- include "seqtoid-web.labels" . | nindent 4 }}
     app.kubernetes.io/component: redis
   annotations:
-    argocd.argoproj.io/sync-wave: "-11"
+    # SAME wave as the Redis Deployment, not earlier. A WaitForFirstConsumer class (dev's
+    # gp3-encrypted) binds the volume only once a pod uses it, and Argo reports a PVC healthy
+    # only when Bound. In an earlier wave Argo would wait on the PVC before creating the pod
+    # that binds it: the first sync of every preview would hang.
+    argocd.argoproj.io/sync-wave: "-10"
 spec:
   accessModes: ["ReadWriteOnce"]
   {{- with .Values.preview.redis.persistence.storageClass }}
