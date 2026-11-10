@@ -1,0 +1,174 @@
+name: hotfix forward-port
+
+# Hotfix lane, part 2: nothing fixed on a hotfix/* line may be lost on the next regular release.
+#
+#   forward-port  When a PR from hotfix/* merges (into anything but integration), or on demand for a
+#                 merged hotfix PR / a hotfix/* branch (e.g. right after its build ships), open a PR
+#                 into `integration` with the same commits cherry-picked (-x), skipping any whose
+#                 change is already there (patch-id). On a conflict the PR opens as a DRAFT listing
+#                 the commit it stopped at, the conflicting files and what is left to port.
+#                 scripts/hotfix/forward-port.sh does the git work.
+#   stale-check   Every 6 hours: any open forward-port/* PR older than FORWARD_PORT_MAX_HOURS
+#                 (default 48) fails this job with an annotation and gets one (updated) comment.
+#
+# The PR is opened with the GH_ACTIONS_HELPER app token, not GITHUB_TOKEN, so integration's
+# required checks actually run on it (events from GITHUB_TOKEN do not trigger workflows).
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Merged hotfix PR number, or a hotfix/* branch name, to forward-port into integration"
+        required: true
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  forward-port:
+    name: Forward-port to integration
+    if: >-
+      vars.CI_APP_ENABLED == 'true' && (
+        github.event_name == 'workflow_dispatch' || (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.merged == true &&
+          startsWith(github.event.pull_request.head.ref, 'hotfix/') &&
+          github.event.pull_request.base.ref != 'integration' &&
+          github.event.pull_request.head.repo.full_name == github.repository ))
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: hotfix-forward-port-${{ github.event.pull_request.number || inputs.source }}
+      cancel-in-progress: false
+    steps:
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: integration
+          fetch-depth: 0
+          token: ${{ steps.app_token.outputs.token }}
+          persist-credentials: true
+
+      - name: Resolve the hotfix commits
+        id: src
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT: ${{ inputs.source }}
+        run: |
+          set -euo pipefail
+          pr="${EVENT_PR}"
+          if [ -z "$pr" ] && [[ "${INPUT}" =~ ^[0-9]+$ ]]; then
+            pr="${INPUT}"
+            read -r merged head < <(gh pr view "$pr" --json mergedAt,headRefName --jq '"\(.mergedAt != null) \(.headRefName)"')
+            if [ "$merged" != "true" ] || [[ "$head" != hotfix/* ]]; then
+              echo "::error::PR ${pr} is not a merged hotfix/* PR (merged=${merged}, head=${head})."
+              exit 1
+            fi
+          fi
+          if [ -n "$pr" ]; then
+            # The PR head survives branch deletion as refs/pull/N/head, and holds the commits as
+            # written (a squash or rebase merge rewrites them on the base).
+            git fetch -q origin "refs/pull/${pr}/head:refs/remotes/fp/source"
+            label="pr-${pr}"
+          else
+            if [[ ! "${INPUT}" =~ ^hotfix/[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::source must be a merged hotfix PR number or a hotfix/* branch, got '${INPUT}'."
+              exit 1
+            fi
+            git fetch -q origin "refs/heads/${INPUT}:refs/remotes/fp/source"
+            label="$(echo "${INPUT}" | tr '/' '-')"
+          fi
+          { echo "pr=${pr}"; echo "label=${label}"; } >> "$GITHUB_OUTPUT"
+
+      - name: Build the forward-port branch
+        id: fp
+        env:
+          LABEL: ${{ steps.src.outputs.label }}
+        run: |
+          set -euo pipefail
+          git config user.name  "seqtoid-gitops"
+          git config user.email "gitops@seqtoid.local"
+          if git ls-remote --exit-code --heads origin "forward-port/${LABEL}" >/dev/null; then
+            echo "::notice::forward-port/${LABEL} already exists; not overwriting it (it may hold hand-resolved conflicts)."
+            echo "status=exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          scripts/hotfix/forward-port.sh refs/remotes/fp/source origin/integration "${LABEL}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Open the forward-port PR
+        if: ${{ steps.fp.outputs.status == 'clean' || steps.fp.outputs.status == 'conflict' }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          LABEL: ${{ steps.src.outputs.label }}
+          SRC_PR: ${{ steps.src.outputs.pr }}
+          BRANCH: ${{ steps.fp.outputs.branch }}
+          BODY: ${{ steps.fp.outputs.body }}
+          STATUS: ${{ steps.fp.outputs.status }}
+        run: |
+          set -euo pipefail
+          git push -q origin "${BRANCH}"
+          {
+            echo
+            if [ -n "$SRC_PR" ]; then echo "Source: hotfix PR ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${SRC_PR}"; fi
+            echo "Opened by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. Merge within 48h: a scheduled check flags forward-ports left open longer."
+          } >> "$BODY"
+          title="Forward-port ${LABEL} to integration"
+          draft=()
+          if [ "$STATUS" = "conflict" ]; then draft=(--draft); title="${title} (conflict: needs a human)"; fi
+          url="$(gh pr create --base integration --head "${BRANCH}" --title "${title}" --body-file "$BODY" "${draft[@]+"${draft[@]}"}")"
+          echo "Forward-port PR: ${url}" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -n "$SRC_PR" ]; then
+            gh pr comment "$SRC_PR" --body "Forward-port to \`integration\`: ${url}${draft[*]:+ (draft, conflict)}"
+          fi
+
+      - name: Nothing to port
+        if: ${{ steps.fp.outputs.status == 'nothing' }}
+        run: echo "Every hotfix commit is already in integration (by patch-id); no forward-port needed." | tee -a "$GITHUB_STEP_SUMMARY"
+
+  stale-check:
+    name: Forward-ports open too long
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MAX_HOURS: ${{ vars.FORWARD_PORT_MAX_HOURS || '48' }}
+    steps:
+      - name: Flag forward-port PRs open longer than the limit
+        run: |
+          set -euo pipefail
+          marker="<!-- forward-port-stale -->"
+          now="$(date -u +%s)"
+          stale=0
+          while IFS=$'\t' read -r num created url; do
+            [ -n "$num" ] || continue
+            age=$(( (now - $(date -u -d "$created" +%s)) / 3600 ))
+            [ "$age" -ge "$MAX_HOURS" ] || continue
+            stale=$((stale + 1))
+            echo "::error title=Stale forward-port::${url} has been open ${age}h (limit ${MAX_HOURS}h). Merge it or finish its conflicts."
+            body="${marker}
+          This forward-port has been open **${age}h** (limit ${MAX_HOURS}h). A hotfix that is not in \`integration\` is lost on the next regular release -- merge this, or finish its conflicts and merge."
+            existing="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${num}/comments" --jq "[.[] | select(.body | startswith(\"${marker}\")) | .id] | first // empty")"
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" >/dev/null
+            else
+              gh pr comment "$num" --body "$body" >/dev/null
+            fi
+          done < <(gh pr list --base integration --state open --limit 200 --json number,headRefName,createdAt,url \
+                     --jq '.[] | select(.headRefName | startswith("forward-port/")) | [.number, .createdAt, .url] | @tsv')
+          echo "${stale} forward-port PR(s) older than ${MAX_HOURS}h." | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$stale" -eq 0 ]
