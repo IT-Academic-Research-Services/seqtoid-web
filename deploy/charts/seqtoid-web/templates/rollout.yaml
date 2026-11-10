@@ -114,6 +114,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.topologySpread.enabled }}
       # Availability: keep the replicas off a single node (and best-effort across AZs) so
       # one node/spot loss can't take the whole app down. matchLabelKeys scopes the spread
