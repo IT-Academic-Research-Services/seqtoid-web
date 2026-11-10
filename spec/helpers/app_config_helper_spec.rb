@@ -48,7 +48,8 @@ RSpec.describe AppConfigHelper, type: :helper do
       AppConfigHelper.set_app_config(test_config_key, test_config_value)
 
       expect(Rails.logger).to receive(:info).with("[AppConfigHelper#remove_app_config] removing key '#{test_config_key}' with value '#{test_config_value}'")
-      expect(Rails.cache).to receive(:delete).with("app_config-#{test_config_key}")
+      # remove_app_config deletes the key itself; AppConfig#after_commit deletes it again on destroy.
+      expect(Rails.cache).to receive(:delete).with("app_config-#{test_config_key}").at_least(:once)
       expect { AppConfigHelper.remove_app_config(test_config_key) }.to change(AppConfig, :count).by(-1)
       expect(AppConfig.find_by(key: test_config_key)).to be_nil
     end

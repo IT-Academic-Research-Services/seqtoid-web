@@ -261,7 +261,12 @@ class AppConfig < ApplicationRecord
   UPLOAD_WEEKLY_SAMPLE_LIMIT_BASESPACE = "upload_weekly_sample_limit_basespace".freeze
   UPLOAD_WEEKLY_SAMPLE_LIMIT_TOTAL = "upload_weekly_sample_limit_total".freeze
 
+  # after_save busts the key for readers inside the writing transaction; after_commit busts it again once
+  # the new value is visible to everyone (and on destroy), so a concurrent reader cannot re-cache the old
+  # value between the two. Rails.cache is shared (Redis) or absent (:null_store) in every environment, so
+  # this reaches every pod.
   after_save :clear_cached_record
+  after_commit :clear_cached_record
 
   def clear_cached_record
     Rails.cache.delete("app_config-#{key}")

@@ -55,6 +55,17 @@ RSpec.describe 'features:cleanup_user_columns', type: :task do
     expect(column(clean)).to eq(["own_grant"])
   end
 
+  it 'logs one change-log row per removed flag, and none on a dry run' do
+    expect { run }.not_to change(FeatureFlagEvent, :count)
+    task.reenable
+    expect { run(apply: true) }.to change(FeatureFlagEvent, :count).by(2)
+
+    expect(FeatureFlagEvent.where(target_user_id: polluted.id).pluck(:feature, :action, :actor_label)).to contain_exactly(
+      ["launched_a", "disable", "rake features:cleanup_user_columns"],
+      ["launched_b", "disable", "rake features:cleanup_user_columns"]
+    )
+  end
+
   it 'in all mode strips every launched feature from every column' do
     run(apply: true, mode: 'all')
 
