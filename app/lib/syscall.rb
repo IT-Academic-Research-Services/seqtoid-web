@@ -11,14 +11,23 @@ class Syscall
     if status.success?
       return stdout
     elsif stderr
-      Rails.logger.error("Syscall.run failed with command: #{cmd.join(' ')}. Error: #{stderr}")
+      LogUtil.log_error(
+        "Syscall.run failed with command: #{cmd.join(' ')}.",
+        stdout: stdout.presence,
+        stderr: stderr.presence,
+        exitstatus: status.exitstatus
+      )
     end
 
     return nil
   rescue StandardError => e
-    Rails.logger.error("Syscall.run failed with command: #{cmd.join(' ')}")
-    Rails.logger.error(e)
-
+    LogUtil.log_error(
+      "Syscall.run failed with command: #{cmd.join(' ')}.",
+      exception: e,
+      stdout: stdout.presence,
+      stderr: stderr.presence,
+      exitstatus: status&.exitstatus
+    )
     return nil
   end
 
@@ -33,13 +42,23 @@ class Syscall
     if status.success?
       return stdout
     elsif stderr
-      Rails.logger.error("Syscall.run_in_dir failed with command: #{cmd.join(' ')}. Error: #{stderr}")
+      LogUtil.log_error(
+        "Syscall.run_in_dir failed with command: #{cmd.join(' ')}.",
+        stdout: stdout.presence,
+        stderr: stderr.presence,
+        exitstatus: status.exitstatus
+      )
     end
 
     return nil
   rescue StandardError => e
-    Rails.logger.error("Syscall.run_in_dir failed with command: #{cmd.join(' ')}")
-    Rails.logger.error(e)
+    LogUtil.log_error(
+      "Syscall.run_in_dir failed with command: #{cmd.join(' ')}.",
+      exception: e,
+      stdout: stdout.presence,
+      stderr: stderr.presence,
+      exitstatus: status&.exitstatus
+    )
 
     return nil
   end
@@ -55,8 +74,11 @@ class Syscall
     Open3.pipeline_r(*cmd) { |line, _ts| output += line.read }
     output
   rescue StandardError => e
-    Rails.logger.error("Syscall.pipe_with_output failed with command: #{cmd.join(' ')}")
-    Rails.logger.error(e)
+    LogUtil.log_error(
+      "Syscall.pipe_with_output failed with command: #{cmd.join(' ')}",
+      exception: e,
+      output: output.presence
+    )
 
     return nil
   end
@@ -84,8 +106,16 @@ class Syscall
     stderr = err_read.read
 
     # Check whether the commands all succeeded.
-    success = cmd_statuses.all? { |p| p && p.exitstatus && p.exitstatus.zero? }
+    success = cmd_statuses.all? { |p| p&.exitstatus&.zero? }
 
     return success, stderr
+  rescue StandardError => e
+    LogUtil.log_error(
+      "Syscall.pipe failed with command: #{cmd.join(' ')}",
+      exception: e,
+      stderr: stderr.presence,
+      exitstatuses: cmd_statuses&.map { |p| p&.exitstatus }
+    )
+    raise e
   end
 end

@@ -220,6 +220,7 @@ Rails.application.configure do
 
   config.log_to = %w[stdout file] # Is this even used?
   config.active_record.verbose_query_logs = true
+  ActiveRecord::Migration.verbose = true # false for every other environment (See application.rb)
 
   config.after_initialize do
     Bullet.enable = true

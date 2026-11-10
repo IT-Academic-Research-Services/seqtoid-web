@@ -14,27 +14,15 @@ class IOProxy < DelegateClass(IO)
   end
 
   def write(string)
-    if Thread.current[@threadlocal_key]
-      Thread.current[@threadlocal_key].write(string)
-    else
-      @default_stream.write(string)
-    end
+    (Thread.current[@threadlocal_key] || @default_stream).write(string)
   end
 
   def puts(*args)
-    if Thread.current[@threadlocal_key]
-      Thread.current[@threadlocal_key].puts(*args)
-    else
-      @default_stream.puts(*args)
-    end
+    (Thread.current[@threadlocal_key] || @default_stream).puts(*args)
   end
 
   def flush
-    if Thread.current[@threadlocal_key]
-      Thread.current[@threadlocal_key].flush
-    else
-      @default_stream.flush
-    end
+    (Thread.current[@threadlocal_key] || @default_stream).flush
   end
 end
 
