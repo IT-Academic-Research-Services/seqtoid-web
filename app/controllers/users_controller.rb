@@ -175,9 +175,9 @@ class UsersController < ApplicationController
             next
           end
 
-          user.add_allowed_feature(permitted_params[:feature_flag])
+          Feature.enable_for(permitted_params[:feature_flag], user, by: current_user)
         elsif permitted_params[:feature_flag_action] == "remove"
-          user.remove_allowed_feature(permitted_params[:feature_flag])
+          Feature.disable_for(permitted_params[:feature_flag], user, by: current_user)
         end
       end
 

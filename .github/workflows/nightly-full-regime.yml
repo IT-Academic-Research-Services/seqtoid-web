@@ -18,6 +18,8 @@ name: Nightly full-platform test regime
 #     - data_integrity   -> runs the reference_data:integrity_check rake gate + its spec (#741)
 #     - security_scan    -> reuses security-scan.yml gitleaks/trivy/brakeman (#740, minus DAST)
 #     - contract_api     -> GraphQL SDL + committed-snapshot drift + key REST endpoints (#742)
+#     - dast_zap         -> dast-zap.yml: passive OWASP ZAP baseline vs dev, fail on NEW findings
+#                           over .zap/baseline.json (DAST half of the security ticket; unauth for now)
 #   REAL but env-gated (only where the deployed-env vars/secrets exist):
 #     - browser_e2e      -> reuses e2e-automation.yml against dev (#738)
 #     - pipeline_e2e_aupr-> dispatches the CI-native viral benchmark + gates on its AUPR result
@@ -26,7 +28,6 @@ name: Nightly full-platform test regime
 #   TODO stubs (each mapped to its child ticket; a marked no-op step, not a hidden skip):
 #     - integration_suite      -> #736   cross-component (MySQL8 + OpenSearch + Redis + LocalStack S3)
 #     - load_soak              -> #739   k6/Locust load + latency SLOs
-#     - dast_zap               -> #740   OWASP ZAP DAST against dev (SAST half is real above)
 #     - chaos_resilience       -> #743   Karpenter evict / OpenSearch loss / DB failover drills
 #     - observability_alerting -> #744   synthetic signals prove alerts fire (LGTM + Sentry)
 #
@@ -93,7 +94,7 @@ jobs:
     name: Deep security SAST (#740)
     needs: guard
     # Reuse the existing security suite (gitleaks + trivy fs + brakeman). The DAST half
-    # (OWASP ZAP against dev) is the dast_zap stub below.
+    # (OWASP ZAP against dev) is the dast_zap job below.
     uses: ./.github/workflows/security-scan.yml
     permissions:
       contents: read
@@ -178,15 +179,15 @@ jobs:
           echo "RUM/Web-Vitals budgets; catch slow queries (top_taxons / ES). Needs dev target."
 
   dast_zap:
-    name: DAST (OWASP ZAP, dev) (#740) [STUB]
+    name: DAST (OWASP ZAP baseline, dev) (#740)
     needs: guard
-    runs-on: ubuntu-24.04
-    steps:
-      - name: TODO
-        run: |
-          echo "STUB for platform-overhaul #740 (DAST half): OWASP ZAP baseline/full scan"
-          echo "against the running dev app. The SAST half (gitleaks/trivy/brakeman) is REAL"
-          echo "in the security_scan job above. Needs a deployed dev URL + ZAP action."
+    # Passive, unauthenticated ZAP baseline scan of dev, gated "accept current, fail new" against
+    # .zap/baseline.json (see dast-zap.yml). Authenticated scanning is a follow-up.
+    uses: ./.github/workflows/dast-zap.yml
+    with:
+      target_url: https://dev.seqtoid.org
+    permissions:
+      contents: read
 
   contract_api:
     name: Contract / API tests (#742)
@@ -267,7 +268,7 @@ jobs:
             echo "| Cross-component integration | #736 | STUB | ${INTEG} |"
             echo "| Pipeline E2E + AUPR gate | #737 | real, guarded | ${PIPE} |"
             echo "| Load / performance / soak | #739 | STUB | ${LOAD} |"
-            echo "| DAST (OWASP ZAP) | #740 | STUB | ${DAST} |"
+            echo "| DAST (OWASP ZAP baseline, dev) | #740 | real (passive, unauth) | ${DAST} |"
             echo "| Contract / API | #742 | real | ${CONTRACT} |"
             echo "| Chaos / resilience | #743 | STUB | ${CHAOS} |"
             echo "| Observability / alerting | #744 | STUB | ${OBS} |"

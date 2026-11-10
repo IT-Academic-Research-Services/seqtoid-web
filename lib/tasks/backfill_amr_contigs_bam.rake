@@ -87,7 +87,7 @@ task :backfill_amr_contigs_bam, [:docker_image_id, :wdl_uri, :min_version, :max_
 
   sfn_input = JSON.dump(sfn_input_hash)
 
-  sfn_name = "idseq-#{Rails.env}-contigs-bam-bai-backfill-#{TIMESTAMP}"
+  sfn_name = "#{SfnExecutionName.prefix("idseq-#{Rails.env}")}-contigs-bam-bai-backfill-#{TIMESTAMP}"
   AwsClient[:states].start_execution(state_machine_arn: sfn_arn, name: sfn_name, input: sfn_input)
 
   ## Upload log and count of workflows we couldn't process

@@ -10,7 +10,7 @@
 #   state   .state | .status
 #   digest  .digest | .image.digest              (sha256:<64 hex>)
 #   tag     .tag | .image.tag                    (sha-<commit>)
-#   commit  .commit | .git_sha | .source_sha | .sha, else derived from the sha-<commit> tag
+#   commit  .chart_sha | .commit | .git_sha | .source_sha | .sha, else derived from the sha-<commit> tag
 #   cut_at  .cut_at | .created_at | .started_at  (ISO-8601 UTC)
 #   repo    .image.repository | .repository      (optional; the caller falls back to dev's ECR)
 # A vetting RC missing digest, commit or cut_at is an error: the battery cannot test it honestly.
@@ -24,7 +24,7 @@ id="$(q '.id // .rc_id // .rc')"
 state="$(q '.state // .status')"
 digest="$(q '.digest // .image.digest')"
 tag="$(q '.tag // .image.tag')"
-commit="$(q '.commit // .git_sha // .source_sha // .sha')"
+commit="$(q '.chart_sha // .commit // .git_sha // .source_sha // .sha')"
 cut_at="$(q '.cut_at // .created_at // .started_at')"
 repo="$(q '.image.repository // .repository')"
 if [ -z "$commit" ] && [[ "$tag" =~ ^sha-([0-9a-f]{7,40})$ ]]; then

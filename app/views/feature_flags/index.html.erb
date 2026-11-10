@@ -1,0 +1,104 @@
+<%# Admin-only (FeatureFlagsController: login_required + admin_required). Structure mirrors users/index. %>
+<div id="feature_flags_page" style="height: calc(100vh - 60px); display: flex; flex-direction: column">
+  <div style="flex: 0 0 auto">
+    <p id="notice"><%= notice %></p>
+    <% if alert %><p id="alert" style="color: #b00020"><%= alert %></p><% end %>
+
+    <h1>Feature flags</h1>
+    <div><i>Environment: <%= @environment %>. A flag is on for a user when it is launched, granted to the user, or enabled for a group the user is in. Every change asks for confirmation and is logged below.</i></div>
+    <br/>
+  </div>
+  <div style="flex: 1 0 0; overflow: auto;">
+    <table id="feature_flags_table">
+      <thead>
+        <tr>
+          <th>Flag</th>
+          <th>What it gates</th>
+          <th>Global</th>
+          <th>Groups</th>
+          <th>Per-user grants</th>
+          <th>Grant / revoke for a user</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @flags.each do |flag| %>
+          <tr id="flag-<%= flag.name.parameterize %>">
+            <td><b><%= flag.name %></b></td>
+            <td><%= flag.description || "(not in Feature::REGISTRY)" %></td>
+            <td>
+              <%= flag.global ? "LAUNCHED" : "off" %>
+              <%= button_to(flag.global ? "Un-launch" : "Launch for everyone", admin_feature_flags_global_path, method: :post, params: { name: flag.name, state: flag.global ? "off" : "on" }) %>
+            </td>
+            <td><%= flag.groups.join(", ") %></td>
+            <td>
+              <%= flag.users.size %>
+              <% if flag.users.any? %>
+                <details>
+                  <summary>show</summary>
+                  <% flag.users.sort_by { |u| u[:email].to_s }.each do |u| %>
+                    <div style="display: flex; gap: 8px; align-items: center">
+                      <%= u[:email] %>
+                      <%= button_to "Revoke", admin_feature_flags_user_path, method: :post, params: { name: flag.name, email: u[:email], op: "remove" } %>
+                    </div>
+                  <% end %>
+                </details>
+              <% end %>
+            </td>
+            <td>
+              <%= form_tag admin_feature_flags_user_path, method: :post do %>
+                <%= hidden_field_tag :name, flag.name, id: nil %>
+                <%= email_field_tag :email, nil, placeholder: "user@example.org", id: nil, required: true %>
+                <%= select_tag :op, options_for_select([["Grant", "add"], ["Revoke", "remove"]]), id: nil %>
+                <%= submit_tag "Go" %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+
+    <h2>Launch a flag that is not listed</h2>
+    <%= form_tag admin_feature_flags_global_path, method: :post do %>
+      <%= hidden_field_tag :state, "on", id: nil %>
+      <%= text_field_tag :name, nil, placeholder: "flag_name", required: true %>
+      <%= submit_tag "Launch for everyone" %>
+    <% end %>
+
+    <h2>Groups</h2>
+    <p><i>Edited with Feature.enable_for_group / Feature.add_to_group (logged), or the AppConfig keys named in app/models/feature.rb.</i></p>
+    <table>
+      <thead><tr><th>Group</th><th>Flags</th><th>Members (user ids / emails)</th></tr></thead>
+      <tbody>
+        <% @groups.each do |group, members| %>
+          <tr>
+            <td><%= group %></td>
+            <td><%= @flags.select { |f| f.groups.include?(group) }.map(&:name).join(", ") %></td>
+            <td><%= members.join(", ") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+
+    <h2>Recent changes</h2>
+    <table id="feature_flag_events_table">
+      <thead>
+        <tr><th>When (UTC)</th><th>Flag</th><th>Change</th><th>Target</th><th>By</th><th>Environment</th></tr>
+      </thead>
+      <tbody>
+        <% @events.each do |event| %>
+          <tr>
+            <td><%= event.created_at.utc.strftime("%Y-%m-%d %H:%M:%S") %></td>
+            <td><%= event.feature %></td>
+            <td><%= event.action %> (<%= event.scope %><%= " #{event.group_name}" if event.group_name %>)</td>
+            <td><%= event.target_user&.email || event.target_member || (event.target_user_id && "user #{event.target_user_id}") %></td>
+            <td><%= event.actor_label %></td>
+            <td><%= event.environment %></td>
+          </tr>
+        <% end %>
+        <% if @events.empty? %>
+          <tr><td colspan="6"><i>No changes logged yet.</i></td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>

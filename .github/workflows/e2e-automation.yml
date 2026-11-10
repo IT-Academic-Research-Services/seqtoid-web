@@ -67,8 +67,9 @@ run-name: "Run ${{inputs.test-category}} tests on ${{inputs.node-environment}} e
 jobs:
   workflow-e2e:
     runs-on: ubuntu-24.04
+    # contents: read only. This job never assumes an AWS role, and asking for id-token here made
+    # every caller that grants less (e2e-pr-gate.yml) a startup_failure before any job ran.
     permissions:
-      id-token: write
       contents: read
     env:
       CI: true
@@ -80,6 +81,9 @@ jobs:
       GAUNTLET_BASE_URL: ${{inputs.base-url}}
       BASESPACE_USERNAME: ${{secrets.BASESPACE_USERNAME}}
       BASESPACE_PASSWORD: ${{secrets.BASESPACE_PASSWORD}}
+      # Slack is optional: the notify steps skip when the webhook is not provisioned instead of
+      # turning a passing suite red.
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
       - name: Checkout
@@ -127,12 +131,14 @@ jobs:
         if: always()
         with:
           name: playwright-report-${{inputs.test-category}}-${{ github.run_id }}
-          path: /home/runner/work/czid-web-private/czid-web-private/e2e/playwright-report
+          # Workspace-relative: the old absolute path named the upstream repo's checkout dir, so the
+          # report was never found here.
+          path: e2e/playwright-report
           retention-days: 14
 
       - name: Notify Slack on success
         id: slack_message
-        if: ${{ success() }}
+        if: ${{ success() && env.SLACK_WEBHOOK_URL != '' }}
         uses: slackapi/slack-github-action@0d95c9a7becc1e6e297d76df9bc735c44f4cbcbc # v3.0.5
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -195,7 +201,7 @@ jobs:
             }
 
       - name: Notify Slack on failure
-        if: ${{ failure() }}
+        if: ${{ failure() && env.SLACK_WEBHOOK_URL != '' }}
         uses: slackapi/slack-github-action@0d95c9a7becc1e6e297d76df9bc735c44f4cbcbc # v3.0.5
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}

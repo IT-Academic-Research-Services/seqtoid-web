@@ -58,6 +58,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- /* Per-worker affinity override, else the worker-wide workerAffinity (e.g. keep workers off spot). */}}
       {{- with ($w.affinity | default $root.Values.workerAffinity) }}
       affinity:

@@ -127,29 +127,32 @@ class User < ApplicationRecord
     AppConfigHelper.get_json_app_config(AppConfig::LAUNCHED_FEATURES, [])
   end
 
+  # Every flag that is on for this user (own grants | launched | group). Evaluated by Feature.
   def allowed_feature_list
-    launched = AppConfigHelper.get_json_app_config(AppConfig::LAUNCHED_FEATURES, [])
-    JSON.parse(allowed_features || "[]") | launched
+    Feature.enabled_list(self)
   end
 
   def allowed_feature?(feature)
-    allowed_feature_list.include?(feature)
+    Feature.enabled?(feature, self)
   end
 
-  def add_allowed_feature(feature)
-    parsed_allowed_features = allowed_feature_list
-
-    unless parsed_allowed_features.include?(feature)
-      update(allowed_features: parsed_allowed_features + [feature])
-    end
+  # Features granted to THIS user only -- the users.allowed_features column, WITHOUT the global
+  # LAUNCHED_FEATURES list merged in. Every per-user mutation must start from this list, never from
+  # allowed_feature_list: persisting the merged list would copy every globally launched feature into
+  # the user's own column, so un-launching a feature later would leave it on for that user forever.
+  def user_allowed_feature_list
+    JSON.parse(allowed_features.presence || "[]")
   end
 
-  def remove_allowed_feature(feature)
-    parsed_allowed_features = allowed_feature_list
+  # Kept for existing callers; prefer Feature.enable_for / disable_for.
+  def add_allowed_feature(feature, by: "User#add_allowed_feature")
+    Feature.enable_for(feature, self, by: by)
+  end
 
-    if parsed_allowed_features.include?(feature)
-      update(allowed_features: parsed_allowed_features - [feature])
-    end
+  # Removes only a per-user grant. A feature that is globally launched stays on for this user (that is
+  # what "launched" means); un-launch it with Feature.disable instead.
+  def remove_allowed_feature(feature, by: "User#remove_allowed_feature")
+    Feature.disable_for(feature, self, by: by)
   end
 
   def can_upload(s3_path)
