@@ -3,7 +3,23 @@
 # to the image ENTRYPOINT, which wraps them in `chamber exec ... bundle exec`.
 {{- $root := . -}}
 {{- range $name, $w := .Values.workers }}
-{{- if ne $w.enabled false }}
+{{- $render := ne $w.enabled false }}
+{{- /*
+  In a preview, the notification MODE decides whether shoryuken runs, not workers.shoryuken.enabled.
+  Values come from infra main but the chart from each PR's head, so an older PR branch (whose
+  provision does not swap the queue) must never see shoryuken switched on by a shared values file:
+  preview-base keeps workers.shoryuken.enabled false and sets preview.notifications.mode sqs, which
+  only charts that also create the per-PR queue understand. Shoryuken explicitly enabled in a
+  polling preview is refused: it would consume DEV's shared queue.
+*/}}
+{{- if and $root.Values.preview.enabled (eq $name "shoryuken") }}
+{{- $sqs := eq (include "seqtoid-web.previewNotificationsMode" $root) "sqs" }}
+{{- if and (hasKey $w "enabled") $w.enabled (not $sqs) }}
+{{- fail "workers.shoryuken.enabled=true in a preview requires preview.notifications.mode=sqs; in poll mode it would consume dev's shared SFN notification queue" }}
+{{- end }}
+{{- $render = $sqs }}
+{{- end }}
+{{- if $render }}
 {{- /*
   Graceful Resque shutdown (values.yaml workerShutdown): only for workers launched as
   `rake resque:workers`. They run `rake resque:work` directly so the SIGTERM reaches the worker,
@@ -56,6 +72,10 @@ spec:
       terminationGracePeriodSeconds: {{ $grace }}
       {{- with $root.Values.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- /* Per-worker affinity override, else the worker-wide workerAffinity (e.g. keep workers off spot). */}}

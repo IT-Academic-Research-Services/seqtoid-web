@@ -1,0 +1,89 @@
+{{- if and .Values.rcGate.enabled (not .Values.suspend) -}}
+{{- $ownerEmail := .Values.rcGate.ownerEmail | default "" | toString | trim -}}
+{{- if not $ownerEmail -}}
+{{- fail "rcGate.ownerEmail must be set when rcGate.enabled is true (owner of the RC Benchmarks project)" -}}
+{{- end -}}
+{{- $pin := .Values.pin | default dict -}}
+# Release-candidate AUPR gate tick (deploy lanes). While dev is pinned to an RC
+# (pin.kind rc), each tick runs `rake rc_gate:tick`, which advances the gate sample
+# through dev's real pipeline + benchmark on the RC build and writes
+# <resultsPrefix>/<rc>/result.json for the CI gate. Unpinned, the task is a no-op.
+#
+# Same image/SA/nodeSelector/env/entrypoint shape as the taxon-refresh CronJob. Not
+# an Argo hook: a standing scheduled resource. OFF by default (rcGate.enabled), so
+# every environment renders exactly as before unless its values opt in.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-rc-gate
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rc-gate
+spec:
+  schedule: {{ .Values.rcGate.schedule | quote }}
+  # One tick at a time; a tick is short, the next one picks up where it left off.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.rcGate.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.rcGate.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.rcGate.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "seqtoid-web.labels" . | nindent 8 }}
+        app.kubernetes.io/component: rc-gate
+    spec:
+      # The tick is idempotent; a failed tick is retried by the next schedule, not here.
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.rcGate.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: {{ .Values.rcGate.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            {{- include "seqtoid-web.labels" . | nindent 12 }}
+            app.kubernetes.io/component: rc-gate
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "seqtoid-web.serviceAccountName" . }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: rc-gate
+              image: {{ include "seqtoid-web.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args:
+                {{- toYaml .Values.rcGate.command | nindent 16 }}
+              env:
+                {{- include "seqtoid-web.commonEnv" . | nindent 16 }}
+                {{- with $pin.kind }}
+                - name: DEV_PIN_KIND
+                  value: {{ . | quote }}
+                {{- end }}
+                {{- with $pin.rc }}
+                - name: DEV_PIN_RC
+                  value: {{ . | quote }}
+                {{- end }}
+                - name: RC_GATE_IMAGE_TAG
+                  value: {{ .Values.image.tag | toString | quote }}
+                - name: RC_GATE_RESULTS_PREFIX
+                  value: {{ .Values.rcGate.resultsPrefix | quote }}
+                - name: RC_GATE_DATASET
+                  value: {{ .Values.rcGate.dataset | quote }}
+                - name: RC_GATE_FASTQS
+                  value: {{ join "," .Values.rcGate.fastqs | quote }}
+                - name: RC_GATE_TRUTH_FILE
+                  value: {{ .Values.rcGate.truthFile | quote }}
+                - name: RC_GATE_SRM_VERSION
+                  value: {{ .Values.rcGate.srmVersion | toString | quote }}
+                - name: RC_GATE_OWNER_EMAIL
+                  value: {{ $ownerEmail | quote }}
+                - name: RC_GATE_TIMEOUT_HOURS
+                  value: {{ .Values.rcGate.timeoutHours | toString | quote }}
+              resources:
+                {{- toYaml .Values.rcGate.resources | nindent 16 }}
+{{- end }}

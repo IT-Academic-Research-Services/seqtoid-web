@@ -15,6 +15,7 @@
 # built ONLY from it (never free-form), so these tasks can only ever touch idseq_pr_<N>
 # / sbx_pr_<N> -- never idseq_dev or any other schema.
 require "English" # $CHILD_STATUS -- the shell-out exit codes below are load-bearing guards
+require Rails.root.join("lib/preview_sfn_notifications").to_s
 namespace :sandbox do
   def sandbox_pr_number!
     raw = ENV["SANDBOX_PR_NUMBER"].to_s
@@ -52,6 +53,42 @@ namespace :sandbox do
     raise "GitHub API #{res.code} fetching #{repo} PR #{number}: #{res.body.to_s[0, 200]}" unless res.is_a?(Net::HTTPSuccess)
 
     JSON.parse(res.body)["state"] == "open" ? :open : :closed
+  end
+
+  # How a preview learns that its pipelines moved (chart value preview.notifications.mode):
+  #   poll -- the default and the historical model: no shoryuken, the monitors poll Step Functions.
+  #   sqs  -- the preview gets its OWN queue on dev's SFN notification topic, filtered to the
+  #           executions it started (lib/preview_sfn_notifications.rb), consumed by its own shoryuken.
+  # Anything else raises: a typo must not quietly mean "poll" on one side and "sqs" on the other.
+  def sandbox_notifications_mode
+    mode = ENV["SANDBOX_NOTIFICATIONS_MODE"].to_s.strip
+    mode = "poll" if mode.empty?
+    raise "SANDBOX_NOTIFICATIONS_MODE must be 'poll' or 'sqs' (got #{mode.inspect})" unless %w[poll sqs].include?(mode)
+
+    mode
+  end
+
+  # The execution-name prefix this preview dispatches with (SfnExecutionName) and that its queue's
+  # filter matches on. It must END in pr-<N>: anything else could filter in dev's events, or another
+  # sandbox's, and this preview would act on (and delete) messages that are not its own.
+  def sandbox_execution_name_prefix(pr)
+    prefix = ENV["SANDBOX_SFN_EXECUTION_NAME_PREFIX"].to_s.strip
+    prefix = "idseq-pr-#{pr}" if prefix.empty?
+    unless prefix.match?(/(\A|-)pr-#{pr}\z/)
+      raise "SANDBOX_SFN_EXECUTION_NAME_PREFIX=#{prefix.inspect} must end in 'pr-#{pr}' so the queue filter " \
+            "only matches executions this sandbox started"
+    end
+
+    prefix
+  end
+
+  # nil when SANDBOX_SFN_TOPIC_ARN is unset: this run does not manage notification queues (a
+  # polling sandbox, or a reaper whose role has not been granted SQS/SNS yet).
+  def sandbox_sfn_notifications(pr, env)
+    topic = ENV["SANDBOX_SFN_TOPIC_ARN"].to_s.strip
+    return nil if topic.empty?
+
+    PreviewSfnNotifications.new(pr: pr, env: env, topic_arn: topic)
   end
 
   # Raw admin connection from the chamber-injected master creds (NOT the Rails pool,
@@ -166,7 +203,20 @@ namespace :sandbox do
             "Sandboxes must not write there. Use the dedicated preview bucket. See #697.")
     end
 
-    puts "[sandbox:provision] pr=#{pr} schema=#{n[:schema]} user=#{n[:user]} ssm=#{n[:ssm]}"
+    # Resolve the notification model BEFORE touching anything, so a bad value fails the provision
+    # with nothing half-done.
+    notifications_mode = sandbox_notifications_mode
+    if notifications_mode == "sqs"
+      execution_prefix = sandbox_execution_name_prefix(pr)
+      notifier = sandbox_sfn_notifications(pr, env)
+      if notifier.nil?
+        abort("[sandbox:provision] SANDBOX_NOTIFICATIONS_MODE=sqs but SANDBOX_SFN_TOPIC_ARN is unset. The " \
+              "sandbox's queue must subscribe to dev's SFN notification topic; without it shoryuken would " \
+              "consume nothing and the sandbox (which stops polling in sqs mode) would never see a run finish.")
+      end
+    end
+
+    puts "[sandbox:provision] pr=#{pr} schema=#{n[:schema]} user=#{n[:user]} ssm=#{n[:ssm]} notifications=#{notifications_mode}"
 
     # REUSE the sandbox's existing password when one is already stored, and only mint a new one
     # on a genuinely fresh sandbox. Argo recreates this hook on every sync, so two provision Jobs
@@ -327,6 +377,23 @@ namespace :sandbox do
               "eat this sandbox's result-loader jobs (so this sandbox could never show a result), " \
               "and this sandbox could eat dev's scheduled jobs. Set preview.redis.enabled=true so " \
               "the chart provisions this sandbox's own Redis and passes its URL.")
+      end
+
+      # Step Functions notifications. In sqs mode the sandbox gets its OWN queue (created or
+      # converged here, before the import, so the config never points at a queue that does not
+      # exist) and its shoryuken reads THAT queue: config/shoryuken.yml takes the queue from
+      # SFN_NOTIFICATIONS_QUEUE_ARN, which would otherwise be DEV's shared queue copied from dev's
+      # config -- the competing-consumer hazard previews were kept off shoryuken for. Overridden
+      # in `scoped` (never `chamber write`), same as REDISCLOUD_URL above. The execution-name
+      # prefix is written too, so the names the app dispatches with and the filter on its queue
+      # come from ONE value even if the ApplicationSet never sets it.
+      #
+      # SANDBOX_NOTIFICATIONS_MODE is always written (poll or sqs), so sandbox:seed_once -- which
+      # runs in the migrate hook under this config -- sets enable_sfn_notifications to match.
+      scoped["SANDBOX_NOTIFICATIONS_MODE"] = notifications_mode
+      if notifications_mode == "sqs"
+        scoped["SFN_NOTIFICATIONS_QUEUE_ARN"] = notifier.provision!(execution_prefix)
+        scoped["SFN_EXECUTION_NAME_PREFIX"] = execution_prefix
       end
 
       # Drop any nil/empty values before importing: SSM Parameter Store rejects an empty String
@@ -496,6 +563,28 @@ namespace :sandbox do
     ssm_delete_params!(names)
     puts "[sandbox:teardown] deleted #{names.size} SSM params under #{ssm_path}"
 
+    # The sandbox's own SFN notification queue + DLQ + topic subscription (sqs mode). Idempotent
+    # and tolerant of any piece being gone. Skipped when no topic is configured, so a polling
+    # sandbox's teardown -- or one whose role has no SQS grant -- is unchanged and cannot wedge.
+    #
+    # An IAM DENIAL is logged and skipped, not raised: a failed teardown Job wedges the namespace
+    # behind the Argo finalizer forever (see reap_orphans, failure mode (c)), which is far worse than
+    # a leaked empty queue -- and the queue is still found and removed by reap_orphans later. Any
+    # other error (including refusing to touch a subscription that is not this preview's) raises.
+    notifier = sandbox_sfn_notifications(pr, ENV.fetch("ENVIRONMENT", "dev"))
+    if notifier
+      begin
+        notifier.teardown!
+      rescue Aws::SQS::Errors::ServiceError, Aws::SNS::Errors::ServiceError => e
+        raise unless PreviewSfnNotifications.access_denied?(e)
+
+        warn "[sandbox:teardown] WARNING: no permission to remove the notification queue for pr=#{pr} " \
+             "(#{e.code}: #{e.message}). Left in place; reap_orphans removes it once its role is granted SQS/SNS."
+      end
+    else
+      puts "[sandbox:teardown] SANDBOX_SFN_TOPIC_ARN unset -- no notification queue to remove"
+    end
+
     puts "[sandbox:teardown] done"
   end
 
@@ -529,7 +618,7 @@ namespace :sandbox do
   # correct one (well-formed, non-empty, HTTP 200), so "the fetch succeeded" proved nothing about
   # whether the answer meant anything. The first dry-run cycle marked two sandboxes belonging to
   # OPEN PRs for destruction and reported it as a clean run. Only the dry-run flag stopped it.
-  desc "Reap sandbox schemas/users/SSM paths whose PR this repo confirms is closed (teardown backstop)"
+  desc "Reap sandbox schemas/users/SSM paths/notification queues whose PR this repo confirms is closed (teardown backstop)"
   task :reap_orphans do
     require "json"
     require "net/http"
@@ -578,13 +667,34 @@ namespace :sandbox do
     end
     ssm_prs = ssm_prs.uniq
 
+    # Preview SFN notification queues (sqs mode). Only swept when the reaper is given the topic,
+    # which is also what makes the teardown below remove them -- so a reaper without SQS/SNS grants
+    # keeps doing exactly what it did. Raises on a failed listing, like the SSM enumeration above.
+    queue_prs = []
+    if ENV["SANDBOX_SFN_TOPIC_ARN"].to_s.strip.empty?
+      puts "[sandbox:reap_orphans] SANDBOX_SFN_TOPIC_ARN unset -- not sweeping preview notification queues"
+    else
+      begin
+        queue_prs = PreviewSfnNotifications.preview_queue_prs(Aws::SQS::Client.new, ENV.fetch("ENVIRONMENT", "dev"))
+      rescue Aws::SQS::Errors::ServiceError => e
+        raise unless PreviewSfnNotifications.access_denied?(e)
+
+        # The reaper's role may not have SQS yet. Degrade to exactly the old behaviour (schemas +
+        # SSM still reaped) instead of aborting the whole reap, and stop the teardowns below from
+        # trying queues too.
+        warn "[sandbox:reap_orphans] WARNING: cannot list preview notification queues (#{e.code}); " \
+             "skipping queue cleanup this run. Grant the reaper role SQS/SNS to enable it."
+        ENV.delete("SANDBOX_SFN_TOPIC_ARN")
+      end
+    end
+
     # Classify every sandbox that physically exists. Being absent from the open-PR list is NOT
     # sufficient to destroy something -- confirm with GitHub that the PR exists here and is closed.
     # A sandbox whose number this repo has never issued is FOREIGN: it was minted by some other
     # repo (pre-cutover forks number in the 300s), its PR may well be open, and we cannot reason
     # about it from here. Skipping is the only safe answer -- and it is a LOUD skip, because a
     # backstop that silently ignores state is how orphans accumulated in the first place.
-    candidates = (live_schemas | ssm_prs).sort
+    candidates = (live_schemas | ssm_prs | queue_prs).sort
     orphans = []
     foreign = []
     candidates.each do |pr|
@@ -597,7 +707,7 @@ namespace :sandbox do
       end
     end
 
-    puts "[sandbox:reap_orphans] schemas=#{live_schemas.sort.inspect} ssm=#{ssm_prs.sort.inspect} " \
+    puts "[sandbox:reap_orphans] schemas=#{live_schemas.sort.inspect} ssm=#{ssm_prs.sort.inspect} queues=#{queue_prs.inspect} " \
          "-> orphans=#{orphans.inspect}#{dry_run ? ' (DRY RUN)' : ''}"
 
     unless foreign.empty?
@@ -641,7 +751,7 @@ namespace :sandbox do
   # on ANY re-sync of a sandbox (a PR push re-runs the migrate hook against the existing
   # schema). Guard it: only run db:seed on a truly fresh schema (no app_configs yet).
   # The first sync seeds the (dev) SFN ARNs + launched features; later re-syncs skip it.
-  desc "Run db:seed only if the sandbox schema has not been seeded yet (idempotent), then force the sandbox onto the polling pipeline model"
+  desc "Run db:seed only if the sandbox schema has not been seeded yet (idempotent), then set enable_sfn_notifications for the sandbox's notification mode"
   task seed_once: :environment do
     if AppConfig.count.zero?
       puts "[sandbox:seed_once] fresh schema -- running db:seed"
@@ -668,10 +778,9 @@ namespace :sandbox do
     puts "[sandbox:seed_once] applying pending seed migrations (reconciles the workflow_version catalog)"
     Rake::Task["seed:migrate"].invoke
 
-    # A sandbox POLLS; it does not get notified. db:seed writes
-    # enable_sfn_notifications=1, which is right for dev and wrong here, and the mismatch is
-    # silent: the sample dispatches, the pipeline runs to completion in Step Functions, and the
-    # UI sits on whatever stage it started at, forever. Nothing errors.
+    # enable_sfn_notifications must match how THIS sandbox learns about its pipelines, and a
+    # mismatch is silent either way: the sample dispatches, the pipeline completes in Step
+    # Functions, and the UI sits on whatever stage it started at, forever. Nothing errors.
     #
     # With the flag at 1 the app expects SQS notifications to drive status, so
     # pipeline_monitor.rake deliberately skips the poll:
@@ -680,23 +789,29 @@ namespace :sandbox do
     #     pr.update_job_status
     #   end
     #
-    # ...and the notifications never arrive, because a sandbox runs NO shoryuken -- deliberately.
-    # A sandbox shoryuken would be a competing consumer on DEV's shared notification queue and
-    # would steal dev's messages. So the sandbox runs both monitors and polls instead. Setting
-    # the flag to 0 is what makes those monitors actually do their job; it is the config half of
-    # the polling model the preview values already describe in prose.
+    # * poll mode (the default): the sandbox runs NO shoryuken -- one on dev's shared queue would
+    #   be a competing consumer stealing dev's messages -- so the flag must be 0 for the monitors
+    #   to poll. db:seed writes 1 (right for dev, wrong here), hence the override.
+    # * sqs mode: sandbox:provision gave this sandbox its OWN filtered queue and pointed
+    #   SFN_NOTIFICATIONS_QUEUE_ARN at it, and the chart runs its shoryuken, so the flag is 1 --
+    #   exactly as dev runs.
+    #
+    # The mode reaches this hook through the sandbox's own config (provision always writes
+    # SANDBOX_NOTIFICATIONS_MODE). Unset -- a sandbox provisioned before this existed -- means poll.
     #
     # Enforced on EVERY sync rather than only on a fresh seed: the skip-branch above means an
     # already-seeded sandbox would otherwise keep the wrong value forever, and this is how
-    # existing sandboxes self-heal on their next sync.
+    # existing sandboxes self-heal (or switch mode) on their next sync.
     #
     # Dev/staging/prod are untouched -- this task only ever runs in a sandbox's own schema.
+    mode = sandbox_notifications_mode
+    want = mode == "sqs" ? "1" : "0"
     flag = AppConfig.find_or_initialize_by(key: AppConfig::ENABLE_SFN_NOTIFICATIONS)
-    if flag.value == "0"
-      puts "[sandbox:seed_once] enable_sfn_notifications already 0 (polling model) -- ok"
+    if flag.value == want
+      puts "[sandbox:seed_once] enable_sfn_notifications already #{want} (#{mode} mode) -- ok"
     else
-      puts "[sandbox:seed_once] forcing enable_sfn_notifications #{flag.value.inspect} -> \"0\": a sandbox has no shoryuken, so status must be polled"
-      flag.value = "0"
+      puts "[sandbox:seed_once] setting enable_sfn_notifications #{flag.value.inspect} -> #{want.inspect} for #{mode} mode"
+      flag.value = want
       flag.save!
     end
   end

@@ -1,0 +1,610 @@
+name: rc-battery (release-candidate test battery)
+
+# Runs every required release-candidate check against dev while dev is pinned to the RC, and
+# records each result on the RC with seqtoid-gitops' `bin/release rc record-check`. An RC goes to
+# staging only when every required check is `pass` and a second person signs off; that gate lives
+# in seqtoid-gitops, this workflow only feeds it.
+#
+# The legs REUSE the nightly regime's tiers (the same reusable workflows nightly-full-regime.yml
+# calls), at the RC's source commit, with the E2E and pipeline legs ON regardless of the NIGHTLY_*
+# vars. Required check -> leg:
+#   browser_e2e          e2e-automation.yml against dev (gauntlet config + base-url)   REAL
+#   pipeline_e2e         dev rc-gate CronJob result: benchmark sample through dev's     REAL, needs
+#                        deployed pipeline on the RC build (dev_benchmark job)          CronJob + role
+#   aupr                 same result: floor + tolerance vs the last RELEASED RC's       REAL, needs
+#                        result + report digest (scripts/rc-battery/aupr_gate.py)       CronJob + role
+#   contract_api         contract-api.yml                                               REAL
+#   data_integrity       data-integrity.yml                                             REAL
+#   dast                 dast-zap.yml (OWASP ZAP) against dev at the RC commit          REAL
+#   migration_rehearsal  RC image: db:migrate:with_data on a restored env-prod copy     REAL, needs DB
+#   error_budget         Sentry new issues + dev ALB 5xx rate since the cut             REAL, needs config
+#   smoke_gate           dev serves the RC commit -> pending (no CI read of Argo)      PARTIAL
+#   cutover_check        same; dev also has postCutoverCheck disabled                   PARTIAL
+# pipeline_e2e/aupr read s3://<RC_BENCH_BUCKET>/rc-gates/<rc-id>/result.json (written by the in-app
+# rc-gate CronJob on dev) with vars.RC_BATTERY_ROLE, waiting up to RC_GATE_WAIT_MINUTES (180).
+# aupr: nt/nr AUPR >= RC_AUPR_FLOOR (0.98); vs the newest released RC's result (same dataset and
+# srm_version only) a relative change above RC_AUPR_TOLERANCE (0.01) in EITHER direction fails, and
+# a different report_digest fails unless RC_REPORT_DIGEST_ENFORCE=false (then a warning). With no
+# comparable baseline the floor alone decides. pipeline-aupr.yml (the in-runner seqtoid-workflows
+# benchmark) stays the nightly regime's proxy; the battery no longer uses it.
+# A leg that is not built records `fail` ("not implemented"), never `pass`: an RC must not go green
+# on a stub. Missing configuration records `fail` ("not configured").
+#
+# The RC record (`bin/release rc show --latest --json`) is read by scripts/rc-battery/rc-context.sh;
+# see that file for the fields used.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_id:
+        description: "RC to test (e.g. rc-2026.11.10). Must be the latest RC and in state vetting."
+        required: true
+  schedule:
+    # Tuesday 20:00 America/Los_Angeles. GitHub cron is UTC with no DST, so both twins are listed:
+    # 03:00 UTC Wed = 20:00 PDT (Mar-Nov), 04:00 UTC Wed = 20:00 PST (Nov-Mar). The `resolve` job
+    # keeps only the twin that matches LA's current UTC offset.
+    - cron: '0 3 * * 3'
+    - cron: '0 4 * * 3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc-battery
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-2
+
+jobs:
+  resolve:
+    name: Resolve the RC under vetting
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.rc.outputs.run }}
+      rc_id: ${{ steps.rc.outputs.rc_id }}
+      digest: ${{ steps.rc.outputs.digest }}
+      tag: ${{ steps.rc.outputs.tag }}
+      commit: ${{ steps.sha.outputs.commit }}
+      commit8: ${{ steps.sha.outputs.commit8 }}
+      cut_at: ${{ steps.rc.outputs.cut_at }}
+      repository: ${{ steps.rc.outputs.repository }}
+    steps:
+      - name: Keep only the schedule twin for LA's current offset
+        id: when
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          go=true
+          if [ "$EVENT" = "schedule" ]; then
+            want='0 4 * * 3'
+            if [ "$(TZ=America/Los_Angeles date +%z)" = "-0700" ]; then want='0 3 * * 3'; fi
+            if [ "$SCHEDULE" != "$want" ]; then
+              go=false
+              echo "Cron '${SCHEDULE}' is the DST twin; '${want}' is Tuesday 20:00 in LA now."
+            fi
+          fi
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        if: ${{ steps.when.outputs.go == 'true' }}
+
+      - name: Generate app token
+        id: app_token
+        if: ${{ steps.when.outputs.go == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        if: ${{ steps.when.outputs.go == 'true' }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        if: ${{ steps.when.outputs.go == 'true' }}
+        with:
+          python-version: "3.12"
+
+      - name: Read the RC
+        id: rc
+        if: ${{ steps.when.outputs.go == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          WANT: ${{ inputs.rc_id }}
+        run: |
+          set -euo pipefail
+          pip install -q -r _gitops/requirements.txt
+          _gitops/bin/release rc show --latest --json > rc.json
+          scripts/rc-battery/rc-context.sh rc.json "${WANT:-}" | tee -a "$GITHUB_OUTPUT"
+          if [ -n "${WANT:-}" ] && grep -q '^run=false' "$GITHUB_OUTPUT"; then
+            echo "::error::Asked to test ${WANT}, which is not the latest RC in state vetting (see above)."
+            exit 1
+          fi
+
+      - name: Resolve the RC's full source commit
+        id: sha
+        if: ${{ steps.rc.outputs.run == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHORT: ${{ steps.rc.outputs.commit }}
+          RC_ID: ${{ steps.rc.outputs.rc_id }}
+        run: |
+          set -euo pipefail
+          full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHORT}" --jq .sha)"
+          echo "commit=${full}" >> "$GITHUB_OUTPUT"
+          echo "commit8=${full:0:8}" >> "$GITHUB_OUTPUT"
+          echo "### Testing ${RC_ID} (commit \`${full:0:8}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- reused nightly tiers, at the RC's commit -----------------------------------------------
+
+  browser_e2e:
+    name: browser_e2e
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/e2e-automation.yml
+    permissions:
+      contents: read
+    with:
+      node-environment: gauntlet
+      base-url: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
+      test-category: ${{ vars.RC_E2E_CATEGORY || 'smoke' }}
+      should-run-with-feature-flags: false
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  contract_api:
+    name: contract_api
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/contract-api.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  data_integrity:
+    name: data_integrity
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/data-integrity.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  dast:
+    # OWASP ZAP against dev while it serves the RC. dast-zap.yml returns result (pass|fail) and a
+    # one-line summary, and uploads the HTML/JSON report as an artifact of this run.
+    name: dast
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    uses: ./.github/workflows/dast-zap.yml
+    permissions:
+      contents: read
+    with:
+      target_url: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
+      ref: ${{ needs.resolve.outputs.commit }}
+    secrets: inherit
+
+  # ---- RC-only legs ----------------------------------------------------------------------------
+
+  dev_benchmark:
+    # pipeline_e2e + aupr from the dev rc-gate run: while dev is pinned to the RC, an in-app
+    # CronJob runs a known benchmark sample through dev's DEPLOYED pipeline and writes
+    # s3://<bench bucket>/rc-gates/<rc-id>/result.json. This job waits for that file to reach a
+    # terminal state, then judges both checks with scripts/rc-battery/aupr_gate.py.
+    name: pipeline_e2e + aupr (dev benchmark)
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    # The role's max session is 4h and the credentials are taken once, so the wait is clamped to
+    # 225 minutes in the poll step (expressions cannot do arithmetic, hence fixed numbers).
+    timeout-minutes: 270
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      pipeline_status: ${{ steps.verdict.outputs.pe_status }}
+      pipeline_reason: ${{ steps.verdict.outputs.pe_reason }}
+      aupr_status: ${{ steps.verdict.outputs.aupr_status }}
+      aupr_reason: ${{ steps.verdict.outputs.aupr_reason }}
+    env:
+      RC_ID: ${{ needs.resolve.outputs.rc_id }}
+      IMAGE_TAG: ${{ needs.resolve.outputs.tag || format('sha-{0}', needs.resolve.outputs.commit8) }}
+      BUCKET: ${{ vars.RC_BENCH_BUCKET || 'seqtoid-bench-dev-491013321714' }}
+      CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+      ROLE: ${{ vars.RC_BATTERY_ROLE }}
+      GATE: scripts/rc-battery/aupr_gate.py
+    steps:
+      - uses: actions/checkout@v6
+      - name: Preconditions
+        id: pre
+        run: |
+          if [ -z "${ROLE}" ]; then
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "reason=not configured: vars.RC_BATTERY_ROLE (OIDC role with s3 read on the rc-gates prefix) is unset" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$ROLE" in arn:*) arn="$ROLE" ;; *) arn="arn:aws:iam::${CI_ACCOUNT_ID}:role/${ROLE}" ;; esac
+          { echo "status=ready"; echo "role_arn=${arn}"; } >> "$GITHUB_OUTPUT"
+      - name: Configure AWS (dev, rc-gates read)
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: ${{ steps.pre.outputs.role_arn }}
+          role-session-name: rc-battery-bench-${{ github.run_id }}
+          role-duration-seconds: 14400
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Wait for the dev benchmark result
+        id: poll
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        env:
+          WAIT_MINUTES: ${{ vars.RC_GATE_WAIT_MINUTES || '180' }}
+        run: |
+          set -uo pipefail
+          wait="${WAIT_MINUTES}"
+          if [ "$wait" -gt 225 ]; then echo "::warning::RC_GATE_WAIT_MINUTES=${wait} clamped to 225 (4h role session)"; wait=225; fi
+          src="s3://${BUCKET}/rc-gates/${RC_ID}/result.json"
+          deadline=$(( $(date +%s) + wait * 60 ))
+          last_err=""
+          while :; do
+            rm -f result.json
+            if aws s3 cp --only-show-errors "$src" result.json 2> s3.err; then
+              last_err=""
+              state="$(jq -r '.state // empty' result.json 2>/dev/null || true)"
+              case "$state" in succeeded|failed) echo "result is ${state}"; break ;; esac
+              echo "$(date -u +%H:%M:%S) ${src}: state '${state:-?}'; waiting"
+            else
+              last_err="$(tr '\n' ' ' < s3.err | cut -c1-200)"
+              # The role has s3:ListBucket, so "not written yet" is a 404; anything else (403 above
+              # all) is a configuration problem that waiting will not fix.
+              if ! grep -q -E '\(404\)|NoSuchKey|Not Found' s3.err; then
+                echo "::error::cannot read ${src} as ${ROLE}: ${last_err}"
+                echo "missing_note=cannot read the result as ${ROLE} (check its s3:GetObject/ListBucket grant): ${last_err}" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "$(date -u +%H:%M:%S) ${src}: not written yet"
+            fi
+            [ "$(date +%s)" -lt "$deadline" ] || { echo "gave up after ${wait} minutes"; break; }
+            sleep 60
+          done
+      - name: Generate app token
+        id: app_token
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+      - name: Check out the RC records (seqtoid-gitops)
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Fetch the last released RC's result (the baseline)
+        id: base
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        run: |
+          set -euo pipefail
+          # PyYAML for the RC records: the same pinned requirements the release CLI uses.
+          pip install -q -r _gitops/requirements.txt
+          base="$(python3 "$GATE" baseline --records-dir _gitops/releases/rc --exclude "$RC_ID")"
+          echo "baseline_rc=${base}" >> "$GITHUB_OUTPUT"
+          if [ -z "$base" ]; then echo "no released RC yet"; exit 0; fi
+          if ! aws s3 cp --only-show-errors "s3://${BUCKET}/rc-gates/${base}/result.json" baseline.json 2> s3.err; then
+            cat s3.err
+            # 404: that RC was released before the rc-gate existed -> no comparable baseline.
+            # Anything else fails this step, and aupr fails closed on it.
+            grep -q -E '\(404\)|NoSuchKey|Not Found' s3.err || exit 1
+            echo "::warning::released RC ${base} has no rc-gates result; aupr has no comparable baseline"
+          fi
+      - name: Verdicts
+        id: verdict
+        if: ${{ always() }}
+        env:
+          PRE: ${{ steps.pre.outputs.status }}
+          PRE_REASON: ${{ steps.pre.outputs.reason }}
+          MISSING_NOTE: ${{ steps.poll.outputs.missing_note }}
+          BASE_RC: ${{ steps.base.outputs.baseline_rc }}
+          BASE_OUTCOME: ${{ steps.base.outcome }}
+          FLOOR: ${{ vars.RC_AUPR_FLOOR || '0.98' }}
+          TOLERANCE: ${{ vars.RC_AUPR_TOLERANCE || '0.01' }}
+          DIGEST_ENFORCE: ${{ vars.RC_REPORT_DIGEST_ENFORCE == 'false' && 'false' || 'true' }}
+        run: |
+          set -uo pipefail
+          if [ "$PRE" != "ready" ]; then
+            r="${PRE_REASON:-preconditions did not run}"
+            printf 'pe_status=fail\npe_reason=%s\naupr_status=fail\naupr_reason=%s\n' "$r" "$r" | tee -a "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          note=(); [ -z "$MISSING_NOTE" ] || note=(--missing-note "$MISSING_NOTE")
+          base=(); [ -z "$BASE_RC" ] || base=(--baseline baseline.json --baseline-rc "$BASE_RC")
+          python3 "$GATE" pipeline --result result.json --rc "$RC_ID" --image-tag "$IMAGE_TAG" ${note[@]+"${note[@]}"} \
+            | sed 's/^/pe_/' | tee -a "$GITHUB_OUTPUT"
+          if [ "$BASE_OUTCOME" != "success" ]; then
+            # Fail closed: without the baseline lookup, a floor-only pass would hide a drift.
+            printf 'aupr_status=fail\naupr_reason=baseline lookup %s; see the job log\n' "$BASE_OUTCOME" | tee -a "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          python3 "$GATE" aupr --result result.json --rc "$RC_ID" --image-tag "$IMAGE_TAG" ${note[@]+"${note[@]}"} ${base[@]+"${base[@]}"} \
+            --floor "$FLOOR" --tolerance "$TOLERANCE" --digest-enforce "$DIGEST_ENFORCE" \
+            --verdict-out aupr-verdict.json --summary-out aupr-summary.md \
+            | sed 's/^/aupr_/' | tee -a "$GITHUB_OUTPUT"
+          cat aupr-summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          grep -q '^pe_status=pass' "$GITHUB_OUTPUT" && grep -q '^aupr_status=pass' "$GITHUB_OUTPUT"
+      - name: Keep the result, baseline and verdict
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rc-gate-${{ needs.resolve.outputs.rc_id }}
+          path: |
+            result.json
+            baseline.json
+            aupr-verdict.json
+          if-no-files-found: ignore
+
+  migration_rehearsal:
+    name: migration_rehearsal
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+      reason: ${{ steps.result.outputs.reason }}
+    env:
+      # A RESTORED COPY of env-prod's database (restoring it is an ops step outside this workflow).
+      # The runner must be able to reach it. Never the live database: the re-run check deletes rows.
+      REHEARSAL_DATABASE_URL: ${{ secrets.RC_REHEARSAL_DATABASE_URL }}
+      REHEARSAL_ENV_FILE: ${{ secrets.RC_REHEARSAL_ENV }}
+      RAILS_ENV_NAME: ${{ vars.RC_REHEARSAL_RAILS_ENV || 'env-prod' }}
+      CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+      ROLE: ${{ vars.RC_BATTERY_ROLE || vars.GHA_ROLE || 'czid-dev-gh-actions-build' }}
+      REPO: ${{ needs.resolve.outputs.repository }}
+      DIGEST: ${{ needs.resolve.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Preconditions
+        id: pre
+        run: |
+          if [ -z "${REHEARSAL_DATABASE_URL}" ]; then
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "reason=rehearsal DB not configured (secret RC_REHEARSAL_DATABASE_URL unset)" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=ready" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure AWS (dev, image pull)
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CI_ACCOUNT_ID }}:role/${{ env.ROLE }}
+          role-session-name: rc-battery-migrate-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Run db:migrate:with_data from the RC image on the restored copy
+        id: run
+        if: ${{ steps.pre.outputs.status == 'ready' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          repo="${REPO:-${CI_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/seqtoid-web}"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${repo%%/*}"
+          docker pull "${repo}@${DIGEST}"
+          # database.yml reads RDS_ADDRESS/DB_* (and routes the screening alias to the same DB), so
+          # split the URL into those as well as passing DATABASE_URL.
+          python3 - > db.env <<'PY'
+          import os, urllib.parse as u
+          url = u.urlparse(os.environ["REHEARSAL_DATABASE_URL"])
+          db = url.path.lstrip("/")
+          for k, v in {"DATABASE_URL": os.environ["REHEARSAL_DATABASE_URL"], "RDS_ADDRESS": url.hostname,
+                       "DB_HOST": url.hostname, "DB_PORT": url.port or 3306,
+                       "DB_USERNAME": u.unquote(url.username or ""), "DB_PASSWORD": u.unquote(url.password or ""),
+                       "DB_NAME": db, "SCREENING_DB_NAME": db}.items():
+              print(f"{k}={v}")
+          PY
+          pw="$(sed -n 's/^DB_PASSWORD=//p' db.env)"
+          if [ -n "$pw" ]; then echo "::add-mask::${pw}"; fi
+          printf '%s\n' "${REHEARSAL_ENV_FILE}" > extra.env
+          docker run --rm --env-file db.env --env-file extra.env \
+            -e OFFLINE=1 -e RAILS_ENV="${RAILS_ENV_NAME}" -e SECRET_KEY_BASE_DUMMY=1 \
+            -v "${PWD}/scripts/rc-battery:/rc:ro" \
+            "${repo}@${DIGEST}" bash /rc/migration-rehearsal.sh
+      - name: Result
+        id: result
+        if: ${{ always() }}
+        env:
+          PRE: ${{ steps.pre.outputs.status }}
+          PRE_REASON: ${{ steps.pre.outputs.reason }}
+          RUN: ${{ steps.run.outcome }}
+        run: |
+          rm -f db.env extra.env
+          if [ "$PRE" = "fail" ]; then s=fail; r="$PRE_REASON"
+          elif [ "$RUN" = "success" ]; then s=pass; r="db:migrate:with_data applied, parity checked, re-run converged"
+          else s=fail; r="rehearsal ${RUN:-did not run}; see the job log"; fi
+          { echo "status=$s"; echo "reason=$r"; } >> "$GITHUB_OUTPUT"
+          echo "migration_rehearsal: $s ($r)"
+          [ "$s" = "pass" ]
+
+  error_budget:
+    name: error_budget
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      status: ${{ steps.budget.outputs.status }}
+      reason: ${{ steps.budget.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v6
+      # One role for the battery: RC_BATTERY_ROLE (full ARN, or a role name in CI_ACCOUNT_ID) has
+      # CloudWatch read. RC_METRICS_ROLE (a full ARN) is only a fallback when it is unset.
+      - name: Pick the CloudWatch read role
+        id: cwrole
+        env:
+          METRICS_ROLE: ${{ vars.RC_METRICS_ROLE }}
+          BATTERY_ROLE: ${{ vars.RC_BATTERY_ROLE }}
+          CI_ACCOUNT_ID: ${{ vars.CI_ACCOUNT_ID || '491013321714' }}
+        run: |
+          r="${BATTERY_ROLE:-$METRICS_ROLE}"
+          case "$r" in ''|arn:*) ;; *) r="arn:aws:iam::${CI_ACCOUNT_ID}:role/${r}" ;; esac
+          echo "arn=${r}" >> "$GITHUB_OUTPUT"
+      - name: Configure AWS (dev, CloudWatch read)
+        if: ${{ steps.cwrole.outputs.arn != '' }}
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: ${{ steps.cwrole.outputs.arn }}
+          role-session-name: rc-battery-budget-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Sentry new issues + dev 5xx rate since the cut
+        id: budget
+        env:
+          CUT_AT: ${{ needs.resolve.outputs.cut_at }}
+          SENTRY_URL: ${{ vars.RC_SENTRY_URL || 'https://sentry.io' }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECTS: ${{ vars.RC_SENTRY_PROJECTS }}
+          SENTRY_TOKEN: ${{ secrets.RC_SENTRY_READ_TOKEN || secrets.SENTRY_AUTH_TOKEN }}
+          MIN_LEVEL: ${{ vars.RC_ERROR_BUDGET_MIN_LEVEL || 'error' }}
+          MIN_EVENTS: ${{ vars.RC_ERROR_BUDGET_MIN_EVENTS || '1' }}
+          MAX_NEW_ISSUES: ${{ vars.RC_ERROR_BUDGET_MAX_NEW_ISSUES || '0' }}
+          MAX_5XX_RATE: ${{ vars.RC_ERROR_BUDGET_MAX_5XX_RATE || '0.01' }}
+          ALB_LB: ${{ steps.cwrole.outputs.arn != '' && vars.RC_DEV_ALB_LB || '' }}
+        run: |
+          set -euo pipefail
+          scripts/rc-battery/error-budget.sh | tee -a "$GITHUB_OUTPUT"
+          grep -q '^status=pass' "$GITHUB_OUTPUT"
+
+  rollout:
+    name: smoke_gate + cutover_check
+    needs: resolve
+    if: ${{ needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      status: ${{ steps.serve.outputs.status }}
+      reason: ${{ steps.serve.outputs.reason }}
+    steps:
+      # No workflow can read the dev Argo Rollout's analysis results today (no cluster read path
+      # from CI). What CI CAN see is whether dev serves the RC: the PreSync smoke gate blocks a
+      # failing image from ever serving, and an aborted rollout puts the previous build back. So a
+      # mismatch is a real `fail`; a match is only `pending` until the rollout result is readable.
+      - name: Is dev serving the RC commit?
+        id: serve
+        env:
+          BASE: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
+          WANT: ${{ needs.resolve.outputs.commit8 }}
+        run: |
+          set -uo pipefail
+          page="$(mktemp)"
+          code=$(curl -s -o "$page" -w '%{http_code}' --max-time 15 "${BASE}/" || echo 000)
+          served="$(sed -n 's/.*GIT_RELEASE_SHA = "\([0-9a-f]*\)".*/\1/p' "$page" | head -n1)"
+          if [ "$code" = "200" ] && [ "$served" = "$WANT" ]; then
+            s=pending; r="dev serves the RC commit ${WANT}; the Argo rollout analysis result is not readable from CI -- confirm in Argo CD"
+          else
+            s=fail; r="dev answered HTTP ${code} serving '${served:-unknown}', not the RC commit ${WANT}: the rollout did not complete or was rolled back"
+          fi
+          { echo "status=$s"; echo "reason=$r"; } >> "$GITHUB_OUTPUT"
+          echo "$s: $r"
+          [ "$s" != "fail" ]
+
+  # ---- record ----------------------------------------------------------------------------------
+
+  record:
+    name: Record results on the RC
+    needs: [resolve, browser_e2e, dev_benchmark, contract_api, data_integrity, dast, migration_rehearsal, error_budget, rollout]
+    if: ${{ always() && needs.resolve.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: record-check for every required check
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          RELEASE: _gitops/bin/release
+          RC_ID: ${{ needs.resolve.outputs.rc_id }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RC_E2E_CATEGORY: ${{ vars.RC_E2E_CATEGORY || 'smoke' }}
+          BROWSER: ${{ needs.browser_e2e.result }}
+          PE_S: ${{ needs.dev_benchmark.outputs.pipeline_status }}
+          PE_R: ${{ needs.dev_benchmark.outputs.pipeline_reason }}
+          AU_S: ${{ needs.dev_benchmark.outputs.aupr_status }}
+          AU_R: ${{ needs.dev_benchmark.outputs.aupr_reason }}
+          BENCH_JOB: ${{ needs.dev_benchmark.result }}
+          CONTRACT: ${{ needs.contract_api.result }}
+          DATA: ${{ needs.data_integrity.result }}
+          DAST_RES: ${{ needs.dast.outputs.result }}
+          DAST_SUM: ${{ needs.dast.outputs.summary }}
+          DAST_JOB: ${{ needs.dast.result }}
+          MIG_S: ${{ needs.migration_rehearsal.outputs.status }}
+          MIG_R: ${{ needs.migration_rehearsal.outputs.reason }}
+          MIG_JOB: ${{ needs.migration_rehearsal.result }}
+          EB_S: ${{ needs.error_budget.outputs.status }}
+          EB_R: ${{ needs.error_budget.outputs.reason }}
+          EB_JOB: ${{ needs.error_budget.result }}
+          RO_S: ${{ needs.rollout.outputs.status }}
+          RO_R: ${{ needs.rollout.outputs.reason }}
+          RO_JOB: ${{ needs.rollout.result }}
+        run: |
+          set -uo pipefail
+          pip install -q -r _gitops/requirements.txt
+          { echo "### ${RC_ID}: battery results"; echo "| check | status | note |"; echo "| --- | --- | --- |"; } >> "$GITHUB_STEP_SUMMARY"
+          errors=0; red=0
+          rec() {
+            [ "$2" = "pass" ] || red=1
+            scripts/rc-battery/record.sh "$@" || { echo "::error::record-check $1 failed"; errors=1; }
+          }
+          job() { if [ "$2" = "success" ]; then rec "$1" pass "$URL" "$3"; else rec "$1" fail "$URL" "job result: ${2:-none}"; fi; }
+          leg() { if [ -n "$2" ]; then rec "$1" "$2" "$URL" "$3"; else rec "$1" fail "$URL" "leg did not report (job result: ${4:-none})"; fi; }
+
+          job browser_e2e "$BROWSER" "Playwright ${RC_E2E_CATEGORY} suite against dev"
+          leg pipeline_e2e "$PE_S" "$PE_R" "$BENCH_JOB"
+          leg aupr "$AU_S" "$AU_R" "$BENCH_JOB"
+          job contract_api "$CONTRACT" ""
+          job data_integrity "$DATA" ""
+          case "$DAST_RES" in
+            pass|fail) rec dast "$DAST_RES" "$URL" "OWASP ZAP vs dev: ${DAST_SUM}" ;;
+            *) rec dast fail "$URL" "ZAP leg reported '${DAST_RES:-nothing}' (job result: ${DAST_JOB:-none})" ;;
+          esac
+          leg migration_rehearsal "$MIG_S" "$MIG_R" "$MIG_JOB"
+          leg error_budget "$EB_S" "$EB_R" "$EB_JOB"
+          leg smoke_gate "$RO_S" "$RO_R" "$RO_JOB"
+          cut_note="$RO_R; postCutoverCheck is not enabled on dev"
+          leg cutover_check "$RO_S" "${RO_S:+$cut_note}" "$RO_JOB"
+
+          [ "$errors" -eq 0 ] || exit 1
+          if [ "$red" -ne 0 ]; then echo "::error::${RC_ID} is not green: at least one required check is not pass (see summary)."; exit 1; fi

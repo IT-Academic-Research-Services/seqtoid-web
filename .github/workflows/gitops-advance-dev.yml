@@ -12,12 +12,22 @@ name: gitops-advance-dev
 #
 # Chained off the build via workflow_run so it only fires on a *successful* build of
 # the exact commit that produced the image.
+#
+# DEV PIN (deploy lanes): cypherid-web-infra deploy/argocd/values/seqtoid-web/dev-pin.yaml is
+# layered after dev.yaml by Argo. While its pin.kind is `lease` (someone holds dev) or `rc` (a
+# release candidate is being vetted on dev), this workflow does NOT advance dev.yaml: it records the
+# build it skipped in the job summary and exits green. A missing file or pin.kind `none` advances as
+# before; any other value fails loudly rather than guess.
+#
+# workflow_dispatch advances dev to the NEWEST successful main build. The dev-lease reaper calls it
+# once a pin has cleared, so dev lands on the latest main instead of waiting for the next merge.
 
 on:
   workflow_run:
     workflows: ["Build and Push Docker Images"]
     types:
       - completed
+  workflow_dispatch:
 
 concurrency:
   group: gitops-advance-dev
@@ -25,19 +35,23 @@ concurrency:
 
 jobs:
   advance:
-    # Only on a successful build of main.
+    # Only on a successful build of main, or a manual/reaper dispatch (newest successful main build).
     if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main' }}
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      # workflow_dispatch: list this repo's build runs to find the newest successful main build.
+      actions: read
       # The digest resolution below assumes the dev-account ECR-read role via GitHub OIDC.
       id-token: write
     # Surface whether a NEW digest actually advanced (and which tag + digest), so a downstream
     # consumer can act ONCE per newly-advanced dev digest, not on every no-op re-run.
     outputs:
       changed: ${{ steps.advance.outputs.changed }}
+      pinned: ${{ steps.advance.outputs.pinned }}
       tag: ${{ steps.advance.outputs.tag }}
       digest: ${{ steps.advance.outputs.digest }}
     env:
@@ -50,6 +64,29 @@ jobs:
       # manifest here in the dev account, so this account's ECR holds the digest we advance to.
       ECR_REPO_NAME: ${{ vars.ECR_REPO_NAME || 'seqtoid-web' }}
     steps:
+      # The commit to advance to: the build that triggered this run, or (dispatch) the newest
+      # successful build of main -- same filter as the workflow_run path (head_branch main, success).
+      - name: Resolve the build to advance to
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_run" ]; then
+            sha="$RUN_SHA"; url="$RUN_URL"
+          else
+            sha=""; url=""
+            read -r sha url < <(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-docker-image.yml \
+              --branch main --status success --limit 1 --json headSha,url \
+              --jq '.[0] | "\(.headSha) \(.url)"') || true
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::could not resolve the build to advance to (got '${sha}')."; exit 1; }
+          echo "Advancing toward ${sha} (${url})"
+          { echo "sha=${sha}"; echo "url=${url}"; } >> "$GITHUB_OUTPUT"
+
       # IT-ARS authenticates gitops writes with a GitHub App (repo var CI_APP_ENABLED=true).
       # The thorvath-slower fork has no app installed, so this step is skipped there and every
       # token below falls back to the GITOPS_TOKEN PAT. See platform-overhaul #683.
@@ -89,7 +126,7 @@ jobs:
       - name: Advance dev image (tag + digest) to the built commit
         id: advance
         env:
-          BUILT_SHA: ${{ github.event.workflow_run.head_sha }}
+          BUILT_SHA: ${{ steps.build.outputs.sha }}
         run: |
           set -euo pipefail
           # Match the pushed image tag exactly: bin/push-docker pushes `<repo>:sha-<sha8>`, and the
@@ -108,6 +145,31 @@ jobs:
           case "$DIGEST" in
             sha256:*) : ;;
             *) echo "::error::could not resolve digest for ${ECR_REPO_NAME}:${TAG} in ${CI_ACCOUNT_ID} ECR (got '${DIGEST}'); refusing to advance dev to an unpinnable image."; exit 1 ;;
+          esac
+
+          # Respect the dev pin (see the header). Checked AFTER the digest resolves so the summary
+          # names exactly which build was held back.
+          PIN_FILE=deploy/argocd/values/seqtoid-web/dev-pin.yaml
+          PIN_KIND=none
+          if [ -f "$PIN_FILE" ]; then PIN_KIND="$(yq '.pin.kind // "none"' "$PIN_FILE")"; fi
+          case "$PIN_KIND" in
+            none|null|"") echo "dev pin: none" ;;
+            lease|rc)
+              echo "dev is pinned (pin.kind=${PIN_KIND}); NOT advancing dev.yaml to ${TAG}."
+              {
+                echo "### dev advance skipped: dev is pinned (\`${PIN_KIND}\`)"
+                echo "- skipped build: \`${TAG}\` (\`${DIGEST}\`)"
+                echo "- dev advances to the newest main build once the pin clears (the lease reaper dispatches this workflow)."
+                echo ""
+                echo '```yaml'
+                cat "$PIN_FILE"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              { echo "changed=false"; echo "pinned=${PIN_KIND}"; } >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+            *)
+              echo "::error::${PIN_FILE} has unknown pin.kind '${PIN_KIND}' (want none|lease|rc); refusing to advance dev."
+              exit 1 ;;
           esac
 
           CUR_TAG="$(yq '.image.tag // ""' "$FILE")"
@@ -158,6 +220,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN }}
           TAG: ${{ steps.advance.outputs.tag }}
           DIGEST: ${{ steps.advance.outputs.digest }}
+          BUILD_URL: ${{ steps.build.outputs.url }}
         run: |
           set -euo pipefail
           BRANCH="gitops/advance-dev-${TAG}"
@@ -173,7 +236,7 @@ jobs:
 
           - image tag: \`${TAG}\`
           - digest: \`${DIGEST}\`
-          - source build: ${{ github.event.workflow_run.html_url }}" \
+          - source build: ${BUILD_URL}" \
             --base main --head "$BRANCH" || echo "PR may already exist for $BRANCH"
 
       - name: Auto-merge the dev tag-advance (wait for green, then merge)

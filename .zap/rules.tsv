@@ -1,0 +1,24 @@
+# OWASP ZAP baseline (passive) rule config for the DAST check (.github/workflows/dast-zap.yml).
+# Format: <plugin id><TAB><IGNORE|INFO|WARN|FAIL><TAB>(<rule name>). Lines starting with # are
+# comments. Rules NOT listed here keep the zap-baseline default (WARN), which is what we want:
+# the gate is scripts/dast/zap_compare.py ("accept current, fail new" against .zap/baseline.json),
+# not ZAP's own exit code. So only non-default entries live here, each with its reason.
+#
+# IGNORE also drops the rule from the comparison (zap_compare.py --rules), because ZAP still
+# writes IGNOREd alerts into the JSON report. Never IGNORE a rule just to silence a real
+# finding: accept it in .zap/baseline.json with a reason instead, so it stays visible and tracked.
+#
+# Inventory-only rules: they flag "this response looks like X", not a weakness, and churn with
+# whatever the spider happens to reach.
+#   10109 Modern Web Application: notes the page is JS-rendered (a spider hint).
+10109	IGNORE	(Modern Web Application)
+#   10111/10112/10113: identify auth/session/verification requests for authenticated-scan setup.
+10111	IGNORE	(Authentication Request Identified)
+10112	IGNORE	(Session Management Response Identified)
+10113	IGNORE	(Verification Request Identified)
+#   10049 Non-Storable / Storable-but-Non-Cacheable Content: cacheability inventory per URL.
+#   Cache-control weaknesses that matter are still covered by 10015 (kept at WARN).
+10049	IGNORE	(Non-Storable Content)
+# The scanner image is pinned by digest on purpose (updates are deliberate PRs), so ZAP will
+# eventually report itself out of date; that is a tooling note, not an app finding.
+10116	IGNORE	(ZAP is Out of Date)

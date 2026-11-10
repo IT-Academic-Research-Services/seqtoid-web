@@ -36,6 +36,14 @@ image:
 nodeSelector:
   kubernetes.io/arch: amd64
 
+# Tolerations for EVERY pod this chart schedules (web, workers, migrate/smoke/taxon hooks, the
+# preview provision/seed/teardown Jobs and the preview Redis). Empty by default, so dev/staging/prod
+# render nothing new. A tainted pool must admit all of an env's pods or the ones without the
+# toleration sit Pending: the preview pool is tainted seqtoid.io/pool=preview:NoSchedule, and
+# preview-base.yaml sets the matching toleration here. Argo Rollouts AnalysisTemplate smoke Jobs
+# carry no nodeSelector and are deliberately left off the pool.
+tolerations: []
+
 # Cost spin-down switch. When true, scale ALL workloads to 0 (web Rollout + every
 # worker) AND skip the migrate/taxon-load PreSync hooks. The app's data lives in
 # Aurora + OpenSearch (persistent, not on the pods), so this is a safe, reversible
@@ -464,6 +472,14 @@ taxonLoad:
 # Extra plain env vars applied to web + workers + migrate (name/value pairs).
 extraEnv: []
 
+# Dev pin (deploy lanes). Argo layers cypherid-web-infra deploy/argocd/values/seqtoid-web/dev-pin.yaml
+# on top of the env values; it holds `pin: {kind: none|lease|rc, holder, expires_at, rc, ...}`.
+# When kind is lease or rc the WEB pods get DEV_PIN_KIND / DEV_PIN_HOLDER / DEV_PIN_EXPIRES_AT /
+# DEV_PIN_RC and the app shows a banner on every page. Absent or kind none renders nothing. Web only:
+# workers do not show the banner, so a pin change does not restart them.
+pin:
+  kind: none
+
 # Worker workloads (ECS czecs-resque.json x4 + czecs-shoryuken.json). Each becomes a
 # Deployment. `args` go to the image ENTRYPOINT (bin/entrypoint.sh), which wraps them
 # in `chamber exec ... bundle exec`. Keyed by NAME (a map, not a list) so a per-env
@@ -471,9 +487,9 @@ extraEnv: []
 # the whole set — Helm deep-merges maps by key but replaces lists wholesale (#486/#487).
 #
 # Per-worker `enabled: false` skips that worker's Deployment entirely (default true when
-# absent). A preview sandbox sets `workers.shoryuken.enabled: false` so it does not become
-# a competing consumer on dev's shared SQS queue — it uses POLLING (result-monitor +
-# pipeline-monitor against its own DB) instead.
+# absent). In a preview sandbox shoryuken is governed by preview.notifications.mode instead: it
+# runs only in sqs mode, against the sandbox's OWN queue, never dev's shared one (poll mode uses
+# result-monitor + pipeline-monitor against its own DB).
 # Option A: the standalone export-control screening SERVICE -- same image, its own deployment + chamber
 # + DB, so Descartes never runs in a web request. The API Deployment/Service is templates/screening.yaml;
 # the async worker + poller are workers.screening below. Dark by default (enabled: false).
@@ -667,6 +683,37 @@ taxonRefresh:
       cpu: 500m
       memory: 2Gi
 
+# Release-candidate AUPR gate tick (deploy lanes). OFF by default -- every env renders nothing.
+# Dev enables it in its infra values; the tick itself no-ops unless dev is pinned to an RC
+# (pin.kind rc, pin.rc = RC id -> DEV_PIN_KIND / DEV_PIN_RC). See templates/rc-gate-cronjob.yaml and
+# app/services/rc_gate_tick_service.rb (result.json contract).
+rcGate:
+  enabled: false
+  schedule: "*/15 * * * *"
+  # s3://<bucket>/<prefix>/ ; the tick writes <prefix>/<rc>/result.json.
+  resultsPrefix: ""
+  dataset: ""
+  # 1 or 2 s3:// fastq URIs (R1, R2).
+  fastqs: []
+  # Truth file name under S3_TRUTH_FILES_BUCKET, or a full s3:// URI.
+  truthFile: ""
+  # short-read-mngs version the RC Benchmarks project is pinned to.
+  srmVersion: ""
+  # Owner of the RC Benchmarks project. Required when enabled (render fails otherwise).
+  ownerEmail: ""
+  timeoutHours: 6
+  command: ["rake", "rc_gate:tick"]
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  # A tick only reads state and maybe creates a sample; bound it well under the 15 min schedule.
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+
 # Per-PR preview sandbox extras (#616/#617). OFF by default -- dev/staging/prod render
 # nothing here. The preview ApplicationSet sets these per PR. When enabled, a PreSync
 # provision Job (isolated schema + scoped DB user + the sandbox's own SSM path) runs
@@ -706,13 +753,31 @@ preview:
   redis:
     enabled: false
     image: redis:7-alpine
-    # Redis holds only a sandbox's job queue: small, and nothing persists.
+    # Off: nothing persists (a restart drops queued jobs). On: append-only file on a PVC of `size`,
+    # in `storageClass` (empty -> the cluster default), so queued jobs survive a spot reclaim.
+    persistence:
+      enabled: false
+      size: 1Gi
+      storageClass: ""
+    # Redis holds only a sandbox's job queue: small.
     resources:
       requests:
         cpu: 50m
         memory: 64Mi
       limits:
         memory: 256Mi
+  # How the sandbox learns its Step Functions runs moved.
+  #   poll -- (default) no shoryuken; result-monitor + pipeline-monitor poll SFN against its own DB.
+  #   sqs  -- sandbox:provision creates idseq-swipe-<env>-pr-<N>-sfn-notifications-queue (+ DLQ),
+  #           subscribed to dev's SFN topic with a filter on this sandbox's execution-name prefix,
+  #           points SFN_NOTIFICATIONS_QUEUE_ARN at it, and the chart runs the shoryuken worker
+  #           (workers.shoryuken.resources apply; workers.shoryuken.enabled is ignored in a preview).
+  notifications:
+    mode: poll
+    # Empty -> arn:aws:sns:<aws.region>:<aws.accountId>:idseq-swipe-<environment>-sfn-notifications-topic
+    topicArn: ""
+    # Empty -> SFN_EXECUTION_NAME_PREFIX from extraEnv, else idseq-pr-<prNumber>.
+    executionNamePrefix: ""
   provisioner:
     serviceAccountName: seqtoid-web-provisioner
     roleArn: ""          # the seqtoid-web-preview-provisioner IRSA role (infra repo)

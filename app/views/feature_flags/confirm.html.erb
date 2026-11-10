@@ -1,0 +1,10 @@
+<%# Confirmation step for FeatureFlagsController#global_state / #user_grant. Nothing has changed yet. %>
+<div id="feature_flag_confirm_page" style="padding: 16px">
+  <h1>Confirm feature flag change</h1>
+  <p id="feature_flag_confirm_summary"><b><%= @change[:summary] %></b> in <b><%= FeatureFlagEvent.current_environment %></b>.</p>
+  <p>This takes effect on every pod on its next request and is recorded in the change log.</p>
+  <div style="display: flex; gap: 16px; align-items: center">
+    <%= button_to "Confirm", @change[:path], method: :post, params: @change[:params].merge(confirmed: "1") %>
+    <%= link_to "Cancel", admin_feature_flags_path %>
+  </div>
+</div>
