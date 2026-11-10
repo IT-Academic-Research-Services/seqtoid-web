@@ -32,9 +32,13 @@
 # S3 bucket; this is the missing one. It also costs nothing to tear down: the Deployment dies with
 # the namespace, so teardown needs no new logic and can never leak keys into dev's Redis.
 #
-# EPHEMERAL BY DESIGN: no persistence. A sandbox's queue is disposable, and Redis restarting means
-# losing in-flight jobs, which for a preview is a re-sync away. `--save ""` disables RDB snapshots
-# so it never writes to disk (there is no volume to write to).
+# EPHEMERAL BY DEFAULT: no persistence. `--save ""` disables RDB snapshots so it never writes to
+# disk (there is no volume to write to). Set preview.redis.persistence.enabled to keep the queue
+# across a pod restart -- previews run on spot, and a reclaimed node otherwise drops every queued
+# job (a result-loader job lost there leaves the sample's report stuck). Persistence = append-only
+# file on a PVC, Recreate strategy (a ReadWriteOnce volume cannot be mounted by two pods during a
+# rolling update), and fsGroup 999 so the non-root redis user can write the mounted volume. The PVC
+# dies with the namespace, so teardown still needs no Redis-specific logic.
 #
 # ORDERING: sync-wave -10 puts this ahead of the app/workers (wave 0), and Argo waits for a wave to
 # be healthy before starting the next -- so nothing that speaks Resque boots before its Redis
@@ -56,6 +60,10 @@ metadata:
     argocd.argoproj.io/sync-wave: "-10"
 spec:
   replicas: 1
+  {{- if .Values.preview.redis.persistence.enabled }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "seqtoid-web.selectorLabels" . | nindent 6 }}
@@ -74,13 +82,29 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.preview.redis.persistence.enabled }}
+      securityContext:
+        fsGroup: 999
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "seqtoid-web.fullname" . }}-redis-data
+      {{- end }}
       containers:
         - name: redis
           image: {{ .Values.preview.redis.image | quote }}
           imagePullPolicy: IfNotPresent
+          {{- if .Values.preview.redis.persistence.enabled }}
+          # AOF (fsync every second) into the PVC; no RDB snapshots on top of it.
+          args: ["redis-server", "--save", "", "--appendonly", "yes", "--appendfsync", "everysec", "--dir", "/data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- else }}
           # --save "": no RDB snapshotting. There is no volume, and a sandbox's queue is
           # disposable; persistence would only buy disk writes and a slower start.
           args: ["redis-server", "--save", "", "--appendonly", "no"]
+          {{- end }}
           ports:
             - name: redis
               containerPort: 6379
@@ -103,6 +127,26 @@ spec:
             runAsUser: 999
             capabilities:
               drop: ["ALL"]
+{{- if .Values.preview.redis.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seqtoid-web.fullname" . }}-redis-data
+  labels:
+    {{- include "seqtoid-web.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  annotations:
+    argocd.argoproj.io/sync-wave: "-11"
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.preview.redis.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.preview.redis.persistence.size | default "1Gi" | quote }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
