@@ -75,10 +75,11 @@ namespace "features" do
         next
       end
 
-      after = own - launched
+      after = own - overlap
       changed += 1
       puts "#{apply ? 'cleaned' : 'would clean'} user_id=#{user.id} #{own.inspect} -> #{after.inspect}"
-      user.update!(allowed_features: JSON.dump(after)) if apply
+      # One logged Feature.disable_for per removed flag, so the change log records the cleanup.
+      overlap.each { |name| Feature.disable_for(name, user, by: "rake features:cleanup_user_columns") } if apply
     end
 
     puts "#{apply ? 'changed' : 'would change'}: #{changed}, ambiguous (left alone): #{ambiguous}"

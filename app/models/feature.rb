@@ -15,7 +15,8 @@
 #   feature_group_beta_testers_members  -- JSON array of user ids and/or emails, e.g. [42, "a@ucsf.edu"]
 #                                          (emails match case-insensitively)
 #
-# Every mutation takes `by:` -- the acting User, or a String naming a non-user actor ("rake", "console").
+# Every mutation takes `by:` -- the acting User, or a String naming a non-user actor ("rake", "console") --
+# and writes a FeatureFlagEvent row (the change log) when it changes something.
 #
 # Storage sits behind Feature.store (Feature::AppConfigStore), so a different backend can be swapped in
 # later without changing any call site.
@@ -93,51 +94,93 @@ module Feature
     end
   end
 
-  # ---- mutations (each returns true when it changed something) -------------------------------------
+  # ---- mutations ------------------------------------------------------------------------------------
+  # Each returns true when it changed something. A change and its FeatureFlagEvent row are written in one
+  # transaction, so there is never a change without a log row (or the reverse). A no-op writes nothing.
+  #
+  # Cache: global and group flags are AppConfig rows. AppConfig busts its Rails.cache key on save and on
+  # commit, and the cache is shared by every pod when it is Redis; every deployed env currently runs
+  # :null_store (no cache at all), so a change is visible to every pod on its next request.
 
   def enable(name, by:)
-    require_actor!(by)
-    change_list(store.launched, name.to_s, :add) { |list| store.write_launched(list) }
+    name = name.to_s
+    mutate(by, { feature: name, action: "enable", scope: "global" }) do
+      change_list(store.launched, name, :add) { |list| store.write_launched(list) }
+    end
   end
 
   def disable(name, by:)
-    require_actor!(by)
-    change_list(store.launched, name.to_s, :remove) { |list| store.write_launched(list) }
+    name = name.to_s
+    mutate(by, { feature: name, action: "disable", scope: "global" }) do
+      change_list(store.launched, name, :remove) { |list| store.write_launched(list) }
+    end
   end
 
   def enable_for(name, user, by:)
-    require_actor!(by)
-    change_list(store.user_features(user), name.to_s, :add) { |list| store.write_user_features(user, list) }
+    name = name.to_s
+    mutate(by, { feature: name, action: "enable", scope: "user", target_user_id: user.id }) do
+      change_list(store.user_features(user), name, :add) { |list| store.write_user_features(user, list) }
+    end
   end
 
   def disable_for(name, user, by:)
-    require_actor!(by)
-    change_list(store.user_features(user), name.to_s, :remove) { |list| store.write_user_features(user, list) }
+    name = name.to_s
+    mutate(by, { feature: name, action: "disable", scope: "user", target_user_id: user.id }) do
+      change_list(store.user_features(user), name, :remove) { |list| store.write_user_features(user, list) }
+    end
   end
 
   def enable_for_group(name, group, by:)
-    require_actor!(by)
+    name = name.to_s
     group = group.to_s
-    change_list(store.group_features(group), name.to_s, :add) { |list| store.write_group_features(group, list) }
+    mutate(by, { feature: name, action: "enable", scope: "group", group_name: group }) do
+      change_list(store.group_features(group), name, :add) { |list| store.write_group_features(group, list) }
+    end
   end
 
   def disable_for_group(name, group, by:)
-    require_actor!(by)
+    name = name.to_s
     group = group.to_s
-    change_list(store.group_features(group), name.to_s, :remove) { |list| store.write_group_features(group, list) }
+    mutate(by, { feature: name, action: "disable", scope: "group", group_name: group }) do
+      change_list(store.group_features(group), name, :remove) { |list| store.write_group_features(group, list) }
+    end
   end
 
-  # `member` is a user id (Integer) or an email (String).
+  # `member` is a User, a user id, or an email.
   def add_to_group(member, group, by:)
-    require_actor!(by)
-    group = group.to_s
-    change_list(store.group_members(group), normalize_member(member), :add) { |list| store.write_group_members(group, list) }
+    change_membership(member, group.to_s, :add, by)
   end
 
   def remove_from_group(member, group, by:)
-    require_actor!(by)
-    group = group.to_s
-    change_list(store.group_members(group), normalize_member(member), :remove) { |list| store.write_group_members(group, list) }
+    change_membership(member, group.to_s, :remove, by)
+  end
+
+  def change_membership(member, group, operation, by)
+    member = normalize_member(member)
+    target = member.is_a?(Integer) ? User.find_by(id: member) : User.find_by(email: member)
+    event = {
+      feature: nil, action: operation == :add ? "add_member" : "remove_member", scope: "group",
+      group_name: group, target_user_id: target&.id, target_member: member.to_s,
+    }
+    mutate(by, event) do
+      change_list(store.group_members(group), member, operation) { |list| store.write_group_members(group, list) }
+    end
+  end
+
+  def mutate(actor, event)
+    require_actor!(actor)
+    ActiveRecord::Base.transaction do
+      changed = yield
+      if changed
+        FeatureFlagEvent.create!(
+          **event,
+          actor_user_id: actor.is_a?(User) ? actor.id : nil,
+          actor_label: actor.is_a?(User) ? actor.email : actor.strip,
+          environment: FeatureFlagEvent.current_environment
+        )
+      end
+      changed
+    end
   end
 
   def change_list(current, item, operation)
@@ -162,5 +205,5 @@ module Feature
     member.to_s.strip.match?(/\A\d+\z/) ? member.to_s.strip.to_i : member.to_s.strip.downcase
   end
 
-  private_class_method :change_list, :require_actor!, :normalize_member
+  private_class_method :change_membership, :mutate, :change_list, :require_actor!, :normalize_member
 end
