@@ -195,6 +195,12 @@ Rails.application.routes.draw do
   # is top-level (not Admin::) so the shared auth redirect resolves correctly.
   get 'admin/product_usage_analytics', to: 'product_usage_analytics#index'
 
+  # Feature flags admin page (FeatureFlagsController; login_required + admin_required). Top-level
+  # controller under an /admin path, like product_usage_analytics above.
+  get 'admin/feature_flags', to: 'feature_flags#index', as: :admin_feature_flags
+  post 'admin/feature_flags/global', to: 'feature_flags#global_state', as: :admin_feature_flags_global
+  post 'admin/feature_flags/user', to: 'feature_flags#user_grant', as: :admin_feature_flags_user
+
   # SupportController:
   get 'faqs', to: 'support#faqs'
   # REBRAND-24: research-participant privacy notice removed; redirect old URL to /privacy
