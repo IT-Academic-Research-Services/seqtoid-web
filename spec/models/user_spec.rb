@@ -34,6 +34,41 @@ describe User, type: :model do
     end
   end
 
+  context "#add_allowed_feature / #remove_allowed_feature with launched features" do
+    let!(:app_config) { create(:app_config, key: AppConfig::LAUNCHED_FEATURES, value: JSON.dump(["launched_a", "launched_b"])) }
+    let(:user) { create(:user, allowed_features: JSON.dump(["own_grant"])) }
+
+    it "stores only the user's own grants, never the global launched list" do
+      user.add_allowed_feature("new_grant")
+
+      expect(JSON.parse(user.reload.allowed_features)).to eq(["own_grant", "new_grant"])
+    end
+
+    it "lets an un-launch take effect for a user who later had another feature added" do
+      user.add_allowed_feature("new_grant")
+      expect(user.reload.allowed_feature?("launched_a")).to be(true)
+
+      AppConfigHelper.set_json_app_config(AppConfig::LAUNCHED_FEATURES, ["launched_b"])
+
+      expect(user.reload.allowed_feature?("launched_a")).to be(false)
+      expect(user.allowed_feature?("launched_b")).to be(true)
+      expect(user.allowed_feature?("new_grant")).to be(true)
+    end
+
+    it "does not copy launched features into the column when removing a grant" do
+      user.remove_allowed_feature("own_grant")
+
+      expect(JSON.parse(user.reload.allowed_features)).to eq([])
+    end
+
+    it "leaves the column alone when removing a feature that is only launched globally" do
+      user.remove_allowed_feature("launched_a")
+
+      expect(JSON.parse(user.reload.allowed_features)).to eq(["own_grant"])
+      expect(user.allowed_feature?("launched_a")).to be(true)
+    end
+  end
+
   context "#salt" do
     subject { user.salt }
 
