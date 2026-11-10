@@ -1,0 +1,194 @@
+name: dev-lease-reaper
+
+# Deploy lanes: keeps the dev lease honest. Every 15 minutes (and on demand):
+#
+#   1. reap     -- `bin/release lease reap` (seqtoid-gitops) ends a lease past its expires_at and
+#                  clears the dev pin (cypherid-web-infra deploy/argocd/values/seqtoid-web/dev-pin.yaml).
+#   2. remind   -- when a lease expires within 30 minutes, ONE comment on the cypherid-web-infra PR that
+#                  last wrote the pin (the take/renew PR), mentioning the holder. Deduplicated per
+#                  expires_at, so a lease gets at most one reminder per period and a renewal re-arms it.
+#                  Chosen over a tracking issue: it notifies only the holder, once, next to the lease.
+#   3. catch up -- when dev is NOT pinned and dev.yaml is behind the newest successful main build,
+#                  dispatch gitops-advance-dev (which advances to the newest main build). This is how
+#                  dev returns to main after `lease end`, a reap, or the end of an RC window: the
+#                  advance skipped builds while pinned, and nothing else would move dev until the next
+#                  merge. Consequence: an unpinned dev.yaml held on an older build by hand is moved
+#                  forward within 15 minutes -- hold dev with `lease-take` (release.yml) instead.
+#
+# Identities: the CI app token (GH_ACTIONS_HELPER_*) for seqtoid-gitops + cypherid-web-infra; this
+# run's GITHUB_TOKEN (actions: write) to list runs and dispatch gitops-advance-dev. No AWS identity.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-lease-reaper
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    # Trunk-only: never run on forks (e.g. the thorvath-slower mirror).
+    if: github.repository == 'IT-Academic-Research-Services/seqtoid-web'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    permissions:
+      contents: read
+      # list build / advance runs and dispatch gitops-advance-dev
+      actions: write
+    env:
+      INFRA_REPO: ${{ vars.INFRA_REPO || format('{0}/cypherid-web-infra', github.repository_owner) }}
+      PIN_PATH: deploy/argocd/values/seqtoid-web/dev-pin.yaml
+      DEV_PATH: deploy/argocd/values/seqtoid-web/dev.yaml
+      REMIND_MINUTES: "30"
+    steps:
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out the release scripts (seqtoid-gitops)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/seqtoid-gitops
+          ref: ${{ vars.GITOPS_REF || 'main' }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _gitops
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install the release CLI
+        id: install
+        run: pip install -q -r _gitops/requirements.txt
+
+      - name: Reap an expired lease
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          status=0
+          _gitops/bin/release lease reap > reap.txt 2>&1 || status=$?
+          cat reap.txt
+          if [ -s reap.txt ]; then
+            { echo "### lease reap"; echo '```'; cat reap.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      # Read the pin AFTER the reap. A reap's pin-clearing PR may not have merged yet; then the pin
+      # still reads as a lease (already expired, so no reminder) and the catch-up waits a tick.
+      # The steps below still run when the reap itself failed, so a broken reap is red but never
+      # strands dev behind main.
+      - name: Read the dev pin
+        id: pin
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if gh api -H "Accept: application/vnd.github.raw" \
+               "repos/${INFRA_REPO}/contents/${PIN_PATH}?ref=main" > pin.yaml 2> pin.err; then
+            :
+          elif grep -q "HTTP 404" pin.err; then
+            : > pin.yaml   # no pin file == not pinned
+          else
+            cat pin.err; echo "::error::could not read ${PIN_PATH} from ${INFRA_REPO}"; exit 1
+          fi
+          kind="$(python3 -c 'import sys, yaml; d = yaml.safe_load(open(sys.argv[1])) or {}; print((d.get("pin") or {}).get("kind") or "none")' pin.yaml)"
+          echo "dev pin: ${kind}"
+          echo "kind=${kind}" >> "$GITHUB_OUTPUT"
+
+      - name: Remind the holder before the lease expires
+        if: ${{ !cancelled() && steps.pin.outputs.kind == 'lease' }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          # Holder + expiry: from `lease status --json` when the CLI gives them, else from the pin file
+          # (pin.holder / pin.expires_at, or nested under pin.lease).
+          _gitops/bin/release lease status --json > status.json 2>/dev/null || echo '{}' > status.json
+          IFS=$'\t' read -r holder expires < <(python3 - status.json pin.yaml <<'PY'
+          import json, sys, yaml
+          try:
+              s = json.load(open(sys.argv[1])) or {}
+          except ValueError:
+              s = {}
+          p = (yaml.safe_load(open(sys.argv[2])) or {}).get("pin") or {}
+          cands = [s.get("lease") or {}, s.get("pin") or {}, s, p.get("lease") or {}, p]
+          def pick(k):
+              v = next((c[k] for c in cands if isinstance(c, dict) and c.get(k)), "-")
+              return v.isoformat() if hasattr(v, "isoformat") else str(v)  # YAML may parse timestamps
+          print(pick("holder"), pick("expires_at"), sep="\t")
+          PY
+          )
+          if [ "$holder" = "-" ] || [ "$expires" = "-" ]; then
+            echo "::warning::lease holder/expires_at not found in lease status or ${PIN_PATH}; cannot remind."
+            exit 0
+          fi
+          [[ "$holder" =~ ^[A-Za-z0-9-]{1,39}$ ]] || { echo "::warning::holder '${holder}' is not a GitHub login; not mentioning."; exit 0; }
+          left=$(( $(date -u -d "$expires" +%s) - $(date -u +%s) ))
+          echo "lease held by ${holder}, expires ${expires} (${left}s left)"
+          if [ "$left" -le 0 ] || [ "$left" -gt $(( REMIND_MINUTES * 60 )) ]; then exit 0; fi
+
+          # The PR that last wrote the pin (the take or the latest renew).
+          sha="$(gh api "repos/${INFRA_REPO}/commits?path=${PIN_PATH}&sha=main&per_page=1" --jq '.[0].sha // empty')"
+          pr=""
+          if [ -n "$sha" ]; then
+            pr="$(gh api "repos/${INFRA_REPO}/commits/${sha}/pulls" --jq '.[0].number // empty' || true)"
+          fi
+          if [ -z "$pr" ]; then
+            echo "::warning::no PR found for the last change to ${PIN_PATH}; ${holder}'s lease expires ${expires} with no reminder."
+            exit 0
+          fi
+          marker="<!-- dev-lease-reminder expires_at=${expires} -->"
+          if gh api --paginate "repos/${INFRA_REPO}/issues/${pr}/comments" --jq '.[].body' | grep -qF "$marker"; then
+            echo "already reminded on ${INFRA_REPO}#${pr} for ${expires}"; exit 0
+          fi
+          mins=$(( left / 60 ))
+          # shellcheck disable=SC2016  # the backticks are literal Markdown, not command substitution
+          body="$(printf '%s\n@%s your dev lease expires at %s (about %s min).\n\nKeep it: Actions -> release -> Run workflow -> operation `lease-renew` (seqtoid-web). Done: operation `lease-end`. If it lapses, the reaper ends it and dev returns to the newest main build.' \
+            "$marker" "$holder" "$expires" "$mins")"
+          gh pr comment "$pr" --repo "$INFRA_REPO" --body "$body"
+          echo "### reminded @${holder} on ${INFRA_REPO}#${pr} (expires ${expires})" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Move dev to the newest main build once the pin is clear
+        if: ${{ !cancelled() && steps.pin.outputs.kind == 'none' }}
+        env:
+          APP_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          newest="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-docker-image.yml --branch main \
+                      --status success --limit 1 --json headSha --jq '.[0].headSha // empty')"
+          [[ "$newest" =~ ^[0-9a-f]{40}$ ]] || { echo "::warning::no successful main build found; nothing to do."; exit 0; }
+          want="sha-${newest:0:8}"
+          have="$(GH_TOKEN="$APP_TOKEN" gh api -H "Accept: application/vnd.github.raw" "repos/${INFRA_REPO}/contents/${DEV_PATH}?ref=main" \
+                  | python3 -c 'import sys, yaml; print(((yaml.safe_load(sys.stdin) or {}).get("image") or {}).get("tag") or "")')"
+          echo "dev.yaml tag=${have}; newest main build=${want}"
+          [ "$have" != "$want" ] || exit 0
+
+          # Do not pile on: an open advance PR (waiting on checks, or red and left for a human), an
+          # advance already queued/running, or one that failed in the last hour all mean "leave it".
+          open_prs="$(GH_TOKEN="$APP_TOKEN" gh pr list --repo "$INFRA_REPO" --state open --json headRefName \
+                       --jq '[.[] | select(.headRefName | startswith("gitops/advance-dev-"))] | length')"
+          [ "$open_prs" -eq 0 ] || { echo "an advance-dev PR is already open; not dispatching."; exit 0; }
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow gitops-advance-dev.yml --limit 10 \
+            --json status,conclusion,createdAt > adv.json
+          if [ "$(jq '[.[] | select(.status != "completed")] | length' adv.json)" -gt 0 ]; then
+            echo "gitops-advance-dev is already queued/running; not dispatching."; exit 0
+          fi
+          hour_ago="$(date -u -d '-60 min' +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "$(jq -r --arg t "$hour_ago" '.[0] | select(.conclusion == "failure" and .createdAt > $t) | "x"' adv.json)" = "x" ]; then
+            echo "::warning::the last gitops-advance-dev failed under an hour ago; not retrying yet (dev at ${have}, main at ${want})."
+            exit 0
+          fi
+          gh workflow run gitops-advance-dev.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "### dev is unpinned and behind main (${have} -> ${want}): dispatched gitops-advance-dev" >> "$GITHUB_STEP_SUMMARY"
