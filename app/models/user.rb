@@ -136,19 +136,29 @@ class User < ApplicationRecord
     allowed_feature_list.include?(feature)
   end
 
-  def add_allowed_feature(feature)
-    parsed_allowed_features = allowed_feature_list
+  # Features granted to THIS user only -- the users.allowed_features column, WITHOUT the global
+  # LAUNCHED_FEATURES list merged in. Every per-user mutation must start from this list, never from
+  # allowed_feature_list: persisting the merged list would copy every globally launched feature into
+  # the user's own column, so un-launching a feature later would leave it on for that user forever.
+  def user_allowed_feature_list
+    JSON.parse(allowed_features.presence || "[]")
+  end
 
-    unless parsed_allowed_features.include?(feature)
-      update(allowed_features: parsed_allowed_features + [feature])
+  def add_allowed_feature(feature)
+    own_features = user_allowed_feature_list
+
+    unless own_features.include?(feature)
+      update(allowed_features: JSON.dump(own_features + [feature]))
     end
   end
 
+  # Removes only a per-user grant. A feature that is globally launched stays on for this user (that is
+  # what "launched" means); un-launch it with `rake features:remove` instead.
   def remove_allowed_feature(feature)
-    parsed_allowed_features = allowed_feature_list
+    own_features = user_allowed_feature_list
 
-    if parsed_allowed_features.include?(feature)
-      update(allowed_features: parsed_allowed_features - [feature])
+    if own_features.include?(feature)
+      update(allowed_features: JSON.dump(own_features - [feature]))
     end
   end
 
