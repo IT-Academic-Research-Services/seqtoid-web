@@ -6,23 +6,19 @@ namespace "features" do
       next
     end
 
-    new_features = AppConfigHelper.get_json_app_config(AppConfig::LAUNCHED_FEATURES, []) | [args[:feature_name]]
-    AppConfigHelper.set_json_app_config(AppConfig::LAUNCHED_FEATURES, new_features)
+    Feature.enable(args[:feature_name], by: "rake features:launch")
     puts "Add feature: #{args[:feature_name]}"
-    puts "Currently launched: #{new_features}"
+    puts "Currently launched: #{Feature.store.launched}"
   end
 
   # rake features:remove[<feature_name>]
   task :remove, [:feature_name] => :environment do |_, args|
-    features = AppConfigHelper.get_json_app_config(AppConfig::LAUNCHED_FEATURES, [])
-    if features.include?(args[:feature_name])
-      features -= [args[:feature_name]]
-      AppConfigHelper.set_json_app_config(AppConfig::LAUNCHED_FEATURES, features)
+    if Feature.disable(args[:feature_name], by: "rake features:remove")
       puts "Removed feature: #{args[:feature_name]}"
     else
       puts "Feature is not launched: #{args[:feature_name]}"
     end
-    puts "Currently launched: #{features}"
+    puts "Currently launched: #{Feature.store.launched}"
   end
 
   # rake features:list
