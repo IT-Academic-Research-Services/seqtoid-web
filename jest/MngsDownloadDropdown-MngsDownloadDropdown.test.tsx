@@ -5,7 +5,7 @@
 // the with-applied-filters client download, the taxon SVG/PNG SvgSaver arms, and
 // the getLinkInfoForDownloadOption default (valid -> window.open, invalid ->
 // logError). The tree-view image-options branch is also asserted.
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 
 const mockTrackEvent = jest.fn();
 const mockTriggerFileDownload = jest.fn();
@@ -68,7 +68,10 @@ const baseProps = {
   readyToDownload: true,
   backgroundId: 5,
   className: "dd",
-  getDownloadReportTableWithAppliedFiltersLink: () => "/filters/link.csv",
+  /* The filtered report callback fetches the canonical CSV asynchronously. */
+  getDownloadReportTableWithAppliedFiltersLink: jest.fn(() =>
+    Promise.resolve("/filters/link.csv"),
+  ),
   hasAppliedFilters: true,
   pipelineRun: { id: 3, pipeline_version: "8.0" } as $TSFixMe,
   sample: {
@@ -148,13 +151,21 @@ describe("MngsDownloadDropdown", () => {
     expect(mockShowToast).not.toHaveBeenCalled();
   });
 
-  it("triggers a client download for the with-filters option", () => {
+  /* Wait for the async callback before checking the client download side effect. */
+  it("triggers a client download for the with-filters option", async () => {
     renderDropdown();
     dropdownProps.onClick("download_csv_with_filters");
-    expect(mockTriggerFileDownload).toHaveBeenCalledWith({
-      downloadUrl: "/filters/link.csv",
-      fileName: "SampleX_report_with_applied_filters.csv",
-    });
+    await waitFor(() =>
+      expect(mockTriggerFileDownload).toHaveBeenCalledWith({
+        downloadUrl: "/filters/link.csv",
+        fileName: "SampleX_report_with_applied_filters.csv",
+      }),
+    );
+    expect(
+      baseProps.getDownloadReportTableWithAppliedFiltersLink,
+    ).toHaveBeenCalledWith(
+      "/samples/9/report_csv?background_id=5&pipeline_version=8.0",
+    );
   });
 
   it("saves an SVG for the taxon_svg option", () => {

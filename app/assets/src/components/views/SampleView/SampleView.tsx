@@ -28,6 +28,7 @@ import {
   getSampleReportData,
   getSamples,
 } from "~/api";
+import { get as getApi } from "~/api/core";
 import { getAmrDeprecatedData } from "~/api/amr";
 import {
   ANALYTICS_EVENT_NAMES,
@@ -52,8 +53,8 @@ import {
 import NarrowContainer from "~/components/layout/NarrowContainer";
 import { IconAlert, IconLoading } from "~/components/ui/icons";
 import {
-  computeMngsReportTableValuesForCSV,
-  createCSVObjectURL,
+  createCSVRowForAppliedFilters,
+  filterMngsReportCsvByTaxa,
 } from "~/components/utils/csv";
 import { logError } from "~/components/utils/logUtil";
 import {
@@ -117,6 +118,7 @@ import {
   determineInitialTab,
   filterReportData,
   GENUS_LEVEL_INDEX,
+  getAppliedFilters,
   getConsensusGenomeData,
   getPiplineRunByVersionOrId,
   getStateFromUrlandLocalStorage,
@@ -629,9 +631,7 @@ const SampleViewComponent = ({
               const isHighlighted = highlightedTaxIds.has(speciesTaxId);
               hasHighlightedChildren = hasHighlightedChildren || isHighlighted;
               const speciesInfo = speciesCounts[speciesTaxId];
-              const speciesWithAdjustedMetricPrecision =
-                adjustMetricPrecision(speciesInfo);
-              return merge(speciesWithAdjustedMetricPrecision, {
+              return merge(adjustMetricPrecision(speciesInfo), {
                 highlighted: isHighlighted,
                 taxId: speciesTaxId,
                 taxLevel: TAX_LEVEL_SPECIES,
@@ -1391,15 +1391,29 @@ const SampleViewComponent = ({
     setView(view);
   };
 
-  const getDownloadReportTableWithAppliedFiltersLink = () => {
-    const [csvHeaders, csvRows] = computeMngsReportTableValuesForCSV(
+  /*
+   * Reuse the default report CSV as the source of truth, then remove rows
+   * excluded by the UI filters and append the selected-filter description.
+   */
+  const getDownloadReportTableWithAppliedFiltersLink = async (
+    reportCsvUrl: string,
+  ) => {
+    const reportCsv = await getApi(reportCsvUrl, { responseType: "text" });
+    const filteredCsv = filterMngsReportCsvByTaxa(
+      reportCsv,
       filteredReportData,
-      selectedOptions,
-      backgrounds,
-      currentTab,
     );
+    const appliedFiltersRow = createCSVRowForAppliedFilters(
+      getAppliedFilters(selectedOptions),
+      backgrounds,
+      selectedOptions,
+    )[0];
 
-    return createCSVObjectURL(csvHeaders, csvRows);
+    return URL.createObjectURL(
+      new Blob([filteredCsv, "\n", appliedFiltersRow], {
+        type: "text/csv",
+      }),
+    );
   };
 
   const handleChangeWorkflowRun = (workflowRun: WorkflowRun) => {
