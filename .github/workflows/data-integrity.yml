@@ -11,6 +11,14 @@ name: Data-integrity / reference-data
 # treats a red here as a hard promotion blocker.
 on:
   workflow_call:
+    inputs:
+      ref:
+        type: string
+        description: >-
+          Commit to test. Empty = the caller's commit (unchanged behavior). The RC battery passes
+          the release candidate's source commit so the tier tests what dev is actually running.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -57,6 +65,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
       - name: Determine Kernel Version
         run: echo "KERNEL_VERSION=$(uname -r)" >> "$GITHUB_ENV"
       - name: Cache Ruby Dependencies
