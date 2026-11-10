@@ -63,6 +63,11 @@ spec:
               value: {{ $src | quote }}
             - name: SANDBOX_PR_NUMBER
               value: {{ .Values.preview.prNumber | quote }}
+            {{- if eq (include "seqtoid-web.previewNotificationsMode" .) "sqs" }}
+            # Lets teardown unsubscribe + delete this sandbox's notification queue and DLQ.
+            - name: SANDBOX_SFN_TOPIC_ARN
+              value: {{ include "seqtoid-web.previewSfnTopicArn" . | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.preview.resources | nindent 12 }}
 {{- end }}

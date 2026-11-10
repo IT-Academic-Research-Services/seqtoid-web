@@ -89,6 +89,17 @@ spec:
             - name: SANDBOX_REDIS_URL
               value: "redis://{{ include "seqtoid-web.fullname" . }}-redis.{{ .Release.Namespace }}.svc.cluster.local:6379"
             {{- end }}
+            {{- if eq (include "seqtoid-web.previewNotificationsMode" .) "sqs" }}
+            # sqs mode: provision creates this sandbox's OWN filtered queue on dev's SFN topic and
+            # points SFN_NOTIFICATIONS_QUEUE_ARN at it, so its shoryuken never touches dev's queue.
+            # Omitted in poll mode, which keeps the render (and the task) exactly as before.
+            - name: SANDBOX_NOTIFICATIONS_MODE
+              value: "sqs"
+            - name: SANDBOX_SFN_TOPIC_ARN
+              value: {{ include "seqtoid-web.previewSfnTopicArn" . | quote }}
+            - name: SANDBOX_SFN_EXECUTION_NAME_PREFIX
+              value: {{ include "seqtoid-web.previewExecutionNamePrefix" . | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.preview.resources | nindent 12 }}
 {{- end }}

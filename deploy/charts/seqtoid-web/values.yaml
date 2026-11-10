@@ -487,9 +487,9 @@ pin:
 # the whole set — Helm deep-merges maps by key but replaces lists wholesale (#486/#487).
 #
 # Per-worker `enabled: false` skips that worker's Deployment entirely (default true when
-# absent). A preview sandbox sets `workers.shoryuken.enabled: false` so it does not become
-# a competing consumer on dev's shared SQS queue — it uses POLLING (result-monitor +
-# pipeline-monitor against its own DB) instead.
+# absent). In a preview sandbox shoryuken is governed by preview.notifications.mode instead: it
+# runs only in sqs mode, against the sandbox's OWN queue, never dev's shared one (poll mode uses
+# result-monitor + pipeline-monitor against its own DB).
 # Option A: the standalone export-control screening SERVICE -- same image, its own deployment + chamber
 # + DB, so Descartes never runs in a web request. The API Deployment/Service is templates/screening.yaml;
 # the async worker + poller are workers.screening below. Dark by default (enabled: false).
@@ -766,6 +766,18 @@ preview:
         memory: 64Mi
       limits:
         memory: 256Mi
+  # How the sandbox learns its Step Functions runs moved.
+  #   poll -- (default) no shoryuken; result-monitor + pipeline-monitor poll SFN against its own DB.
+  #   sqs  -- sandbox:provision creates idseq-swipe-<env>-pr-<N>-sfn-notifications-queue (+ DLQ),
+  #           subscribed to dev's SFN topic with a filter on this sandbox's execution-name prefix,
+  #           points SFN_NOTIFICATIONS_QUEUE_ARN at it, and the chart runs the shoryuken worker
+  #           (workers.shoryuken.resources apply; workers.shoryuken.enabled is ignored in a preview).
+  notifications:
+    mode: poll
+    # Empty -> arn:aws:sns:<aws.region>:<aws.accountId>:idseq-swipe-<environment>-sfn-notifications-topic
+    topicArn: ""
+    # Empty -> SFN_EXECUTION_NAME_PREFIX from extraEnv, else idseq-pr-<prNumber>.
+    executionNamePrefix: ""
   provisioner:
     serviceAccountName: seqtoid-web-provisioner
     roleArn: ""          # the seqtoid-web-preview-provisioner IRSA role (infra repo)
