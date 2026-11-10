@@ -24,16 +24,27 @@ name: e2e-pr-gate (Playwright suite gate)
 #      ("E2E Suite Gate (collect runnable suite)") to the `integration` branch-protection
 #      required status checks to enforce the block.
 #
-#   2. smoke-preview  (informational, opt-in, preview-labelled + same-repo PRs only)
+#   2. smoke-preview  (preview-labelled + same-repo PRs only)
 #      Runs the smoke category -- including the SMP-1720 projects-lifecycle spec -- against
-#      THIS PR's own preview sandbox (build-pr-preview.yml). Only preview-labelled PRs get a
-#      sandbox and it takes ~10-15 min to serve, so this can never be a required check; it
-#      gives real runtime signal on demand. Guarded by vars.E2E_PREVIEW_GATE_ENABLED so the
-#      canonical repo turns it on once dev creds are wired, and it is a clean no-op on the
-#      fork (mirrors NIGHTLY_E2E_ENABLED in nightly-full-regime.yml).
+#      THIS PR's own preview sandbox (build-pr-preview.yml) once the sandbox serves the PR's
+#      head commit. "E2E Smoke Gate (preview)" is the stable, always-reported verdict for it:
+#      success when the PR has no `preview` label (nothing to test), otherwise the smoke
+#      result. That job name is what a ruleset should require; the reusable-workflow job
+#      names underneath it change shape when skipped and must not be required directly.
+#      Kill switch: set vars.E2E_PREVIEW_GATE_ENABLED=false to stand the smoke tier down.
+#
+# HISTORY: from the day it merged until this fix every run of this workflow was a
+# startup_failure ("The nested job 'workflow-e2e' is requesting 'id-token: write', but is
+# only allowed 'id-token: none'"): smoke-preview inherited this file's `contents: read`
+# while e2e-automation.yml asked for id-token. GitHub validates every called workflow's
+# permissions before ANY job starts, so the failure took suite-gate down with it -- the
+# collect gate above never ran on a single PR either. e2e-automation.yml no longer asks
+# for id-token (it never used OIDC).
 
 on:
   pull_request:
+    # `labeled` so adding `preview` to an open PR starts the smoke tier without a new push.
+    types: [opened, synchronize, reopened, labeled]
     branches: [integration]
   workflow_dispatch:
 
@@ -82,16 +93,14 @@ jobs:
           NODE_ENV: staging
         run: npx playwright test -c setup/staging.config.ts --list
 
-  # Wait for THIS PR's preview sandbox to actually serve before pointing the browser suite at
-  # it. Only meaningful for preview-labelled, same-repo PRs (a fork PR gets no sandbox), and
-  # only when the canonical repo has enabled the preview gate. Never fails the PR: a sandbox
-  # that never serves leaves this (non-required) job red without touching the required gate.
+  # Wait for THIS PR's preview sandbox to serve THIS PR's head commit before pointing the
+  # browser suite at it. Same-repo, preview-labelled PRs only (a fork PR gets no sandbox).
   wait-for-sandbox:
     name: Wait for PR preview sandbox
     runs-on: ubuntu-24.04
     if: >-
       github.event_name == 'pull_request' &&
-      vars.E2E_PREVIEW_GATE_ENABLED == 'true' &&
+      vars.E2E_PREVIEW_GATE_ENABLED != 'false' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       contains(github.event.pull_request.labels.*.name, 'preview')
     permissions:
@@ -99,26 +108,38 @@ jobs:
     outputs:
       url: ${{ steps.wait.outputs.url }}
     steps:
-      - name: Poll the sandbox URL until it serves
+      - name: Poll the sandbox until it serves the PR head commit
         id: wait
-        # Mirrors build-pr-preview.yml's own readiness poll: hit the real page (`/`), never
-        # /health_check (that path is excluded from Rails host authorization and 200s while
-        # every real page 403s). Up to ~22 min (66 * 20s); sandboxes normally land at 10-15.
+        # Health = the real page (`/`) answers 200/302 AND the build it serves is this PR's head.
+        # Never /health_check: that path is excluded from Rails host authorization and 200s while
+        # every real page 403s (build-pr-preview.yml). The served build comes from the layout's
+        # window.GIT_RELEASE_SHA (the image's baked GIT_VERSION = first 8 of the commit); without
+        # this a push to a labelled PR would smoke-test the PREVIOUS commit's sandbox, which keeps
+        # serving until Argo rolls the new image. The budget covers the image build (~5-10 min)
+        # plus provisioning (~10-15 min); override with vars.E2E_PREVIEW_WAIT_MINUTES.
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WAIT_MINUTES: ${{ vars.E2E_PREVIEW_WAIT_MINUTES || '40' }}
         run: |
           set -uo pipefail
           url="https://pr-${PR_NUMBER}.dev.seqtoid.org"
+          want="${HEAD_SHA:0:8}"
           echo "url=${url}" >> "$GITHUB_OUTPUT"
-          for _ in $(seq 1 66); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "${url}/" || echo 000)
-            if [ "$code" = "200" ] || [ "$code" = "302" ]; then
-              echo "Sandbox ${url} is serving (HTTP ${code})."
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          page="$(mktemp)"
+          served=""
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            code=$(curl -s -o "$page" -w '%{http_code}' --max-time 10 "${url}/" || echo 000)
+            served="$(sed -n 's/.*GIT_RELEASE_SHA = "\([0-9a-f]*\)".*/\1/p' "$page" | head -n1)"
+            if { [ "$code" = "200" ] || [ "$code" = "302" ]; } && [ "$served" = "$want" ]; then
+              echo "Sandbox ${url} serves ${want} (HTTP ${code})."
               exit 0
             fi
+            echo "not ready: HTTP ${code}, serving '${served:-unknown}', want ${want}"
             sleep 20
           done
-          echo "Sandbox ${url} did not serve in time." >&2
+          echo "::error::Sandbox ${url} did not serve ${want} within ${WAIT_MINUTES} min (last: '${served:-unknown}')."
           exit 1
 
   smoke-preview:
@@ -127,10 +148,41 @@ jobs:
     # Reuse the existing browser-suite workflow, pointed at the per-PR sandbox via the gauntlet
     # config (base-url -> GAUNTLET_BASE_URL). node-environment MUST be `gauntlet`, never
     # `staging` -- the whole point is to exercise the PR's own deployed code, not real staging.
+    # The callee's job permissions must be a subset of what is granted here, or GitHub refuses
+    # to start the WHOLE run (see HISTORY above).
     uses: ./.github/workflows/e2e-automation.yml
+    permissions:
+      contents: read
     with:
       node-environment: gauntlet
       base-url: ${{ needs.wait-for-sandbox.outputs.url }}
       test-category: smoke
       should-run-with-feature-flags: false
     secrets: inherit
+
+  # The one check name to require for the smoke tier. Always reports, so a required check never
+  # sits "expected" on a PR that legitimately has no sandbox.
+  smoke-gate:
+    name: E2E Smoke Gate (preview)
+    if: ${{ always() }}
+    needs: [wait-for-sandbox, smoke-preview]
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Verdict
+        env:
+          WAIT: ${{ needs.wait-for-sandbox.result }}
+          SMOKE: ${{ needs.smoke-preview.result }}
+        run: |
+          set -euo pipefail
+          echo "wait-for-sandbox=${WAIT} smoke-preview=${SMOKE}"
+          if [ "$WAIT" = "skipped" ]; then
+            echo "No preview sandbox for this PR (no \`preview\` label, fork PR, or tier disabled): nothing to smoke."
+            exit 0
+          fi
+          if [ "$WAIT" = "success" ] && [ "$SMOKE" = "success" ]; then
+            echo "Smoke passed against this PR's preview sandbox."
+            exit 0
+          fi
+          echo "::error::Preview smoke did not pass (wait-for-sandbox=${WAIT}, smoke-preview=${SMOKE})."
+          exit 1
