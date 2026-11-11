@@ -1,0 +1,46 @@
+name: rc-auto-cut
+
+# Deploy lanes: cut the weekly release candidate on Tuesday 10:00 America/Los_Angeles, by running
+# release.yml with operation=cut-rc (so every RC, scheduled or manual, is cut by the same job and
+# shows up in the same run history).
+#
+# OFF by default. It does nothing unless repo variable RC_AUTO_CUT is exactly 'true'; until then cut
+# RCs by hand (Actions -> release -> operation cut-rc).
+#
+# GitHub cron is UTC-only, so both candidate hours are scheduled and the job keeps the one that is
+# 10:00 in Los Angeles today: 17:00 UTC while PDT (UTC-7, Mar-Nov), 18:00 UTC while PST (UTC-8).
+# The match is on WHICH cron fired plus LA's current UTC offset, not the wall clock at run time, so a
+# late-starting scheduled run still cuts. DST changes on a Sunday, so a Tuesday is never ambiguous.
+
+on:
+  schedule:
+    - cron: "0 17 * * 2" # 10:00 PDT
+    - cron: "0 18 * * 2" # 10:00 PST
+
+permissions:
+  contents: read
+
+jobs:
+  cut:
+    if: ${{ vars.RC_AUTO_CUT == 'true' && github.repository == 'IT-Academic-Research-Services/seqtoid-web' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # dispatch release.yml
+      actions: write
+    steps:
+      - name: Cut the weekly RC (only from the cron that is 10:00 in Los Angeles)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRON: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          offset="$(TZ=America/Los_Angeles date +%z)"
+          case "${CRON}|${offset}" in
+            "0 17 * * 2|-0700" | "0 18 * * 2|-0800") ;;
+            *) echo "cron '${CRON}' is not 10:00 in Los Angeles today (UTC offset ${offset}); the other cron cuts."; exit 0 ;;
+          esac
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f operation=cut-rc -f target=staging -f reason="weekly RC (rc-auto-cut)"
+          echo "### Dispatched release.yml operation=cut-rc (weekly RC, ${CRON} UTC)" >> "$GITHUB_STEP_SUMMARY"
