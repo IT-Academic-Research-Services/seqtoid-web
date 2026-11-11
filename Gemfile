@@ -64,9 +64,9 @@ gem 'redis', '~> 4.3'
 gem 'sprockets-rails'
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
-gem 'rails', '~> 7.2.0', '>= 7.2.3.2' # bug-#002: Rails 7.0 EOL; SMP-1297: 7.1 -> 7.2, floor at 7.2.3.1 (activestorage/activesupport CVEs); floor raised to 7.2.3.2 for CVE-2026-66066 (activestorage CRITICAL)
+gem 'rails', '~> 8.1.4' # bug-#002: Rails 7.0 EOL; SMP-1297: 7.1 -> 7.2, floor at 7.2.3.1 (activestorage/activesupport CVEs); floor raised to 7.2.3.2 for CVE-2026-66066 (activestorage CRITICAL)
 gem 'rails-controller-testing', '~> 1.0', '>= 1.0.5'
-gem 'railties', '~> 7.2'
+gem 'railties', '~> 8.1'
 gem 'rake'
 # Worker/Scheduler management
 gem 'resque', '~> 2.3'
@@ -83,7 +83,7 @@ gem "sentry-rails", "~> 5.17"
 # OTEL_EXPORTER_OTLP_ENDPOINT is set (see config/initializers/opentelemetry.rb).
 gem "opentelemetry-sdk", "~> 1.8"
 gem "opentelemetry-exporter-otlp", "~> 0.30"
-gem "opentelemetry-instrumentation-all", "~> 0.76"
+gem "opentelemetry-instrumentation-all", "~> 0.101"
 # Use SCSS for stylesheets
 gem 'sprockets-es6'
 gem "strong_migrations"
@@ -156,7 +156,7 @@ group :development, :test do
   # CI wall-clock; each worker owns idseq_test<TEST_ENV_NUMBER>. See bin/ci-test.
   gem 'parallel_tests', '~> 4.7'
   gem 'rspec-rails', '~> 6.1' # bug-#002: rspec-rails 6.x is the Rails 7.1-compatible line
-  gem 'rubocop', '~> 1.88'
+  gem 'rubocop', '~> 1.92'
   gem "rubocop-graphql", "~> 1.6"
   gem 'rubocop-performance', '~> 1.26'
   gem 'rubocop-rails', '~> 2.35'
