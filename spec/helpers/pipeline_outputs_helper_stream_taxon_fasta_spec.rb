@@ -121,7 +121,7 @@ RSpec.describe PipelineOutputsHelper, type: :helper do
       expect(records).to eq([">read_a\nACGT\n", ">read_b\nGGCC\n", ">shared\nTTAA\n", ">read_c\nCCCC\nAAAA\n"])
     end
 
-    it "returns false and yields nothing when the taxon has no reads (the Coming soon case)" do
+    it "returns false and yields nothing when the taxon has no reads (the no-reads message case)" do
       out, any = streamed
       expect(out).to eq("")
       expect(any).to be(false)
