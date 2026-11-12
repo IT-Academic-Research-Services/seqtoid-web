@@ -60,12 +60,12 @@ RSpec.describe "Samples taxid fasta streaming", type: :request do
     expect(response.body).to eq(nt)
   end
 
-  it "sends the Coming soon placeholder when the taxon has no reads" do
+  it "says no reads are available when the taxon has none" do
     pipeline_run
 
     get "/samples/#{sample.id}/fasta/#{level}/573/NT_or_NR"
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to eq("Coming soon")
+    expect(response.body).to eq(SamplesController::NO_TAXON_READS_MESSAGE)
   end
 end
