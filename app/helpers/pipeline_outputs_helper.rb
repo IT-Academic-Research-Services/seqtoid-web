@@ -187,6 +187,62 @@ module PipelineOutputsHelper
     end
   end
 
+  # Where a taxon's reads sit in a pipeline run's sorted FASTA. Resolved up front so a
+  # streamed response body only talks to S3, never the database.
+  TaxonFastaSource = Struct.new(:bucket, :key, :range)
+
+  def taxon_fasta_source(pipeline_run, taxid, tax_level, hit_type)
+    return nil unless pipeline_run
+
+    uri = pipeline_run.s3_paths_for_taxon_byteranges[tax_level][hit_type]
+    # Same lookup as get_taxon_fasta_from_pipeline_run.
+    taxon_location = pipeline_run.taxon_byteranges.where(taxid: taxid, hit_type: hit_type).last
+    return nil if taxon_location.nil?
+
+    bucket, key = S3Util.parse_s3_path(uri)
+    TaxonFastaSource.new(bucket, key, "bytes=#{taxon_location.first_byte}-#{taxon_location.last_byte}")
+  end
+
+  # Yields the taxon's byterange in the chunks S3 sends, without holding the whole range.
+  # Long-read runs can have a single taxon range near 1 GB, which get_taxon_fasta_from_pipeline_run
+  # reads into one String.
+  def each_taxon_fasta_chunk(source, &block)
+    return if source.nil?
+
+    Client.get_object(bucket: source.bucket, key: source.key, range: source.range, &block)
+  rescue Aws::S3::Errors::NoSuchKey => e
+    LogUtil.log_error("File not found: #{source.key}", exception: e)
+  rescue Aws::S3::Errors::InvalidRange => e
+    LogUtil.log_error("Invalid byterange requested: #{source.key} #{source.range}", exception: e)
+  end
+
+  # Streaming form of get_taxon_fasta_from_pipeline_run_combined_nt_nr: yields the same bytes in
+  # the same order (each distinct non-empty ">"-separated record once, NT first, then NR), keeping
+  # one record plus a 16-byte digest per record in memory. Returns true if any record was yielded.
+  def each_combined_taxon_fasta_record(sources)
+    seen = Set.new
+    emitted = false
+    emit = lambda do |record|
+      next if record.empty?
+      # Digest is only a dedupe key for identical records; not a security use.
+      next unless seen.add?(Digest::MD5.digest(record))
+
+      emitted = true
+      yield ">".b << record
+    end
+    sources.each do |source|
+      carry = String.new(encoding: Encoding::BINARY)
+      each_taxon_fasta_chunk(source) do |chunk|
+        carry << chunk.b
+        parts = carry.split(">", -1)
+        carry = parts.pop
+        parts.each(&emit)
+      end
+      emit.call(carry)
+    end
+    emitted
+  end
+
   # Either s3_path or bucket_name+key is required.
   def get_presigned_s3_url(s3_path: nil, filename: nil, duration: nil, bucket_name: nil, key: nil, content_type: nil)
     s3 = Aws::S3::Resource.new(client: Client)
