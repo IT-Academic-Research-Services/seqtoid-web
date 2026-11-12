@@ -105,10 +105,18 @@ RSpec.describe ExportControlLayer3Gate, type: :controller do
 
       it "ALLOWS only when cleared AND device-attested for the current version" do
         create(:export_control_clearance, user: user)
-        create(:device_location_attestation, user: user)
+        create(:device_location_attestation, user: user, ip_address: "0.0.0.0") # request.remote_ip in controller specs
         sign_in user
         get :index
         expect(response).to have_http_status(:ok)
+      end
+
+      it "DENIES when the device attestation came from a different IP" do
+        create(:export_control_clearance, user: user)
+        create(:device_location_attestation, user: user, ip_address: "203.0.113.99")
+        sign_in user
+        get :index
+        expect(response).to redirect_to(new_device_location_attestation_path)
       end
     end
   end

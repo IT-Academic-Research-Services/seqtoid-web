@@ -1,20 +1,14 @@
 # CZID-286 — the provider-agnostic device / location attestation-VERIFICATION contract (server-side).
 # Mirrors the IDV + screening adapters. The endpoint + gate consume ONLY this interface.
 #
-# The SERVER's job here is to VERIFY a signed attestation token that the client obtained from the device-
-# location vendor's SDK, and map the result onto DeviceLocationAttestation::STATUSES. GeoComply PinPoint
-# is the reference shape (design doc CZID-329) — pluggable behind PROVIDER.
+# The SERVER's job here is to VERIFY the attestation the client obtained from the device-location vendor's
+# SDK, and map the result onto DeviceLocationAttestation::STATUSES. The vendor is selected at runtime by
+# AppConfig::DEVICE_LOCATION_PROVIDER (see provider_module).
 #
-# ===== CLIENT SDK INTEGRATION POINT (HELD — TODO(vendor)) =====
-# The client obtains the signed token by embedding the vendor's frontend SDK (e.g. GeoComply PinPoint web
-# SDK). That frontend integration is VENDOR-SPECIFIC and is deliberately NOT built here — building
-# speculative frontend against an unknown SDK would be waste (standing rule: HOLD the client SDK). When a
-# vendor is chosen:
-#   1. embed the vendor SDK on the client, collect the device-attestation token, and
-#   2. POST it to DeviceLocationAttestationsController#create (the server endpoint authored in this PR),
-#      which calls verify_token below.
-# Until then this server-side verifier is the authored half; the client half is a documented stub.
-# ==============================================================
+# CLIENT SDK: GeoComply's browser SDK is BrowserGuard (part of GeoComply Core; "PinPoint" is GeoComply's
+# on-site beacon product, not this SDK). The attestation page (device_location_attestations/new) loads it,
+# runs a check, and POSTs the result to DeviceLocationAttestationsController#create, which calls
+# verify_token below.
 #
 # Contract — verify_token(token, ctx) returns a Result:
 #   status:         one of DeviceLocationAttestation::STATUSES (verified/failed/pending)
@@ -29,9 +23,9 @@ module ExportControl
     Result = Struct.new(:status, :failure_reason, :provider, :attestation_ref, :asserted_country,
                         keyword_init: true)
 
-    # TODO(counsel/vendor): set to the chosen device-location vendor (GeoComply the leading candidate) once
-    # its DPA + verification keys are in place. Committed placeholder = reference stub (fails closed).
-    PROVIDER = "reference_stub".freeze
+    # The fail-closed default. When AppConfig::DEVICE_LOCATION_PROVIDER is unset/blank the provider resolves
+    # here (reference stub -> never verifies -> deny), so behaviour is unchanged until an operator opts in.
+    DEFAULT_PROVIDER = "reference_stub".freeze
 
     module_function
 
@@ -39,10 +33,16 @@ module ExportControl
       provider_module.verify_token(token, ctx)
     end
 
+    # Read from AppConfig at runtime so go-live (and rollback) is a config row, not a deploy.
+    def provider_name
+      AppConfigHelper.get_app_config(AppConfig::DEVICE_LOCATION_PROVIDER, DEFAULT_PROVIDER)
+    end
+
     def provider_module
-      case PROVIDER
+      case provider_name
       when "geocomply" then Providers::Geocomply
       else
+        # Any unknown/blank value (and the "reference_stub" default) FAILS CLOSED to the stub.
         Providers::DeviceReferenceStub
       end
     end

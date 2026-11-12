@@ -14,6 +14,25 @@ class AppConfig < ApplicationRecord
   # flag so device attestation can be scoped to the highest-sensitivity flows only. Defaults OFF (dark);
   # go-live is counsel/vendor-gated. TODO(counsel/product): which flows require it.
   ENABLE_EXPORT_CONTROL_DEVICE_ATTESTATION = 'enable_export_control_device_attestation'.freeze
+  # GeoComply staging test -- the STANDALONE device-location check (ExportControlDeviceLocationGate). When
+  # this is "1", a logged-in user who is IN SCOPE (see DEVICE_LOCATION_CHECK_USERS) must hold a current,
+  # server-verified device-location attestation. Unlike ENABLE_EXPORT_CONTROL_DEVICE_ATTESTATION it does
+  # NOT require Layer 3 or an export-control clearance, so it can be tested on its own. Defaults OFF (dark).
+  ENABLE_DEVICE_LOCATION_CHECK = 'enable_device_location_check'.freeze
+  # JSON array naming who the standalone check applies to: user ids (42 or "User:42") and/or emails,
+  # case-insensitive. ["*"] = every user. Blank/unset/unparseable = NOBODY, so turning the flag on with no
+  # list changes nothing for anyone (a test cannot lock out beta testers by accident).
+  DEVICE_LOCATION_CHECK_USERS = 'device_location_check_users'.freeze
+  # Selects the device-location vendor ExportControl::DeviceLocationProvider resolves to: "geocomply" or
+  # "reference_stub". Any unknown/blank value FAILS CLOSED to the stub (never verifies). Runtime config so
+  # go-live and rollback are a row, not a deploy.
+  DEVICE_LOCATION_PROVIDER = 'device_location_provider'.freeze
+  # How long a verified device-location attestation stays valid, in minutes. Blank/non-positive/non-integer
+  # => DeviceLocationAttestation::DEFAULT_MAX_AGE_MINUTES. TODO(counsel/product): own the value.
+  DEVICE_LOCATION_ATTESTATION_MAX_AGE_MINUTES = 'device_location_attestation_max_age_minutes'.freeze
+  # When "0", a verified attestation is NOT tied to the IP it was made from. Any other value (default)
+  # requires a re-check when the user's IP changes, matching GeoComply's re-check-on-IP-change model.
+  DEVICE_LOCATION_RECHECK_ON_IP_CHANGE = 'device_location_recheck_on_ip_change'.freeze
   # CZID-596/599 -- when this is "1", the Descartes Visual Compliance restricted-party SCREENING service
   # (export-control Layer 3) is ACTIVE: ScreeningService may call the SearchEntity API and place holds.
   # Defaults OFF ("" / nil) so the screening core ships DARK and is NEVER invoked -- ScreeningService's

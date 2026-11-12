@@ -44,7 +44,8 @@ RSpec.describe "DeviceLocationAttestations", type: :request do
     context "authenticated AND already holds a verified current attestation" do
       before do
         sign_in @joe
-        create(:device_location_attestation, user: @joe) # default == verified + current
+        # default == verified + current; same IP as the request (the IP re-check is on by default)
+        create(:device_location_attestation, user: @joe, ip_address: "127.0.0.1")
       end
 
       it "redirects a satisfied user home" do
@@ -178,6 +179,66 @@ RSpec.describe "DeviceLocationAttestations", type: :request do
           expect(response).not_to redirect_to(root_path)
         end
       end
+    end
+  end
+
+  describe "GET /device_location_attestation with GeoComply selected" do
+    let(:signing_key) { OpenSSL::PKey::EC.generate("prime256v1") }
+    let(:geocomply_env) do
+      { GEOCOMPLY_AKEY: "akey-1", GEOCOMPLY_SIGNING_KEY: signing_key.to_pem, GEOCOMPLY_SIGNING_KEY_ID: "sk_test",
+        GEOCOMPLY_CDN_ID: "cdn-123", }
+    end
+
+    before do
+      sign_in @joe
+      AppConfigHelper.set_app_config(AppConfig::DEVICE_LOCATION_PROVIDER, "geocomply")
+    end
+
+    def signed_token_on_page
+      response.body[/Gc\.authorize\("([^"]+)"\)/, 1]
+    end
+
+    it "loads the SDK from GeoComply's CDN and authorizes it with a token for this user and session" do
+      ClimateControl.modify(geocomply_env) { get new_device_location_attestation_path }
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('src="https://cdn.geocomply.com/cdn-123/gc-html5.js"')
+      expect(response.body).to include("https://cdn.geocomply.com/cdn-123/gc-html5.ui.js")
+      payload, = JWT.decode(signed_token_on_page, signing_key, true, algorithm: "ES256")
+      expect(payload["ctx"]["user_id"]).to eq(@joe.id.to_s)
+      expect(payload["ctx"]["session_id"]).to eq(session[:device_location_session_id])
+    end
+
+    it "keeps the same login-session id across page loads" do
+      ClimateControl.modify(geocomply_env) do
+        get new_device_location_attestation_path
+        first = JWT.decode(signed_token_on_page, nil, false).first["ctx"]["session_id"]
+        get new_device_location_attestation_path
+        expect(JWT.decode(signed_token_on_page, nil, false).first["ctx"]["session_id"]).to eq(first)
+      end
+    end
+
+    it "selects GeoComply staging only when GEOCOMPLY_ENVIRONMENT is staging" do
+      ClimateControl.modify(geocomply_env.merge(GEOCOMPLY_ENVIRONMENT: "staging")) { get new_device_location_attestation_path }
+      expect(response.body).to include("Gc.setEnvironment(Gc.ENV.STG)")
+      ClimateControl.modify(geocomply_env.merge(GEOCOMPLY_ENVIRONMENT: nil)) { get new_device_location_attestation_path }
+      expect(response.body).not_to include("Gc.setEnvironment(Gc.ENV.STG)")
+    end
+
+    it "says it is not configured when the CDN id or signing credentials are missing" do
+      ClimateControl.modify(geocomply_env.merge(GEOCOMPLY_SIGNING_KEY: nil)) { get new_device_location_attestation_path }
+      expect(response.body).to include("Device location checking is not configured")
+      expect(response.body).not_to include("Gc.authorize")
+    end
+
+    it "DENIES (provider error) when no GeoComply engine keys are configured" do
+      ClimateControl.modify(geocomply_env) do
+        engine_key = OpenSSL::PKey::EC.generate("prime256v1")
+        post device_location_attestations_path, params: { attestation_token: JWT.encode({ a: 1 }, engine_key, "ES256") }
+      end
+      rec = DeviceLocationAttestation.last
+      expect(rec.attestation_status).to eq(DeviceLocationAttestation::STATUS_FAILED)
+      expect(rec.failure_reason).to eq(DeviceLocationAttestation::FAILURE_PROVIDER_ERROR)
+      expect(response).to redirect_to(device_location_attestation_denied_path)
     end
   end
 
