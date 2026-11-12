@@ -649,6 +649,79 @@ describe PipelineRun, type: :model do
     end
   end
 
+  describe '#db_load_contigs with non-specific calls' do
+    # The pipeline gives a contig called only to family 1653 the per-family ids
+    # -100001653 / -200001653 (see lineage.validate_taxid_lineage); the report's read
+    # rows use the same ids, so the loader must keep them instead of the lineage
+    # table's generic -100 / -200.
+    before do
+      project = create(:project)
+      sample1 = create(:sample, project: project, user: @joe, name: "sample")
+      shared = { superkingdom_taxid: 2, kingdom_taxid: -650, phylum_taxid: 201_174, class_taxid: 1760, order_taxid: 85_007, family_taxid: 1653, version_start: "2022-01-02", version_end: "2022-01-02" }
+      @species_lineage = create(:taxon_lineage, taxid: 38_289, genus_taxid: 1716, species_taxid: 38_289, **shared)
+      @family_lineage = create(:taxon_lineage, taxid: 1653, genus_taxid: -200, species_taxid: -100, **shared)
+      @alignment_config = create(:alignment_config, lineage_version: "2022-01-02")
+      @pr = create(:pipeline_run, sample: sample1, alignment_config: @alignment_config)
+
+      allow(PipelineRun).to receive(:download_file_with_retries).with(@pr.s3_file_for("contigs"), PipelineRun::LOCAL_JSON_PATH, 3).and_return("/tmp/results_json/contig_stats.json")
+      allow(File).to receive(:read).with("/tmp/results_json/contig_stats.json").and_return(JSON.generate(CONTIG_STATS))
+      allow(PipelineRun).to receive(:download_file_with_retries).with("#{@pr.assembly_s3_path}/#{PipelineRun::ASSEMBLED_CONTIGS_NAME}", PipelineRun::LOCAL_JSON_PATH, 3).and_return("/tmp/results_json/contigs.fasta")
+      allow(File).to receive(:open).with("/tmp/results_json/contigs.fasta", "r").and_yield(StringIO.new(CONTIGS))
+
+      @pr.db_load_contigs(
+        "NODE_1438_length_226_cov_1.660819" => { "NT" => { species: "-100001653", genus: "-200001653" } },
+        "NODE_2_length_2504_cov_2.191915" => { "NT" => { species: "38289", genus: "-200001653" }, "NR" => { species: "-100", genus: "-200" } }
+      )
+    end
+
+    it "anchors a family-level contig on the family lineage and keeps the per-family ids" do
+      contig = @pr.contigs.find_by(name: "NODE_1438_length_226_cov_1.660819")
+      expect(contig.species_taxid_nt).to eq(-100_001_653)
+      expect(contig.genus_taxid_nt).to eq(-200_001_653)
+      expect(JSON.parse(contig.lineage_json)["NT"]).to eq([-100_001_653, -200_001_653] + @family_lineage.to_a[2..])
+    end
+
+    it "prefers the genus id from the contig summary over the lineage table" do
+      contig = @pr.contigs.find_by(name: "NODE_2_length_2504_cov_2.191915")
+      expect(contig.species_taxid_nt).to eq(38_289)
+      expect(contig.genus_taxid_nt).to eq(-200_001_653)
+      expect(JSON.parse(contig.lineage_json)["NT"]).to eq([38_289, -200_001_653] + @species_lineage.to_a[2..])
+    end
+
+    it "leaves legacy bare -100/-200 calls unresolved, as before" do
+      contig = @pr.contigs.find_by(name: "NODE_2_length_2504_cov_2.191915")
+      expect(contig.species_taxid_nr).to be_nil
+      expect(contig.genus_taxid_nr).to be_nil
+      expect(JSON.parse(contig.lineage_json)["NR"]).to be_nil
+    end
+  end
+
+  describe '#db_load_contig_counts' do
+    before do
+      project = create(:project)
+      sample1 = create(:sample, project: project, user: @joe, name: "sample")
+      @pr = create(:pipeline_run, sample: sample1)
+    end
+
+    it "collects the species and genus ids of each contig per count type" do
+      summary = [
+        { "taxid" => "-100001653", "tax_level" => 1, "count_type" => "NT", "contig_counts" => { "c1" => 2 } },
+        { "taxid" => "-200001653", "tax_level" => 2, "count_type" => "NT", "contig_counts" => { "c1" => 2 } },
+        { "taxid" => "573", "tax_level" => 1, "count_type" => "NR", "contig_counts" => { "c1" => 2, "c2" => 1 } },
+        { "taxid" => "570", "tax_level" => 2, "count_type" => "NR", "contig_counts" => { "c1" => 2, "c2" => 1 } },
+      ]
+      allow(PipelineRun).to receive(:download_file_with_retries).with(@pr.s3_file_for("contig_counts"), PipelineRun::LOCAL_JSON_PATH, 3).and_return("/tmp/results_json/contig_summary.json")
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with("/tmp/results_json/contig_summary.json").and_return(JSON.generate(summary))
+
+      expect(@pr).to receive(:db_load_contigs).with({
+                                                      "c1" => { "NT" => { species: "-100001653", genus: "-200001653" }, "NR" => { species: "573", genus: "570" } },
+                                                      "c2" => { "NR" => { species: "573", genus: "570" } },
+                                                    })
+      @pr.db_load_contig_counts
+    end
+  end
+
   describe '#db_load_byteranges' do
     let(:project) { create(:project) }
     let(:sample) { create(:sample, project: project, name: "test_sample") }
