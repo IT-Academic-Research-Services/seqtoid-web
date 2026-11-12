@@ -429,6 +429,9 @@ RSpec.describe "Samples (coverage2) request", type: :request do
   end
 
   describe "GET /samples/bulk_import (login required)" do
+    # "b" stands in for an allowlisted import bucket (seqtoid-sandbox in real envs).
+    before { stub_const("S3_IMPORT_SOURCE_BUCKETS", ["b"]) }
+
     it "returns unprocessable_content when the user can't update the project" do
       # @joe is not a member of admin's project -> updatable_project? false
       other_project = create(:project, users: [@admin])
@@ -463,6 +466,46 @@ RSpec.describe "Samples (coverage2) request", type: :request do
       expect(JSON.parse(response.body)["status"]).to match(/no valid FASTQ files/)
     end
 
+    it "refuses a bucket that isn't on the import allowlist without calling S3 or Sentry" do
+      project = create(:project, users: [@joe])
+      sign_in @joe
+      allow_any_instance_of(User).to receive(:can_upload).and_return(true)
+      expect_any_instance_of(SamplesController).not_to receive(:parsed_samples_for_s3_path)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).to receive(:log_message)
+        .with(a_string_matching(/import allowlist/), hash_including(to_sentry: false, bucket: "czb-seqbot", user_id: @joe.id))
+
+      get "/samples/bulk_import.json", params: { project_id: project.id, bulk_path: "s3://czb-seqbot/fastqs/run/", host_genome_id: 1 }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["status"]).to match(/can’t import from the S3 bucket “czb-seqbot”/)
+    end
+
+    it "matches the allowlist on the exact bucket name, not a prefix" do
+      project = create(:project, users: [@joe])
+      sign_in @joe
+      allow_any_instance_of(User).to receive(:can_upload).and_return(true)
+      expect_any_instance_of(SamplesController).not_to receive(:parsed_samples_for_s3_path)
+
+      get "/samples/bulk_import.json", params: { project_id: project.id, bulk_path: "s3://b-other/x", host_genome_id: 1 }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["status"]).to match(/“b-other”/)
+    end
+
+    it "lets an admin import from a bucket that isn't on the allowlist" do
+      project = create(:project, users: [@admin])
+      sign_in @admin
+      expect_any_instance_of(SamplesController)
+        .to receive(:parsed_samples_for_s3_path)
+        .with("s3://other-bucket/x", project.id.to_s, "1")
+        .and_return([{ name: "s1" }])
+
+      get "/samples/bulk_import.json", params: { project_id: project.id, bulk_path: "s3://other-bucket/x", host_genome_id: 1 }
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "surfaces a specific message AND reports to Sentry+CloudWatch on an S3 access error" do
       project = create(:project, users: [@joe])
       sign_in @joe
@@ -480,7 +523,8 @@ RSpec.describe "Samples (coverage2) request", type: :request do
       # Sentry.capture_exception (Sentry). Pin that the S3 error reaches it (not swallowed).
       expect(LogUtil).to receive(:log_error).with(a_string_matching(/bulk_import.*S3/), hash_including(exception: err))
 
-      get "/samples/bulk_import.json", params: { project_id: project.id, bulk_path: "s3://forbidden/x", host_genome_id: 1 }
+      # An allowlisted bucket that still denies us is a real IAM/bucket-policy gap -> still Sentry.
+      get "/samples/bulk_import.json", params: { project_id: project.id, bulk_path: "s3://b/denied", host_genome_id: 1 }
 
       expect(response).to have_http_status(:unprocessable_content)
       # Specific, actionable -- NOT the old generic "no valid samples" that hid the real cause.
