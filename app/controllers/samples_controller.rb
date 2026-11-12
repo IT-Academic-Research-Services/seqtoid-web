@@ -1257,15 +1257,21 @@ class SamplesController < ApplicationController
     return head :ok if HUMAN_TAX_IDS.include? params[:taxid].to_i
 
     pr = select_pipeline_run(@sample, params[:pipeline_version])
-    if params[:hit_type] == "NT_or_NR"
-      @taxid_fasta = get_taxon_fasta_from_pipeline_run_combined_nt_nr(pr, params[:taxid], params[:tax_level].to_i)
-      if @taxid_fasta.nil?
-        @taxid_fasta = "Coming soon" # Temporary fix
-      end
-    else
-      @taxid_fasta = get_taxon_fasta_from_pipeline_run(pr, params[:taxid], params[:tax_level].to_i, params[:hit_type])
-    end
-    send_data @taxid_fasta, filename: @sample.name + '_' + clean_taxid_name(pr, params[:taxid]) + '-hits.fasta'
+    taxid = params[:taxid]
+    tax_level = params[:tax_level].to_i
+    # Stream from S3 instead of building the file in memory: one long-read taxon range can be
+    # close to 1 GB, and holding it (twice over for NT_or_NR) OOM-killed the web pods.
+    body = if params[:hit_type] == "NT_or_NR"
+             sources = ["NT", "NR"].map { |hit_type| taxon_fasta_source(pr, taxid, tax_level, hit_type) }
+             Enumerator.new do |out|
+               any = each_combined_taxon_fasta_record(sources) { |record| out << record }
+               out << "Coming soon" unless any # Temporary fix
+             end
+           else
+             source = taxon_fasta_source(pr, taxid, tax_level, params[:hit_type])
+             Enumerator.new { |out| each_taxon_fasta_chunk(source) { |chunk| out << chunk } }
+           end
+    stream_attachment(body, @sample.name + '_' + clean_taxid_name(pr, taxid) + '-hits.fasta')
   end
 
   def fetch_taxon_reads(uri, first_byte, last_byte, max_bytes = 10_000_000)
@@ -1859,6 +1865,22 @@ class SamplesController < ApplicationController
     return "taxon-#{taxid}" unless taxid_name
 
     taxid_name.downcase.gsub(/\W/, "-")
+  end
+
+  # Sends an Enumerator body as a file download, chunk by chunk, with the headers send_data
+  # would set. Rack::ETag walks any body that responds to to_ary (Rails' response buffer always
+  # does) to digest it, which here would pull the whole range from S3 before the first byte goes
+  # out and then fetch it again to send it. It skips bodies that already carry Last-Modified,
+  # so set one. No Content-Length: the size is not known up front.
+  def stream_attachment(body, filename)
+    response.headers["Content-Type"] = "application/octet-stream"
+    response.headers["Content-Disposition"] =
+      ActionDispatch::Http::ContentDisposition.format(disposition: "attachment", filename: filename)
+    response.headers["Content-Transfer-Encoding"] = "binary"
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Last-Modified"] = Time.now.utc.httpdate
+    response.headers.delete("Content-Length")
+    self.response_body = body
   end
 
   def set_sample
