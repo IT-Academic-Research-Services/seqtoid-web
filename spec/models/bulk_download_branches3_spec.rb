@@ -174,7 +174,7 @@ RSpec.describe BulkDownload, type: :model do
       allow(S3_PRESIGNER).to receive(:presigned_url).and_raise(StandardError, "presign boom")
 
       log_output = StringIO.new
-      allow(Rails).to receive(:logger).and_return(ActiveSupport::Logger.new(log_output))
+      allow(Rails).to receive(:logger).and_return(Logging.create_json_logger(log_output, :debug))
 
       expect(bd.output_file_presigned_url).to be_nil
 

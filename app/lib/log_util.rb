@@ -1,36 +1,39 @@
 # frozen_string_literal: true
 
 class LogUtil
-  def self.log_error(message, exception: nil, **details)
+  def self.log_exception(exception, message: nil, level: :error, to_sentry: true, **details)
     begin
-      Rails.logger.error(
-        message,
-        exception: exception&.message,
-        backtrace: exception&.backtrace,
+      Rails.logger.send(
+        level,
+        message.presence || exception.to_s,
+        exception,
         **details.compact
       )
     rescue StandardError
-      Rails.logger.error("#{message} #{exception&.inspect} #{details.inspect}")
+      Rails.logger.error("[#{level}] to_sentry [#{to_sentry}] #{exception&.inspect} #{details.inspect}")
     end
 
-    if exception
-      # Exceptions have a default level of "error".
-      # sentry-ruby's capture_exception uses the exception's own message as the
-      # event title and does not accept a `message:` option, so carry the caller's
-      # message through as extra context to preserve raven's behavior.
+    # Exceptions have a default level of "error".
+    # sentry-ruby's capture_exception uses the exception's own message as the
+    # event title and does not accept a `message:` option, so carry the caller's
+    # message through as extra context to preserve raven's behavior.
+    if to_sentry
       Sentry.capture_exception(
         exception,
+        level: level,
         extra: {
           message: message,
           **details,
         }.compact
       )
+    end
+  end
+
+  def self.log_error(message, exception: nil, level: :error, to_sentry: true, **details)
+    if exception.nil?
+      log_message(message, level: level, to_sentry: to_sentry, **details)
     else
-      Sentry.capture_message(
-        message,
-        level: "error",
-        extra: details.compact
-      )
+      log_exception(exception, message: message, level: level, to_sentry: to_sentry, **details)
     end
   end
 
@@ -42,11 +45,11 @@ class LogUtil
   # support-request summaries, periodic job rollups) should live in the logs, not create issues
   # in the Sentry ERROR project. Default true preserves existing callers; pass to_sentry: false
   # for operational messages that are not application errors (SMP-1596/1597/1598).
-  def self.log_message(message, to_sentry: true, **details)
+  def self.log_message(message, level: :info, to_sentry: true, **details)
     # A logging helper must never raise and disturb its caller. Guard the JSON encode
     # (a detail value could be non-serializable) and fall back to inspect.
     begin
-      Rails.logger.info(message, **details.compact)
+      Rails.logger.send(level, message, **details.compact)
     rescue StandardError
       Rails.logger.info("#{message} #{details.inspect}")
     end
@@ -54,7 +57,7 @@ class LogUtil
 
     Sentry.capture_message(
       message,
-      level: "info",
+      level: level,
       extra: details.compact
     )
   end

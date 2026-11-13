@@ -189,4 +189,46 @@ RSpec.describe S3Util do
       )
     end
   end
+
+  describe "#get_s3_file" do
+    let(:s3_path) { "s3://fake-bucket/path/to/file.json" }
+    let(:file_content) { '{"key": "value"}' }
+
+    it "returns the object body on success" do
+      @mock_aws_clients[:s3].stub_responses(:get_object, { body: file_content })
+      expect(LogUtil).not_to receive(:log_exception)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+
+      expect(S3Util.get_s3_file(s3_path)).to eq(file_content)
+    end
+
+    it "logs exception at default :error level and returns nil on failure" do
+      @mock_aws_clients[:s3].stub_responses(:get_object, "NoSuchKey")
+      expect(LogUtil).to receive(:log_exception).with(
+        an_instance_of(Aws::S3::Errors::NoSuchKey),
+        message: "get_s3_file: Error retrieving S3 file [#{s3_path}]",
+        level: :error,
+        s3_path: s3_path
+      )
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+
+      expect(S3Util.get_s3_file(s3_path)).to be_nil
+    end
+
+    it "logs exception at specified level when level option is provided" do
+      @mock_aws_clients[:s3].stub_responses(:get_object, "NoSuchKey")
+      expect(LogUtil).to receive(:log_exception).with(
+        an_instance_of(Aws::S3::Errors::NoSuchKey),
+        message: "get_s3_file: Error retrieving S3 file [#{s3_path}]",
+        level: :warn,
+        s3_path: s3_path
+      )
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+
+      expect(S3Util.get_s3_file(s3_path, level: :warn)).to be_nil
+    end
+  end
 end
