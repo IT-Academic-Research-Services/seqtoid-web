@@ -18,12 +18,36 @@ RSpec.describe S3Util do
   describe "#get_s3_file" do
     it "returns the object body on success" do
       @s3.stub_responses(:get_object, { body: "file-contents" })
+      expect(LogUtil).not_to receive(:log_exception)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
       expect(S3Util.get_s3_file("s3://bucket/key")).to eq("file-contents")
     end
 
-    it "returns nil when the fetch raises (rescue arm)" do
+    it "logs exception at default :error level and returns nil when the fetch raises (rescue arm)" do
       @s3.stub_responses(:get_object, "NoSuchKey")
+      expect(LogUtil).to receive(:log_exception).with(
+        an_instance_of(Aws::S3::Errors::NoSuchKey),
+        message: "get_s3_file: Error retrieving S3 file [s3://bucket/missing]",
+        level: :error,
+        s3_path: "s3://bucket/missing"
+      )
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
       expect(S3Util.get_s3_file("s3://bucket/missing")).to be_nil
+    end
+
+    it "logs exception at custom level when specified (rescue arm)" do
+      @s3.stub_responses(:get_object, "NoSuchKey")
+      expect(LogUtil).to receive(:log_exception).with(
+        an_instance_of(Aws::S3::Errors::NoSuchKey),
+        message: "get_s3_file: Error retrieving S3 file [s3://bucket/missing]",
+        level: :warn,
+        s3_path: "s3://bucket/missing"
+      )
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(S3Util.get_s3_file("s3://bucket/missing", level: :warn)).to be_nil
     end
   end
 

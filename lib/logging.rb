@@ -3,19 +3,24 @@
 require 'ougai'
 
 module Logging
+  # Keys removed from each JSON log object (unnecessary fields)
+  FIELDS_TO_REMOVE = [:pid, :v].freeze
+
+  # Keys in the JSON log object that don't contribute to whether the message is valid.
+  # IE: They are not used to determine if the log object is effectively empty, and thus not logged.
+  UNIMPORTANT_FIELDS = [:method, :module, :stream]
+
   # Set current user and request to global for use in logging.
   # See https://stackoverflow.com/a/11670283/200312
   class CurrentContext < ActiveSupport::CurrentAttributes
+    # Fields added to log messages, if they exist. Usually set by the ApplicationController
     attribute :user
     attribute :request
-
+    # Temporary values used to control log filtering, for use inside thread-safe Blocks
     attribute :fields_to_remove
     attribute :filters
     attribute :unimportant_fields
   end
-
-  # Keys removed from each JSON log object (unnecessary fields)
-  FIELDS_TO_REMOVE = [:pid, :v].freeze
 
   # TODO: Make protected
   def self.remove_fields(data)
@@ -51,10 +56,6 @@ module Logging
 
   DEFAULT_FORMATTER = Logging::Formatter.new
 
-  # Keys in the JSON log object that don't contribute to whether the message is valid.
-  # IE: They are not used to determine if the log object is effectively empty, and thus not logged.
-  UNIMPORTANT_FIELDS = [:module, :stream]
-
   def self.without_unimportant(data)
     data = data.except(*UNIMPORTANT_FIELDS)
     @unimportant_fields ? data.except(*@unimportant_fields) : data
@@ -70,8 +71,8 @@ module Logging
       end
     end
 
-    if Logging.without_unimportant(data).blank?
-      # Skip if log message is nil or blank, and there are no other properties
+    if Logging.without_unimportant(data).empty?
+      # Skip logging if log message is nil/blank, and there are no other (not unimportant) properties
       return nil
     end
 
@@ -79,6 +80,7 @@ module Logging
     data[:user_id] = data[:user_id].presence || Logging::CurrentContext.user&.id
     data[:environment] = data[:environment].presence || Rails.env
     data[:thread_id] = data[:thread_id].presence || Thread.current.object_id
+    data[:thread_name] = data[:thread_name].presence || Thread.current.name.presence
 
     current_span_context = OpenTelemetry::Trace.current_span&.context
     if current_span_context&.valid?
@@ -171,19 +173,6 @@ module Logging
     # Suppress messages like: ActionController::RoutingError (No route matches [GET] "..."):
     # config.lograge.ignore_actions = %w[HealthCheck::HealthCheckController#index Rails::HealthController#show ErrorsController#not_found]
     config.lograge.ignore_actions = %w[HealthCheck::HealthCheckController#index Rails::HealthController#show]
-    ActiveRecord::Base.logger = config.logger
-
-    config.after_initialize do
-      if Rails.logger
-        # Extract the core logger if it's wrapped in ActiveSupport::TaggedLogging
-        core_logger = Rails.logger.respond_to?(:logger) ? Rails.logger.logger : Rails.logger
-        # Also update ActiveRecord's dedicated logger just to be completely safe
-        ActiveRecord::Base.logger = core_logger
-        # As well as OmniAuth
-        OmniAuth.config.logger = core_logger
-      end
-      ActiveRecord::Migration.verbose = false
-    end
   end
 
   def self.capture_console(**kwargs)
@@ -201,14 +190,12 @@ module Logging
       Thread.current[:stderr_proxy] = old_stderr
     end
 
-    stdout_io.rewind
-    stderr_io.rewind
     # TODO: line.start_with?("{") is _very_ JSON specific, so if the logger ever stops being JSON (Ougai),
     #       then already json-formatted text will be passed through a Rails.logger again
-    (stdout_io.read || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
+    (stdout_io.string || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
       line.start_with?("{") ? puts(line) : Rails.logger.info(line, stream: "stdout", **kwargs) # rubocop:disable Rails/Output
     end
-    (stderr_io.read || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
+    (stderr_io.string || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
       line.start_with?("{") ? puts(line) : Rails.logger.warn(line, stream: "stderr", **kwargs) # rubocop:disable Rails/Output
     end
   end

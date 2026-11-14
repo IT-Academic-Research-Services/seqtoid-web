@@ -10,8 +10,8 @@ RSpec.describe PipelineRunStage, type: :model do
   let(:sample) { build_stubbed(:sample, user: user) }
 
   def stage(attrs = {}, pr_attrs = {})
-    pr = build_stubbed(:pipeline_run, sample: sample, pipeline_version: "3.7", **pr_attrs)
-    build_stubbed(:pipeline_run_stage, pipeline_run: pr, **attrs)
+    pr = FactoryBot.build_stubbed(:pipeline_run, sample: sample, pipeline_version: "3.7", **pr_attrs)
+    FactoryBot.build_stubbed(:pipeline_run_stage, pipeline_run: pr, **attrs)
   end
 
   describe "#started?" do
@@ -78,12 +78,12 @@ RSpec.describe PipelineRunStage, type: :model do
     end
 
     it "returns the parsed JSON of the first readable status file" do
-      allow(S3Util).to receive(:get_s3_file).with("s3://b/a.json").and_return('{"foo":"bar"}')
+      allow(S3Util).to receive(:get_s3_file).with("s3://b/a.json", level: :warn).and_return('{"foo":"bar"}')
       expect(s.step_statuses).to eq("foo" => "bar")
     end
 
     it "returns {} when the readable status file is malformed JSON" do
-      allow(S3Util).to receive(:get_s3_file).with("s3://b/a.json").and_return("not json")
+      allow(S3Util).to receive(:get_s3_file).with("s3://b/a.json", level: :warn).and_return("not json")
       expect(s.step_statuses).to eq({})
     end
 

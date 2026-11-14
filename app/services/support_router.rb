@@ -44,10 +44,11 @@ class SupportRouter
       correlation_id: correlation_id,
       enrichment: detail,
     }
+    # TODO: This log message is redundant
     Rails.logger.info("[support_request_enrichment] #{payload.to_json}")
     # Support enrichment is durably captured in the structured log (-> Loki -> Grafana
     # Support Inbox) above; do not mirror it into the Sentry error project (SMP-1596).
-    LogUtil.log_message("Support enrichment for #{correlation_id}", to_sentry: false, **payload)
+    Rails.logger.info("Support enrichment for #{correlation_id}", **payload)
   end
 
   private
@@ -57,10 +58,10 @@ class SupportRouter
   # (SMP-1596 / DEV-RAILS-2E,1V): that only cluttered error triage. The Support Inbox in
   # Grafana remains the monitoring surface for these.
   def grafana_log_sink
+    # TODO: This log message is redundant
     Rails.logger.info("[support_request] #{@payload.to_json}")
-    LogUtil.log_message(
+    Rails.logger.info(
       "Support request from user #{@user.id} (#{@payload[:correlation_id]})",
-      to_sentry: false,
       **@payload
     )
   end
@@ -76,9 +77,9 @@ class SupportRouter
 
     SupportRequestMailer.service_now_ticket(@payload).deliver_later
   rescue StandardError => e
-    LogUtil.log_error(
-      "ServiceNow support-email sink failed (report still durable in Grafana)",
-      exception: e,
+    LogUtil.log_exception(
+      e,
+      message: "ServiceNow support-email sink failed (report still durable in Grafana)",
       correlation_id: @payload[:correlation_id]
     )
   end

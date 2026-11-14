@@ -25,9 +25,11 @@ RSpec.describe HardDeleteObjects, type: :job do
     it "logs a 'further action is required' error when the final exception is an S3 service error" do
       exception = slow_down_error
 
-      expect(LogUtil).to receive(:log_error).with(
-        a_string_including("Bulk Deletion Error: All retries failed to destroy with args"),
-        exception: exception
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_exception).with(
+        exception,
+        message: a_string_including("Bulk Deletion Error: All retries failed to destroy with args")
       )
 
       described_class.run_give_up_callbacks(exception, [1, 2], [3], short_read_mngs, 42)
@@ -35,6 +37,8 @@ RSpec.describe HardDeleteObjects, type: :job do
 
     it "stays silent when the final exception is not an S3 service error" do
       expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).not_to receive(:log_exception)
 
       described_class.run_give_up_callbacks(ActiveRecord::RecordNotDestroyed.new("nope"), [1], [2], short_read_mngs, 42)
     end
@@ -69,16 +73,25 @@ RSpec.describe HardDeleteObjects, type: :job do
 
       # The SlowDown arm must NOT fall through to the generic retry logging.
       expect(LogUtil).not_to receive(:log_message)
-      expect(LogUtil).to receive(:log_error).with(
-        a_string_including("Enter retry strategy with exponential backoff"),
-        exception: error,
-        object_id: @pipeline_run.id,
-        workflow: short_read_mngs
-      )
+      expect(LogUtil).not_to receive(:log_error)
       # perform's own rescue logs the failure a second time before re-raising.
-      expect(LogUtil).to receive(:log_error).with(
-        a_string_including("Bulk Deletion Failed"),
-        hash_including(exception: error)
+      expect(LogUtil).to receive(:log_exception).with(
+        error,
+        hash_including(
+          message: a_string_including("Bulk Deletion Failed"),
+          run_ids: [@pipeline_run.id],
+          sample_ids: [@sample.id],
+          workflow: short_read_mngs,
+          user_id: @joe.id
+        )
+      )
+      expect(LogUtil).to receive(:log_exception).with(
+        error,
+        hash_including(
+          message: a_string_including("Enter retry strategy with exponential backoff"),
+          object_id: @pipeline_run.id,
+          workflow: short_read_mngs
+        )
       )
 
       expect do
@@ -88,7 +101,8 @@ RSpec.describe HardDeleteObjects, type: :job do
       # Nothing was hard-deleted, and the deletion log was not stamped.
       expect { @pipeline_run.reload }.not_to raise_error
       log = DeletionLog.find_by(object_id: @pipeline_run.id, object_type: PipelineRun.name, user_id: @joe.id)
-      expect(log.hard_deleted_at).to be_nil
+      expect(log).to_not be_nil
+      expect(log&.hard_deleted_at).to be_nil
     end
   end
 

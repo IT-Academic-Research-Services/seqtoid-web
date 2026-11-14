@@ -67,6 +67,7 @@ Rails.application.config.middleware.use OmniAuth::Builder do
 end
 
 OmniAuth.config.failure_raise_out_environments = []
+OmniAuth.config.logger = Rails.logger
 
 OmniAuth.config.on_failure = proc do |env|
   Auth0Controller.action(:omniauth_failure).call(env)
