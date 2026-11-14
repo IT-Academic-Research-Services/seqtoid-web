@@ -16,11 +16,17 @@ RSpec.describe HardDeleteObjects, type: :job do
   describe "#perform" do
     context "when pipeline run ids are passed in" do
       before do
+        # TODO: Mock and verify abort_multipart_uploads()?
+        allow(S3Util).to receive(:abort_multipart_uploads)
+        stub_const("HardDeleteObjects::DELAY_BETWEEN_DELETIONS", 0)
+        stub_const("HardDeleteObjects::RETRY_DELAY_SECONDS", 0)
+
         @project = create(:project, users: [@joe])
-        @sample1 = create(:sample, project: @project,
-                                   user: @joe,
-                                   name: "completed Illumina mNGs sample 1",
-                                   deleted_at: 5.minutes.ago)
+        @sample1 = create(:sample,
+                          project: @project,
+                          user: @joe,
+                          name: "completed Illumina mNGs sample 1",
+                          deleted_at: 5.minutes.ago)
         create(:deletion_log,
                object_id: @sample1.id,
                user_id: @joe.id,
@@ -40,9 +46,10 @@ RSpec.describe HardDeleteObjects, type: :job do
                object_type: PipelineRun.name,
                soft_deleted_at: 5.minutes.ago)
 
-        @sample2 = create(:sample, project: @project,
-                                   user: @joe,
-                                   name: "completed Illumina mNGs sample 2")
+        @sample2 = create(:sample,
+                          project: @project,
+                          user: @joe,
+                          name: "completed Illumina mNGs sample 2")
         @pr2 = create(:pipeline_run,
                       sample: @sample2,
                       technology: illumina,
@@ -95,12 +102,17 @@ RSpec.describe HardDeleteObjects, type: :job do
       it "logs to cloudwatch twice if error occurs when destroying pipeline run" do
         object_ids = [@pr1.id]
         sample_ids = [@sample1.id]
-        allow_any_instance_of(PipelineRun).to receive(:destroy!).and_raise(ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_message).with("Failed to destroy PipelineRun after 1 attempts, retrying", exception: ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_error).with("Bulk Deletion Error: Failed to destroy PipelineRun after 2 attempts.",
-                                                    exception: ActiveRecord::RecordNotDestroyed,
-                                                    object_id: @pr1.id,
-                                                    workflow: short_read_mngs)
+        exception = ActiveRecord::RecordNotDestroyed.new("pipeline_run record not destroyed")
+        allow_any_instance_of(PipelineRun).to receive(:destroy!).and_raise(exception)
+        expect(LogUtil).to receive(:log_exception).with(exception,
+                                                        message: "Failed to destroy PipelineRun after 1 attempts, retrying",
+                                                        level: :info,
+                                                        object_id: @pr1.id,
+                                                        workflow: short_read_mngs)
+        expect(LogUtil).to receive(:log_exception).with(exception,
+                                                        message: "Bulk Deletion Error: Failed to destroy PipelineRun after 2 attempts.",
+                                                        object_id: @pr1.id,
+                                                        workflow: short_read_mngs)
 
         HardDeleteObjects.perform(object_ids, sample_ids, short_read_mngs, @joe.id)
         expect { @pr1.reload }.not_to raise_error
@@ -109,12 +121,17 @@ RSpec.describe HardDeleteObjects, type: :job do
       it "logs to cloudwatch twice if error occurs when destroying sample" do
         object_ids = [@pr1.id]
         sample_ids = [@sample1.id]
-        allow_any_instance_of(Sample).to receive(:destroy!).and_raise(ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_message).with("Failed to destroy Sample after 1 attempts, retrying", exception: ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_error).with("Bulk Deletion Error: Failed to destroy Sample after 2 attempts.",
-                                                    exception: ActiveRecord::RecordNotDestroyed,
-                                                    object_id: @sample1.id,
-                                                    workflow: short_read_mngs)
+        exception = ActiveRecord::RecordNotDestroyed.new("sample record not destroyed")
+        allow_any_instance_of(Sample).to receive(:destroy!).and_raise(exception)
+        expect(LogUtil).to receive(:log_exception).with(exception,
+                                                        message: "Failed to destroy Sample after 1 attempts, retrying",
+                                                        level: :info,
+                                                        object_id: @sample1.id,
+                                                        workflow: short_read_mngs)
+        expect(LogUtil).to receive(:log_exception).with(exception,
+                                                        message: "Bulk Deletion Error: Failed to destroy Sample after 2 attempts.",
+                                                        object_id: @sample1.id,
+                                                        workflow: short_read_mngs)
 
         HardDeleteObjects.perform(object_ids, sample_ids, short_read_mngs, @joe.id)
         expect { @sample1.reload }.not_to raise_error

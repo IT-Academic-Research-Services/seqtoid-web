@@ -110,16 +110,6 @@ RSpec.describe LogUtil do
       actual = JSON.parse(log_io.string, symbolize_names: true)
       expect(actual).to include(err: hash_including(:stack, name: ZeroDivisionError.name, message: zero_division_message), level: "debug", msg: message, **details)
     end
-
-    it "does NOT send to Sentry when to_sentry: false, but still logs error to the app log" do
-      expect(Sentry).not_to receive(:capture_message)
-      expect(Sentry).not_to receive(:capture_exception)
-
-      LogUtil.log_error(message, exception: zero_division_error, to_sentry: false, **details)
-
-      actual = JSON.parse(log_io.string, symbolize_names: true)
-      expect(actual).to include(err: hash_including(:stack, name: ZeroDivisionError.name, message: zero_division_message), level: "error", msg: message, **details)
-    end
   end
 
   describe "#log_message" do
@@ -153,17 +143,6 @@ RSpec.describe LogUtil do
 
       actual = JSON.parse(log_io.string, symbolize_names: true)
       expect(actual).to include(level: "warn", msg: message, **details)
-      expect(actual).not_to include(:backtrace, :exception)
-    end
-
-    it "does NOT send to Sentry when to_sentry: false, but still logs to the app log (SMP-1596/1597/1598)" do
-      expect(Sentry).not_to receive(:capture_message)
-      expect(Sentry).not_to receive(:capture_exception)
-
-      LogUtil.log_message(message, to_sentry: false, **details)
-
-      actual = JSON.parse(log_io.string, symbolize_names: true)
-      expect(actual).to include(level: "info", msg: message, **details)
       expect(actual).not_to include(:backtrace, :exception)
     end
   end

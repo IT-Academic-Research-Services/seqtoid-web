@@ -344,11 +344,11 @@ class WorkflowRun < ApplicationRecord
         # NOT to the Sentry error project -- an intended, bounded auto-restart is not an
         # application error. The consensus-genome variant was still cluttering the error
         # project until the regression guard was added (SMP-1597 / SMP-1622 / DEV-RAILS-2D,29).
-        LogUtil.log_message(
+        Rails.logger.info(
           "Auto-restarting WorkflowRun #{id} (#{workflow}) after a transient SFN failure " \
           "(bounded to #{WORKFLOW_AUTO_RESTART_LIMIT} per sample+workflow).",
-          to_sentry: false,
-          workflow_run_id: id
+          workflow_run_id: id,
+          workflow: workflow
         )
         rerun
         return

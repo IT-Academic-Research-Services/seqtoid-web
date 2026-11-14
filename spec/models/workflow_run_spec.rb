@@ -234,10 +234,10 @@ describe WorkflowRun, type: :model do
         @mock_aws_clients[:states].stub_responses(:get_execution_history, fake_error_sfn_execution_history)
         allow(@second_workflow_running).to receive(:rerun)
 
-        expect(LogUtil).to receive(:log_message).with(
-          a_string_including("Auto-restarting WorkflowRun"),
-          to_sentry: false,
-          workflow_run_id: @second_workflow_running.id
+        expect(Rails.logger).to receive(:info).with(
+          "Auto-restarting WorkflowRun #{@second_workflow_running.id} (#{@second_workflow_running.workflow}) after a transient SFN failure (bounded to #{WorkflowRun::WORKFLOW_AUTO_RESTART_LIMIT} per sample+workflow).",
+          workflow_run_id: @second_workflow_running.id,
+          workflow: @second_workflow_running.workflow
         ).and_call_original
         expect(Sentry).not_to receive(:capture_message)
 
@@ -969,44 +969,43 @@ describe WorkflowRun, type: :model do
     end
   end
 
-  # rubocop:disable Naming/VariableNumber
   describe "#workflow_version_at_least" do
-    context "when comparing workflow versions" do
-      before do
-        @project = create(:project)
-        sample = create(:sample, project: @project)
-        @workflow_run_v0_1_0 = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "0.1.0")
-        @workflow_run_v0_3_1 = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "0.3.1")
-        @workflow_run_v1_3_0_beta = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "1.3.0-beta.8-0b8959d")
-        @workflow_run_v1_3_0 = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "1.3.0")
-      end
+  context "when comparing workflow versions" do
+    before do
+      @project = create(:project)
+      sample = create(:sample, project: @project)
+      @workflow_run_v0_1_0 = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "0.1.0")
+      @workflow_run_v0_3_1 = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "0.3.1")
+      @workflow_run_v1_3_0_beta = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "1.3.0-beta.8-0b8959d")
+      @workflow_run_v1_3_0 = create(:workflow_run, sample: sample, status: WorkflowRun::STATUS[:created], wdl_version: "1.3.0")
+    end
 
-      it "correctly compares major versions" do
-        comparison = @workflow_run_v0_1_0.workflow_version_at_least("1.0.0")
-        expect(comparison).to eq(false)
-      end
+    it "correctly compares major versions" do
+      comparison = @workflow_run_v0_1_0.workflow_version_at_least("1.0.0")
+      expect(comparison).to eq(false)
+    end
 
-      it "correctly compares minor versions" do
-        comparison = @workflow_run_v1_3_0.workflow_version_at_least("1.2.0")
-        expect(comparison).to eq(true)
-      end
+    it "correctly compares minor versions" do
+      comparison = @workflow_run_v1_3_0.workflow_version_at_least("1.2.0")
+      expect(comparison).to eq(true)
+    end
 
-      it "correctly compares patch versions" do
-        comparison = @workflow_run_v0_3_1.workflow_version_at_least("0.3.0")
-        expect(comparison).to eq(true)
-      end
+    it "correctly compares patch versions" do
+      comparison = @workflow_run_v0_3_1.workflow_version_at_least("0.3.0")
+      expect(comparison).to eq(true)
+    end
 
-      it "correctly compares beta versions" do
-        comparison = @workflow_run_v1_3_0_beta.workflow_version_at_least("1.3.0")
-        expect(comparison).to eq(false)
-      end
+    it "correctly compares beta versions" do
+      comparison = @workflow_run_v1_3_0_beta.workflow_version_at_least("1.3.0")
+      expect(comparison).to eq(false)
+    end
 
-      it "correctly compares major versions to beta versions" do
-        comparison = @workflow_run_v1_3_0.workflow_version_at_least("1.3.0-beta.8-0b8959d")
-        expect(comparison).to eq(true)
-      end
+    it "correctly compares major versions to beta versions" do
+      comparison = @workflow_run_v1_3_0.workflow_version_at_least("1.3.0-beta.8-0b8959d")
+      expect(comparison).to eq(true)
     end
   end
+end
   # rubocop:enable Naming/VariableNumber
 
   describe "#latest_major_workflow_versions" do

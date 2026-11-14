@@ -57,9 +57,8 @@ class MonitorPipelineResults
       # structured app log for rate monitoring (Loki/Grafana), but do NOT mint a Sentry error
       # (SMP-1594 / DEV-RAILS-14). The upload PUT already retries transient blips (SMP-1569);
       # an 18h stall is client abandonment, not a code defect.
-      LogUtil.log_message(
+      Rails.logger.info(
         "UploadFailedEvent: Failed to upload local samples after 18 hours",
-        to_sentry: false,
         samples: samples.pluck(:id)
       )
       WorkflowRun.handle_sample_upload_failure(samples)

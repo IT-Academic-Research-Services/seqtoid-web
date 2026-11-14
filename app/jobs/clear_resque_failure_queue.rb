@@ -40,8 +40,8 @@ class ClearResqueFailureQueue
     # Periodic housekeeping rollup: logged for monitoring, not sent to the Sentry error
     # project (an aggregate count is a metric, not an application error -- SMP-1598 /
     # DEV-RAILS-E,3). Individual job failures still surface via their own error paths.
-    LogUtil.log_message("Resque failures by job class: #{job_counts.to_json}", to_sentry: false)
-    LogUtil.log_message("Cleared #{jobs_cleared} failures", to_sentry: false)
+    Rails.logger.info("Resque failures by job class: #{job_counts.to_json}")
+    Rails.logger.info("Cleared #{jobs_cleared} failures")
     unless jobs_errored_during_clear.empty?
       LogUtil.log_error(
         FAILED_TO_REMOVE_JOB_MESSAGE,

@@ -16,22 +16,25 @@ require 'rails_helper'
 RSpec.describe SupportRequestsController, type: :controller do
   create_users
 
+  let(:string_io) { StringIO.new }
+
   before { sign_in @joe }
 
   # Capture the operator-only payload handed to LogUtil.log_message.
   def capture_payload
-    captured = nil
-    allow(LogUtil).to receive(:log_message) { |_msg, **payload| captured = payload }
+    logger = Rails.logger
+    Rails.logger = Logging.create_json_logger(string_io, :debug)
     yield
-    captured
+    JSON.parse(string_io.string.split("\n").last, symbolize_names: true)
+  ensure
+    Rails.logger = logger
   end
 
   describe "POST #create error path (fail-soft -> 500)" do
     it "returns 500 and does not raise when recording the payload blows up" do
       # log_message raising is caught by the create rescue; if the rescue were
       # removed this would propagate instead of rendering a 500.
-      allow(LogUtil).to receive(:log_message).and_raise(StandardError, "sink down")
-      allow(LogUtil).to receive(:log_error)
+      expect(Rails.logger).to receive(:info).with(a_string_starting_with("[support_request]")).and_raise(StandardError, "sink down")
 
       post :create, params: { description: "boom" }
 
@@ -45,7 +48,6 @@ RSpec.describe SupportRequestsController, type: :controller do
 
     it "swallows a query raise: action_log_steps nil and the submit still succeeds (201)" do
       allow(SupportActionLogQuery).to receive(:recent_steps).and_raise(StandardError, "cw down")
-      allow(LogUtil).to receive(:log_error)
 
       payload = capture_payload { post :create, params: { description: "x" } }
 
@@ -62,7 +64,6 @@ RSpec.describe SupportRequestsController, type: :controller do
       steps = [{ at: "2026-07-09T10:00:00Z", action: "project.create", outcome: "ok" }]
       allow(SupportActionLogQuery).to receive(:recent_steps).and_return(steps)
       allow(SupportJourney).to receive(:from_steps).and_raise(StandardError, "bad trail")
-      allow(LogUtil).to receive(:log_error)
 
       payload = capture_payload { post :create, params: { description: "x" } }
 

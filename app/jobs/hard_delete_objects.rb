@@ -19,6 +19,7 @@ class HardDeleteObjects
   extend InstrumentedJob
   extend Resque::Plugins::Retry # automatically retries job once on failure (e.g. deploy cancels job)
   DELAY_BETWEEN_DELETIONS = 2
+  RETRY_DELAY_SECONDS = 20
 
   @queue = :hard_delete_objects
   @retry_exceptions = {
@@ -33,9 +34,9 @@ class HardDeleteObjects
 
   give_up_callback do |exception, *args|
     if exception.is_a?(Aws::S3::Errors::ServiceError)
-      LogUtil.log_error(
-        "Bulk Deletion Error: All retries failed to destroy with args #{args} due to S3 error. Further action is required.",
-        exception: exception
+      LogUtil.log_exception(
+        exception,
+        message: "Bulk Deletion Error: All retries failed to destroy with args #{args} due to S3 error. Further action is required."
       )
     end
   end
@@ -45,9 +46,9 @@ class HardDeleteObjects
     Rails.logger.info("Starting to hard delete runs with ids #{run_ids} and workflow #{workflow} on attempt #{retry_attempt}")
     hard_delete(run_ids, sample_ids, workflow, user_id)
   rescue StandardError => e
-    LogUtil.log_error(
-      "Bulk Deletion Failed: #{e}.",
-      exception: e,
+    LogUtil.log_exception(
+      e,
+      message: "Bulk Deletion Failed: #{e}.",
       run_ids: run_ids,
       sample_ids: sample_ids,
       workflow: workflow,
@@ -132,7 +133,6 @@ class HardDeleteObjects
 
   def self.delete_object_with_retries(object, workflow)
     deletion_attempts = 2 # retry deletion of object in case we hit a random deadlock
-    retry_delay_seconds = 20
 
     (1..deletion_attempts).each do |attempt_number|
       object.destroy!
@@ -140,25 +140,31 @@ class HardDeleteObjects
     rescue StandardError => e
       if e.is_a?(Aws::S3::Errors::SlowDown)
         # start exponential backoff if we start to encounter S3 503 Slow Down errors instead of retrying immediately
-        LogUtil.log_error(
-          "Bulk Deletion Error: Failed to destroy #{object.class.name} due to S3 503 Slow Down error. Enter retry strategy with exponential backoff.",
-          exception: e,
+        LogUtil.log_exception(
+          e,
+          message: "Bulk Deletion Error: Failed to destroy #{object.class.name} due to S3 503 Slow Down error. Enter retry strategy with exponential backoff.",
           object_id: object.id,
           workflow: workflow
         )
         raise e
       end
       if attempt_number == deletion_attempts
-        LogUtil.log_error(
-          "Bulk Deletion Error: Failed to destroy #{object.class.name} after #{deletion_attempts} attempts.",
-          exception: e,
+        LogUtil.log_exception(
+          e,
+          message: "Bulk Deletion Error: Failed to destroy #{object.class.name} after #{deletion_attempts} attempts.",
           object_id: object.id,
           workflow: workflow
         )
         return nil
       else
-        sleep(retry_delay_seconds)
-        LogUtil.log_message("Failed to destroy #{object.class.name} after #{attempt_number} attempts, retrying", exception: e)
+        sleep(RETRY_DELAY_SECONDS)
+        LogUtil.log_exception(
+          e,
+          message: "Failed to destroy #{object.class.name} after #{attempt_number} attempts, retrying",
+          level: :info,
+          object_id: object.id,
+          workflow: workflow
+        )
       end
     end
   end

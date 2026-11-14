@@ -35,8 +35,9 @@ RSpec.describe ClearResqueFailureQueue, type: :job do
       end
 
       it "logs the per-class counts and the total cleared" do
-        expect(LogUtil).to receive(:log_message).with('Resque failures by job class: {"SomeJob":2}', to_sentry: false)
-        expect(LogUtil).to receive(:log_message).with("Cleared 2 failures", to_sentry: false)
+        expect(Rails.logger).to receive(:info).with(/Starting to clear Resque failures older than/)
+        expect(Rails.logger).to receive(:info).with('Resque failures by job class: {"SomeJob":2}')
+        expect(Rails.logger).to receive(:info).with("Cleared 2 failures")
         ClearResqueFailureQueue.perform
       end
     end
@@ -46,8 +47,9 @@ RSpec.describe ClearResqueFailureQueue, type: :job do
 
       it "removes nothing and reports zero cleared" do
         expect(Resque::Failure).not_to receive(:remove)
-        expect(LogUtil).to receive(:log_message).with("Resque failures by job class: {}", to_sentry: false)
-        expect(LogUtil).to receive(:log_message).with("Cleared 0 failures", to_sentry: false)
+        expect(Rails.logger).to receive(:info).with(/Starting to clear Resque failures older than/)
+        expect(Rails.logger).to receive(:info).with("Resque failures by job class: {}")
+        expect(Rails.logger).to receive(:info).with("Cleared 0 failures")
         ClearResqueFailureQueue.perform
       end
     end
