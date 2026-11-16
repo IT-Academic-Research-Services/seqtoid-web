@@ -12,13 +12,16 @@ RSpec.describe HardDeleteObjects, type: :job do
   let(:fake_sfn_execution_arn) { "fake:sfn:execution:arn".freeze }
 
   describe "#perform" do
+    let(:now_dt) { Time.current }
+
     context "when sample ids are passed in but no run ids are passed in" do
       before do
         @project = create(:project, users: [@joe])
-        @sample1 = create(:sample, project: @project,
-                                   user: @joe,
-                                   name: "Illumina sample with no pipeline runs",
-                                   deleted_at: 5.minutes.ago)
+        @sample1 = create(:sample,
+                          project: @project,
+                          user: @joe,
+                          name: "Illumina sample with no pipeline runs",
+                          deleted_at: 5.minutes.ago)
         create(:deletion_log,
                object_id: @sample1.id,
                user_id: @joe.id,
@@ -35,17 +38,27 @@ RSpec.describe HardDeleteObjects, type: :job do
       end
 
       it "updates the hard_deleted_at field on the DeletionLog for the sample" do
-        log = DeletionLog.find_by(object_id: @sample1.id, object_type: Sample.name, user_id: @joe.id)
-        expect(log.hard_deleted_at).to be_within(1.minute).of(Time.now.utc)
+        log = DeletionLog.find_by!(object_id: @sample1.id, object_type: Sample.name, user_id: @joe.id)
+        expect(log.hard_deleted_at).to eq(now_dt.floor)
       end
     end
 
     it "raises error and logs it if error occurs while performing deletions" do
-      allow(HardDeleteObjects).to receive(:hard_delete).and_raise("Error")
-      expect(LogUtil).to receive(:log_error)
+      exception = StandardError.new("test delete failure")
+      allow(HardDeleteObjects).to receive(:hard_delete).and_raise(exception)
+      expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
+      expect(LogUtil).to receive(:log_exception).with(
+        exception,
+        message: "Bulk Deletion Failed: #{exception.message}",
+        run_ids: [],
+        sample_ids: [],
+        user_id: @joe.id,
+        workflow: consensus_genome
+      )
       expect do
         HardDeleteObjects.perform([], [], consensus_genome, @joe.id)
-      end.to raise_error("Error")
+      end.to raise_error(exception)
     end
   end
 end

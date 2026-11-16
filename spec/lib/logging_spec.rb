@@ -174,5 +174,33 @@ RSpec.describe Logging do
         expect(actual).not_to include(:pid, :request_id, :user_id, :v)
       end
     end
+
+    it "does not log thread_name when it does not exist" do
+      thread = Thread.new do
+        Thread.current.name = ""
+        logger.info({ msg: message })
+      end
+
+      expect(thread.value).to be_truthy
+
+      actual = JSON.parse(log_output, symbolize_names: true)
+      expect(actual).to include(name: "rspec", environment: "test", level: "info", msg: message, time: now_dt_str, thread_id: thread.object_id)
+      expect(actual).to include(:hostname)
+      expect(actual).not_to include(:foo, :pid, :request_id, :thread_name, :user_id, :v)
+    end
+
+    it "logs thread_name when it exists" do
+      thread = Thread.new do
+        Thread.current.name = "test-thread-123"
+        logger.info({ msg: message })
+      end
+
+      expect(thread.value).to be_truthy
+
+      actual = JSON.parse(log_output, symbolize_names: true)
+      expect(actual).to include(name: "rspec", environment: "test", level: "info", msg: message, time: now_dt_str, thread_id: thread.object_id, thread_name: "test-thread-123")
+      expect(actual).to include(:hostname)
+      expect(actual).not_to include(:foo, :pid, :request_id, :user_id, :v)
+    end
   end
 end

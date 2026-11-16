@@ -28,7 +28,10 @@ RSpec.describe SupportRequestsController, type: :controller do
       end
 
       it "returns 201 created and records the rich, support-side payload" do
-        expect(LogUtil).to receive(:log_message).with(
+        expect(Rails.logger).to receive(:info).with(
+          a_string_matching(/\[support_request\] /)
+        )
+        expect(Rails.logger).to receive(:info).with(
           a_string_matching(/Support request from user #{@user.id}/),
           hash_including(
             event: "support_request",
@@ -52,9 +55,7 @@ RSpec.describe SupportRequestsController, type: :controller do
 
       it "attaches a correlation id, summary, matched runbook, and log deep-links" do
         captured = nil
-        allow(LogUtil).to receive(:log_message) do |_msg, **payload|
-          captured = payload
-        end
+        allow(Rails.logger).to receive(:info) { |_msg, **payload| captured = payload }
 
         post :create, params: valid_params
 
@@ -89,7 +90,7 @@ RSpec.describe SupportRequestsController, type: :controller do
           allow(SupportActionLogQuery).to receive(:recent_steps).and_return(steps)
 
           captured = nil
-          allow(LogUtil).to receive(:log_message) { |_msg, **payload| captured = payload }
+          allow(Rails.logger).to receive(:info) { |_msg, **payload| captured = payload }
 
           post :create, params: valid_params
 
@@ -106,7 +107,7 @@ RSpec.describe SupportRequestsController, type: :controller do
           allow(SupportActionLogQuery).to receive(:recent_steps).and_return(steps)
 
           captured = nil
-          allow(LogUtil).to receive(:log_message) { |_msg, **payload| captured = payload }
+          allow(Rails.logger).to receive(:info) { |_msg, **payload| captured = payload }
 
           post :create, params: valid_params
 
@@ -123,9 +124,7 @@ RSpec.describe SupportRequestsController, type: :controller do
 
       it "falls back to a generic runbook when nothing matches" do
         captured = nil
-        allow(LogUtil).to receive(:log_message) do |_msg, **payload|
-          captured = payload
-        end
+        allow(Rails.logger).to receive(:info) { |_msg, **payload| captured = payload }
 
         post :create, params: {
           quick_report: { errorName: "Something odd", task: "Home" },
@@ -150,7 +149,7 @@ RSpec.describe SupportRequestsController, type: :controller do
   context "when the user is not signed in" do
     describe "POST #create" do
       it "does not record the request and redirects to login" do
-        expect(LogUtil).not_to receive(:log_message)
+        expect(Rails.logger).not_to receive(:info)
         post :create, params: { description: "hello" }
         expect(response).to have_http_status(:redirect)
       end

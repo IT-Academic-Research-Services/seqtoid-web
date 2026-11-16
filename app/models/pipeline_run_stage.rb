@@ -102,11 +102,17 @@ class PipelineRunStage < ApplicationRecord
 
   def step_statuses
     step_status_file_paths.each do |step_status_file_path|
-      step_status_json = S3Util.get_s3_file(step_status_file_path)
+      step_status_json = S3Util.get_s3_file(step_status_file_path, level: :warn)
       if step_status_json
         begin
           return JSON.parse(step_status_json || "{}")
-        rescue JSON::ParserError
+        rescue JSON::ParserError => e
+          LogUtil.log_exception(
+            e,
+            message: "Failed to parse JSON on path [#{step_status_file_path}]",
+            level: :warn,
+            step_status_file_path: step_status_file_path
+          )
           return {}
         end
       end

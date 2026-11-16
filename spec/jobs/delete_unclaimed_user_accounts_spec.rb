@@ -48,7 +48,7 @@ RSpec.describe DeleteUnclaimedUserAccounts, type: :job do
         expect(Rails.logger).to have_received(:info).with("Found 2 unclaimed user accounts in Auth0")
         expect(Sentry).to have_received(:capture_message).with(
           "Found 2 unclaimed user accounts in Auth0",
-          level: "info",
+          level: :info,
           extra: {}
         )
       end

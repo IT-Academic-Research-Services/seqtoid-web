@@ -111,7 +111,6 @@ RSpec.describe Auth0Controller, type: :controller do
       it "logs a traceability audit line before signing the user in (no untraceable logins)" do
         admin = FactoryBot.create(:admin, role: 1)
         # Tolerate unrelated framework warn calls; assert our audit line is emitted.
-        allow(Rails.logger).to receive(:warn)
         expect(Rails.logger).to receive(:warn).with(
           a_string_matching(/DIRECT DEV LOGIN -- no Auth0.*id=#{admin.id}.*email=#{Regexp.escape(admin.email)}/)
         )
@@ -162,59 +161,139 @@ RSpec.describe Auth0Controller, type: :controller do
   end
 
   describe "#omniauth_failure" do
+    let(:warden_double) { instance_double("Warden::Proxy", logout: nil, set_user: nil, user: nil) }
+
+    before do
+      allow_any_instance_of(Auth0Controller).to receive(:warden).and_return(warden_double)
+    end
+
     it "logs out (redirects to signout) when the error is login_required" do
-      get :omniauth_failure, params: { error: "login_required", error_description: "anything" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:ignored, "also ignored")
+      request.env['omniauth.error.type'] = :login_required
+      expect(LogUtil).not_to receive(:log_error)
+
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: { error: "not used", error_description: "not used" }
 
       expect(response).to be_redirect
       expect(response.redirect_url).to include("/v2/logout")
     end
 
     it "renders the whitelisted explanation for a known unauthorized error_description" do
-      get :omniauth_failure, params: { error: "unauthorized", error_description: "password_expired" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized, "password_expired")
+      request.env['omniauth.error.type'] = :unauthorized
+      expect(LogUtil).not_to receive(:log_error)
+
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: {}
 
       expect(response).to have_http_status(:ok)
-      expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:password_expired])
+      expect(assigns(:message)).to eq(Auth0Controller::ErrorExplanation::PASSWORD_EXPIRED)
     end
 
     it "falls back to the default explanation for an unknown unauthorized error_description" do
-      get :omniauth_failure, params: { error: "unauthorized", error_description: "some_other_reason" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized, "some_other_reason")
+      request.env['omniauth.error.type'] = :unauthorized
+      expect(LogUtil).not_to receive(:log_error)
+
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: {}
 
       expect(response).to have_http_status(:ok)
-      expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:default])
+      expect(assigns(:message)).to eq(Auth0Controller::ErrorExplanation::DEFAULT)
     end
 
     it "routes any other error type through failure -> logout" do
-      get :omniauth_failure, params: { error: "access_denied", error_description: "nope" }
+      request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:access_denied, "nope")
+      request.env['omniauth.error.type'] = :access_denied
+      expect(LogUtil).not_to receive(:log_error)
+
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: {}
 
       expect(response).to be_redirect
       expect(response.redirect_url).to include("/v2/logout")
     end
 
-    it "logs an error and renders the default message when error_description is missing" do
+    it "logs an error and renders the default message when params.error_description is missing" do
+      request.env['omniauth.error.type'] = :unauthorized
       expect(LogUtil).to receive(:log_error).with(
-        "omniauth_failure called with missing error or error_description.",
+        "omniauth_failure called with missing error_type or missing/invalid error.",
+        exception: nil,
+        error_message: nil,
+        error_class: nil,
         error_type: :unauthorized,
-        error_description: :"",
-        params: /"error"=>"unauthorized"/
+        params: { "connection": "test-connection" }
       )
 
-      # error is present (unauthorized) but error_description is absent: the guard
-      # logs, then the empty error_code is not whitelisted, so :default renders.
-      get :omniauth_failure, params: { error: "unauthorized" }
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: { connection: "test-connection" }
 
       expect(response).to have_http_status(:ok)
-      expect(assigns(:message)).to eq(Auth0Controller::ERROR_EXPLANATIONS[:default])
+      expect(assigns(:message)).to eq(Auth0Controller::ErrorExplanation::DEFAULT)
+    end
+
+    it "logs an error and renders the default message when params.error is missing" do
+      err = OmniAuth::Strategies::OAuth2::CallbackError.new("unauthorized", "some reason", "some uri")
+      request.env['omniauth.error'] = err
+      puts("NAME[#{OmniAuth::Strategies::OAuth2::CallbackError.name}]")
+      expect(LogUtil).to receive(:log_error).with(
+        "omniauth_failure called with missing error_type or missing/invalid error.",
+        exception: err,
+        error_message: err.message,
+        error_class: OmniAuth::Strategies::OAuth2::CallbackError.name,
+        error_type: nil,
+        params: { connection: "test-connection" },
+        error_error: "unauthorized",
+        error_reason: "some reason",
+        error_uri: "some uri"
+      )
+
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: { connection: "test-connection" }
+
+      expect(response).to have_http_status(:ok)
+      expect(assigns(:message)).to eq(Auth0Controller::ErrorExplanation::DEFAULT)
+    end
+
+    it "logs an error and renders the default message when params.error_description is the wrong class" do
+      err = StandardError.new("unexpected_error")
+      request.env['omniauth.error.type'] = :unauthorized
+      request.env['omniauth.error'] = err
+      expect(LogUtil).to receive(:log_error).with(
+        "omniauth_failure called with missing error_type or missing/invalid error.",
+        exception: err,
+        error_message: err.message,
+        error_class: StandardError.name,
+        error_type: :unauthorized,
+        params: { "connection": "test-connection" }
+      )
+
+      # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
+      #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
+      get :omniauth_failure, params: { connection: "test-connection" }
+
+      expect(response).to have_http_status(:ok)
+      expect(assigns(:message)).to eq(Auth0Controller::ErrorExplanation::DEFAULT)
     end
 
     it "logs an error and routes to failure when the error type is entirely missing" do
       expect(LogUtil).to receive(:log_error).with(
-        "omniauth_failure called with missing error or error_description.",
-        error_type: :"",
-        error_description: :"",
-        params: /"action"=>"omniauth_failure"/
+        "omniauth_failure called with missing error_type or missing/invalid error.",
+        exception: nil,
+        error_message: nil,
+        error_class: nil,
+        error_type: nil,
+        params: { error: "not used1", error_description: "not used2" }
       )
 
-      get :omniauth_failure
+      get :omniauth_failure, params: { error: "not used1", error_description: "not used2" }
 
       expect(response).to be_redirect
       expect(response.redirect_url).to include("/v2/logout")

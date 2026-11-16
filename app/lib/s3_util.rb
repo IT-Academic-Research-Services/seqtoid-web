@@ -38,15 +38,16 @@ module S3Util
     return entry.join
   end
 
-  def self.get_s3_file(s3_path)
+  def self.get_s3_file(s3_path, level: :error)
     bucket, key = parse_s3_path(s3_path)
     begin
       resp = AwsClient[:s3].get_object(bucket: bucket, key: key)
       return resp.body.read
     rescue StandardError => e
-      LogUtil.log_error(
-        "get_s3_file: Error retrieving S3 file [#{s3_path}]",
-        exception: e,
+      LogUtil.log_exception(
+        e,
+        message: "get_s3_file: Error retrieving S3 file [#{s3_path}]",
+        level: level,
         s3_path: s3_path
       )
       return nil

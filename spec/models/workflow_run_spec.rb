@@ -234,10 +234,10 @@ describe WorkflowRun, type: :model do
         @mock_aws_clients[:states].stub_responses(:get_execution_history, fake_error_sfn_execution_history)
         allow(@second_workflow_running).to receive(:rerun)
 
-        expect(LogUtil).to receive(:log_message).with(
-          a_string_including("Auto-restarting WorkflowRun"),
-          to_sentry: false,
-          workflow_run_id: @second_workflow_running.id
+        expect(Rails.logger).to receive(:info).with(
+          "Auto-restarting WorkflowRun #{@second_workflow_running.id} (#{@second_workflow_running.workflow}) after a transient SFN failure (bounded to #{WorkflowRun::WORKFLOW_AUTO_RESTART_LIMIT} per sample+workflow).",
+          workflow_run_id: @second_workflow_running.id,
+          workflow: @second_workflow_running.workflow
         ).and_call_original
         expect(Sentry).not_to receive(:capture_message)
 
@@ -969,7 +969,6 @@ describe WorkflowRun, type: :model do
     end
   end
 
-  # rubocop:disable Naming/VariableNumber
   describe "#workflow_version_at_least" do
     context "when comparing workflow versions" do
       before do
