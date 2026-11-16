@@ -14,6 +14,11 @@ RSpec.describe HardDeleteObjects, type: :job do
   describe "#perform" do
     context "when workflow run ids are passed in" do
       before do
+        # TODO: Mock and verify abort_multipart_uploads()?
+        allow(S3Util).to receive(:abort_multipart_uploads)
+        stub_const("HardDeleteObjects::DELAY_BETWEEN_DELETIONS", 0)
+        stub_const("HardDeleteObjects::RETRY_DELAY_SECONDS", 0)
+
         @project = create(:project, users: [@joe])
         @sample1 = create(:sample, project: @project, user: @joe, name: "Joe sample 1", deleted_at: 5.minutes.ago)
         create(:deletion_log,
@@ -73,11 +78,19 @@ RSpec.describe HardDeleteObjects, type: :job do
         object_ids = [@wr1.id]
         sample_ids = [@sample1.id]
         allow_any_instance_of(WorkflowRun).to receive(:destroy!).and_raise(ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_message).with("Failed to destroy WorkflowRun after 1 attempts, retrying", exception: ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_error).with("Bulk Deletion Error: Failed to destroy WorkflowRun after 2 attempts.",
-                                                    exception: ActiveRecord::RecordNotDestroyed,
-                                                    object_id: @wr1.id,
-                                                    workflow: consensus_genome)
+        expect(LogUtil).to receive(:log_exception).with(
+          ActiveRecord::RecordNotDestroyed,
+          message: "Failed to destroy WorkflowRun after 1 attempts, retrying",
+          level: :info,
+          object_id: @wr1.id,
+          workflow: consensus_genome
+        )
+        expect(LogUtil).to receive(:log_exception).with(
+          ActiveRecord::RecordNotDestroyed,
+          message: "Bulk Deletion Error: Failed to destroy WorkflowRun after 2 attempts.",
+          object_id: @wr1.id,
+          workflow: consensus_genome
+        )
 
         HardDeleteObjects.perform(object_ids, sample_ids, consensus_genome, @joe.id)
         expect { @wr1.reload }.not_to raise_error
@@ -87,11 +100,19 @@ RSpec.describe HardDeleteObjects, type: :job do
         object_ids = [@wr1.id]
         sample_ids = [@sample1.id]
         allow_any_instance_of(Sample).to receive(:destroy!).and_raise(ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_message).with("Failed to destroy Sample after 1 attempts, retrying", exception: ActiveRecord::RecordNotDestroyed)
-        expect(LogUtil).to receive(:log_error).with("Bulk Deletion Error: Failed to destroy Sample after 2 attempts.",
-                                                    exception: ActiveRecord::RecordNotDestroyed,
-                                                    object_id: @sample1.id,
-                                                    workflow: consensus_genome)
+        expect(LogUtil).to receive(:log_exception).with(
+          ActiveRecord::RecordNotDestroyed,
+          message: "Failed to destroy Sample after 1 attempts, retrying",
+          level: :info,
+          object_id: @sample1.id,
+          workflow: consensus_genome
+        )
+        expect(LogUtil).to receive(:log_exception).with(
+          ActiveRecord::RecordNotDestroyed,
+          message: "Bulk Deletion Error: Failed to destroy Sample after 2 attempts.",
+          object_id: @sample1.id,
+          workflow: consensus_genome
+        )
 
         HardDeleteObjects.perform(object_ids, sample_ids, consensus_genome, @joe.id)
         expect { @sample1.reload }.not_to raise_error

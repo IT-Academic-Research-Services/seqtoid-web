@@ -1187,14 +1187,20 @@ class PipelineRun < ApplicationRecord
       Resque.enqueue(ResultMonitorLoader, id, output)
     # If we're using async notifications, the output should be available.
     elsif should_be_available || AppConfigHelper.get_app_config(AppConfig::ENABLE_SFN_NOTIFICATIONS) == "1"
-      Rails.logger.info("[PR: #{id}] Should have been generated: #{output_state.output}")
-      checker = CHECKERS_BY_OUTPUT[output_state.output]
+      Rails.logger.info("[PR: #{id}] Should have been generated: #{output}")
+      checker = CHECKERS_BY_OUTPUT[output]
       # If there is no checker, the file should have been generated
       # If there is a checker use it to check if the file should have been generated
       should_have_been_generated = !checker || send(checker)
       if should_have_been_generated
         output_state.update(state: STATUS_FAILED)
-        LogUtil.log_error("Failed to load #{output_state.output} for PipelineRun #{id}; output file was not available. results_finalized will be marked as failed.")
+        LogUtil.log_message(
+          "Failed to load #{output} for PipelineRun #{id}; output file was not available. results_finalized will be marked as failed.",
+          level: :warn,
+          output_file: s3_file_for(output),
+          output: output,
+          previous_state: state
+        )
       else
         output_state.update(state: STATUS_LOADED)
       end
