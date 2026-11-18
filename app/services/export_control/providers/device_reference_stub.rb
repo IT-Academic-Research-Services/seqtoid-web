@@ -7,7 +7,7 @@
 # vendor's key, check freshness (not expired) + the anti-spoof flags, extract the coarse asserted country,
 # and RAISE / return "failed" on any error.
 #
-# TODO(vendor): replace with the GeoComply PinPoint server-side verifier once the vendor + keys are chosen.
+# The GeoComply verifier is Providers::Geocomply; this stub stays the fail-closed default.
 module ExportControl
   module Providers
     module DeviceReferenceStub

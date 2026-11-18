@@ -13,6 +13,10 @@ class ApplicationController < ActionController::Base
   # AppConfig::ENABLE_EXPORT_CONTROL_LAYER3 == "1", so it ships DARK; go-live is counsel/vendor-gated
   # (CZID-292/278/335). See ExportControlLayer3Gate.
   before_action :require_export_control_layer3
+  # Standalone device-location check (GeoComply staging test). No-op unless
+  # AppConfig::ENABLE_DEVICE_LOCATION_CHECK == "1", and then only for users listed in
+  # AppConfig::DEVICE_LOCATION_CHECK_USERS. See ExportControlDeviceLocationGate.
+  before_action :require_device_location_check
   # CZID-599 -- LIVE export-control screening at the ONBOARDING backstop. Runs AFTER the Layer 3 gate.
   # Full PASS-THROUGH (no screen call, no hold, normal flow) unless AppConfig::ENABLE_EXPORT_CONTROL_LAYER3
   # == "1" AND the onboarding toggle is on AND Descartes screening is enabled -- ships triple-DARK,
@@ -30,6 +34,7 @@ class ApplicationController < ActionController::Base
   include ApplicationHelper
   include ExportControlAttestationGate # CZID-330 — provides require_export_control_attestation
   include ExportControlLayer3Gate # CZID-285/286 — provides require_export_control_layer3
+  include ExportControlDeviceLocationGate # provides require_device_location_check
   include ExportControlScreeningGate # CZID-599 -- provides screen_export_control_onboarding / _release
 
   current_power do
