@@ -261,6 +261,54 @@ RSpec.describe UserDataImportService do
         expect(Project.find(PROJECT_ID).creator_id).to eq(target_user.id)
       end
 
+      # 2026-11-18: persisted_backgrounds is unique on (user_id, project_id). A user who already picked a
+      # background for an imported project on this platform keeps it; the import used to fail on the unique key.
+      context "with a background choice for a project the user already has one for" do
+        PBG_ID = 9_930_001
+        PBG_DUP_ID = 9_930_002
+        let(:pbg_row) { { id: PBG_ID, user_id: OLD_USER_ID, project_id: PROJECT_ID, background_id: nil, created_at: now, updated_at: now } }
+
+        def tables_with(*pbg_rows)
+          bundle_tables.merge(persisted_backgrounds: pbg_rows)
+        end
+
+        it "keeps the user's current choice, skips the exported one and reports it" do
+          described_class.call(input_dir: write_bundle(tables: bundle_tables), target_user_id: target_user.id)
+          kept = PersistedBackground.create!(user: target_user, project_id: PROJECT_ID, background_id: nil)
+
+          result = described_class.call(input_dir: write_bundle(tables: tables_with(pbg_row)), target_user_id: target_user.id,
+                                        skip_existing: true)
+
+          expect(result[:success]).to be(true)
+          expect(PersistedBackground.where(user_id: target_user.id, project_id: PROJECT_ID).pluck(:id)).to eq([kept.id])
+          expect(PersistedBackground.exists?(PBG_ID)).to be(false)
+          expect(result[:stats][:persisted_backgrounds_kept_existing]).to eq(1)
+          expect(result[:warnings]).to include(a_string_matching(/Background choice #{PBG_ID} for project #{PROJECT_ID} not imported.*which is kept/))
+        end
+
+        it "imports only the first of two exported choices for the same project and reports the second" do
+          dup = pbg_row.merge(id: PBG_DUP_ID)
+
+          result = described_class.call(input_dir: write_bundle(tables: tables_with(pbg_row, dup)), target_user_id: target_user.id)
+
+          expect(result[:success]).to be(true)
+          expect(PersistedBackground.where(user_id: target_user.id, project_id: PROJECT_ID).pluck(:id)).to eq([PBG_ID])
+          expect(result[:warnings]).to include(a_string_matching(/Background choice #{PBG_DUP_ID} .*more than one for this project/))
+        end
+
+        it "resumes its own earlier row without reporting a conflict" do
+          described_class.call(input_dir: write_bundle(tables: tables_with(pbg_row)), target_user_id: target_user.id)
+
+          result = described_class.call(input_dir: write_bundle(tables: tables_with(pbg_row)), target_user_id: target_user.id,
+                                        skip_existing: true)
+
+          expect(result[:success]).to be(true)
+          expect(PersistedBackground.where(user_id: target_user.id, project_id: PROJECT_ID).pluck(:id)).to eq([PBG_ID])
+          expect(result[:stats][:persisted_backgrounds_kept_existing]).to eq(0)
+          expect(result[:warnings].grep(/Background choice/)).to be_empty
+        end
+      end
+
       it "fails when the target user does not exist" do
         result = described_class.call(input_dir: write_bundle, target_user_id: 123_456_789)
 
