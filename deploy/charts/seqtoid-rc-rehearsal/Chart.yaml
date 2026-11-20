@@ -1,0 +1,17 @@
+apiVersion: v2
+name: seqtoid-rc-rehearsal
+description: >-
+  RC battery migration_rehearsal, in-cluster half (forgejo 1267). While dev is pinned to a release
+  candidate, a CronJob in env-staging fast-clones the env-staging Aurora cluster, runs the RC image's
+  scripts/rc-battery/migration-rehearsal.sh against the clone (no AWS identity, throwaway Redis),
+  deletes the clone, and writes rc-rehearsal/<rc>/result.json for the battery. A reaper CronJob deletes
+  any clone a killed run left behind. Off by default.
+type: application
+version: 0.1.0
+appVersion: "rc"
+maintainers:
+  - name: Thomas Horvath
+keywords:
+  - seqtoid
+  - release-candidate
+  - migrations

@@ -1,0 +1,82 @@
+# seqtoid-rc-rehearsal -- see Chart.yaml and README.md. Everything is OFF until an environment's values
+# opt in (enabled: true + the identity/cluster/bucket settings below).
+enabled: false
+
+# Layered in from cypherid-web-infra deploy/argocd/values/seqtoid-web/dev-pin.yaml (written only by
+# seqtoid-gitops bin/release). The rehearsal CronJob renders ONLY while pin.kind is rc, and runs the
+# pinned image (image.tag + image.digest from the same file). kind none/lease renders no rehearsal.
+pin:
+  kind: none
+
+image:
+  # The RC image lives in the dev/CI account's ECR; the staging account pulls it through that
+  # repository's resource policy (cypherid-web-infra dev web stack).
+  repository: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  name: seqtoid-rc-rehearsal
+  # IRSA role (seqtoid-ssot-infra app stack, rc_rehearsal.tf): clone/delete ONLY clusters under
+  # clonePrefix, read the DB credentials, write results. Required when enabled.
+  roleArn: ""
+
+schedule: "*/15 * * * *"
+# The live cluster to clone (never written: the IAM role denies every rds action on it except the
+# clone itself and describes).
+sourceCluster: ""
+# Clone cluster ids are <clonePrefix>-<rc>-a<attempt>. Must contain "rc-rehearsal".
+clonePrefix: ""
+instanceClass: db.r6g.large
+results:
+  bucket: ""
+  prefix: rc-rehearsal
+# Chamber path holding DB_USERNAME / DB_PASSWORD (only those two are read).
+ssmPrefix: ""
+railsEnv: staging
+region: us-west-2
+maxAttempts: 2
+# How long to wait for the clone's instance to become available.
+waitMinutes: 60
+# One run = clone (~15-25 min) + migrate + delete; bound it.
+activeDeadlineSeconds: 7200
+# Room for the ensure block to delete the clone instance + cluster after SIGTERM.
+terminationGracePeriodSeconds: 1500
+
+# Throwaway Redis as a native sidecar: Rails boot and any Resque enqueue in a data migration land here,
+# never in the environment's Redis.
+redis:
+  image: public.ecr.aws/docker/library/redis@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1536Mi
+  limits:
+    memory: 3Gi
+
+nodeSelector:
+  kubernetes.io/arch: amd64
+tolerations: []
+affinity: {}
+
+# Egress allowlist for the rehearsal pod: DNS, MySQL inside the VPC, HTTPS (AWS APIs). Blocks the
+# environment's Redis (6379), the instance metadata service and everything else. Needs vpcCidr.
+networkPolicy:
+  enabled: true
+  vpcCidr: ""
+
+# Deletes tagged clones under clonePrefix older than maxAgeHours, whatever the pin (a run killed after
+# its RC left vetting would otherwise leak a billed instance).
+reaper:
+  enabled: true
+  schedule: "41 * * * *"
+  maxAgeHours: 4
+  image: public.ecr.aws/aws-cli/aws-cli@sha256:f08ba09a46e3792797745332adb4925d0a35b050d1f5c9a0ef5a6bea12b34a84
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi

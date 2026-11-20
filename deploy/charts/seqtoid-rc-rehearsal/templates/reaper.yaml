@@ -1,0 +1,69 @@
+{{- if and .Values.enabled .Values.reaper.enabled }}
+{{- include "seqtoid-rc-rehearsal.require" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "seqtoid-rc-rehearsal.name" . }}-reaper
+  labels:
+    {{- include "seqtoid-rc-rehearsal.labels" . | nindent 4 }}
+    app.kubernetes.io/component: reaper
+data:
+  reap.sh: |
+    {{- .Files.Get "files/reap.sh" | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "seqtoid-rc-rehearsal.name" . }}-reaper
+  labels:
+    {{- include "seqtoid-rc-rehearsal.labels" . | nindent 4 }}
+    app.kubernetes.io/component: reaper
+spec:
+  schedule: {{ .Values.reaper.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3000
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            {{- include "seqtoid-rc-rehearsal.labels" . | nindent 12 }}
+            app.kubernetes.io/component: reaper
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: reaper
+              image: {{ .Values.reaper.image | quote }}
+              command: ["bash", "/reaper/reap.sh"]
+              env:
+                - name: AWS_REGION
+                  value: {{ .Values.region | quote }}
+                - name: CLONE_PREFIX
+                  value: {{ .Values.clonePrefix | quote }}
+                - name: MAX_AGE_HOURS
+                  value: {{ .Values.reaper.maxAgeHours | toString | quote }}
+              resources:
+                {{- toYaml .Values.reaper.resources | nindent 16 }}
+              volumeMounts:
+                - name: reaper
+                  mountPath: /reaper
+                  readOnly: true
+          volumes:
+            - name: reaper
+              configMap:
+                name: {{ include "seqtoid-rc-rehearsal.name" . }}-reaper
+{{- end }}
