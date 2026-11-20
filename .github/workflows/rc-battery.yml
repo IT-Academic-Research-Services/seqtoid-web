@@ -17,9 +17,13 @@ name: rc-battery (release-candidate test battery)
 #   data_integrity       data-integrity.yml                                             REAL
 #   dast                 dast-zap.yml (OWASP ZAP) against dev at the RC commit          REAL
 #   migration_rehearsal  RC image: db:migrate:with_data on a restored env-prod copy     REAL, needs DB
-#   error_budget         Sentry new issues + dev ALB 5xx rate since the cut             REAL, needs config
-#   smoke_gate           dev serves the RC commit -> pending (no CI read of Argo)      PARTIAL
-#   cutover_check        same; dev also has postCutoverCheck disabled                   PARTIAL
+#   error_budget         dev ALB 5xx rate since the cut (+ Sentry new issues; advisory  REAL
+#                        while vars.RC_ERROR_BUDGET_SENTRY=advisory)
+#   smoke_gate           dev pinned to the RC + smoke gate on in dev's values + dev     REAL
+#                        serves the RC commit
+#   cutover_check        same + post-cutover check on + still serving after its window  REAL
+# Requests to dev carry header x-seqtoid-ci-key (secret DEV_WAF_CI_KEY): dev's WAF blocks GitHub
+# runner IPs otherwise (cypherid-web-infra envs/dev/web-waf, FJ-1265).
 # pipeline_e2e/aupr read s3://<RC_BENCH_BUCKET>/rc-gates/<rc-id>/result.json (written by the in-app
 # rc-gate CronJob on dev) with vars.RC_BATTERY_ROLE, waiting up to RC_GATE_WAIT_MINUTES (180).
 # aupr: nt/nr AUPR >= RC_AUPR_FLOOR (0.98); vs the newest released RC's result (same dataset and
@@ -488,6 +492,8 @@ jobs:
           MIN_EVENTS: ${{ vars.RC_ERROR_BUDGET_MIN_EVENTS || '1' }}
           MAX_NEW_ISSUES: ${{ vars.RC_ERROR_BUDGET_MAX_NEW_ISSUES || '0' }}
           MAX_5XX_RATE: ${{ vars.RC_ERROR_BUDGET_MAX_5XX_RATE || '0.01' }}
+          # advisory while Sentry's quota is exhausted (FJ-1265): Sentry reported, 5xx decides.
+          SENTRY_MODE: ${{ vars.RC_ERROR_BUDGET_SENTRY || 'required' }}
           ALB_LB: ${{ steps.cwrole.outputs.arn != '' && vars.RC_DEV_ALB_LB || '' }}
         run: |
           set -euo pipefail
@@ -495,36 +501,133 @@ jobs:
           grep -q '^status=pass' "$GITHUB_OUTPUT"
 
   rollout:
+    # FJ-1265. CI cannot read dev's Argo Rollout, but both gates are enforced by the cluster, so what
+    # dev SERVES is the evidence, once we confirm the gates were on and nothing else can deploy:
+    #   smoke_gate     PreSync smoke Job: a failing gate fails the sync, the RC image never serves.
+    #   cutover_check  pingpong post-cutover probe (count x interval): a failure moves traffic back
+    #                  to the previous build.
+    # Pass = dev's merged values (chart at the RC commit + cypherid-web-infra dev.yaml + dev-pin.yaml)
+    # have the gate on, dev is pinned to THIS RC (so no other build can replace it), and dev serves
+    # the RC commit -- for cutover_check, still serving it after the post-cutover window has fully
+    # elapsed. A gate turned off (break-glass) fails its check: not proven.
     name: smoke_gate + cutover_check
     needs: resolve
     if: ${{ needs.resolve.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
     outputs:
-      status: ${{ steps.serve.outputs.status }}
-      reason: ${{ steps.serve.outputs.reason }}
+      smoke_status: ${{ steps.verdict.outputs.smoke_status }}
+      smoke_reason: ${{ steps.verdict.outputs.smoke_reason }}
+      cutover_status: ${{ steps.verdict.outputs.cutover_status }}
+      cutover_reason: ${{ steps.verdict.outputs.cutover_reason }}
+    env:
+      BASE: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
+      WANT: ${{ needs.resolve.outputs.commit8 }}
+      RC_ID: ${{ needs.resolve.outputs.rc_id }}
+      # Dev's WAF blocks GitHub-hosted runner IPs; this header skips only its IP-list rule groups.
+      CI_KEY: ${{ secrets.DEV_WAF_CI_KEY }}
     steps:
-      # No workflow can read the dev Argo Rollout's analysis results today (no cluster read path
-      # from CI). What CI CAN see is whether dev serves the RC: the PreSync smoke gate blocks a
-      # failing image from ever serving, and an aborted rollout puts the previous build back. So a
-      # mismatch is a real `fail`; a match is only `pending` until the rollout result is readable.
-      - name: Is dev serving the RC commit?
+      # The battery's scripts come from this workflow's ref; the chart values from the RC commit.
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Generate app token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_ACTIONS_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+      - name: Which gates protect dev (the values Argo syncs)
+        id: gates
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          INFRA_REPO: ${{ vars.INFRA_REPO || 'IT-Academic-Research-Services/cypherid-web-infra' }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: |
+          set -euo pipefail
+          pip install -q pyyaml==6.0.2
+          raw() { gh api -H "Accept: application/vnd.github.raw" "$1"; }
+          raw "repos/${GITHUB_REPOSITORY}/contents/deploy/charts/seqtoid-web/values.yaml?ref=${COMMIT}" > chart-values.yaml
+          dir=deploy/argocd/values/seqtoid-web
+          for f in dev.yaml dev-pin.yaml; do
+            raw "repos/${INFRA_REPO}/contents/${dir}/${f}?ref=main" > "infra-${f}"
+          done
+          python3 scripts/rc-battery/dev-gates.py chart-values.yaml infra-dev.yaml infra-dev-pin.yaml \
+            | tee -a "$GITHUB_OUTPUT"
+      - name: Is dev serving the RC, and still after the post-cutover window?
         id: serve
         env:
-          BASE: ${{ vars.RC_DEV_BASE_URL || 'https://dev.seqtoid.org' }}
-          WANT: ${{ needs.resolve.outputs.commit8 }}
+          WAIT_MINUTES: ${{ vars.RC_ROLLOUT_WAIT_MINUTES || '20' }}
+          WINDOW_S: ${{ steps.gates.outputs.cutover_window_s }}
         run: |
           set -uo pipefail
-          page="$(mktemp)"
-          code=$(curl -s -o "$page" -w '%{http_code}' --max-time 15 "${BASE}/" || echo 000)
-          served="$(sed -n 's/.*GIT_RELEASE_SHA = "\([0-9a-f]*\)".*/\1/p' "$page" | head -n1)"
-          if [ "$code" = "200" ] && [ "$served" = "$WANT" ]; then
-            s=pending; r="dev serves the RC commit ${WANT}; the Argo rollout analysis result is not readable from CI -- confirm in Argo CD"
-          else
-            s=fail; r="dev answered HTTP ${code} serving '${served:-unknown}', not the RC commit ${WANT}: the rollout did not complete or was rolled back"
+          [ -n "${CI_KEY}" ] || echo "::warning::secret DEV_WAF_CI_KEY is unset; dev's WAF will likely answer 403"
+          probe() {
+            local page; page="$(mktemp)"
+            code=$(curl -s -o "$page" -w '%{http_code}' --max-time 15 -H "x-seqtoid-ci-key: ${CI_KEY}" "${BASE}/" || echo 000)
+            served="$(sed -n 's/.*GIT_RELEASE_SHA = "\([0-9a-f]*\)".*/\1/p' "$page" | head -n1)"
+            rm -f "$page"
+            echo "$(date -u +%H:%M:%S) HTTP ${code} serving '${served:-unknown}' (want ${WANT})"
+          }
+          # 1. wait for dev to serve the RC (a rollout may still be finishing)
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          while :; do
+            probe
+            if [ "$code" = "200" ] && [ "$served" = "$WANT" ]; then break; fi
+            [ "$(date +%s)" -lt "$deadline" ] || break
+            sleep 60
+          done
+          { echo "first_code=${code}"; echo "first_served=${served}"; } >> "$GITHUB_OUTPUT"
+          [ "$code" = "200" ] && [ "$served" = "$WANT" ] || exit 0
+          # 2. still serving it once a full post-cutover window (+1 min) has passed since we saw it
+          stable=$(( ${WINDOW_S:-0} + 60 ))
+          echo "serving the RC; re-probing in ${stable}s (post-cutover window ${WINDOW_S:-0}s + 60s)"
+          sleep "$stable"
+          probe
+          { echo "stable_s=${stable}"; echo "last_code=${code}"; echo "last_served=${served}"; } >> "$GITHUB_OUTPUT"
+      - name: Verdicts
+        id: verdict
+        if: ${{ always() }}
+        env:
+          SMOKE: ${{ steps.gates.outputs.smoke_gate }}
+          CUTOVER: ${{ steps.gates.outputs.cutover_check }}
+          PIN_KIND: ${{ steps.gates.outputs.pin_kind }}
+          PIN_RC: ${{ steps.gates.outputs.pin_rc }}
+          FIRST_CODE: ${{ steps.serve.outputs.first_code }}
+          FIRST: ${{ steps.serve.outputs.first_served }}
+          LAST_CODE: ${{ steps.serve.outputs.last_code }}
+          LAST: ${{ steps.serve.outputs.last_served }}
+          STABLE_S: ${{ steps.serve.outputs.stable_s }}
+        run: |
+          set -uo pipefail
+          out() { printf '%s_status=%s\n%s_reason=%s\n' "$1" "$2" "$1" "$3" | tee -a "$GITHUB_OUTPUT"; }
+          if [ -z "${SMOKE}" ]; then
+            r="could not read dev's deploy values (see the 'Which gates' step)"; out smoke fail "$r"; out cutover fail "$r"; exit 1
           fi
-          { echo "status=$s"; echo "reason=$r"; } >> "$GITHUB_OUTPUT"
-          echo "$s: $r"
-          [ "$s" != "fail" ]
+          if [ "${PIN_KIND}" != "rc" ] || [ "${PIN_RC}" != "${RC_ID}" ]; then
+            r="dev is not pinned to ${RC_ID} (dev-pin.yaml: kind=${PIN_KIND} rc=${PIN_RC:-none}), so another build could replace it"
+            out smoke fail "$r"; out cutover fail "$r"; exit 1
+          fi
+          if [ "${FIRST_CODE}" != "200" ] || [ "${FIRST}" != "${WANT}" ]; then
+            r="dev answered HTTP ${FIRST_CODE:-000} serving '${FIRST:-unknown}', not the RC commit ${WANT}: the rollout did not complete or was rolled back"
+            out smoke fail "$r"; out cutover fail "$r"; exit 1
+          fi
+          if [ "${SMOKE}" = "on" ]; then
+            out smoke pass "dev serves ${WANT}; the PreSync smoke gate is on in dev's values (a failing gate blocks the sync)"
+          else
+            out smoke fail "dev serves ${WANT} but smoke.gate is OFF in dev's values (break-glass): not proven"
+          fi
+          if [ "${CUTOVER}" != "on" ]; then
+            out cutover fail "dev serves ${WANT} but the pingpong post-cutover check is OFF in dev's values: not proven"
+          elif [ "${LAST_CODE}" = "200" ] && [ "${LAST}" = "${WANT}" ]; then
+            out cutover pass "dev still serves ${WANT} ${STABLE_S}s later, past the post-cutover check window (a failure moves traffic back)"
+          else
+            out cutover fail "dev served ${WANT}, then HTTP ${LAST_CODE:-000} serving '${LAST:-unknown}' ${STABLE_S:-?}s later: rolled back or unstable"
+          fi
+          grep -q '^smoke_status=pass' "$GITHUB_OUTPUT" && grep -q '^cutover_status=pass' "$GITHUB_OUTPUT"
 
   # ---- record ----------------------------------------------------------------------------------
 
@@ -576,8 +679,10 @@ jobs:
           EB_S: ${{ needs.error_budget.outputs.status }}
           EB_R: ${{ needs.error_budget.outputs.reason }}
           EB_JOB: ${{ needs.error_budget.result }}
-          RO_S: ${{ needs.rollout.outputs.status }}
-          RO_R: ${{ needs.rollout.outputs.reason }}
+          SG_S: ${{ needs.rollout.outputs.smoke_status }}
+          SG_R: ${{ needs.rollout.outputs.smoke_reason }}
+          CC_S: ${{ needs.rollout.outputs.cutover_status }}
+          CC_R: ${{ needs.rollout.outputs.cutover_reason }}
           RO_JOB: ${{ needs.rollout.result }}
         run: |
           set -uo pipefail
@@ -602,9 +707,8 @@ jobs:
           esac
           leg migration_rehearsal "$MIG_S" "$MIG_R" "$MIG_JOB"
           leg error_budget "$EB_S" "$EB_R" "$EB_JOB"
-          leg smoke_gate "$RO_S" "$RO_R" "$RO_JOB"
-          cut_note="$RO_R; postCutoverCheck is not enabled on dev"
-          leg cutover_check "$RO_S" "${RO_S:+$cut_note}" "$RO_JOB"
+          leg smoke_gate "$SG_S" "$SG_R" "$RO_JOB"
+          leg cutover_check "$CC_S" "$CC_R" "$RO_JOB"
 
           [ "$errors" -eq 0 ] || exit 1
           if [ "$red" -ne 0 ]; then echo "::error::${RC_ID} is not green: at least one required check is not pass (see summary)."; exit 1; fi

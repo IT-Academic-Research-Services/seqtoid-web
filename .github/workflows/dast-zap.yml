@@ -15,6 +15,12 @@ name: DAST (OWASP ZAP baseline)
 #      (-I, and .zap/rules.tsv has no FAIL entries).
 #   4. Uploads zap.json + zap.html and writes a job summary table.
 #
+# Dev's WAF blocks GitHub-hosted runner IPs (AnonymousIpList). Requests to the target carry header
+# x-seqtoid-ci-key (secret DEV_WAF_CI_KEY), which skips ONLY the WAF's IP-list rule groups, so the
+# scan sees the app rather than a block page; ZAP's replacer adds it to target-origin requests only,
+# and the value is scrubbed from the reports before upload. A target that does not answer 2xx/3xx to
+# that header fails the check before scanning (FJ-1265: on 2026-11-17 ZAP "passed" a 403 page).
+#
 # Scope / known limits:
 #   - UNAUTHENTICATED. Most of the app sits behind Auth0 login, so this covers the public pages,
 #     the landing/login flow, static assets and response headers/cookies (CSP, HSTS,
@@ -116,12 +122,37 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      - name: Target reachable through the WAF?
+        id: reach
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+          CI_KEY: ${{ secrets.DEV_WAF_CI_KEY }}
+        run: |
+          set -uo pipefail
+          [ -n "${CI_KEY}" ] || echo "::warning::secret DEV_WAF_CI_KEY is unset; dev's WAF will likely answer 403"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H "x-seqtoid-ci-key: ${CI_KEY}" "${TARGET_URL}" || echo 000)
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
+          case "$code" in
+            2??|3??) echo "${TARGET_URL} answered HTTP ${code}" ;;
+            *) echo "::error::${TARGET_URL} answered HTTP ${code} to the runner; a scan would only see that error page"; exit 1 ;;
+          esac
       - name: Run ZAP baseline (passive)
         id: scan
         env:
           TARGET_URL: ${{ inputs.target_url }}
+          CI_KEY: ${{ secrets.DEV_WAF_CI_KEY }}
         run: |
           set -uo pipefail
+          # Replacer rule: add the WAF CI header to requests for the target's origin only (the
+          # validate step already pinned TARGET_URL to dev or a dev preview).
+          origin_re="^$(printf '%s' "${TARGET_URL%/}" | sed 's/[.]/[.]/g')(/.*)?$"
+          zopts="-config replacer.full_list(0).description=waf-ci-key"
+          zopts+=" -config replacer.full_list(0).enabled=true"
+          zopts+=" -config replacer.full_list(0).matchtype=REQ_HEADER"
+          zopts+=" -config replacer.full_list(0).matchstr=x-seqtoid-ci-key"
+          zopts+=" -config replacer.full_list(0).regex=false"
+          zopts+=" -config replacer.full_list(0).replacement=${CI_KEY}"
+          zopts+=" -config replacer.full_list(0).url=${origin_re}"
           mkdir -p zap-wrk
           cp .zap/rules.tsv zap-wrk/rules.tsv
           # The image runs as the 'zap' user (uid 1000); the runner workspace is uid 1001.
@@ -135,7 +166,7 @@ jobs:
           for attempt in 1 2; do
             rm -f zap-wrk/zap.json zap-wrk/zap.html
             docker run --rm -v "${PWD}/zap-wrk:/zap/wrk:rw" "${ZAP_IMAGE}" \
-              zap-baseline.py -t "${TARGET_URL}" -J zap.json -r zap.html -c rules.tsv -m 2 -I
+              zap-baseline.py -t "${TARGET_URL}" -J zap.json -r zap.html -c rules.tsv -m 2 -I -z "${zopts}"
             rc=$?
             echo "attempt ${attempt}: zap exit code ${rc}"
             if [ "${rc}" -lt 3 ] && [ -s zap-wrk/zap.json ]; then break; fi
@@ -143,6 +174,10 @@ jobs:
           echo "rc=${rc}" >> "$GITHUB_OUTPUT"
           if [ "${rc}" -ge 3 ] || [ ! -s zap-wrk/zap.json ]; then
             echo "::error::ZAP did not complete (exit ${rc}) or wrote no report."
+          fi
+          # Never ship the WAF key inside an uploaded report.
+          if [ -n "${CI_KEY}" ]; then
+            for f in zap-wrk/*; do [ -f "$f" ] && sed -i "s/${CI_KEY}/REDACTED/g" "$f"; done
           fi
 
       - name: Compare against accepted baseline
@@ -167,11 +202,13 @@ jobs:
           RESULT: ${{ steps.compare.outputs.result }}
           SUMMARY: ${{ steps.compare.outputs.summary }}
           TARGET_URL: ${{ inputs.target_url }}
+          REACH: ${{ steps.reach.outputs.code }}
         run: |
           set -euo pipefail
           if [ -z "${RESULT}" ]; then
             # Scan or compare never produced a verdict: fail closed.
             line="ZAP baseline FAIL: no verdict for ${TARGET_URL} (scan error, see logs)"
+            case "${REACH}" in 2??|3??|'') ;; *) line="ZAP baseline FAIL: ${TARGET_URL} answered HTTP ${REACH} to the runner; not scanned" ;; esac
             { echo "result=fail"; echo "summary=${line}"; } >> "$GITHUB_OUTPUT"
             { echo "## DAST (OWASP ZAP baseline)"; echo ""; echo "${line}"; } >> "$GITHUB_STEP_SUMMARY"
             echo "::error::${line}"

@@ -11,8 +11,12 @@
 # Missing configuration is a FAIL ("not configured: ..."), never a skip: an RC must not go green on
 # a check that did not run.
 #
-# env: CUT_AT SENTRY_URL SENTRY_ORG SENTRY_PROJECTS(comma) SENTRY_TOKEN MIN_LEVEL MIN_EVENTS
-#      MAX_NEW_ISSUES ALB_LB MAX_5XX_RATE AWS_REGION
+# SENTRY_MODE=advisory (FJ-1265, Tom 2026-11-20: Sentry's quota is exhausted, so it under-reports):
+# Sentry findings and Sentry configuration gaps are reported in the reason but do not fail the leg;
+# the 5xx rate alone decides. Default `required`. The 5xx part is required in both modes.
+#
+# env: CUT_AT SENTRY_URL SENTRY_ORG SENTRY_PROJECTS(comma) SENTRY_TOKEN SENTRY_MODE MIN_LEVEL
+#      MIN_EVENTS MAX_NEW_ISSUES ALB_LB MAX_5XX_RATE AWS_REGION
 #      FIXTURE_DIR  tests only: read sentry-<project>.json / cw-<metric>.json instead of calling out
 set -uo pipefail
 
@@ -23,9 +27,17 @@ MIN_EVENTS="${MIN_EVENTS:-1}"
 MAX_NEW_ISSUES="${MAX_NEW_ISSUES:-0}"
 MAX_5XX_RATE="${MAX_5XX_RATE:-0.01}"
 FIXTURE_DIR="${FIXTURE_DIR:-}"
+SENTRY_MODE="${SENTRY_MODE:-required}"
 
 fails=()
+notes=()
 log() { echo "$*" >&2; }
+case "$SENTRY_MODE" in
+  required|advisory) ;;
+  *) echo "status=fail"; echo "reason=bad SENTRY_MODE '${SENTRY_MODE}' (required|advisory)"; exit 0 ;;
+esac
+# Sentry problems: a failure when required, a note when advisory.
+sentry_fail() { if [ "$SENTRY_MODE" = "advisory" ]; then notes+=("Sentry (advisory): $1"); else fails+=("$1"); fi; }
 
 cut_epoch="$(jq -rn --arg t "$CUT_AT" '$t | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601' 2>/dev/null)" \
   || { echo "status=fail"; echo "reason=cannot parse RC cut time '${CUT_AT}'"; exit 0; }
@@ -37,9 +49,9 @@ end_iso="$(jq -rn --argjson e "$now_epoch" '$e | todateiso8601')"
 levels="$(jq -rn --arg m "$MIN_LEVEL" '["debug","info","warning","error","fatal"] as $l
   | ($l | index($m)) as $i | if $i == null then empty else $l[$i:] | join(",") end')"
 if [ -z "$levels" ]; then
-  fails+=("bad MIN_LEVEL '${MIN_LEVEL}'")
+  sentry_fail "bad MIN_LEVEL '${MIN_LEVEL}'"
 elif [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECTS:-}" ] || { [ -z "${SENTRY_TOKEN:-}" ] && [ -z "$FIXTURE_DIR" ]; }; then
-  fails+=("not configured: Sentry (need SENTRY_ORG, RC_SENTRY_PROJECTS and a token with event:read)")
+  sentry_fail "not configured: Sentry (need SENTRY_ORG, RC_SENTRY_PROJECTS and a token with event:read)"
 else
   query="is:unresolved firstSeen:>=${start_iso} level:[${levels}]"
   new_total=0
@@ -55,8 +67,8 @@ else
     fi
     case "$code" in
       200) ;;
-      401|403) fails+=("not configured: Sentry token cannot read issues in ${p} (HTTP ${code}; needs event:read)"); continue ;;
-      *) fails+=("Sentry query for ${p} failed (HTTP ${code})"); continue ;;
+      401|403) sentry_fail "not configured: Sentry token cannot read issues in ${p} (HTTP ${code}; needs event:read)"; continue ;;
+      *) sentry_fail "Sentry query for ${p} failed (HTTP ${code})"; continue ;;
     esac
     hits="$(jq --argjson min "$MIN_EVENTS" '[.[] | select((.count | tonumber) >= $min)]' "$body")"
     n="$(jq 'length' <<<"$hits")"
@@ -65,7 +77,9 @@ else
     jq -r '.[] | "  - [\(.level)] \(.count)x \(.title) \(.permalink // "")"' <<<"$hits" >&2
   done
   if [ "$new_total" -gt "$MAX_NEW_ISSUES" ]; then
-    fails+=("${new_total} new Sentry issue group(s) since the cut (budget ${MAX_NEW_ISSUES})")
+    sentry_fail "${new_total} new Sentry issue group(s) since the cut (budget ${MAX_NEW_ISSUES})"
+  elif [ "$SENTRY_MODE" = "advisory" ]; then
+    notes+=("Sentry (advisory): ${new_total} new issue group(s) since the cut")
   fi
 fi
 
@@ -97,11 +111,17 @@ else
   esac
 fi
 
+note_txt=""
+if [ "${#notes[@]}" -gt 0 ]; then note_txt="$(printf '%s; ' "${notes[@]}")"; note_txt="; ${note_txt%; }"; fi
 if [ "${#fails[@]}" -eq 0 ]; then
   echo "status=pass"
-  echo "reason=no new Sentry issues over budget; 5xx within ${MAX_5XX_RATE}"
+  if [ "$SENTRY_MODE" = "advisory" ]; then
+    echo "reason=5xx within ${MAX_5XX_RATE}${note_txt}"
+  else
+    echo "reason=no new Sentry issues over budget; 5xx within ${MAX_5XX_RATE}"
+  fi
 else
   echo "status=fail"
   joined="$(printf '%s; ' "${fails[@]}")"
-  echo "reason=${joined%; }"
+  echo "reason=${joined%; }${note_txt}"
 fi
