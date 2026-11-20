@@ -678,25 +678,53 @@ class PipelineRun < ApplicationRecord
   end
 
   def get_lineage_json(ct2taxid, taxon_lineage_map)
-    # Get the full lineage based on taxid
+    # Get the full lineage for each count type.
+    # ct2taxid values are { species: taxid, genus: taxid } from the contig summary
+    # (a bare taxid is accepted and treated as the species).
     # Sample output:
     # {"NT": [573,570,543,91347,1236,1224,-650,2, "Bacteria"],
     #  "NR": [573,570,543,91347,1236,1224,-650,2, "Bacteria"]}
+    # For a non-specific call the lineage is anchored on the closest real taxon and the
+    # species/genus slots carry the pipeline's ids, e.g. a contig called only to family
+    # 543 gives [-100000543, -200000543, 543, ...], matching the read rows of the report.
     output = {}
     if ct2taxid
-      ct2taxid.each do |count_type, taxid|
-        lineage = taxon_lineage_map[taxid.to_i]
-        if lineage.nil? && taxid.to_i > 0
+      ct2taxid.each do |count_type, taxids|
+        taxids = { species: taxids } unless taxids.is_a?(Hash) # legacy callers pass a bare species taxid
+        anchor = contig_lineage_anchor(taxids)
+        lineage = anchor && taxon_lineage_map[anchor]
+        if lineage.nil? && anchor.to_i > 0
           LogUtil.log_error(
-            "No lineage found for taxid #{taxid} when loading contigs.",
-            exception: TaxonLineage::LineageNotFoundError.new(taxid),
+            "No lineage found for taxid #{anchor} when loading contigs.",
+            exception: TaxonLineage::LineageNotFoundError.new(anchor),
             lineage_version: alignment_config.lineage_version
           )
+        end
+        if lineage
+          lineage = lineage.dup
+          lineage[0] = taxids[:species].to_i if taxids[:species]
+          lineage[1] = taxids[:genus].to_i if taxids[:genus]
         end
         output[count_type] = lineage
       end
     end
     output
+  end
+
+  # The taxon_lineages row a contig's lineage is anchored on: its species when called
+  # to species, otherwise its genus, otherwise the family embedded in a
+  # non-genus-specific genus id (-200000543 => 543). nil when nothing is resolvable
+  # (legacy pipeline output with a bare -100/-200 pair, or no hit).
+  def contig_lineage_anchor(taxids)
+    taxids = { species: taxids } unless taxids.is_a?(Hash)
+    species = taxids[:species].to_i
+    return species if species > 0
+
+    genus = taxids[:genus].to_i
+    return genus if genus > 0
+
+    family = ReportsHelper.convert_neg_taxid(genus)
+    family if family > 0
   end
 
   def get_m8_mapping(m8_file)
@@ -768,20 +796,30 @@ class PipelineRun < ApplicationRecord
     local_file_name
   end
 
+  CONTIG_TAXID_LEVEL_KEYS = {
+    TaxonCount::TAX_LEVEL_SPECIES => :species,
+    TaxonCount::TAX_LEVEL_GENUS => :genus,
+  }.freeze
+
   def db_load_contig_counts
-    # Get contig2taxid
+    # Build contig2taxid: contig name => count type => { species: taxid, genus: taxid }.
+    # Both levels come from the pipeline's contig summary. The genus id matters because
+    # the taxon_lineages table cannot express a non-genus-specific call (it stores -200
+    # for every family), while the pipeline emits the per-family id (e.g. -200000543),
+    # which is the id the report's read rows use.
     contig_stats_s3_path = s3_file_for("contig_counts")
     downloaded_contig_counts = PipelineRun.download_file_with_retries(contig_stats_s3_path,
                                                                       LOCAL_JSON_PATH, 3)
     contig_counts_json = JSON.parse(File.read(downloaded_contig_counts))
     contig2taxid = {}
     contig_counts_json.each do |tax_entry|
-      contig_list = tax_entry["contig_counts"]
-      contig_list.each do |contig_name, _count|
-        if tax_entry['tax_level'].to_i == TaxonCount:: TAX_LEVEL_SPECIES # species
-          contig2taxid[contig_name] ||= {}
-          contig2taxid[contig_name][tax_entry['count_type']] = tax_entry['taxid']
-        end
+      level_key = CONTIG_TAXID_LEVEL_KEYS[tax_entry['tax_level'].to_i]
+      next unless level_key
+
+      tax_entry["contig_counts"].each_key do |contig_name|
+        contig2taxid[contig_name] ||= {}
+        contig2taxid[contig_name][tax_entry['count_type']] ||= {}
+        contig2taxid[contig_name][tax_entry['count_type']][level_key] = tax_entry['taxid']
       end
     end
     # Actually load contigs
@@ -807,9 +845,9 @@ class PipelineRun < ApplicationRecord
     contig_fasta = PipelineRun.download_file_with_retries(contig_s3_path, LOCAL_JSON_PATH, 3)
     contig_array = []
     taxid_list = []
-    contig2taxid.values.each { |entry| taxid_list += entry.values }
+    contig2taxid.values.each { |entry| taxid_list += entry.values.map { |taxids| contig_lineage_anchor(taxids) } }
 
-    taxon_lineage_map = lineage_map_by_taxid(taxid_list)
+    taxon_lineage_map = lineage_map_by_taxid(taxid_list.compact)
 
     # A lambda allows us to access variables in the enclosing scope, such as contig2taxid.
     get_contig_hash = lambda do |header, sequence|
