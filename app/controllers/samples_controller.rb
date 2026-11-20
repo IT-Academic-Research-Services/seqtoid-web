@@ -43,6 +43,11 @@ class SamplesController < ApplicationController
   # uncapped since it re-uses cached compute). Admins are exempt.
   RERUN_DAILY_LIMIT = 3
 
+  # Body of the per-taxon reads download (NT_or_NR) when the taxon has no reads to send: no NT or
+  # NR byterange for it, or the source FASTA/range is missing. It replaces a "Coming soon"
+  # placeholder that read as if something were loading or a feature were pending.
+  NO_TAXON_READS_MESSAGE = "No reads are available to download for this taxon in this sample.\n".freeze
+
   OTHER_ACTIONS = [:bulk_upload_with_metadata, :upload_allowance, :resume_upload_targets, :bulk_import, :index, :index_v2, :details,
                    :dimensions, :all, :show_sample_names, :cli_user_instructions, :metadata_fields,
                    :search_suggestions, :stats, :upload, :validate_sample_files, :taxa_with_reads_suggestions, :uploaded_by_current_user,
@@ -1265,7 +1270,7 @@ class SamplesController < ApplicationController
              sources = ["NT", "NR"].map { |hit_type| taxon_fasta_source(pr, taxid, tax_level, hit_type) }
              Enumerator.new do |out|
                any = each_combined_taxon_fasta_record(sources) { |record| out << record }
-               out << "Coming soon" unless any # Temporary fix
+               out << NO_TAXON_READS_MESSAGE unless any
              end
            else
              source = taxon_fasta_source(pr, taxid, tax_level, params[:hit_type])
