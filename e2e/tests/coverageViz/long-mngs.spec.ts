@@ -1,5 +1,5 @@
 import { WORKFLOWS } from "@e2e/constants/common";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
 import { HG002_LONG_READS_METAG } from "@e2e/constants/sample";

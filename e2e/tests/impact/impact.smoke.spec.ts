@@ -1,5 +1,5 @@
 import { ImpactPage } from "@e2e/page-objects/impact-page";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 
 /*
  * Smoke Test: Impact

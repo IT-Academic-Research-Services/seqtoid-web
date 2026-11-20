@@ -1,5 +1,5 @@
 import { acceptCookies } from "@e2e/utils/page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 import { SEARCH_BAR } from "../../constants/sample";
 const sampleId = 25745;
 

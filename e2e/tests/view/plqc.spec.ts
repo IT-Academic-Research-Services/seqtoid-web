@@ -10,7 +10,7 @@ import {
   PIPELINE_CHART_HEADER,
 } from "@e2e/constants/map";
 import { openSamplePage } from "@e2e/utils/report";
-import { BrowserContext, expect, Page, test } from "@playwright/test";
+import { BrowserContext, expect, Page, test } from "@e2e/fixtures/test";
 
 const projectName = "floo Neptunium";
 

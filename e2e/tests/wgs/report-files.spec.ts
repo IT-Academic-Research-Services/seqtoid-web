@@ -6,7 +6,7 @@ import {
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { TRIM_PRIMER_FILENAME } from "@e2e/page-objects/upload-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import AdmZip = require("adm-zip");
 import { ProjectPage } from "../../page-objects/project-page";
 

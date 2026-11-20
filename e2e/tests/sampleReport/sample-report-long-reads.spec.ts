@@ -4,7 +4,7 @@ import {
   pipelineSectionTitlesLongReads,
   verifySectionTitles,
 } from "@e2e/utils/report";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 const sampleId = 26022;
 
 // These tests verify the ui displayed on the Table  for the sample report page

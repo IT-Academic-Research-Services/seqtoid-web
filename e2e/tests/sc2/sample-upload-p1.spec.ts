@@ -5,7 +5,7 @@ import {
 } from "@e2e/constants/common";
 import { ProjectPage } from "@e2e/page-objects/project-page";
 import { UploadPage } from "@e2e/page-objects/upload-page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 const TEST_TIMEOUT = 60 * 1000 * 15;
 

@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 import {
   testHistogramAppears,
   testTaxonInfo,

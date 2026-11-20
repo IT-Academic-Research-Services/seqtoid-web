@@ -5,7 +5,7 @@ import {
 } from "@e2e/constants/sample";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { UploadPage, REF_FILENAME } from "@e2e/page-objects/upload-page";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 
 const COMPLETE_LITERAL = "COMPLETE";

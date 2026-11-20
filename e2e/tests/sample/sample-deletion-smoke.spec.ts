@@ -4,7 +4,7 @@ import {
   SAMPLE_FILE_R2,
   SAMPLE_FILE_CT,
 } from "@e2e/constants/sample";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { ProjectPage, RUN_TYPES } from "../../page-objects/project-page";
 import { SamplesPage } from "../../page-objects/samples-page";
 import { UploadPage } from "../../page-objects/upload-page";

@@ -11,7 +11,7 @@ import {
   SARS_COV2_TRIM_PRIMER_FILENAME,
   WETLAB_PROTOCOL,
 } from "@e2e/page-objects/upload-page";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import AdmZip = require("adm-zip");
 import fastDiff = require("fast-diff");
 import { ProjectPage } from "../../page-objects/project-page";

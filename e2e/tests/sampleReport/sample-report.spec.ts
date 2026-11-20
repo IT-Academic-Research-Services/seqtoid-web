@@ -5,7 +5,7 @@ import {
   pipelineSectionTitles,
   verifySectionTitles,
 } from "@e2e/utils/report";
-import { expect, Page, test } from "@playwright/test";
+import { expect, Page, test } from "@e2e/fixtures/test";
 
 const SAMPLE_ID = 25307;
 const IFRAME = "appcues-container iframe";

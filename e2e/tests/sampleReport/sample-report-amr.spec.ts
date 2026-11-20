@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 const sampleId = 27169;
 
 test.describe("Sample report tests", () => {

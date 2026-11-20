@@ -8,7 +8,7 @@ import {
   SAMPLE_FILE_NO_HOST_1,
   SAMPLE_FILE_NO_HOST_2,
 } from "@e2e/constants/sample";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 import { UploadPage } from "../../page-objects/upload-page";
 

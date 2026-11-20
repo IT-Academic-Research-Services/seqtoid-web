@@ -1,5 +1,5 @@
 import { verifyDeleteAvailable, verifyDeleteDisabled } from "@e2e/utils/report";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 
 test.describe("My Illumina sample report delete tests", () => {
   const stagingSampleId = 25983;

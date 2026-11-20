@@ -13,7 +13,7 @@ import {
 } from "@e2e/constants/map";
 import { acceptCookies } from "@e2e/utils/page";
 import { openSamplePage } from "@e2e/utils/report";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 import { OVERALL, TEST_PROJECTS } from "../../constants/common";
 
 const BAR_LABEL_ID = "date-histogram";

@@ -1,5 +1,5 @@
 import { chooseBackgroundModel, verifyDownload } from "@e2e/utils/report";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 
 test.describe("Sample report download tests - Illumina", () => {
   const stagingSampleId = 25983;
