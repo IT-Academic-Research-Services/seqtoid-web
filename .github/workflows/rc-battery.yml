@@ -425,12 +425,12 @@ jobs:
             rm -f result.json
             if aws s3 cp --only-show-errors "$src" result.json 2> s3.err; then
               state="$(jq -r '.state // empty' result.json 2>/dev/null || true)"
-              digest="$(jq -r '.image_digest // empty' result.json 2>/dev/null || true)"
+              got_digest="$(jq -r '.image_digest // empty' result.json 2>/dev/null || true)"
               # A verdict for another build of this RC id is stale; keep waiting for this digest's.
-              if [ "$digest" = "$DIGEST" ]; then
+              if [ "$got_digest" = "$DIGEST" ]; then
                 case "$state" in succeeded|failed) echo "verdict: ${state}"; break ;; esac
               fi
-              echo "$(date -u +%H:%M:%S) ${src}: state '${state:-?}' (digest ${digest:0:19}); waiting"
+              echo "$(date -u +%H:%M:%S) ${src}: state '${state:-?}' (digest ${got_digest:0:19}); waiting"
             else
               if ! grep -q -E '\(404\)|NoSuchKey|Not Found' s3.err; then
                 err="$(tr '\n' ' ' < s3.err | cut -c1-200)"
