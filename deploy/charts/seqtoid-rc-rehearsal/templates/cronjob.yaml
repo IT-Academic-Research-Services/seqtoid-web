@@ -1,0 +1,103 @@
+{{- if include "seqtoid-rc-rehearsal.pinned" . }}
+{{- include "seqtoid-rc-rehearsal.require" . }}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" (toString .Values.image.digest)) }}
+{{- fail "image.digest must be sha256:<64 hex> (the RC pin carries it)" }}
+{{- end }}
+# One rehearsal per tick, idempotent across ticks: the orchestrator (RC image,
+# scripts/rc-battery/staging_rehearsal.rb) reads rc-rehearsal/<rc>/result.json first and does nothing
+# once it is terminal for this digest.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "seqtoid-rc-rehearsal.name" . }}
+  labels:
+    {{- include "seqtoid-rc-rehearsal.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rehearsal
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "seqtoid-rc-rehearsal.labels" . | nindent 8 }}
+        app.kubernetes.io/component: rehearsal
+    spec:
+      # Retries are the next tick's job (bounded by maxAttempts in result.json), not the Job's.
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            {{- include "seqtoid-rc-rehearsal.labels" . | nindent 12 }}
+            app.kubernetes.io/component: rehearsal
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          initContainers:
+            # Native sidecar (restartPolicy Always): runs for the life of the main container, then is
+            # stopped so the Job completes.
+            - name: redis
+              image: {{ .Values.redis.image | quote }}
+              restartPolicy: Always
+              args: ["--save", "", "--appendonly", "no", "--bind", "127.0.0.1"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: rehearsal
+              image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              # Plain Ruby, NOT the image entrypoint: no chamber, no Rails boot in this process.
+              command: ["bundle", "exec", "ruby", "scripts/rc-battery/staging_rehearsal.rb"]
+              env:
+                - name: AWS_REGION
+                  value: {{ .Values.region | quote }}
+                - name: RC_REHEARSAL_RC
+                  value: {{ .Values.pin.rc | quote }}
+                - name: RC_REHEARSAL_IMAGE_TAG
+                  value: {{ .Values.image.tag | toString | quote }}
+                - name: RC_REHEARSAL_IMAGE_DIGEST
+                  value: {{ .Values.image.digest | quote }}
+                - name: RC_REHEARSAL_SOURCE_CLUSTER
+                  value: {{ .Values.sourceCluster | quote }}
+                - name: RC_REHEARSAL_CLONE_PREFIX
+                  value: {{ .Values.clonePrefix | quote }}
+                - name: RC_REHEARSAL_INSTANCE_CLASS
+                  value: {{ .Values.instanceClass | quote }}
+                - name: RC_REHEARSAL_RESULTS_BUCKET
+                  value: {{ .Values.results.bucket | quote }}
+                - name: RC_REHEARSAL_RESULTS_PREFIX
+                  value: {{ .Values.results.prefix | quote }}
+                - name: RC_REHEARSAL_SSM_PREFIX
+                  value: {{ .Values.ssmPrefix | quote }}
+                - name: RC_REHEARSAL_RAILS_ENV
+                  value: {{ .Values.railsEnv | quote }}
+                - name: RC_REHEARSAL_MAX_ATTEMPTS
+                  value: {{ .Values.maxAttempts | toString | quote }}
+                - name: RC_REHEARSAL_WAIT_MINUTES
+                  value: {{ .Values.waitMinutes | toString | quote }}
+                - name: RC_REHEARSAL_REDIS_URL
+                  value: "redis://127.0.0.1:6379"
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+{{- end }}
