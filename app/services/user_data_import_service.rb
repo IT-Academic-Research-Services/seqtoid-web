@@ -291,12 +291,13 @@ class UserDataImportService
     end
   end
 
-  # Verifies every table imported (inserted + skipped) as many rows as the
-  # manifest declared. A shortfall means a table file was missing or truncated;
-  # we raise so the transaction rolls back instead of committing a partial import.
+  # Verifies every table accounted for (inserted + skipped as already imported + not imported because the
+  # user's existing row is kept, each reported in a warning) as many rows as the manifest declared. A shortfall
+  # means a table file was missing or truncated; we raise so the transaction rolls back instead of committing
+  # a partial import.
   def reconcile_counts!
     mismatches = @expected_counts.filter_map do |table, expected|
-      actual = @stats[table.to_sym] + @stats[:"#{table}_skipped"]
+      actual = @stats[table.to_sym] + @stats[:"#{table}_skipped"] + @stats[:"#{table}_kept_existing"]
       "#{table}: manifest=#{expected} imported=#{actual}" if actual != expected.to_i
     end
     return if mismatches.empty?
@@ -1272,11 +1273,36 @@ class UserDataImportService
     end
   end
 
+  # persisted_backgrounds is unique on (user_id, project_id). A user who already picked a background for one of
+  # these projects on this platform keeps that choice: the exported row is skipped and reported (never silent),
+  # and so is a second exported row for the same project. A row whose id is already the user's choice for the
+  # project is the same record from an earlier run of this export; it goes through so skip_existing resumes it.
   def stream_persisted_backgrounds
+    current = PersistedBackground.where(user_id: @new_user_id).pluck(:project_id, :id, :background_id)
+                                 .to_h { |project_id, id, background_id| [project_id, [id, background_id]] }
+    seen_projects = Set.new
     stream_insert("persisted_backgrounds", PersistedBackground) do |row|
+      user_id = map_user_id(row[:user_id])
+      if user_id == @new_user_id
+        project_id = row[:project_id]
+        kept_id, kept_background_id = current[project_id]
+        reason = if kept_id && kept_id != row[:id]
+                   "the user already has one for this project (background #{kept_background_id.inspect}), which is kept"
+                 elsif seen_projects.include?(project_id)
+                   "the export has more than one for this project; the first is kept"
+                 end
+        if reason
+          @stats[:persisted_backgrounds_kept_existing] += 1
+          @warnings << "Background choice #{row[:id]} for project #{project_id} not imported " \
+                       "(exported background #{row[:background_id].inspect}): #{reason}."
+          next nil
+        end
+        seen_projects << project_id
+      end
+
       {
         id: row[:id],
-        user_id: map_user_id(row[:user_id]),
+        user_id: user_id,
         project_id: row[:project_id],
         background_id: row[:background_id],
         created_at: ts(row[:created_at]),
