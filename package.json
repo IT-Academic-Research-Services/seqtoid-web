@@ -115,7 +115,7 @@
     "webpack-merge": "^5.10.0"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.726.1",
+    "@aws-sdk/client-s3": "3.1166.0",
     "@biowasm/aioli": "^3.1.0",
     "@czi-sds/components": "^18.1.2",
     "@emotion/css": "^11.1.3",
