@@ -79,6 +79,9 @@ jobs:
       # Consumed by gauntlet.config.ts to retarget the whole suite at the ephemeral candidate env.
       # Empty for the built-in envs, whose configs hardcode their own baseURL and ignore this.
       GAUNTLET_BASE_URL: ${{inputs.base-url}}
+      # FJ-1265: dev WAF CI header. e2e/fixtures/test.ts sends it only to https://dev.seqtoid.org and
+      # *.dev.seqtoid.org, so for any other target it is inert.
+      E2E_WAF_CI_KEY: ${{secrets.DEV_WAF_CI_KEY}}
       BASESPACE_USERNAME: ${{secrets.BASESPACE_USERNAME}}
       BASESPACE_PASSWORD: ${{secrets.BASESPACE_PASSWORD}}
       # Slack is optional: the notify steps skip when the webhook is not provisioned instead of

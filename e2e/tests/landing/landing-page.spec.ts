@@ -11,7 +11,7 @@ import {
   VISUALIZATIONS,
 } from "@e2e/constants/common";
 import { getByDataName } from "@e2e/utils/selectors";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 const href = "href";
 // This is a test that verify various ui elements  on the public and my data page

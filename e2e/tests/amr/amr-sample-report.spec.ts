@@ -14,7 +14,7 @@ import {
   numSequencesInDownloadFasta,
   numSequencesInDownloadFixtureFasta,
 } from "@e2e/utils/download";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 import AdmZip from "adm-zip";
 
 const PROJECT_NAME_SUFFIX = "ecoli_cfxA_sample_report";

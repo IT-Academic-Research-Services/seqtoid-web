@@ -3,7 +3,7 @@ import {
   testTaxonInfo,
   testTaxonLinks,
 } from "@e2e/utils/taxon-sidebar";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 
 const sampleId = 25307;
 

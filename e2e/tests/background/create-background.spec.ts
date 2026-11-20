@@ -1,5 +1,5 @@
 import { WORKFLOWS } from "@e2e/constants/common";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 import { getAlphaNumericString } from "@e2e/utils/common";
 import { UploadPage } from "@e2e/page-objects/upload-page";

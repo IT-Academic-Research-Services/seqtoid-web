@@ -1,5 +1,5 @@
 import path from "path";
-import { expect, Page, test } from "@playwright/test";
+import { expect, Page, test } from "@e2e/fixtures/test";
 import dotenv from "dotenv";
 import { kebabCase } from "lodash";
 import { TEST_PROJECTS } from "../../constants/common";

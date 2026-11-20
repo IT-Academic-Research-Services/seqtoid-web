@@ -9,7 +9,7 @@ import {
   testUploadSample,
   uploadInvalidSampleFiles,
 } from "@e2e/utils/upload";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 
 const sampleType = WORKFLOWS.WGS.toLowerCase();
 const ENV = (process.env.NODE_ENV as string) || "";

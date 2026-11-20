@@ -1,6 +1,6 @@
 import { HELP_CENTER_HOST, WORKFLOWS } from "@e2e/constants/common";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 
 /*

@@ -7,7 +7,7 @@ import {
 import { ProjectPage } from "@e2e/page-objects/project-page";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 
 // #region Expected data
 const WGS_SAMPLE_FILES = [SAMPLE_FILE_NO_HOST_1, SAMPLE_FILE_NO_HOST_2];

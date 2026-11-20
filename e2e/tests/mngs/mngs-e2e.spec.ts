@@ -14,7 +14,7 @@ import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
 import { AssertionCollector } from "@e2e/utils/assertion-collector";
 import { getUpperAndLowerBounds } from "@e2e/utils/common";
-import { Download, expect, test } from "@playwright/test";
+import { Download, expect, test } from "@e2e/fixtures/test";
 import { parse } from "csv-parse";
 import * as fs from "fs/promises";
 import { ProjectPage } from "../../page-objects/project-page";

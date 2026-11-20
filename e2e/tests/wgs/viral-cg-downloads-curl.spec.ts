@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import { WORKFLOWS } from "@e2e/constants/common";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import moment = require("moment-timezone");
 import { ProjectPage } from "../../page-objects/project-page";
 const CONSENSUS_GENOME = "Consensus Genome";

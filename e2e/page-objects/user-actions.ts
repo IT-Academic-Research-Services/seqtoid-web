@@ -1,7 +1,7 @@
 import { SEQUENCING_PLATFORMS } from "@e2e/constants/common";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { UploadPage } from "@e2e/page-objects/upload-page";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 
 type runOptions = {
   hostOrganism?: string;

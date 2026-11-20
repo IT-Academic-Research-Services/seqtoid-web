@@ -9,7 +9,7 @@ import {
   SEARCH_PUBLIC,
 } from "@e2e/constants/common";
 import { SAMPLE_NAME_SELECTOR } from "@e2e/constants/filter";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 const projectName = "AMR beta test";
 const sampleName = "RNAEnr_10e4_viralcopies_RVOPv2_iSeq";

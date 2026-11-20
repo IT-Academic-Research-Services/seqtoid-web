@@ -11,7 +11,7 @@ import {
 import { ProjectPage } from "@e2e/page-objects/project-page";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { UploadPage } from "@e2e/page-objects/upload-page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 import { kebabCase } from "lodash";
 
 const SAMPLE_FILES = [SAMPLE_FILE_1_PAIRED_R1, SAMPLE_FILE_1_PAIRED_R2];

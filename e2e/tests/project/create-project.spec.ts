@@ -2,7 +2,7 @@ import { HELP_CENTER_HOST, QA_TEST_PROJECTS } from "@e2e/constants/common";
 import { PROJECT_NAME_NOT_AVAILABLE_ERROR } from "@e2e/constants/upload";
 import { stubRequest } from "@e2e/utils/api";
 import { acceptCookies } from "@e2e/utils/page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 const baseUrl = process.env.BASEURL;
 const projectApi = "projects.json";

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 test.describe("Sample Message tests", () => {
   const sampleMessage = "sample-message";

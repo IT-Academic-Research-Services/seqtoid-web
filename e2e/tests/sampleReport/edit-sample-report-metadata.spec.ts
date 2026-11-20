@@ -1,5 +1,5 @@
 import { acceptCookies } from "@e2e/utils/page";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 import { kebabCase } from "lodash";
 const sampleId = 25307;
 const INVALID_DATES = ["date"];

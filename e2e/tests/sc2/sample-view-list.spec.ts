@@ -5,7 +5,7 @@ import {
   SAMPLE_FILE_CT20K,
 } from "@e2e/constants/sample";
 import { setupSamples } from "@e2e/page-objects/user-actions";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 
 const CT20K_SAMPLE_FILES = [SAMPLE_FILE_CT20K];

@@ -5,7 +5,7 @@ import {
 } from "@e2e/constants/sample";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 
 const SAMPLE_FILES = [SAMPLE_FILE_NO_HOST_1, SAMPLE_FILE_NO_HOST_2];

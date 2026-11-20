@@ -7,7 +7,7 @@ import {
 import { ProjectPage } from "@e2e/page-objects/project-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
 import moment from "moment-timezone";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 
 const PROJECT_NAME_SUFFIX = "ecoli_aadS";
 

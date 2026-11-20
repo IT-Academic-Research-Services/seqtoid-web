@@ -7,7 +7,7 @@ import {
 } from "@e2e/constants/sample";
 import { SamplesPage } from "@e2e/page-objects/samples-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import AdmZip = require("adm-zip");
 import moment = require("moment-timezone");
 import * as tar from "tar";

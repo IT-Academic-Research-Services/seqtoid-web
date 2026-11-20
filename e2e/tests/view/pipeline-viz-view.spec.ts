@@ -1,5 +1,5 @@
 import { acceptCookies } from "@e2e/utils/page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 const baseUrl = (process.env.BASEURL as string) || "";
 const sampleId = "25609";
