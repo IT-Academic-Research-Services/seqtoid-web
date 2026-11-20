@@ -406,15 +406,19 @@ RSpec.describe "Samples (coverage3) request", type: :request do
   describe "GET /samples/:id/report_csv" do
     before { sign_in @joe }
 
-    it "sends the CSV report produced by PipelineReportService" do
+    it "sends the CSV report with human-readable tax levels" do
       sample = sample_for(@joe)
       create(:pipeline_run, sample: sample)
-      allow(PipelineReportService).to receive(:call).and_return("a,b,c\n1,2,3\n")
+      allow(PipelineReportService).to receive(:call).and_return(
+        "tax_id,tax_level,nt_rpm\n570,2,19897461153.095\n573,1,999915.088732275\n"
+      )
 
       get "/samples/#{sample.id}/report_csv"
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("a,b,c")
+      rows = CSV.parse(response.body, headers: true)
+      expect(rows.pluck("tax_level")).to eq(["genus", "species"])
+      expect(rows.pluck("nt_rpm")).to eq(["19897461153.095", "999915.088732275"])
     end
   end
 

@@ -6,13 +6,11 @@ import {
   get,
   getOr,
   has,
-  head,
   isEmpty,
   isNumber,
   isString,
   map,
   snakeCase,
-  tail,
 } from "lodash/fp";
 import Papa from "papaparse";
 import { CATEGORIES } from "~/components/ui/labels/PathogenLabel";
@@ -46,14 +44,43 @@ import { IdMap } from "./objectUtil";
 
 // Assumes that the CSV has headers.
 export const parseCSVBlob = (blob: string) => {
-  const csvData = Papa.parse(blob, {
+  const { data: csvData } = Papa.parse<string[]>(blob, {
     skipEmptyLines: true,
-  }).data;
+  });
 
   return {
-    headers: head(csvData),
-    rows: tail(csvData),
+    headers: csvData[0] || [],
+    rows: csvData.slice(1),
   };
+};
+
+/*
+ * Filter rows from the canonical server-generated CSV by the taxa currently
+ * retained by the report UI, preserving the server's original cell values.
+ */
+export const filterMngsReportCsvByTaxa = (
+  reportCsv: string,
+  filteredReportData: $TSFixMe[],
+) => {
+  const includedTaxIds = new Set<string>();
+  filteredReportData.forEach(genus => {
+    includedTaxIds.add(String(genus.taxId));
+    (genus.filteredSpecies || []).forEach((species: $TSFixMe) => {
+      includedTaxIds.add(String(species.taxId));
+    });
+  });
+
+  const { headers, rows } = parseCSVBlob(reportCsv);
+  if (!headers?.length) return "";
+  const taxIdColumn = headers.indexOf("tax_id");
+  if (taxIdColumn < 0) {
+    throw new Error("Report CSV is missing the tax_id column");
+  }
+
+  return Papa.unparse([
+    headers,
+    ...rows.filter(row => includedTaxIds.has(row[taxIdColumn])),
+  ]);
 };
 
 const escapeFormulae = (datum: string) => {
@@ -363,6 +390,5 @@ export const computeMngsReportTableValuesForCSV = (
       ),
     );
   }
-
   return [[csvHeaders.join()], csvRows];
 };

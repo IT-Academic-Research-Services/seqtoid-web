@@ -13,7 +13,9 @@ export interface PrimaryHeaderControlsProps {
   backgroundId: number | null;
   currentRun?: WorkflowRun | PipelineRun | null;
   currentTab: CurrentTabSample;
-  getDownloadReportTableWithAppliedFiltersLink: () => string;
+  getDownloadReportTableWithAppliedFiltersLink: (
+    reportCsvUrl: string,
+  ) => Promise<string>;
   hasAppliedFilters: boolean;
   onDeleteRunSuccess: (sample: Sample) => void;
   reportMetadata: ReportMetadata;

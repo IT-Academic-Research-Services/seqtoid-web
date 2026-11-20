@@ -68,6 +68,14 @@ jest.mock("~/api/persisted_backgrounds", () => ({
 }));
 
 const mockTrackEvent = jest.fn();
+/* Mock the canonical CSV request used only by the filtered-download action. */
+const mockGetApi = jest.fn();
+jest.mock("~/api/core", () => ({
+  __esModule: true,
+  ...jest.requireActual("~/api/core"),
+  get: (...args: $TSFixMe[]) => mockGetApi(...args),
+}));
+
 jest.mock("~/api/analytics", () => ({
   __esModule: true,
   useTrackEvent: () => mockTrackEvent,
@@ -95,6 +103,8 @@ jest.mock("~/components/utils/csv", () => ({
     [["row-value"]],
   ]),
   createCSVObjectURL: jest.fn(() => "blob:csv-url"),
+  createCSVRowForAppliedFilters: jest.fn(() => ["Applied filters"]),
+  filterMngsReportCsvByTaxa: jest.fn(reportCsv => reportCsv),
 }));
 
 // -------------------------------------------------------------- children ---
@@ -240,6 +250,9 @@ beforeEach(() => {
     owned_backgrounds: [{ id: 5, name: "Owned BG", mass_normalized: false }],
     other_backgrounds: [{ id: 6, name: "Other BG", mass_normalized: true }],
   });
+  mockGetApi.mockResolvedValue(
+    "tax_id,tax_level,nt_rpm\n300,2,100\n301,1,200\n",
+  );
   mockedGetSampleReportData.mockResolvedValue({
     counts: {
       // SPECIES_LEVEL_INDEX is 1, GENUS_LEVEL_INDEX is 2.
@@ -645,12 +658,30 @@ describe("SampleView -- pipeline version selection", () => {
 });
 
 describe("SampleView -- report actions", () => {
+  /* Await CSV fetching and URL creation, matching the callback's async contract. */
   it("builds a CSV object URL for the filtered report", async () => {
     await renderSampleView();
 
-    const url =
-      childProps.header.getDownloadReportTableWithAppliedFiltersLink();
+    const originalCreateObjectURL = (URL as $TSFixMe).createObjectURL;
+    (URL as $TSFixMe).createObjectURL = jest.fn(() => "blob:csv-url");
+    let url: string;
+    try {
+      url = await childProps.header.getDownloadReportTableWithAppliedFiltersLink(
+        "/samples/1/report_csv?background_id=5&pipeline_version=8.0",
+      );
+    } finally {
+      if (originalCreateObjectURL) {
+        (URL as $TSFixMe).createObjectURL = originalCreateObjectURL;
+      } else {
+        delete (URL as $TSFixMe).createObjectURL;
+      }
+    }
+
     expect(url).toBe("blob:csv-url");
+    expect(mockGetApi).toHaveBeenCalledWith(
+      "/samples/1/report_csv?background_id=5&pipeline_version=8.0",
+      { responseType: "text" },
+    );
   });
 
   it("switches the report view and tracks the click", async () => {

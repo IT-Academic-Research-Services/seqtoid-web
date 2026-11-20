@@ -21,7 +21,9 @@ interface SampleViewHeaderProps {
   backgroundId: number | null;
   currentRun?: WorkflowRun | PipelineRun | null;
   currentTab: CurrentTabSample;
-  getDownloadReportTableWithAppliedFiltersLink: () => string;
+  getDownloadReportTableWithAppliedFiltersLink: (
+    reportCsvUrl: string,
+  ) => Promise<string>;
   hasAppliedFilters: boolean;
   onDetailsClick: () => void;
   onPipelineVersionChange: (newPipelineVersion: string) => void;
