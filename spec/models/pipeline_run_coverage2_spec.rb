@@ -322,7 +322,7 @@ describe PipelineRun, type: :model do
   describe "#db_load_contig_counts" do
     let(:pr) { create(:pipeline_run, sample: sample, pipeline_version: "6.0.0") }
 
-    it "extracts species-level contig2taxid and delegates to db_load_contigs" do
+    it "extracts species- and genus-level contig2taxid and delegates to db_load_contigs" do
       json = [
         { "tax_level" => TaxonCount::TAX_LEVEL_SPECIES, "count_type" => "NT", "taxid" => 573, "contig_counts" => { "contig_1" => 4 } },
         { "tax_level" => TaxonCount::TAX_LEVEL_GENUS, "count_type" => "NT", "taxid" => 570, "contig_counts" => { "contig_1" => 4 } },
@@ -330,7 +330,7 @@ describe PipelineRun, type: :model do
       path = Rails.root.join("tmp", "cc_#{SecureRandom.hex(4)}.json").to_s
       File.write(path, json.to_json)
       allow(PipelineRun).to receive(:download_file_with_retries).and_return(path)
-      expected_arg = { "contig_1" => { "NT" => 573 } }
+      expected_arg = { "contig_1" => { "NT" => { species: 573, genus: 570 } } }
       expect(pr).to receive(:db_load_contigs).with(expected_arg)
       pr.db_load_contig_counts
     end
