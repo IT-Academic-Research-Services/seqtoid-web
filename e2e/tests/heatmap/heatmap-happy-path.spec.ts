@@ -1,5 +1,5 @@
 import { WORKFLOWS } from "@e2e/constants/common";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 import { ProjectPage } from "../../page-objects/project-page";
 
 let projectPage = null;

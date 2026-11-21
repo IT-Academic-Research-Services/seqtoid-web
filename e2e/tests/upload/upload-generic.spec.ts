@@ -15,7 +15,7 @@ import {
   uploadRefSequence,
   uploadSampleFiles,
 } from "@e2e/utils/upload";
-import { expect, Locator, Page, test } from "@playwright/test";
+import { expect, Locator, Page, test } from "@e2e/fixtures/test";
 
 type WORKFLOW_KEYS = keyof typeof WORKFLOWS;
 type WorkflowType = (typeof WORKFLOWS)[WORKFLOW_KEYS];

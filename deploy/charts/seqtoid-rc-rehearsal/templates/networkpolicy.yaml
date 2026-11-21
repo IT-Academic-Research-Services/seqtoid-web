@@ -1,0 +1,33 @@
+{{- if and .Values.enabled .Values.networkPolicy.enabled }}
+{{- include "seqtoid-rc-rehearsal.require" . }}
+# Rehearsal pod egress: DNS, MySQL to the VPC (the clone), HTTPS (RDS/S3/SSM/STS APIs). Nothing else --
+# in particular not the environment's Redis (6379) or the instance metadata service. The Redis the
+# Rails child uses is the in-pod sidecar (localhost, not subject to this policy).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "seqtoid-rc-rehearsal.name" . }}
+  labels:
+    {{- include "seqtoid-rc-rehearsal.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "seqtoid-rc-rehearsal.name" . }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    - ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.vpcCidr | quote }}
+      ports:
+        - { protocol: TCP, port: 3306 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["169.254.169.254/32"]
+      ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}

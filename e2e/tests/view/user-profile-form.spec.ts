@@ -1,4 +1,4 @@
-import { expect, Page, test } from "@playwright/test";
+import { expect, Page, test } from "@e2e/fixtures/test";
 
 const COMPLETE_SETUP_BTN = "complete-setup-btn";
 const MAX_USERNAME_LENGTH = 128; // 127 characters for First and Last Name + 1 space

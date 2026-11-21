@@ -43,7 +43,7 @@ import {
   VISIBILITY,
 } from "@e2e/constants/filter";
 import { acceptCookies } from "@e2e/utils/page";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 
 const sampleType = METAGENOMICS;
 const PLUS_CIRCLE = "plus-circle";

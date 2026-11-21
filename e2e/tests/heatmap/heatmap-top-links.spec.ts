@@ -1,7 +1,7 @@
 import { WORKFLOWS } from "@e2e/constants/common";
 import { HeatmapPage } from "@e2e/page-objects/heatmap-page";
 import { ProjectPage } from "@e2e/page-objects/project-page";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 
 let heatmapPage = null;
 let projectPage = null;

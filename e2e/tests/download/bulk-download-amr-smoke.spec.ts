@@ -1,5 +1,5 @@
 import { WORKFLOWS } from "@e2e/constants/common";
-import { test } from "@playwright/test";
+import { test } from "@e2e/fixtures/test";
 import { DownloadsPage } from "../../page-objects/downloads-page";
 import { DOWNLOAD_TYPES } from "../../page-objects/project-page";
 

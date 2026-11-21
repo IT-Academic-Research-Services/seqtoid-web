@@ -13,7 +13,7 @@ import {
   SHORT_READS_THRESHOLDS,
   LONG_READS_THRESHOLDS,
 } from "@e2e/constants/sample";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "@e2e/fixtures/test";
 import { SamplesPage } from "../../page-objects/samples-page";
 import { ProjectPage } from "@e2e/page-objects/project-page";
 

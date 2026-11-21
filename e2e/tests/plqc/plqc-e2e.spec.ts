@@ -2,7 +2,7 @@ import { SEQUENCING_PLATFORMS, WORKFLOWS } from "@e2e/constants/common";
 import { DownloadsPage } from "@e2e/page-objects/downloads-page";
 import { setupSamples } from "@e2e/page-objects/user-actions";
 import { getUpperAndLowerBounds } from "@e2e/utils/common";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "@e2e/fixtures/test";
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as tar from "tar";

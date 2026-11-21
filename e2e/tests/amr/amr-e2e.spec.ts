@@ -11,7 +11,7 @@ import {
 } from "@e2e/constants/sample";
 import { setupSamples } from "@e2e/page-objects/user-actions";
 import { AssertionCollector } from "@e2e/utils/assertion-collector";
-import { test, expect, Download } from "@playwright/test";
+import { test, expect, Download } from "@e2e/fixtures/test";
 import fastDiff = require("fast-diff");
 import { ProjectPage } from "../../page-objects/project-page";
 import {
