@@ -43,8 +43,6 @@ gem 'data_migrate'
 gem 'health_check', '~> 3.1.0'
 # Build JSON APIs with ease. Read more: https://github.com/rails/jbuilder
 gem 'jbuilder', '~> 2.11'
-# Logger
-gem 'lograge'
 gem 'multipart-post'
 gem 'silencer'
 # elasticsearch
@@ -135,7 +133,8 @@ gem 'warden', '~> 1.2'
 gem "rack-cors"
 
 # For structured logging
-gem 'ougai'
+gem 'rails_semantic_logger'
+gem 'semantic_logger_datadog'
 
 # For loading all files in a directory
 gem 'require_all'
