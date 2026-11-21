@@ -36,8 +36,7 @@ RSpec.describe Auth0Controller, type: :controller do
     # logout -> auth0_signout_url defaults its arg to root_url, which the
     # anonymous route table does not define. Stub the URL so the logout branches
     # under test redirect to a stable, assertable Auth0 signout URL.
-    allow_any_instance_of(Auth0Helper).to receive(:auth0_signout_url)
-      .and_return("https://auth0.example.test/v2/logout")
+    allow_any_instance_of(Auth0Helper).to receive(:auth0_signout_url).and_return("https://auth0.example.test/v2/logout")
   end
 
   # Deny-by-default gate: the dev-only sign-in requires BOTH the development Rails
@@ -170,7 +169,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "logs out (redirects to signout) when the error is login_required" do
       request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:ignored, "also ignored")
       request.env['omniauth.error.type'] = :login_required
+      expect(LogUtil).not_to receive(:log_exception)
       expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
       #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
@@ -183,7 +184,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "renders the whitelisted explanation for a known unauthorized error_description" do
       request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized, "password_expired")
       request.env['omniauth.error.type'] = :unauthorized
+      expect(LogUtil).not_to receive(:log_exception)
       expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
       #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
@@ -196,7 +199,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "falls back to the default explanation for an unknown unauthorized error_description" do
       request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:unauthorized, "some_other_reason")
       request.env['omniauth.error.type'] = :unauthorized
+      expect(LogUtil).not_to receive(:log_exception)
       expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
       #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
@@ -209,7 +214,9 @@ RSpec.describe Auth0Controller, type: :controller do
     it "routes any other error type through failure -> logout" do
       request.env['omniauth.error'] = OmniAuth::Strategies::OAuth2::CallbackError.new(:access_denied, "nope")
       request.env['omniauth.error.type'] = :access_denied
+      expect(LogUtil).not_to receive(:log_exception)
       expect(LogUtil).not_to receive(:log_error)
+      expect(LogUtil).not_to receive(:log_message)
 
       # NOTE: params.error and params.error_description normally automatically populate omniauth.error and omniauth.error.type, via OmniAuth internal logic, but not in tests.
       #       So params.error and params.error_description are effectively ignored in tests; but in a live system, they are the source of truth
@@ -221,6 +228,8 @@ RSpec.describe Auth0Controller, type: :controller do
 
     it "logs an error and renders the default message when params.error_description is missing" do
       request.env['omniauth.error.type'] = :unauthorized
+      expect(LogUtil).not_to receive(:log_exception)
+      expect(LogUtil).not_to receive(:log_message)
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error_type or missing/invalid error.",
         exception: nil,
@@ -242,6 +251,8 @@ RSpec.describe Auth0Controller, type: :controller do
       err = OmniAuth::Strategies::OAuth2::CallbackError.new("unauthorized", "some reason", "some uri")
       request.env['omniauth.error'] = err
       puts("NAME[#{OmniAuth::Strategies::OAuth2::CallbackError.name}]")
+      expect(LogUtil).not_to receive(:log_exception)
+      expect(LogUtil).not_to receive(:log_message)
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error_type or missing/invalid error.",
         exception: err,
@@ -266,6 +277,8 @@ RSpec.describe Auth0Controller, type: :controller do
       err = StandardError.new("unexpected_error")
       request.env['omniauth.error.type'] = :unauthorized
       request.env['omniauth.error'] = err
+      expect(LogUtil).not_to receive(:log_exception)
+      expect(LogUtil).not_to receive(:log_message)
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error_type or missing/invalid error.",
         exception: err,
@@ -284,6 +297,8 @@ RSpec.describe Auth0Controller, type: :controller do
     end
 
     it "logs an error and routes to failure when the error type is entirely missing" do
+      expect(LogUtil).not_to receive(:log_exception)
+      expect(LogUtil).not_to receive(:log_message)
       expect(LogUtil).to receive(:log_error).with(
         "omniauth_failure called with missing error_type or missing/invalid error.",
         exception: nil,

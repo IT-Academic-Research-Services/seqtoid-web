@@ -77,6 +77,15 @@ module Czid
     config.x.constants.default_background = Integer(ENV.fetch("DEFAULT_BACKGROUND_ID", "26"))
 
     ActiveRecord::Migration.verbose = false
+
+    config.log_level = ENV.fetch("LOG_LEVEL", ENV.fetch("RAILS_LOG_LEVEL", "info")).to_sym
+
+    # Logging unpermitted_parameters sometimes causes infinite-recursion when JSON serializes the params.
+    # IE: ActionController::Base and ActionDispatch::Request reference each other
+    # config.action_controller.action_on_unpermitted_parameters = false
+
+    config.active_record.verbose_query_logs = false
+    config.colorize_logging = false
   end
 end
 

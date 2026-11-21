@@ -4,58 +4,82 @@ require "rails_helper"
 
 RSpec.describe "config/initializers/active_record_logging.rb" do
   describe "ActiveRecord::LogSubscriber#sql" do
-    let(:subscriber) { ActiveRecord::LogSubscriber.new }
-
-    def build_event(name, sql: "SELECT 1")
-      ActiveSupport::Notifications::Event.new(
-        "sql.active_record",
-        Time.current,
-        Time.current,
-        "event_id",
-        { name: name, sql: sql }
+    let(:logger) { SemanticLogger["LoggingTest"] }
+    let(:log_io) { StringIO.new }
+    let!(:appender) do
+      SemanticLogger.add_appender(
+        io: log_io,
+        level: :debug,
+        formatter: ::Logging::DEFAULT_FORMATTER,
+        filter: lambda(&Logging.method(:filter))
       )
     end
 
-    it "suppresses 'AppConfig Load' events from being logged" do
-      event = build_event("AppConfig Load", sql: "SELECT `app_configs`.* FROM `app_configs`")
-      expect(subscriber).not_to receive(:old_sql)
+    after do
+      SemanticLogger.remove_appender(appender)
+    end
 
-      subscriber.sql(event)
+    around(:each) do |example|
+      SemanticLogger.silence(:debug) do
+        example.run
+      end
+    end
+
+    it "suppresses 'AppConfig Load' events from being logged" do
+      logger.debug("AppConfig Load", sql: "SELECT `app_configs`.* FROM `app_configs`")
+      SemanticLogger.flush
+
+      expect(log_io.string).to be_blank
     end
 
     it "suppresses 'ActiveRecord::SchemaMigration Load' events from being logged" do
-      event = build_event("ActiveRecord::SchemaMigration Load", sql: "SELECT `schema_migrations`.* FROM `schema_migrations`")
-      expect(subscriber).not_to receive(:old_sql)
+      logger.debug("ActiveRecord::SchemaMigration Load", sql: "SELECT `foo`.* FROM `foo`")
+      SemanticLogger.flush
 
-      subscriber.sql(event)
+      expect(log_io.string).to be_blank
     end
 
     it "suppresses 'ActiveRecord::InternalMetadata Load' events from being logged" do
-      event = build_event("ActiveRecord::InternalMetadata Load", sql: "SELECT `ar_internal_metadata`.* FROM `ar_internal_metadata`")
-      expect(subscriber).not_to receive(:old_sql)
+      logger.debug("ActiveRecord::InternalMetadata Load", sql: "SELECT `ar_internal_metadata`.* FROM `ar_internal_metadata`")
+      SemanticLogger.flush
 
-      subscriber.sql(event)
+      expect(log_io.string).to be_blank
     end
 
     it "suppresses events whose SQL matches /schema_migrations/" do
-      event = build_event("SQL", sql: "SELECT version FROM schema_migrations")
-      expect(subscriber).not_to receive(:old_sql)
+      logger.debug("SQL", sql: "SELECT version FROM schema_migrations")
+      SemanticLogger.flush
 
-      subscriber.sql(event)
+      expect(log_io.string).to be_blank
     end
 
     it "delegates queries with other names to old_sql" do
-      event = build_event("User Load", sql: "SELECT `users`.* FROM `users`")
-      expect(subscriber).to receive(:old_sql).with(event)
+      logger.debug("User Load", sql: "SELECT `users`.* FROM `users`")
+      SemanticLogger.flush
 
-      subscriber.sql(event)
+      actual = JSON.parse(log_io.string, symbolize_names: true)
+      expect(actual).to include(name: "LoggingTest",
+                                application: "czid",
+                                environment: "test",
+                                level: "debug",
+                                message: "User Load",
+                                payload: { sql: "SELECT `users`.* FROM `users`" })
+      expect(actual).to include(:host)
+      expect(actual).not_to include(:named_tags)
     end
 
     it "delegates queries without a name to old_sql when not matching schema_migrations" do
-      event = build_event(nil, sql: "SELECT 1")
-      expect(subscriber).to receive(:old_sql).with(event)
+      logger.debug(nil, sql: "SELECT 1")
+      SemanticLogger.flush
 
-      subscriber.sql(event)
+      actual = JSON.parse(log_io.string, symbolize_names: true)
+      expect(actual).to include(name: "LoggingTest",
+                                application: "czid",
+                                environment: "test",
+                                level: "debug",
+                                payload: { sql: "SELECT 1" })
+      expect(actual).to include(:host)
+      expect(actual).not_to include(:message, :named_tags)
     end
   end
 

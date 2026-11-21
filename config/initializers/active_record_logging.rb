@@ -2,22 +2,15 @@
 
 require './lib/logging'
 
-class ActiveRecord::LogSubscriber
-  alias old_sql sql
+Logging.add_filter(lambda { |log|
+  return false if log.payload&.dig(:sql) =~ /schema_migrations/
+  # return false if log.message == 'DataMigrate::DataSchemaMigration Load'
+  return false if log.message == 'ActiveRecord::SchemaMigration Load'
+  return false if log.message == 'ActiveRecord::InternalMetadata Load'
+  return false if log.message == 'AppConfig Load'
 
-  def sql(event)
-    payload = event.payload
-
-    # Filter out schema migrations and internal metadata spam
-    # return if payload[:name] == 'DataMigrate::DataSchemaMigration Load'
-    return if payload[:name] == 'ActiveRecord::SchemaMigration Load'
-    return if payload[:name] == 'ActiveRecord::InternalMetadata Load'
-    return if payload[:name] == 'AppConfig Load'
-    return if payload[:sql] =~ /schema_migrations/
-
-    old_sql(event)
-  end
-end
+  true
+})
 
 class ActiveRecord::Migration
   alias original_write write

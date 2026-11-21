@@ -23,9 +23,13 @@ if ENV['SENTRY_DSN_BACKEND']
     #   '[Transport] Sending envelope with items [sessions]  to Sentry'
     # NOTE: config.debug _should_ filter some of these, but it doesn't, so we manually filter them below, via add_filter()
     config.debug = false
-    # TODO: create a child logger of the Root (Ougai) logger, but with level 'info'
-    config.sdk_logger.local_level = :info
-    Logging.add_filter(->(data) { !data[:msg]&.include?(' because traces_sampler returned 0 or false') && !data[:msg]&.include?('Sending envelope with items [sessions]  to Sentry') })
+    # TODO: create a child logger of the Root logger, but with level 'info'
+    Logging.add_filter(lambda { |log|
+      return false if log.message =~ /Discarding .* transaction .* because traces_sampler returned 0 or false/
+      return false if log.message =~ /Sending envelope with items .* to Sentry/
+
+      true
+    })
 
     # sentry-rails auto-instruments Rack and controllers; no manual middleware
     # insert is required (raven's Raven::Rack is gone).

@@ -12,6 +12,26 @@ require 'rails_helper'
 RSpec.describe "BulkDownloads request", type: :request do
   create_users
 
+  let(:log_io) { StringIO.new }
+  let!(:appender) do
+    SemanticLogger.add_appender(
+      io: log_io,
+      level: :debug,
+      formatter: ::Logging::DEFAULT_FORMATTER,
+      filter: lambda(&Logging.method(:filter))
+    )
+  end
+
+  around(:each) do |example|
+    SemanticLogger.silence(:debug) do
+      example.run
+    end
+  end
+
+  after do
+    SemanticLogger.remove_appender(appender)
+  end
+
   describe "GET /bulk_downloads.json (index)" do
     context "when not signed in" do
       it "returns 401 Not Authenticated for the JSON endpoint (does not leak data)" do
@@ -140,13 +160,49 @@ RSpec.describe "BulkDownloads request", type: :request do
     end
     let(:valid_token) { bulk_download.access_token }
 
-    describe "POST /bulk_downloads/:id/progress/:access_token" do
+    describe "POST /bulk_downloads/:id/progress/:access_token redacts the access-token" do
       it "updates progress with a valid token (no session required)" do
+        SemanticLogger.flush
+        log_io.reopen("")
         post "/bulk_downloads/#{bulk_download.id}/progress/#{valid_token}", params: { progress: 0.42 }
+        SemanticLogger.flush
 
         expect(response).to have_http_status(:ok)
         expect(JSON.parse(response.body)["status"]).to eq("success")
         expect(bulk_download.reload.progress).to be_within(0.001).of(0.42)
+
+        actual = log_io.string.split("\n").map { |line| JSON.parse(line, symbolize_names: true) }
+        expect(actual.length).to be >= 8
+        expect(actual[0]).to include({
+                                       level: "debug",
+                                       message: "Started",
+                                       payload: hash_including(path: "/bulk_downloads/#{bulk_download.id}/progress/[REDACTED]"),
+                                       http: hash_including(url: "http://www.example.com/bulk_downloads/#{bulk_download.id}/progress/[REDACTED]"),
+                                       request_id: request.request_id,
+                                     })
+        expect(actual[1]).to include({
+                                       name: "BulkDownloadsController",
+                                       level: "debug",
+                                       message: "Processing #progress_with_token",
+                                       http: hash_including(url: "http://www.example.com/bulk_downloads/#{bulk_download.id}/progress/[REDACTED]"),
+                                       request_id: request.request_id,
+                                     })
+        expect(actual[1]).to_not include(:payload)
+        actual.slice(2, 5)&.each do |item|
+          expect(item).to include({
+                                    payload: hash_not_including(:path),
+                                    http: hash_including(url: "http://www.example.com/bulk_downloads/#{bulk_download.id}/progress/[REDACTED]"),
+                                    request_id: request.request_id,
+                                  })
+        end
+        expect(actual[7]).to include({
+                                       name: "BulkDownloadsController",
+                                       level: "info",
+                                       message: "Completed #progress_with_token",
+                                       payload: hash_including(path: "/bulk_downloads/#{bulk_download.id}/progress/[REDACTED]"),
+                                       http: hash_including(url: "http://www.example.com/bulk_downloads/#{bulk_download.id}/progress/[REDACTED]"),
+                                       request_id: request.request_id,
+                                     })
       end
 
       it "rejects an invalid token with 401 and does not mutate the record" do

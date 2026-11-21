@@ -9,6 +9,7 @@
 # container: secret_key_base + host come from ENV/Chamber, logs go to stdout, and the local-only dev
 # niceties (Bullet, web-console, file watcher, page-load migration checks) are omitted.
 require "active_support/core_ext/integer/time"
+require './lib/logging'
 
 Rails.application.configure do
   # Settings specified here take precedence over config/application.rb.
@@ -75,5 +76,4 @@ Rails.application.configure do
 
   # Do not dump schema after migrations (deployed env).
   config.active_record.dump_schema_after_migration = false
-  config.log_to = %w[stdout] # Is this even used?
 end

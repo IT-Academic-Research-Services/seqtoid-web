@@ -1,178 +1,160 @@
 # frozen_string_literal: true
 
-require 'ougai'
+require 'rails_semantic_logger'
+require 'semantic_logger'
+require "semantic_logger_datadog"
 
 module Logging
-  # Keys removed from each JSON log object (unnecessary fields)
-  FIELDS_TO_REMOVE = [:pid, :v].freeze
-
-  # Keys in the JSON log object that don't contribute to whether the message is valid.
-  # IE: They are not used to determine if the log object is effectively empty, and thus not logged.
-  UNIMPORTANT_FIELDS = [:method, :module, :stream]
-
-  # Set current user and request to global for use in logging.
-  # See https://stackoverflow.com/a/11670283/200312
   class CurrentContext < ActiveSupport::CurrentAttributes
-    # Fields added to log messages, if they exist. Usually set by the ApplicationController
+    # Used in ApplicationRecord.log_analytics. Usually set by the ApplicationController.
+    # See https://stackoverflow.com/a/11670283/200312
+    # TODO: Eventually remove these, as they are only used by ApplicationRecord for reporting metrics.
     attribute :user
     attribute :request
-    # Temporary values used to control log filtering, for use inside thread-safe Blocks
-    attribute :fields_to_remove
-    attribute :filters
-    attribute :unimportant_fields
   end
 
-  # TODO: Make protected
-  def self.remove_fields(data)
-    FIELDS_TO_REMOVE.each { |field| data.delete(field) }
-    @fields_to_remove.each { |field| data.delete(field) } if @fields_to_remove
-  end
+  # Add/remove fields of a semantic_logger log object
+  TRANSFORMERS = [lambda { |log|
+    # log.delete[:level_index] # Extra spam we just don't need
+    # log.delete[:logger] # Always the same `name` "SemanticLogger::Appender::IO", with redundant `thread_name`
 
-  # Temporarily remove a field from logged JSON messages
-  def self.with_fields_to_remove(*fields)
-    original_fields_to_remove = @fields_to_remove
-    @fields_to_remove = @fields_to_remove&.dup || []
-    @fields_to_remove.concat(fields)
-    yield
-  ensure
-    @fields_to_remove = original_fields_to_remove
-  end
-
-  class Formatter < Ougai::Formatters::Bunyan
-    def format_datetime(time)
-      time.in_time_zone.iso8601(3)
+    # :usr is set in :named_tags in the ApplicationController, and needs to be in :payload for the Datadog JSON formatter to pick it up
+    if (usr = log.named_tags&.delete(:usr))
+      log.payload ||= {}
+      log.payload[:usr] ||= {}
+      log.payload[:usr].merge!(usr)
     end
-
-    def to_level(severity)
-      # Log the level name like 'debug' or 'warn' instead of a number like 10,20,30
-      severity.downcase.to_sym
-    end
-
-    def dump(data)
-      Logging.remove_fields(data)
-      super(data.compact)
-    end
-  end
-
-  DEFAULT_FORMATTER = Logging::Formatter.new
-
-  def self.without_unimportant(data)
-    data = data.except(*UNIMPORTANT_FIELDS)
-    @unimportant_fields ? data.except(*@unimportant_fields) : data
-  end
-
-  private_class_method def self.default_filter(data)
-    if data&.key?(:msg)
-      msg = data[:msg]&.to_s&.strip.presence
-      if msg.nil?
-        data.delete(:msg)
-      else
-        data[:msg] = msg
-      end
-    end
-
-    if Logging.without_unimportant(data).empty?
-      # Skip logging if log message is nil/blank, and there are no other (not unimportant) properties
-      return nil
-    end
-
-    data[:request_id] = data[:request_id].presence || Logging::CurrentContext.request&.request_id
-    data[:user_id] = data[:user_id].presence || Logging::CurrentContext.user&.id
-    data[:environment] = data[:environment].presence || Rails.env
-    data[:thread_id] = data[:thread_id].presence || Thread.current.object_id
-    data[:thread_name] = data[:thread_name].presence || Thread.current.name.presence
 
     current_span_context = OpenTelemetry::Trace.current_span&.context
     if current_span_context&.valid?
-      data[:trace_id] = data[:trace_id].presence || current_span_context.hex_trace_id
-      data[:span_id] = data[:span_id].presence || current_span_context.hex_span_id
+      log.payload ||= {}
+      log.payload[:trace_id] ||= current_span_context.hex_trace_id
+      log.payload[:span_id] ||= current_span_context.hex_span_id
     end
 
-    data
+    # Logging unpermitted_parameters sometimes causes infinite-recursion when JSON serializing the params.
+    # Calling as_json on ActionController::Base or ActionDispatch::Request commonly causes this infinite-recursion.
+    # IE: ActionController::Base and ActionDispatch::Request reference each other
+    # Throws: SystemStackError("stack level too deep")
+    if log.payload&.dig(:context, :request)
+      log.payload[:context] = log.payload[:context].except(:request)
+    end
+  }]
+
+  private_constant :TRANSFORMERS
+
+  def self.add_transformer(transformer)
+    TRANSFORMERS << transformer
   end
 
-  FILTERS = [->(data) { default_filter(data) }]
+  # Temporarily add lambdas that transform logged JSON messages
+  def self.with_transformers(*transformers, &block)
+    SemanticLogger.named_tagged(
+      transformers: (SemanticLogger.named_tags[:transformers] || []) + transformers,
+      &block
+    )
+  end
+
+  def self.transform(log)
+    transformers = log.named_tags.delete(:transformers) || []
+    TRANSFORMERS.each { |transformer| transformer.call(log) }
+    transformers.each { |transformer| transformer.call(log) }
+    log
+  end
+
+  class Formatter < SemanticLoggerDatadog::Formatters::Json
+    def call(log, logger)
+      # super(Logging.transform(log), logger)
+      super(log, logger)
+    rescue SystemStackError, StandardError => e
+      # Sadly, sometimes as_json fails, so we need to at least track that it happened.
+      # IE: stack-overflow during JSON serialization due to circular-composition
+      fallback_log = SemanticLogger::Log.new(log.name, :error)
+      fallback_log.message = "Failed to serialize log payload to JSON: #{log.message}"
+      fallback_log.exception = e
+      fallback_log.payload = { original_payload: log.payload.inspect } if log.payload.is_a?(Hash)
+
+      super(fallback_log, logger)
+    end
+  end
+
+  private_constant :Formatter
+
+  DEFAULT_FORMATTER = Formatter.new
+
+  FILTERS = [] # ->(log) { log.message !~ /BOOT/ }]
+
+  private_constant :FILTERS
 
   def self.add_filter(filter)
     FILTERS << filter
   end
 
-  # Temporarily add a filter
-  def self.with_filter(filter)
-    original_filters = @filters
-    @filters = @filters&.dup || []
-    @filters << filter
-    yield
-  ensure
-    @filters = original_filters
+  # Temporarily add lambdas that filter logged JSON messages
+  def self.with_filters(*filters, &block)
+    SemanticLogger.named_tagged(
+      filters: (SemanticLogger.named_tags[:filters] || []) + filters,
+      &block
+    )
   end
 
-  # Filter out and transform messages through each filter; if the final value is falsy, nothing will be logged
-  private_class_method def self.filter_data(data)
-    all_passed = FILTERS.all? { |filter_lambda| filter_lambda.call(data) }
-    all_passed &&= @filters.all? { |filter_lambda| filter_lambda.call(data) } unless @filters.nil?
-    all_passed
-  end
-
-  def self.create_json_logger(logdev, level, formatter: nil)
-    ougai_logger = Ougai::Logger.new(logdev, level: level, formatter: formatter || DEFAULT_FORMATTER)
-    ougai_logger.default_message = nil
-    ougai_logger.before_log = ->(data) { filter_data(data) }
-    ougai_logger
+  # Filter out messages; if the final value is falsy, nothing will be logged
+  def self.filter(log)
+    filters = log.named_tags.delete(:filters) || []
+    FILTERS.all? { |filter| filter.call(log) } && filters.all? { |filter| filter.call(log) }
   end
 
   # Used for logging before Rails.Logger is initialized.
   # IE: Can be used before init_logging() is called, and thus before Application is created in application.rb.
-  def self.filter_and_format(message, severity: :debug, zone: nil, **kwargs)
-    data = { msg: message.strip, **kwargs }
-    unless filter_data(data)
-      return nil
+  def self.filter_and_format(message, level: :info, name: nil, **kwargs)
+    message = message&.strip
+    if message.present?
+      string_io = StringIO.new
+      appender = SemanticLogger::Appender::IO.new(
+        string_io,
+        level: level, # TODO: Set appender level, or use default: SemanticLogger.default_level?
+        formatter: Logging::DEFAULT_FORMATTER,
+        filter: lambda(&Logging.method(:filter)),
+        application: Rails.application.name
+      )
+      appender.name = name if name
+
+      appender.send(level, message, **kwargs)
+
+      string_io.string.strip.presence
+    else
+      message
     end
-
-    # NOTE: Rails Application Timezone not set yet, so messages logged here might have a different zone/offset than later log messages
-    now_dt = zone.nil? ? Time.current : Time.current.in_time_zone(zone)
-
-    return DEFAULT_FORMATTER.call(severity, now_dt, nil, data).strip
   end
 
-  # Deployed logging configuration.
-  #
-  # Overridable via RAILS_LOG_LEVEL, defaulting to :debug so a local `development`
-  # boot is unchanged. The deployed dev environment sets it to "info".
-  #
-  # At :debug, ActiveRecord echoes every statement WITH its bound values. On the
-  # resque worker that means whole `INSERT INTO contigs` statements including the
-  # `sequence` column: measured single log lines up to 484 KB, a 12 KB mean against
-  # a 106 B median, and roughly three quarters of all container log bytes in the dev
-  # cluster from this one process. Two problems, not one -- the volume, and the fact
-  # that sample sequence content is written verbatim into a log stream that ships to
-  # an aggregator (and, if enabled, to a third-party log vendor).
-  def self.init_logging(config, level: nil, formatter: nil, lograge_enabled: true)
-    config.log_level = level || ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
-    config.logger = create_json_logger($stdout, config.log_level, formatter: formatter)
-    config.active_record.verbose_query_logs = false
-    config.colorize_logging = false
+  def self.with_user_and_request(user, request, &block)
+    SemanticLogger.named_tagged(
+      usr: user && {
+        id: user.id,
+        name: user.name.presence,
+        email: user.email.presence,
+      }.compact,
+      request_id: request&.request_id,
+      &block
+    )
+  end
 
-    # This is the _other_ JSON log Formatter that logs after a REST call is made, containing request and response info.
-    # {"method":"GET","path":"/up","format":"*/*","controller":"Rails::HealthController","action":"show","status":200,"allocations":239,"duration":5.07,"view":4.68,"db":0.0,"time":12509.095359829,"ddsource":["ruby"],"remote_ip":null,"user_id":null,"params":{}}
-    # {"method":"GET","path":"/samples/dimensions.json","format":"json","controller":"SamplesController","action":"dimensions","status":200,"allocations":104589,"duration":350.85,"view":0.22,"db":91.61,"time":12508.690497849,"ddsource":["ruby"],"remote_ip":"1.2.3.4","user_id":789,"params":{"domain":"my_data","format":"json"}}
-    config.lograge.enabled = lograge_enabled
-    config.lograge.formatter = Lograge::Formatters::Raw.new
-    config.lograge.logger = config.logger
-    param_filtered = %w[action controller]
-    config.lograge.custom_options = lambda do |event|
-      {
-        ddsource: ["ruby"], # TODO: necessary?
-        request_id: event.payload[:request_id],
-        remote_ip: event.payload[:remote_ip],
-        user_id: event.payload[:user_id],
-        params: event.payload[:params].reject { |k| param_filtered.include? k },
-      }.compact
+  # Configure JSON logging.
+  def self.init_logging(config, formatter: DEFAULT_FORMATTER)
+    SemanticLogger.on_log lambda(&Logging.method(:transform))
+
+    # config.rails_semantic_logger.started = false
+    # config.rails_semantic_logger.processing = false
+    # config.rails_semantic_logger.rendered = false
+
+    config.rails_semantic_logger.appenders do |appenders|
+      appenders.add(
+        io: $stdout,
+        level: config.log_level,
+        formatter: formatter,
+        filter: lambda(&Logging.method(:filter))
+      )
     end
-    # Suppress messages like: {"method":"GET","path":"/up","format":"*/*","controller":"Rails::HealthController","action":"show","status":200 ...}
-    # Suppress messages like: ActionController::RoutingError (No route matches [GET] "..."):
-    # config.lograge.ignore_actions = %w[HealthCheck::HealthCheckController#index Rails::HealthController#show ErrorsController#not_found]
-    config.lograge.ignore_actions = %w[HealthCheck::HealthCheckController#index Rails::HealthController#show]
   end
 
   def self.capture_console(**kwargs)
@@ -190,7 +172,7 @@ module Logging
       Thread.current[:stderr_proxy] = old_stderr
     end
 
-    # TODO: line.start_with?("{") is _very_ JSON specific, so if the logger ever stops being JSON (Ougai),
+    # TODO: line.start_with?("{") is _very_ JSON specific, so if the logger ever stops being JSON,
     #       then already json-formatted text will be passed through a Rails.logger again
     (stdout_io.string || "").split("\n").map(&:strip).reject(&:empty?).each do |line|
       line.start_with?("{") ? puts(line) : Rails.logger.info(line, stream: "stdout", **kwargs) # rubocop:disable Rails/Output

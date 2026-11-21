@@ -84,12 +84,6 @@ Rails.application.configure do
   ENV["AUTH0_MANAGEMENT_CLIENT_SECRET"] = "FakeAuth0ClientSecret"
   ENV["AUTH0_CONNECTION"] = "Username-Password-Authentication"
 
-  if Rails.logger.blank?
-    Logging.init_logging(
-      config,
-      level: ENV.fetch("RAILS_LOG_LEVEL", "warn").to_sym,
-      # formatter: Ougai::Formatters::Readable.new,
-      lograge_enabled: false # lograge intercepts HTTP requests, which breaks some tests
-    )
-  end
+  config.log_level = ENV.fetch("LOG_LEVEL", :warn).to_sym
+  Logging.init_logging(config)
 end
