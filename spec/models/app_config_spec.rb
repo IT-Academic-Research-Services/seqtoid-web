@@ -28,7 +28,7 @@ RSpec.describe AppConfig, type: :model do
     end
 
     it "clears the cache again on a subsequent update" do
-      key = AppConfig::SHOW_ANNOUNCEMENT_BANNER
+      key = AppConfig::SHOW_EMERGENCY_BANNER_MESSAGE
       config = AppConfig.create!(key: key, value: "0")
 
       cache_key = "app_config-#{key}"

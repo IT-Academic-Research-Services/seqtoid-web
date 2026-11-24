@@ -189,7 +189,6 @@ const BASE_PROPS = {
   snapshotProjectDescription: "prop-description",
   snapshotProjectName: "prop-name",
   snapshotShareId: "prop-share-id",
-  announcementBannerEnabled: true,
   emergencyBannerMessage: "the sky is falling",
 };
 
@@ -302,13 +301,12 @@ describe("DiscoveryViewRouter signed-in fallback", () => {
     expect(props.match).toBeTruthy();
   });
 
-  it("falls back to the LandingPage with banner props when signed out", () => {
+  it("falls back to the LandingPage with the emergency banner prop when signed out", () => {
     renderAt("/anything/else", { userSignedIn: false });
 
     expect(screen.getByTestId("landing-page")).toBeTruthy();
     expect(screen.queryByTestId("discovery-view")).toBeNull();
     const props = mockRenderedProps["landing-page"];
-    expect(props.announcementBannerEnabled).toBe(true);
     expect(props.emergencyBannerMessage).toBe("the sky is falling");
   });
 
@@ -319,17 +317,15 @@ describe("DiscoveryViewRouter signed-in fallback", () => {
     expect(screen.queryByTestId("landing-page")).toBeNull();
   });
 
-  it("passes the banner props through even when they are disabled/empty", () => {
+  it("passes the emergency banner prop through even when it is empty", () => {
     renderAt("/", {
       userSignedIn: false,
       props: {
-        announcementBannerEnabled: false,
         emergencyBannerMessage: "",
       },
     });
 
     const props = mockRenderedProps["landing-page"];
-    expect(props.announcementBannerEnabled).toBe(false);
     expect(props.emergencyBannerMessage).toBe("");
   });
 });

@@ -1,7 +1,6 @@
 import { isEmpty } from "lodash/fp";
 import React from "react";
 import AnnouncementBanner from "~/components/common/AnnouncementBanner";
-import ExternalLink from "~/components/ui/controls/ExternalLink";
 import ToastContainer from "~ui/containers/ToastContainer";
 import { SeqtoIDLogoReversed } from "~ui/icons";
 import { postToUrlWithCSRF } from "~utils/links";
@@ -11,7 +10,6 @@ import UserMenuDropDown, { TermsMenuDropDown } from "./UserMenuDropDown";
 
 interface HeaderProps {
   adminUser: boolean;
-  announcementBannerEnabled: boolean;
   emergencyBannerMessage: string;
   disableNavigation: boolean;
   showBlank: boolean;
@@ -31,7 +29,6 @@ const Header = ({
   showLogOut,
   userSignedIn,
   emergencyBannerMessage,
-  announcementBannerEnabled,
   signOutEndpoint,
   userName,
 }: HeaderProps) => {
@@ -78,31 +75,13 @@ const Header = ({
   }
   return (
     <div>
-      {/* Announcement banners we only want to show within the app, not the landing page */}
+      {/* Emergency banner -- shown within the app (not the landing page) whenever an
+          operator sets a non-empty show_emergency_banner_message AppConfig value. */}
 
       <AnnouncementBanner
         id="emergency"
         visible={!isEmpty(emergencyBannerMessage)}
         message={emergencyBannerMessage}
-      />
-
-      <AnnouncementBanner
-        id="czid-transfer"
-        visible={announcementBannerEnabled}
-        message={
-          <>
-            {
-              " UCSF’S INSTITUTE FOR GLOBAL HEALTH SCIENCES WILL MANAGE SeqtoID TOWARD THE END OF 2025. CLICK "
-            }
-            <ExternalLink
-              className={cs.link}
-              href="helpcenter:/articles/faqs-czid-s-transfer-to-the-university-of-california-san-francisco/"
-            >
-              HERE
-            </ExternalLink>
-            {" FOR MORE INFORMATION. "}
-          </>
-        }
       />
 
       <div className={cs.header}>

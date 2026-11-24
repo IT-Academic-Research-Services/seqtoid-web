@@ -32,7 +32,6 @@ interface DiscoveryViewRouterProps {
   snapshotProjectDescription: string;
   snapshotProjectName: string;
   snapshotShareId: string;
-  announcementBannerEnabled: boolean;
   emergencyBannerMessage: string;
 }
 
@@ -45,7 +44,6 @@ const DiscoveryViewRouter = ({
   snapshotProjectDescription,
   snapshotProjectName,
   snapshotShareId,
-  announcementBannerEnabled,
   emergencyBannerMessage,
 }: DiscoveryViewRouterProps) => {
   const { userSignedIn } = useContext(UserContext);
@@ -148,10 +146,7 @@ const DiscoveryViewRouter = ({
           />
         ) : (
           <Route>
-            <LandingPage
-              announcementBannerEnabled={announcementBannerEnabled}
-              emergencyBannerMessage={emergencyBannerMessage}
-            />
+            <LandingPage emergencyBannerMessage={emergencyBannerMessage} />
           </Route>
         )}
       </Switch>

@@ -5,20 +5,15 @@ import { Content } from "~/components/views/LandingPage/components/Content";
 import { Hero } from "~/components/views/LandingPage/components/Hero";
 
 interface LandingPageProps {
-  announcementBannerEnabled?: boolean;
   emergencyBannerMessage?: string;
 }
 
 export const LandingPage = ({
-  announcementBannerEnabled,
   emergencyBannerMessage,
 }: LandingPageProps) => {
   return (
     <div>
-      <Header
-        announcementBannerEnabled={announcementBannerEnabled}
-        emergencyBannerMessage={emergencyBannerMessage}
-      />
+      <Header emergencyBannerMessage={emergencyBannerMessage} />
       <Hero />
       <Content />
       <Footer />
