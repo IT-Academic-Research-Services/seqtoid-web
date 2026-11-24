@@ -2,7 +2,9 @@ name: release
 
 # HOW TO USE (Actions -> release -> Run workflow; pick an `operation`):
 #   ship         promote to `target` (staging | env-prod). Needs `reason`. Waits for the target's
-#                GitHub Environment approval. Everything below this block describes ship.
+#                GitHub Environment approval. A hotfix/* build also needs `ticket`: with it the rc
+#                and prod-calendar gates are skipped and recorded. Everything below this block
+#                describes ship.
 #   cut-rc       cut a release candidate from what dev runs (`rc` = optional id). Pins dev to it.
 #   rc-signoff   sign off RC `rc` as you (--by <you>).
 #   rc-reject    reject RC `rc`; needs `reason`.
@@ -84,7 +86,7 @@ on:
         options: ["1", "2", "3", "4", "5", "6", "7", "8"]
         default: "4"
       ticket:
-        description: "lease-take: the ticket you are testing (required)"
+        description: "lease-take: the ticket you are testing (required). ship: the ticket for a hotfix/* build (required for one)"
         required: false
         default: ""
   pull_request:
@@ -207,6 +209,7 @@ jobs:
       AWS_REGION: us-west-2
       TARGET: ${{ inputs.target }}
       ALLOW_OLDER: ${{ inputs.allow_older }}
+      IN_TICKET: ${{ inputs.ticket }}
       DIGEST: ${{ needs.plan.outputs.digest }}
       SHA_TAG: ${{ needs.plan.outputs.tag }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -304,9 +307,15 @@ jobs:
         run: |
           set -euo pipefail
           command -v skopeo >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y skopeo; }
-          older=()
-          if [ "${ALLOW_OLDER}" = "true" ]; then older=(--allow-older); fi
-          _gitops/bin/release ship --to "$TARGET" --digest "$DIGEST" --tag "$SHA_TAG" "${older[@]+"${older[@]}"}" --reason "$REASON" --json > ship.json
+          extra=()
+          if [ "${ALLOW_OLDER}" = "true" ]; then extra=(--allow-older); fi
+          # A hotfix/* build passes the rc and calendar gates only with a ticket (seqtoid-gitops gates.py).
+          # Validated strictly, as for lease-take: it goes onto a command line.
+          if [ -n "${IN_TICKET}" ]; then
+            [[ "${IN_TICKET}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$ ]] || { echo "::error::ticket must look like SMP-1234 or a URL"; exit 1; }
+            extra+=(--ticket "${IN_TICKET}")
+          fi
+          _gitops/bin/release ship --to "$TARGET" --digest "$DIGEST" --tag "$SHA_TAG" "${extra[@]+"${extra[@]}"}" --reason "$REASON" --json > ship.json
           pr="$(jq -r '.pr.url // empty' ship.json)"
           {
             echo "### Shipped ${SHA_TAG} to ${TARGET}"
