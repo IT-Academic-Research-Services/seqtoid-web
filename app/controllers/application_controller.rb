@@ -177,7 +177,6 @@ class ApplicationController < ActionController::Base
   def set_application_view_variables
     @disable_header_navigation = false
     @auto_account_creation_enabled = get_app_config(AppConfig::AUTO_ACCOUNT_CREATION_V1) == "1"
-    @announcement_banner_enabled = announcement_banner_enabled
     @emergency_banner_message = get_app_config(AppConfig::SHOW_EMERGENCY_BANNER_MESSAGE)
   end
 
@@ -223,23 +222,5 @@ class ApplicationController < ActionController::Base
         yield
       end
     end
-  end
-
-  def announcement_banner_enabled
-    # Enabled if the flag is enabled AND it's in the active time range.
-    if get_app_config(AppConfig::SHOW_ANNOUNCEMENT_BANNER) == "1"
-      # TODO: Handle locales, of the Server or of the User (preferably)
-      time_zone = ActiveSupport::TimeZone.new("Pacific Time (US & Canada)")
-      now = time_zone.now
-      # This is for the Low-Support mode banner in LandingHeaderV2.tsx.
-      start_time = time_zone.parse("2025-05-15 08:00:00")
-      end_time = time_zone.parse("2025-08-01 09:00:00")
-
-      if start_time < now && now < end_time
-        return true
-      end
-    end
-
-    false
   end
 end

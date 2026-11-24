@@ -145,9 +145,6 @@ class AppConfig < ApplicationRecord
   # The maximum number of samples that can be part of an original input files bulk download.
   # Original input file downloads are significantly bigger and slower than other downloads, so a separate limit is needed.
   MAX_SAMPLES_BULK_DOWNLOAD_ORIGINAL_FILES = 'max_samples_bulk_download_original_files'.freeze
-  # When this is "1", the announcement banner on the top of the site header will be enabled.
-  # Other conditions may check a time constraint.
-  SHOW_ANNOUNCEMENT_BANNER = 'show_announcement_banner'.freeze
   # When this is not "", the emergency announcement banner on the top of the site header will be enabled.
   # The emergency announcement banner with display the specified message.
   SHOW_EMERGENCY_BANNER_MESSAGE = 'show_emergency_banner_message'.freeze

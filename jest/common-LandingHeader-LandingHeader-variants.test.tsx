@@ -4,7 +4,7 @@
 // drives the REBRAND variant flags that the default render never reaches:
 // `legalNav` (Help Center + Legal dropdown instead of Resources + Sign in,
 // with a different mobile link set) and `logoOnly` (logo, no nav at all),
-// plus the czid-transfer announcement banner arm.
+// plus the emergency banner arm.
 import { fireEvent, render, screen } from "@testing-library/react";
 import { LandingHeader } from "~/components/common/LandingHeader/LandingHeader";
 
@@ -72,17 +72,16 @@ describe("LandingHeader variants", () => {
     });
   });
 
-  it("shows the transfer announcement banner when enabled", () => {
-    render(<LandingHeader announcementBannerEnabled={true} />);
+  it("shows the emergency banner when a message is configured", () => {
+    render(<LandingHeader emergencyBannerMessage="Service degraded" />);
 
-    expect(screen.getAllByText(/MANAGE SeqtoID/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("HERE").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Service degraded").length).toBeGreaterThan(0);
   });
 
-  it("hides both banners when neither is configured", () => {
+  it("hides the banner when no message is configured", () => {
     render(<LandingHeader />);
 
-    expect(screen.queryByText(/MANAGE SeqtoID/)).toBeNull();
+    expect(screen.queryByText("Service degraded")).toBeNull();
     // Default nav is still the marketing one.
     expect(screen.getByTestId("home-top-nav-login")).toBeTruthy();
   });

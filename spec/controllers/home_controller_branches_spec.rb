@@ -35,14 +35,13 @@ RSpec.describe HomeController, type: :controller do
   end
 
   describe "GET #landing banner arms" do
-    it "enables all three banners when their app configs are set to '1'" do
+    it "enables both landing banners when their app configs are set to '1'" do
       # get_app_config returns '1' for every banner key -> each `== \"1\"` arm fires.
       allow(controller).to receive(:get_app_config).and_return("1")
 
       get :landing, params: { format: "html" }
 
       expect(assigns(:show_bulletin)).to be(true)
-      expect(assigns(:show_announcement_banner)).to be(true)
       expect(assigns(:show_public_site)).to be(true)
     end
   end

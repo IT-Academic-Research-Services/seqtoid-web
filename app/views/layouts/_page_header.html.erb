@@ -15,7 +15,6 @@
         userSignedIn: false,
         disableNavigation: <%= @disable_header_navigation %>,
         autoAccountCreationEnabled: <%= @auto_account_creation_enabled %>,
-        announcementBannerEnabled: <%= @announcement_banner_enabled %>,
         emergencyBannerMessage: <%= raw escape_json(@emergency_banner_message.to_s) %>,
       }, 'page_header', JSON.parse('<%= raw escape_json(help_center_context) %>'))
     <% end %>
@@ -36,7 +35,6 @@
         userSignedIn: true,
         disableNavigation: <%= @disable_header_navigation %>,
         autoAccountCreationEnabled: <%= @auto_account_creation_enabled %>,
-        announcementBannerEnabled: <%= @announcement_banner_enabled %>,
         emergencyBannerMessage: <%= raw escape_json(@emergency_banner_message.to_s) %>,
       }, 'page_header', JSON.parse('<%= raw escape_json(user_context)%>'))
     <% end %>

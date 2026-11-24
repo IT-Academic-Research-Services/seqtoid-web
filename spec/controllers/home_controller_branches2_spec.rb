@@ -10,7 +10,6 @@ RSpec.describe HomeController, type: :controller do
     # Self-contained: the action reads three app configs, and a missing one must not be
     # inherited from whatever a sibling spec happened to seed.
     create(:app_config, key: AppConfig::SHOW_LANDING_VIDEO_BANNER, value: "0")
-    create(:app_config, key: AppConfig::SHOW_ANNOUNCEMENT_BANNER, value: "0")
     create(:app_config, key: AppConfig::SHOW_LANDING_PUBLIC_SITE_BANNER, value: "0")
   end
 
@@ -22,7 +21,6 @@ RSpec.describe HomeController, type: :controller do
 
       expect(response).to have_http_status(:ok)
       expect(assigns(:show_bulletin)).to be(true)
-      expect(assigns(:show_announcement_banner)).to be(false)
       expect(assigns(:show_public_site)).to be(false)
     end
 

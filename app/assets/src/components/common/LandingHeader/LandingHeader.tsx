@@ -13,7 +13,6 @@ import { SeqtoIDLogoReversed } from "~ui/icons";
 import cs from "./LandingHeader.scss";
 
 interface LandingHeaderProps {
-  announcementBannerEnabled?: boolean;
   emergencyBannerMessage?: string;
   impactPage?: boolean;
   // REBRAND: legal-page variant. When set, the right-side nav shows
@@ -26,7 +25,6 @@ interface LandingHeaderProps {
 }
 
 export const LandingHeader = ({
-  announcementBannerEnabled,
   emergencyBannerMessage,
   legalNav,
   logoOnly,
@@ -39,31 +37,13 @@ export const LandingHeader = ({
 
   return (
     <>
-      {/* Announcement banners we only want to show on the landing page, not within the app */}
+      {/* Emergency banner -- shown on the landing page (not within the app) whenever an
+          operator sets a non-empty show_emergency_banner_message AppConfig value. */}
 
       <AnnouncementBanner
         id="emergency"
         visible={!isEmpty(emergencyBannerMessage)}
         message={emergencyBannerMessage}
-      />
-
-      <AnnouncementBanner
-        id="czid-transfer"
-        visible={announcementBannerEnabled}
-        message={
-          <>
-            {
-              " UCSF’S INSTITUTE FOR GLOBAL HEALTH SCIENCES WILL MANAGE SeqtoID TOWARD THE END OF 2025. CLICK "
-            }
-            <ExternalLink
-              className={cs.link}
-              href="helpcenter:/articles/faqs-czid-s-transfer-to-the-university-of-california-san-francisco/"
-            >
-              HERE
-            </ExternalLink>
-            {" FOR MORE INFORMATION. "}
-          </>
-        }
       />
 
       <div className={cs.header} data-testid="home-top-nav-bar">

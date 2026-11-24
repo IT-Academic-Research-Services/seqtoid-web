@@ -42,7 +42,6 @@ import Header from "~/components/common/Header/Header";
 
 const baseProps = {
   adminUser: false,
-  announcementBannerEnabled: false,
   emergencyBannerMessage: "",
   disableNavigation: false,
   showBlank: false,
@@ -122,16 +121,6 @@ describe("Header announcement banners", () => {
     expect(screen.getByTestId("banner-emergency-true")).toBeTruthy();
     const emergency = mockBannerRenders.find(p => p.id === "emergency");
     expect(emergency?.message).toBe("Pipelines are degraded");
-  });
-
-  it("passes announcementBannerEnabled straight through to the transfer banner", () => {
-    const hidden = renderHeader({ announcementBannerEnabled: false });
-    expect(screen.getByTestId("banner-czid-transfer-false")).toBeTruthy();
-    hidden.unmount();
-    mockBannerRenders.length = 0;
-
-    renderHeader({ announcementBannerEnabled: true });
-    expect(screen.getByTestId("banner-czid-transfer-true")).toBeTruthy();
   });
 
   it("renders no banners at all in the blank or log-out headers", () => {

@@ -15,7 +15,7 @@ require "rails_helper"
 #   found/missing, viewable/not-viewable), token_based_login_support,
 #   set_sentry_context, check_browser, check_rack_mini_profiler,
 #   set_current_context_for_logging! (including its rescue), instrument_with_timer,
-#   fetch_from_or_store_in_cache (both arms), announcement_banner_enabled.
+#   fetch_from_or_store_in_cache (both arms).
 RSpec.describe ApplicationController, type: :controller do
   subject(:controller_instance) { described_class.new }
 
@@ -479,57 +479,17 @@ end
     end
   end
 
-  describe "#announcement_banner_enabled" do
-    let(:pacific) { ActiveSupport::TimeZone.new("Pacific Time (US & Canada)") }
-
-    it "is false when the app config flag is off (the if not taken)" do
-      allow(controller_instance).to receive(:get_app_config)
-        .with(AppConfig::SHOW_ANNOUNCEMENT_BANNER).and_return("0")
-
-      expect(controller_instance.send(:announcement_banner_enabled)).to be(false)
-    end
-
-    it "is true when the flag is on and now is inside the window (the inner then-arm)" do
-      allow(controller_instance).to receive(:get_app_config)
-        .with(AppConfig::SHOW_ANNOUNCEMENT_BANNER).and_return("1")
-
-      travel_to(pacific.parse("2025-06-01 12:00:00")) do
-        expect(controller_instance.send(:announcement_banner_enabled)).to be(true)
-      end
-    end
-
-    it "is false when the flag is on but now is after the window (the inner else-arm)" do
-      allow(controller_instance).to receive(:get_app_config)
-        .with(AppConfig::SHOW_ANNOUNCEMENT_BANNER).and_return("1")
-
-      travel_to(pacific.parse("2025-09-01 12:00:00")) do
-        expect(controller_instance.send(:announcement_banner_enabled)).to be(false)
-      end
-    end
-
-    it "is false when the flag is on but now is before the window (the inner else-arm)" do
-      allow(controller_instance).to receive(:get_app_config)
-        .with(AppConfig::SHOW_ANNOUNCEMENT_BANNER).and_return("1")
-
-      travel_to(pacific.parse("2025-01-01 12:00:00")) do
-        expect(controller_instance.send(:announcement_banner_enabled)).to be(false)
-      end
-    end
-  end
-
   describe "#set_application_view_variables" do
     it "reads each banner/account app config into the view ivars" do
       allow(controller_instance).to receive(:get_app_config)
         .with(AppConfig::AUTO_ACCOUNT_CREATION_V1).and_return("1")
       allow(controller_instance).to receive(:get_app_config)
         .with(AppConfig::SHOW_EMERGENCY_BANNER_MESSAGE).and_return("Heads up")
-      allow(controller_instance).to receive(:announcement_banner_enabled).and_return(true)
 
       controller_instance.send(:set_application_view_variables)
 
       expect(controller_instance.instance_variable_get(:@disable_header_navigation)).to be(false)
       expect(controller_instance.instance_variable_get(:@auto_account_creation_enabled)).to be(true)
-      expect(controller_instance.instance_variable_get(:@announcement_banner_enabled)).to be(true)
       expect(controller_instance.instance_variable_get(:@emergency_banner_message)).to eq("Heads up")
     end
 
@@ -538,7 +498,6 @@ end
         .with(AppConfig::AUTO_ACCOUNT_CREATION_V1).and_return("0")
       allow(controller_instance).to receive(:get_app_config)
         .with(AppConfig::SHOW_EMERGENCY_BANNER_MESSAGE).and_return(nil)
-      allow(controller_instance).to receive(:announcement_banner_enabled).and_return(false)
 
       controller_instance.send(:set_application_view_variables)
 
