@@ -9,7 +9,7 @@ require 'rails_helper'
 #     taxon_five_longest_reads
 #   * the NR count_type column pair and the over-length contig truncation of
 #     taxid_contigs_for_blast
-#   * show_taxid_fasta's "no reads -> Coming soon" arm
+#   * show_taxid_fasta's "no reads -> no-reads message" arm
 #   * unidentified_fasta's missing-object arm
 #   * raw_results_folder's pipeline_version query-string arm
 #   * amr's loaded-output-state arm
@@ -123,7 +123,7 @@ RSpec.describe SamplesController, type: :controller do
     end
 
     describe "GET #show_taxid_fasta" do
-      it "falls back to the placeholder when the combined NT/NR fasta is empty" do
+      it "sends the no-reads message when the combined NT/NR fasta is empty" do
         create(:taxon_lineage, tax_name: "Klebsiella pneumoniae", taxid: 573, genus_taxid: 570, superkingdom_taxid: 2)
         project = create(:project, users: [@joe])
         sample = create(:sample, project: project, user: @joe)
@@ -137,7 +137,7 @@ RSpec.describe SamplesController, type: :controller do
         get :show_taxid_fasta, params: { id: sample.id, taxid: "573", tax_level: "1", hit_type: "NT_or_NR" }
 
         expect(response).to have_http_status :success
-        expect(response.body).to eq("Coming soon")
+        expect(response.body).to eq(SamplesController::NO_TAXON_READS_MESSAGE)
       end
     end
 
