@@ -29,7 +29,9 @@ name: release
 #   plan  -- `bin/release resolve` + `bin/release preflight --checks ci`: the candidate is what the
 #            environment below the target runs (dev for staging). Writes exactly what would ship --
 #            commits, migrations -- and the preflight to the run summary. Read-only; also runs on PRs
-#            that touch this file.
+#            that touch this file. A PR run plans staging from the newest RC whatever its state, so it
+#            exercises the plumbing; its preflight result is advisory (the gates are about the RC, not
+#            the PR).
 #   ship  -- runs in the target's GitHub Environment (the approval gate), then `bin/release ship`:
 #            verify the source image, `skopeo copy` the PLANNED digest into the target account, open
 #            one values PR on cypherid-web-infra main with auto-merge. Argo syncs it. The same command
@@ -159,6 +161,13 @@ jobs:
             sel+=(--digest "${IN_DIGEST}" --tag "${IN_TAG}")
           fi
           if [ "${IN_ALLOW_OLDER}" = "true" ]; then sel+=(--allow-older); fi
+          # A PR run has no inputs, and staging takes only a green RC. Plan the newest RC by id
+          # instead (any state), so the check tests this workflow rather than whether an RC is green.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ "${#sel[@]}" -eq 0 ]; then
+            rc_id=$(_gitops/bin/release rc show --latest --json | jq -r .id)
+            [[ "${rc_id}" =~ ^rc-[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$ ]] || { echo "::error::no RC to plan against (got '${rc_id}')"; exit 1; }
+            sel+=(--rc "${rc_id}")
+          fi
           : > select.args
           if [ "${#sel[@]}" -gt 0 ]; then printf '%s\n' "${sel[@]}" > select.args; fi
           _gitops/bin/release resolve --to "$TARGET" "${sel[@]+"${sel[@]}"}" --json > plan.json
@@ -192,6 +201,11 @@ jobs:
             cat preflight.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # On a PR the gates judge the RC, not the change under review: report, do not fail.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ "$status" -ne 0 ]; then
+            echo "::warning::preflight is BLOCKED for the newest RC (advisory on a PR; see the summary)"
+            exit 0
+          fi
           exit "$status"
 
   ship:
