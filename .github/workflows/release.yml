@@ -120,6 +120,7 @@ jobs:
       IN_TAG: ${{ inputs.tag }}
       IN_ALLOW_OLDER: ${{ inputs.allow_older }}
       IN_REASON: ${{ inputs.reason }}
+      IN_TICKET: ${{ inputs.ticket }}
     steps:
       - name: Require a reason
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -193,6 +194,12 @@ jobs:
           set -euo pipefail
           status=0
           mapfile -t sel < select.args
+          # preflight runs the same gates ship does, so it needs the hotfix ticket too (resolve does not
+          # take one). Validated as in the ship job: it goes onto a command line.
+          if [ -n "${IN_TICKET}" ]; then
+            [[ "${IN_TICKET}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$ ]] || { echo "::error::ticket must look like SMP-1234 or a URL"; exit 1; }
+            sel+=(--ticket "${IN_TICKET}")
+          fi
           _gitops/bin/release preflight --to "$TARGET" "${sel[@]+"${sel[@]}"}" --checks ci > preflight.txt || status=$?
           cat preflight.txt
           {
