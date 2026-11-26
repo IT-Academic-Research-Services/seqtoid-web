@@ -1,5 +1,8 @@
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
 
+# Prevent rails_semantic_logger from pre-creating an Appender, before the application+environment initializes
+ENV.delete("RAILS_LOG_TO_STDOUT")
+
 require "bundler/setup" # Set up gems listed in the Gemfile.
 require 'delegate'
 require "rails/command"
@@ -36,10 +39,13 @@ module Rails
       # Override Thor's instance method 'say' (lib/thor/shell.rb:59)
       def say(message = "", color = nil, force_new_line = true)
         # Cannot use Rails.Logger because it isn't initialized yet
-        formatted_message = Logging.filter_and_format(message.strip, zone: 'UTC', module: "boot")
-        if formatted_message
-          super(formatted_message, color, force_new_line)
-        end
+        # TODO: Set Timezone to match application.rb?
+        formatted_message = Logging.filter_and_format(
+          message.strip,
+          name: "Boot",
+          module: "boot"
+        )
+        super(formatted_message, color, force_new_line) if formatted_message.present?
       end
     end
   end

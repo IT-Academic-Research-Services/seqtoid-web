@@ -117,7 +117,4 @@ Rails.application.configure do
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = false
-
-  # Set the logging destination(s)
-  config.log_to = %w[stdout] # Is this even used?
 end

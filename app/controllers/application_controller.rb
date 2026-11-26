@@ -24,7 +24,7 @@ class ApplicationController < ActionController::Base
   before_action :screen_export_control_onboarding
   before_action :check_rack_mini_profiler
   before_action :check_browser
-  before_action :set_current_context_for_logging!
+  around_action :set_current_context_for_logging!
   before_action :set_application_view_variables
   before_action :set_sentry_context
 
@@ -92,11 +92,19 @@ class ApplicationController < ActionController::Base
   end
 
   # Rails method for adding to logging
-  def append_info_to_payload(payload)
-    super
-    payload[:remote_ip] = request.remote_ip
-    payload[:user_id] = current_user.try(:id) if current_user
-  end
+  # def append_info_to_payload(payload)
+  #   super
+  #  # NOTE: now located in http.remote_ip, and controlled by semantic_logger
+  #   payload[:remote_ip] = request.remote_ip
+  #   # This is redundant with set_current_context_for_logging!, which captures the user data across threads/fibers
+  #   if current_user
+  #     payload[:usr] ||= {
+  #       id: current_user.id,
+  #       name: current_user.name,
+  #       email: current_user.email,
+  #     }.compact
+  #   end
+  # end
 
   def disable_header_navigation
     @disable_header_navigation = true
@@ -155,7 +163,7 @@ class ApplicationController < ActionController::Base
 
   def set_sentry_context
     Sentry.set_user(id: current_user.id, admin: current_user.admin?) if current_user
-    Sentry.set_extras(params: params.to_unsafe_h, url: request.url)
+    Sentry.set_extras(params: params.to_unsafe_h, url: request.url) # TODO: This needs to be redacted
   end
 
   def check_browser
@@ -183,9 +191,12 @@ class ApplicationController < ActionController::Base
 
   # Set current user and request to global for use in logging in ActiveRecord.
   # See https://stackoverflow.com/a/11670283/200312
-  def set_current_context_for_logging!
+  def set_current_context_for_logging!(&block)
+    # Only used for application_record, and should eventually be removed entirely
     Logging::CurrentContext.user = current_user if current_user
     Logging::CurrentContext.request = request if request
+
+    Logging.with_user_and_request(current_user, request, &block)
   rescue StandardError => e
     Rails.logger.error(e)
   end

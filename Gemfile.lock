@@ -1987,11 +1987,6 @@ GEM
       rb-inotify (~> 0.9, >= 0.9.10)
     llhttp (0.6.1)
     logger (1.7.0)
-    lograge (0.14.0)
-      actionpack (>= 4)
-      activesupport (>= 4)
-      railties (>= 4)
-      request_store (~> 1.0)
     loofah (2.25.2)
       crass (~> 1.0.2)
       nokogiri (>= 1.12.0)
@@ -2242,8 +2237,6 @@ GEM
     opentelemetry-semantic_conventions (1.41.0)
       opentelemetry-api (~> 1.0)
     ostruct (0.6.3)
-    ougai (2.0.0)
-      oj (~> 3.10)
     parallel (1.14.0)
     parallel_tests (4.10.1)
       parallel
@@ -2310,6 +2303,10 @@ GEM
     rails-html-sanitizer (1.7.1)
       loofah (~> 2.25, >= 2.25.2)
       nokogiri (>= 1.15.7, != 1.16.7, != 1.16.6, != 1.16.5, != 1.16.4, != 1.16.3, != 1.16.2, != 1.16.1, != 1.16.0.rc1, != 1.16.0)
+    rails_semantic_logger (5.2.0)
+      rack
+      railties (>= 7.2)
+      semantic_logger (>= 5.1)
     railties (7.2.3.2)
       actionpack (= 7.2.3.2)
       activesupport (= 7.2.3.2)
@@ -2340,8 +2337,6 @@ GEM
     regexp_parser (2.12.0)
     reline (0.6.3)
       io-console (~> 0.5)
-    request_store (1.7.0)
-      rack (>= 1.4)
     require_all (3.0.0)
     resolv (0.3.2)
     resque (2.7.0)
@@ -2422,6 +2417,11 @@ GEM
       rexml (~> 3.2, >= 3.2.5)
       rubyzip (>= 1.2.2, < 4.0)
       websocket (~> 1.0)
+    semantic_logger (5.2.0)
+      concurrent-ruby (~> 1.0)
+      logger (~> 1.5)
+    semantic_logger_datadog (1.0.0)
+      semantic_logger (~> 5.1)
     sentry-rails (5.28.1)
       railties (>= 5.0)
       sentry-ruby (~> 5.28.1)
@@ -2550,7 +2550,6 @@ DEPENDENCIES
   jbuilder (~> 2.11)
   jwt (~> 2.2)
   listen (~> 3.7)
-  lograge
   memory_profiler
   multipart-post
   mysql2 (~> 0.5)
@@ -2564,7 +2563,6 @@ DEPENDENCIES
   opentelemetry-exporter-otlp (~> 0.30)
   opentelemetry-instrumentation-all (~> 0.76)
   opentelemetry-sdk (~> 1.8)
-  ougai
   parallel (= 1.14.0)
   parallel_tests (~> 4.7)
   pluck_to_hash
@@ -2574,6 +2572,7 @@ DEPENDENCIES
   rack-mini-profiler (~> 3.0)
   rails (~> 7.2.0, >= 7.2.3.2)
   rails-controller-testing (~> 1.0, >= 1.0.5)
+  rails_semantic_logger
   railties (~> 7.2)
   rake
   redis (~> 4.3)
@@ -2592,6 +2591,7 @@ DEPENDENCIES
   rubyzip (~> 3.4.1)
   seed_migration!
   selenium-webdriver
+  semantic_logger_datadog
   sentry-rails (~> 5.17)
   sentry-ruby (~> 5.17)
   shortener

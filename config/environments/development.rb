@@ -210,15 +210,12 @@ Rails.application.configure do
   # This setting prevents Rails from blocking requests to the ngrok endpoint
   config.hosts << ENV["SERVER_DOMAIN"].sub("https://", "") if ENV["SERVER_DOMAIN"]
 
-  # The deployed dev environment supposedly sets it to "info", but that seems unlikely
-  Logging.init_logging(config, level: ENV.fetch("RAILS_LOG_LEVEL", "debug").to_sym)
+  # The deployed dev environment sets it to :info, so this is only :debug when run locally.
+  config.log_level = ENV.fetch("LOG_LEVEL", ENV.fetch("RAILS_LOG_LEVEL", "debug")).to_sym
+  Logging.init_logging(config)
 
-  Logging.add_filter(->(data) { !data[:msg]&.include?('Rendering text template') && !data[:msg]&.include?('Rendering html template') })
-
-  # Do not dump schema after migrations.
+  # Dump schema after migrations.
   config.active_record.dump_schema_after_migration = true
-
-  config.log_to = %w[stdout file] # Is this even used?
   config.active_record.verbose_query_logs = true
   ActiveRecord::Migration.verbose = true # false for every other environment (See application.rb)
 

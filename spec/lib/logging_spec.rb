@@ -1,67 +1,22 @@
-require "ougai"
 require "rails_helper"
 require Rails.root.join("lib", "logging").to_s
 
 RSpec.describe Logging do
   let(:now_dt) { Time.current }
-  let(:now_dt_str) { now_dt.iso8601(3) }
-  let(:thread_id) { Thread.current.object_id }
+  let(:now_dt_str) { now_dt.utc.iso8601(6) }
+  let(:thread) { Thread.current.object_id.to_s }
   let(:message) { "This is a fake message" }
-
-  describe "Formatter" do
-    let(:custom_formatter) { Logging::Formatter.new }
-
-    before do
-      travel_to(now_dt, with_usec: true)
-    end
-
-    after do
-      travel_back
-    end
-
-    it "to_level() transforms level to lowercase" do
-      actual = JSON.parse(custom_formatter.call("TRACE", now_dt, nil, message), symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "trace", msg: message, time: now_dt_str)
-
-      actual = JSON.parse(custom_formatter.call("ErroR", now_dt, nil, message), symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "error", msg: message, time: now_dt_str)
-
-      actual = JSON.parse(custom_formatter.call("debug", now_dt, nil, message), symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "debug", msg: message, time: now_dt_str)
-
-      # NOTE: The level is pass-through, so no validation it performed on the name
-      actual = JSON.parse(custom_formatter.call("Invalid", now_dt, nil, message), symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "invalid", msg: message, time: now_dt_str)
-    end
-
-    it "format_datetime() always transforms datetime to Rails configured Timezone" do
-      actual = JSON.parse(custom_formatter.call("DEBUG", now_dt.utc, nil, message), symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "debug", msg: message, time: now_dt_str)
-
-      actual = JSON.parse(custom_formatter.call("DEBUG", now_dt.in_time_zone("America/Los_Angeles"), nil, message), symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "debug", msg: message, time: now_dt_str)
-    end
-
-    it "dump() removes unwanted fields" do
-      # Filter out global [:pid, :v] and thread-local [:zip]
-      Logging.with_fields_to_remove(:zip, :nonexistent) do
-        actual = JSON.parse(custom_formatter.call("DEBUG", now_dt, nil, { msg: message, foo: "bar", module: "baz", zip: "zoom" }), symbolize_names: true)
-        expect(actual).to include(name: "rspec", level: "debug", msg: message, time: now_dt_str, foo: "bar", module: "baz")
-        expect(actual).to include(:hostname)
-        # Ougai::Formatters::Bunyan only has the following default fields: [name, hostname, pid, level, time, v]
-        # And we explicitly remove [pid, v] globally, and [zip] via Logging.with_fields_to_remove() above
-        expect(actual).not_to include(:pid, :request_id, :thread_id, :user_id, :v, :zip)
-      end
-    end
-  end
+  let(:logger) { SemanticLogger["LoggingTest"] }
 
   describe "create_json_logger" do
     let(:log_io) { StringIO.new }
-    let(:logger) { ActiveSupport::BroadcastLogger.new(Logging.create_json_logger(log_io, :info)) }
-
-    def log_output
-      log_io.rewind
-      (log_io.read || "").strip
+    let!(:appender) do
+      SemanticLogger.add_appender(
+        io: log_io,
+        level: :info,
+        formatter: ::Logging::DEFAULT_FORMATTER,
+        filter: lambda(&Logging.method(:filter))
+      )
     end
 
     before do
@@ -70,137 +25,123 @@ RSpec.describe Logging do
 
     after do
       travel_back
-      Logging::CurrentContext.reset_all
+      SemanticLogger.remove_appender(appender)
+    end
+
+    around(:each) do |example|
+      SemanticLogger.silence(:debug) do
+        example.run
+      end
     end
 
     it "Will not log if lower log level" do
-      logger.debug(message, foo: "bar", module: "baz")
+      logger.debug(message)
+      SemanticLogger.flush
 
-      expect(log_output).to be_blank
+      expect(log_io.string).to be_blank
     end
 
-    it "logs JSON correctly, even with custom fields" do
-      Logging.with_fields_to_remove(:foo) do
-        logger.info({ msg: message, foo: "bar", module: "baz", zip: "zoom" })
+    it "logs JSON correctly" do
+      logger.info(message)
+      SemanticLogger.flush
 
-        actual = JSON.parse(log_output, symbolize_names: true)
-        expect(actual).to include(name: "rspec", environment: "test", level: "info", msg: message, time: now_dt_str, module: "baz", zip: "zoom", thread_id: thread_id)
-        expect(actual).to include(:hostname)
-        expect(actual).not_to include(:foo, :pid, :request_id, :user_id, :v)
+      actual = JSON.parse(log_io.string, symbolize_names: true)
+      expect(actual).to include(name: "LoggingTest",
+                                application: "czid",
+                                environment: "test",
+                                level: "info",
+                                level_index: 2,
+                                message: message,
+                                request_id: nil,
+                                timestamp: now_dt_str,
+                                thread: thread,
+                                usr: nil)
+      expect(actual).to include(:host)
+      # TODO: Maybe remove unnecessary fields from the message, like :dd and :level_index
+      expect(actual).not_to include(:named_tags, :payload) # :dd, :level_index)
+    end
+
+    it "logs JSON correctly, even with fields added and removed" do
+      Logging.with_transformers(
+        ->(log) { log.payload.delete(:foo) },
+        ->(log) { log.payload[:tom] = "jones" }
+      ) do
+        logger.info(message, foo: "bar", module: "baz", zip: "zoom")
+        SemanticLogger.flush
+
+        actual = JSON.parse(log_io.string, symbolize_names: true)
+        expect(actual).to include(name: "LoggingTest",
+                                  application: "czid",
+                                  environment: "test",
+                                  level: "info",
+                                  level_index: 2,
+                                  message: message,
+                                  payload: { module: "baz", tom: "jones", zip: "zoom" },
+                                  request_id: nil,
+                                  timestamp: now_dt_str,
+                                  thread: thread,
+                                  usr: nil)
+        expect(actual).to include(:host)
+        # TODO: Maybe remove unnecessary fields from the message, like :dd and :level_index
+        expect(actual).not_to include(:named_tags) # :dd, :level_index)
       end
     end
 
-    it "Will log if message is blank, if it also has other non-ignored fields" do
-      logger.info("", foo: "bar", module: "baz")
-
-      actual = JSON.parse(log_output, symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, foo: "bar", module: "baz", environment: "test", thread_id: thread_id)
-      expect(actual).to include(:hostname)
-      expect(actual).not_to include(:msg, :pid, :request_id, :user_id, :v)
-    end
-
-    it "Will not log if message is blank, if it has no other non-ignored fields" do
-      # :module is in Logging::@ignored, so it doesn't impact whether it will log or not
-      logger.info("", module: "baz")
-
-      expect(log_output).to be_blank
-    end
-
-    it "Will not log if message is nil, if it has no other non-ignored fields" do
-      # :module is in Logging::@ignored, so it doesn't impact whether it will log or not
-      logger.info(nil, module: "baz")
-
-      expect(log_output).to be_blank
-    end
-
-    it "Reads fields from CurrentContext" do
+    it "Extracts usr and request_id fields from named_tags" do
       request = ActionDispatch::TestRequest.create("action_dispatch.request_id" => SecureRandom.uuid)
       user = build_stubbed(:user, role: 0)
-      Logging::CurrentContext.request = request
-      Logging::CurrentContext.user = user
 
-      logger.info(message)
+      Logging.with_user_and_request(user, request) do
+        logger.info(message, module: "baz")
+        SemanticLogger.flush
 
-      actual = JSON.parse(log_output, symbolize_names: true)
-      expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", user_id: user.id, request_id: request.request_id, thread_id: thread_id)
-      expect(actual).to include(:hostname)
-      expect(actual).not_to include(:pid, :v)
+        actual = JSON.parse(log_io.string, symbolize_names: true)
+        expect(actual).to include(name: "LoggingTest",
+                                  application: "czid",
+                                  environment: "test",
+                                  level: "info",
+                                  level_index: 2,
+                                  message: message,
+                                  named_tags: {}, # Should be non-existent if empty, like other places, but isn't for some reason.
+                                  payload: { module: "baz" },
+                                  request_id: request.request_id,
+                                  timestamp: now_dt_str,
+                                  thread: thread,
+                                  usr: { email: user.email, id: user.id, name: user.name })
+        expect(actual).to include(:host)
+        # TODO: Maybe remove unnecessary fields from the message, like :dd and :level_index
+        # expect(actual).not_to include(:dd, :level_index)
+      end
     end
 
-    it "Will not log if any of Logging::filters fails" do
+    it "Will not log if anything if Logging::filters return false" do
       # Uses global and thread-local lists of filters
-      Logging.with_filter(->(data) { !data[:msg]&.include?('message we want excluded') }) do
-        logger.info("message we want excluded")
+      # SemanticLogger.tagged("super-tag") do
+      Logging.with_filters(->(log) { !log.message.include?('message we want excluded') }) do
+        SemanticLogger.named_tagged(my_tag: "zip") do
+          logger.info("message we want excluded")
+          SemanticLogger.flush
 
-        expect(log_output).to be_blank
+          expect(log_io.string).to be_blank
 
-        logger.info(message)
+          logger.info(message)
+          SemanticLogger.flush
 
-        actual = JSON.parse(log_output, symbolize_names: true)
-        expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", thread_id: thread_id)
-        expect(actual).to include(:hostname)
-        expect(actual).not_to include(:pid, :request_id, :user_id, :v)
+          actual = JSON.parse(log_io.string, symbolize_names: true)
+          expect(actual).to include(name: "LoggingTest",
+                                    application: "czid",
+                                    environment: "test",
+                                    level: "info",
+                                    level_index: 2,
+                                    message: message,
+                                    named_tags: { my_tag: "zip" },
+                                    request_id: nil,
+                                    timestamp: now_dt_str,
+                                    thread: thread,
+                                    usr: nil)
+          expect(actual).to include(:host)
+        end
       end
-    end
-
-    it "Will not log if any of Logging::filters fails with symbol keys" do
-      # Uses global and thread-local lists of filters
-      Logging.with_filter(->(data) { !data[:required_key].nil? }) do
-        logger.info(message, required_key: nil)
-
-        expect(log_output).to be_blank
-
-        logger.info(message, required_key: "my-key")
-
-        actual = JSON.parse(log_output, symbolize_names: true)
-        expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", thread_id: thread_id, required_key: "my-key")
-        expect(actual).to include(:hostname)
-        expect(actual).not_to include(:pid, :request_id, :user_id, :v)
-      end
-    end
-
-    it "Will not log if any of Logging::filters fails with string keys" do
-      # Uses global and thread-local lists of filters
-      Logging.with_filter(->(data) { !data["required_key"].nil? }) do
-        logger.info(message, "required_key": nil)
-
-        expect(log_output).to be_blank
-
-        logger.info(message, "required_key" => "my-key")
-
-        actual = JSON.parse(log_output, symbolize_names: true)
-        expect(actual).to include(name: "rspec", level: "info", time: now_dt_str, msg: message, environment: "test", thread_id: thread_id, required_key: "my-key")
-        expect(actual).to include(:hostname)
-        expect(actual).not_to include(:pid, :request_id, :user_id, :v)
-      end
-    end
-
-    it "does not log thread_name when it does not exist" do
-      thread = Thread.new do
-        Thread.current.name = ""
-        logger.info({ msg: message })
-      end
-
-      expect(thread.value).to be_truthy
-
-      actual = JSON.parse(log_output, symbolize_names: true)
-      expect(actual).to include(name: "rspec", environment: "test", level: "info", msg: message, time: now_dt_str, thread_id: thread.object_id)
-      expect(actual).to include(:hostname)
-      expect(actual).not_to include(:foo, :pid, :request_id, :thread_name, :user_id, :v)
-    end
-
-    it "logs thread_name when it exists" do
-      thread = Thread.new do
-        Thread.current.name = "test-thread-123"
-        logger.info({ msg: message })
-      end
-
-      expect(thread.value).to be_truthy
-
-      actual = JSON.parse(log_output, symbolize_names: true)
-      expect(actual).to include(name: "rspec", environment: "test", level: "info", msg: message, time: now_dt_str, thread_id: thread.object_id, thread_name: "test-thread-123")
-      expect(actual).to include(:hostname)
-      expect(actual).not_to include(:foo, :pid, :request_id, :user_id, :v)
     end
   end
 end

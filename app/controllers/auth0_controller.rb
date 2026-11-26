@@ -117,10 +117,14 @@ class Auth0Controller < ApplicationController
 
   # Handle omniauth errors coming from Auth0.
   def omniauth_failure
-    Rails.logger.debug("omniauth_failure: params=#{params.permit(:connection, :error, :error_description, :mode, :prompt, :state).to_h}")
     error_type = request.env["omniauth.error.type"].to_s.to_sym
     error = request.env["omniauth.error"]
-    Rails.logger.warn("omniauth_failure: error_type [#{error_type}]", error_message: error&.message)
+    Rails.logger.warn(
+      "omniauth_failure: omniauth.error.type [#{error_type}]",
+      error_type: error_type,
+      error_message: error&.message.presence,
+      params: params.permit(:connection, :error, :error_description, :mode, :prompt, :state).to_h
+    )
 
     if error_type.blank? || error.blank? || !error.is_a?(OmniAuth::Strategies::OAuth2::CallbackError)
       error_info = {}
